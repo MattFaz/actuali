@@ -3,8 +3,8 @@ import SwiftUI
 private let actualBudgetWebsiteURL = URL(string: "https://actualbudget.org")!
 private let privacyPolicyURL = URL(string: "https://actuali.mfazz.com/privacy")!
 private let contactEmailURL = URL(string: "mailto:actuali@mfazz.com")!
-// TODO: update when the repository moves to its permanent public home
-private let issueTrackerURL = URL(string: "https://github.com/MattFaz/Actuali/issues")!
+private let supportURL = URL(string: "https://actuali.mfazz.com/support")!
+private let issueTrackerURL = URL(string: "https://github.com/MattFaz/actuali/issues")!
 
 struct SettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
@@ -218,40 +218,23 @@ struct SettingsView: View {
 
                 Section {
                     HStack {
-                        Spacer()
-                        VStack(spacing: 8) {
-                            Image(systemName: "chart.bar.doc.horizontal.fill")
-                                .font(.system(size: 48))
-                                .foregroundStyle(.accent)
-                            Text("Actual Budget")
-                                .font(.headline)
-                            Text("Local-first personal finance")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                    .listRowBackground(Color.clear)
-                    .padding(.vertical, 8)
-
-                    HStack {
                         Text("Version")
                         Spacer()
                         Text(Self.appVersion)
                             .foregroundStyle(.secondary)
                     }
 
-                    Link("Actual Budget Website", destination: actualBudgetWebsiteURL)
-
                     Link("Privacy Policy", destination: privacyPolicyURL)
 
                     Link("Contact", destination: contactEmailURL)
 
                     Link("Report an Issue", destination: issueTrackerURL)
+
+                    Link("Support", destination: supportURL)
+
+                    Link("Actual Budget Website", destination: actualBudgetWebsiteURL)
                 } header: {
                     Text("About")
-                } footer: {
-                    Text("Beta testers can also send feedback directly from TestFlight.")
                 }
             }
             .navigationTitle("Settings")
