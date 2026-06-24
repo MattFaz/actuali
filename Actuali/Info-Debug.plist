@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  DEBUG-ONLY Info.plist base.
+
+  Wired in via INFOPLIST_FILE on the Debug build configuration only; Xcode
+  merges the auto-generated INFOPLIST_KEY_* values on top of this file
+  (GENERATE_INFOPLIST_FILE stays YES). Release builds do NOT use this file and
+  keep full App Transport Security.
+
+  The ATS relaxation below only affects loopback / .local / link-local
+  addresses and the explicit host.docker.internal test host — it never weakens
+  TLS enforcement for real (public) Actual servers.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>host.docker.internal</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+				<key>NSIncludesSubdomains</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+</dict>
+</plist>
