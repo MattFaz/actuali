@@ -29,7 +29,7 @@ from both sides.
 2. **Start the stack:**
 
    ```bash
-   cd docker/oauth-test
+   cd dev/oauth-test
    docker compose up -d
    ```
 
