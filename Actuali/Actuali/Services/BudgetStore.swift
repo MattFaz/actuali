@@ -394,6 +394,22 @@ final class BudgetStore: ObservableObject {
         downloadingBudgetId = nil
     }
 
+    /// Validate an encryption password for a budget, persist the derived key, then download it.
+    /// Returns nil on success, or a user-facing error message on failure (so the sheet can stay open).
+    func unlockAndOpen(_ remoteBudget: RemoteBudget, password: String) async -> String? {
+        do {
+            let keyInfo = try await serverClient.getKeyInfo(fileId: remoteBudget.id)
+            let loaded = try EncryptionKeyManager.deriveAndValidate(password: password, keyInfo: keyInfo)
+            try EncryptionKeyManager.store(loaded, fileId: remoteBudget.id)
+        } catch let e as EncryptionKeyError {
+            return e.errorDescription
+        } catch {
+            return error.localizedDescription
+        }
+        await downloadBudget(remoteBudget)
+        return error   // any download error surfaced by downloadBudget
+    }
+
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil

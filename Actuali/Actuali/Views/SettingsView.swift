@@ -24,6 +24,7 @@ struct SettingsView: View {
     ]
     @State private var password = ""
     @State private var showingResetSyncConfirm = false
+    @State private var budgetToUnlock: BudgetStore.RemoteBudget?
 
     private static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -127,13 +128,23 @@ struct SettingsView: View {
                         .disabled(budgetStore.downloadingBudgetId != nil)
 
                         ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(budget.name)
-                                    .foregroundStyle(.secondary)
-                                Text("Encrypted budgets not yet supported")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
+                            Button {
+                                if EncryptionKeyManager.load(fileId: budget.id) != nil {
+                                    Task { await budgetStore.downloadBudget(budget) }
+                                } else {
+                                    budgetToUnlock = budget
+                                }
+                            } label: {
+                                HStack {
+                                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                                    Text(budget.name)
+                                    Spacer()
+                                    if budgetStore.downloadingBudgetId == budget.id {
+                                        ProgressView()
+                                    }
+                                }
                             }
+                            .disabled(budgetStore.downloadingBudgetId != nil)
                         }
                     }
 
@@ -238,6 +249,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .sheet(item: $budgetToUnlock) { budget in
+                EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+            }
             .overlay {
                 if budgetStore.isLoading {
                     ProgressView()
