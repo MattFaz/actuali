@@ -10,6 +10,15 @@ interface Release {
 
 const releases: Release[] = [
   {
+    version: "1.0.2",
+    build: 39,
+    date: "June 24, 2026",
+    highlights: [
+      "Encrypted budgets: Actuali now opens and syncs end-to-end encrypted budgets. Pick an encrypted budget in Settings and enter its encryption password to unlock it on this device — the password is kept in the device Keychain and is never sent to the server, and your data is encrypted before it syncs.",
+      "Sync: fixed the first transaction added right after opening a budget occasionally not reaching the server. Later transactions synced fine; now the first write made before the initial sync finishes is pushed correctly too.",
+    ],
+  },
+  {
     version: "1.0.1",
     build: 38,
     date: "June 21, 2026",
