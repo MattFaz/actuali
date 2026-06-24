@@ -66,6 +66,20 @@ struct FileInfoResponse: Codable, Sendable {
 
     struct EncryptMeta: Codable, Sendable {
         let keyId: String
+        let algorithm: String?
+        let iv: String?
+        let authTag: String?
+    }
+}
+
+struct KeyInfoResponse: Codable, Sendable {
+    let status: String
+    let data: KeyData?
+
+    struct KeyData: Codable, Sendable {
+        let id: String
+        let salt: String
+        let test: String?
     }
 }
 
@@ -257,6 +271,33 @@ actor ActualServerClient {
         }
 
         return fileInfo
+    }
+
+    func getKeyInfo(fileId: String) async throws -> ServerKeyInfo {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        let url = serverURL.appendingPathComponent("/user-get-key")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(["token": token, "fileId": fileId])
+
+        let (data, response) = try await session.data(for: request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8))
+        }
+
+        let decoded = try JSONDecoder().decode(KeyInfoResponse.self, from: data)
+        guard decoded.status == "ok", let key = decoded.data else {
+            throw ActualServerError.invalidResponse
+        }
+        return ServerKeyInfo(id: key.id, salt: key.salt, test: key.test)
     }
 
     // MARK: - Sync
