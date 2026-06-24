@@ -277,7 +277,7 @@ actor ActualServerClient {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
 
-        let url = serverURL.appendingPathComponent("/user-get-key")
+        let url = serverURL.appendingPathComponent("/sync/user-get-key")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
