@@ -71,4 +71,23 @@ enum SyncEncryption {
 
         return SymmetricKey(data: derivedKey)
     }
+
+    /// Decrypt a blob whose IV/auth-tag arrive as base64 strings (file download blobs and the
+    /// `/user-get-key` test message). `algorithm` is currently always "aes-256-gcm".
+    static func decrypt(
+        ciphertext: Data,
+        ivBase64: String,
+        authTagBase64: String,
+        using key: SymmetricKey
+    ) throws -> Data {
+        guard let iv = Data(base64Encoded: ivBase64),
+              let authTag = Data(base64Encoded: authTagBase64) else {
+            throw SyncEncryptionError.decryptionFailed
+        }
+        var encrypted = EncryptedData()
+        encrypted.iv = iv
+        encrypted.authTag = authTag
+        encrypted.data = ciphertext
+        return try decrypt(encrypted, using: key)
+    }
 }

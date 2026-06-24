@@ -1,0 +1,8 @@
+{
+  "password": "correct horse battery staple",
+  "wrongPassword": "incorrect password",
+  "salt": "XfsOVKaxbU9A5bYyrQAasQrjy0Nvd3rllUW+ZRWCdTE=",
+  "keyId": "11111111-1111-1111-1111-111111111111",
+  "derivedKeyBase64": "C5SPIW2Fp7eRmnDhY8TmMUeJ6YgT4FCLWXbT4XJd/jE=",
+  "test": "{\"value\":\"q6+m+aF63TaiPBXc8fqlqmmUQ4VIJZzk4NFa/uPsmyQ=\",\"meta\":{\"keyId\":\"11111111-1111-1111-1111-111111111111\",\"algorithm\":\"aes-256-gcm\",\"iv\":\"AqLh9LX6BdIiavoO\",\"authTag\":\"ikPp5J5szWjUn3XlE1TQFg==\"}}"
+}
