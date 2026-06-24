@@ -59,6 +59,12 @@ actor SyncClient {
     private var encryptKeyId: String?
     private var lastSyncedTimestamp: String?
     private var lastSuccessfulSyncTime: Date?
+    /// The server's message high-water mark at budget-load time (max timestamp in
+    /// `messages_crdt` when `configure` ran, before any local writes this session).
+    /// On a fresh download `lastSyncedTimestamp` is nil, so this is the floor for
+    /// deciding which local messages are genuine post-download writes that must be
+    /// pushed — without it, the first local write is stranded (actios-4k4).
+    private var downloadBaselineTimestamp: String?
 
     // MARK: - Published State (for UI)
 
@@ -131,6 +137,9 @@ actor SyncClient {
             logger.warning("Failed to read max message timestamp for HLC restore: \(error, privacy: .public)")
             maxMessageTimestamp = nil
         }
+        // Capture the server's state at load as the baseline for the fresh-download
+        // sync path (no local writes have happened yet at configure time).
+        downloadBaselineTimestamp = maxMessageTimestamp
         for candidate in [lastSyncedTimestamp, maxMessageTimestamp] {
             if let candidate, let parsed = HLCTimestamp.parse(candidate) {
                 await clock.advance(to: parsed)
@@ -375,8 +384,17 @@ actor SyncClient {
         if since != nil || effectiveLastSynced != nil {
             localMessages = try database.getMessagesSince(sinceTimestamp)
         } else {
-            logger.debug("No valid lastSynced - not sending local messages (unknown state)")
-            localMessages = []
+            // Fresh download / no valid lastSynced. The local merkle is empty and we
+            // adopt the server's below, so merkle-diff recursion can't push local
+            // writes for us. Send everything newer than the download baseline (the
+            // server's high-water mark captured at load); those are genuine local
+            // writes made after download. Without this, a write made before the first
+            // sync completes is dropped when we adopt the server merkle and advance
+            // lastSynced past it (actios-4k4). The baseline keeps us from re-pushing
+            // the entire downloaded history.
+            let baseline = downloadBaselineTimestamp ?? ""
+            localMessages = try database.getMessagesSince(baseline)
+            logger.debug("No valid lastSynced - sending \(localMessages.count, privacy: .public) local message(s) since download baseline")
         }
         logger.debug("Found \(localMessages.count, privacy: .public) local messages to send")
 
@@ -419,11 +437,25 @@ actor SyncClient {
             if effectiveLastSynced == nil {
                 logger.info("No valid lastSynced - adopting server's merkle tree")
                 merkle = remoteMerkleTree
-                // The HLC has merged every message received above (and was
-                // seeded from local state in configure), so it is the
-                // high-water mark of everything we know about.
-                let current = await clock.current
-                lastSyncedTimestamp = current.toString()
+                // Advance lastSynced only to what we actually reconciled this pass:
+                // the download baseline plus the messages we sent and received. Using
+                // this instead of the raw clock high-water mark avoids skipping a
+                // local write that interleaved during the awaits above without being
+                // included in `localMessages` — such a write sorts above this mark
+                // (HLC timestamps order lexicographically) and is resent next sync
+                // (actios-4k4). Fall back to the clock only for a truly empty budget
+                // with nothing reconciled, so we still record that a sync happened.
+                let reconciled = ([downloadBaselineTimestamp]
+                    + localMessages.map { $0.timestamp.toString() }
+                    + remoteMessages.map { $0.timestamp.toString() })
+                    .compactMap { $0 }
+                    .filter { !$0.isEmpty }
+                    .max()
+                if let reconciled {
+                    lastSyncedTimestamp = reconciled
+                } else {
+                    lastSyncedTimestamp = (await clock.current).toString()
+                }
                 logger.debug("Set lastSyncedTimestamp to: \(self.lastSyncedTimestamp ?? "nil", privacy: .public)")
                 try saveClock()
                 return
