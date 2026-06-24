@@ -1,6 +1,21 @@
 ---
 import Layout from "../layouts/Layout.astro";
 
+// This page is rendered at build time. Run `npm run deploy` before each
+// release so the latest GitHub release shows up here.
+export const prerender = true;
+
+const REPO = "MattFaz/actuali";
+// Releases at or below this version are kept in the manual archive below.
+// Anything newer is pulled live from GitHub Releases at build time.
+const ARCHIVE_MAX_VERSION = "1.0.2";
+
+interface GithubRelease {
+  version: string;
+  date: string;
+  bodyHtml: string;
+}
+
 interface Release {
   version: string;
   build: number;
@@ -8,7 +23,136 @@ interface Release {
   highlights: string[];
 }
 
-const releases: Release[] = [
+function parseVersion(tag: string): number[] {
+  return (tag || "").replace(/^v/, "").split(".").map((n) => parseInt(n, 10) || 0);
+}
+
+function compareVersions(a: number[], b: number[]): number {
+  for (let i = 0; i < Math.max(a.length, b.length); i++) {
+    const diff = (a[i] || 0) - (b[i] || 0);
+    if (diff !== 0) return diff > 0 ? 1 : -1;
+  }
+  return 0;
+}
+
+function formatDate(iso: string): string {
+  if (!iso) return "";
+  return new Date(iso).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+}
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// Inline formatting on already HTML-escaped text.
+function renderInline(text: string): string {
+  return text
+    .replace(/\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)/g, '<a href="$2">$1</a>')
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/(^|[\s(])(https?:\/\/[^\s<)]+)/g, '$1<a href="$2">$2</a>')
+    .replace(/(^|\s)@([a-zA-Z0-9-]+)/g, '$1<a href="https://github.com/$2">@$2</a>');
+}
+
+// Minimal GFM-subset renderer for GitHub release bodies (headings, bullet
+// lists, bold/code, links, autolinks, @mentions). Avoids a build dependency.
+function renderMarkdown(md: string): string {
+  const lines = (md || "").replace(/\r\n/g, "\n").split("\n");
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      out.push("</ul>");
+      inList = false;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.trimEnd();
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+    const heading = line.match(/^(#{1,6})\s+(.*)$/);
+    if (heading) {
+      closeList();
+      const level = heading[1].length;
+      out.push(`<h${level}>${renderInline(escapeHtml(heading[2]))}</h${level}>`);
+      continue;
+    }
+    const item = line.match(/^[*-]\s+(.*)$/);
+    if (item) {
+      if (!inList) {
+        out.push("<ul>");
+        inList = true;
+      }
+      out.push(`<li>${renderInline(escapeHtml(item[1]))}</li>`);
+      continue;
+    }
+    closeList();
+    out.push(`<p>${renderInline(escapeHtml(line))}</p>`);
+  }
+  closeList();
+  return out.join("\n");
+}
+
+// GitHub's auto-generated release notes wrap the change list in a
+// "## What's Changed" heading and end with a "**Full Changelog**: ..." line.
+// Drop both so the page shows just the bulleted changes.
+function cleanReleaseBody(md: string): string {
+  return (md || "")
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .filter((line) => {
+      const t = line.trim();
+      if (/^#{1,6}\s+what'?s\s+changed\b/i.test(t)) return false;
+      if (/^\*+\s*full changelog\b/i.test(t)) return false;
+      return true;
+    })
+    .join("\n")
+    .trim();
+}
+
+const cutoff = parseVersion(ARCHIVE_MAX_VERSION);
+let githubReleases: GithubRelease[] = [];
+try {
+  const res = await fetch(
+    `https://api.github.com/repos/${REPO}/releases?per_page=100`,
+    {
+      headers: {
+        Accept: "application/vnd.github+json",
+        "User-Agent": "actuali-website",
+      },
+    }
+  );
+  if (res.ok) {
+    const data = (await res.json()) as Array<{
+      tag_name: string;
+      published_at: string;
+      body: string;
+      draft: boolean;
+      prerelease: boolean;
+    }>;
+    githubReleases = data
+      .filter((r) => !r.draft && !r.prerelease)
+      .filter((r) => compareVersions(parseVersion(r.tag_name), cutoff) > 0)
+      .sort((a, b) => compareVersions(parseVersion(b.tag_name), parseVersion(a.tag_name)))
+      .map((r) => ({
+        version: (r.tag_name || "").replace(/^v/, ""),
+        date: formatDate(r.published_at),
+        bodyHtml: renderMarkdown(cleanReleaseBody(r.body || "")),
+      }));
+  } else {
+    console.warn(`Changelog: GitHub releases fetch failed (${res.status}); showing archive only.`);
+  }
+} catch (err) {
+  console.warn("Changelog: GitHub releases fetch errored; showing archive only.", err);
+}
+
+const archivedReleases: Release[] = [
   {
     version: "1.0.2",
     build: 39,
@@ -322,7 +466,22 @@ const releases: Release[] = [
 
     <ol class="space-y-8">
       {
-        releases.map((release) => (
+        githubReleases.map((release) => (
+          <li class="rounded-2xl border border-neutral-200 bg-white p-6 transition hover:border-violet-200 hover:shadow-md">
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <h2 class="text-lg font-semibold tracking-tight">
+                Version {release.version}
+              </h2>
+              <p class="rounded-full bg-neutral-100 px-2.5 py-0.5 text-xs font-medium text-neutral-500">
+                {release.date}
+              </p>
+            </div>
+            <div class="release-body mt-3 text-neutral-700" set:html={release.bodyHtml} />
+          </li>
+        ))
+      }
+      {
+        archivedReleases.map((release) => (
           <li class="rounded-2xl border border-neutral-200 bg-white p-6 transition hover:border-violet-200 hover:shadow-md">
             <div class="flex flex-wrap items-baseline justify-between gap-2">
               <h2 class="text-lg font-semibold tracking-tight">
@@ -346,3 +505,43 @@ const releases: Release[] = [
     </ol>
   </article>
 </Layout>
+
+<style is:global>
+  .release-body h1,
+  .release-body h2,
+  .release-body h3 {
+    margin-top: 0.75rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: rgb(82 82 82);
+  }
+  .release-body h1:first-child,
+  .release-body h2:first-child,
+  .release-body h3:first-child {
+    margin-top: 0;
+  }
+  .release-body ul {
+    margin-top: 0.5rem;
+    list-style-type: disc;
+    padding-left: 1.25rem;
+  }
+  .release-body li {
+    margin-top: 0.375rem;
+  }
+  .release-body p {
+    margin-top: 0.5rem;
+  }
+  .release-body a {
+    color: rgb(124 58 237);
+    text-decoration: underline;
+  }
+  .release-body a:hover {
+    color: rgb(91 33 182);
+  }
+  .release-body code {
+    border-radius: 0.25rem;
+    background-color: rgb(245 245 245);
+    padding: 0.05rem 0.3rem;
+    font-size: 0.85em;
+  }
+</style>

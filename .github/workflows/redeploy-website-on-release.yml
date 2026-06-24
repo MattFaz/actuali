@@ -1,0 +1,33 @@
+name: Redeploy website on release
+
+# The website changelog is fetched from GitHub Releases at build time, so the
+# site must rebuild when a release is published. Publishing a release isn't a
+# git push, so Cloudflare's push-based deploy doesn't fire on its own. This
+# pings a Cloudflare Workers Builds deploy hook to trigger a fresh build of the
+# connected branch (which re-fetches the releases list).
+#
+# Setup (one time):
+#   1. Cloudflare dashboard > Workers & Pages > <worker> > Settings > Builds >
+#      Deploy Hooks. Create a hook for the production branch. Copy the URL.
+#   2. GitHub repo > Settings > Secrets and variables > Actions > New secret:
+#      name CLOUDFLARE_DEPLOY_HOOK_URL, value = the hook URL.
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch: {}
+
+jobs:
+  trigger-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Cloudflare deploy hook
+        env:
+          DEPLOY_HOOK_URL: ${{ secrets.CLOUDFLARE_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$DEPLOY_HOOK_URL" ]; then
+            echo "::error::CLOUDFLARE_DEPLOY_HOOK_URL secret is not set."
+            exit 1
+          fi
+          curl --fail --silent --show-error -X POST "$DEPLOY_HOOK_URL"
+          echo "Triggered Cloudflare rebuild."
