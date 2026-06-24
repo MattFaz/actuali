@@ -1,7 +1,7 @@
 ---
 import Layout from "../layouts/Layout.astro";
 
-const testflight = "https://testflight.apple.com/join/NsYntuXB";
+const appStore = "https://apps.apple.com/app/actuali/id6764063765";
 
 const screens = [
   {
@@ -131,7 +131,7 @@ const privacy = [
             <span class="relative inline-flex h-1.5 w-1.5 rounded-full bg-violet-500"
             ></span>
           </span>
-          Now in TestFlight
+          Now on the App Store
         </p>
         <h1
           class="text-balance text-5xl font-semibold tracking-tight sm:text-6xl"
@@ -157,32 +157,27 @@ const privacy = [
           class="flex flex-wrap items-center justify-center gap-3 pt-2 lg:justify-start"
         >
           <a
-            href={testflight}
-            class="inline-flex items-center gap-2 rounded-full bg-neutral-900 px-5 py-2.5 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-700"
+            href={appStore}
+            class="inline-flex transition hover:opacity-80"
+            aria-label="Download Actuali on the App Store"
           >
-            Join the TestFlight
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"><path d="M5 12h14" /><path d="m12 5 7 7-7 7"
-              /></svg
-            >
+            <img
+              src="/app-store-badge.svg"
+              alt="Download on the App Store"
+              width="143"
+              height="48"
+              class="h-12 w-auto"
+            />
           </a>
           <a
             href="/changelog"
-            class="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-5 py-2.5 text-sm font-medium text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-900"
+            class="inline-flex items-center gap-2 rounded-full border border-neutral-300 bg-white px-5 py-3 text-sm font-medium text-neutral-700 transition hover:border-neutral-400 hover:text-neutral-900"
           >
             What's new
           </a>
         </div>
         <p class="text-sm text-neutral-500 lg:pl-1">
-          Free during TestFlight · No account required for the demo
+          Free · No account required for the demo
         </p>
       </div>
 
@@ -360,11 +355,24 @@ const privacy = [
       >
       </div>
       <div class="relative mx-auto max-w-lg space-y-4">
+        <a
+          href={appStore}
+          class="mx-auto inline-flex transition hover:opacity-90"
+          aria-label="Download Actuali on the App Store"
+        >
+          <img
+            src="/icon.png"
+            alt="Actuali app icon"
+            width="88"
+            height="88"
+            class="h-20 w-20 rounded-[1.25rem] shadow-lg ring-1 ring-white/20"
+          />
+        </a>
         <h2 class="text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-          Get early access
+          Download Actuali
         </h2>
         <p class="text-violet-100">
-          Actuali is in open TestFlight. Install the latest build and check the
+          Actuali is on the App Store. Install it and check the
           <a
             href="/changelog"
             class="font-medium text-white underline decoration-white/40 underline-offset-2 hover:decoration-white"
@@ -376,10 +384,17 @@ const privacy = [
           class="flex flex-wrap items-center justify-center gap-3 pt-2"
         >
           <a
-            href={testflight}
-            class="inline-flex items-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-semibold text-violet-800 shadow-sm transition hover:bg-violet-50"
+            href={appStore}
+            class="inline-flex transition hover:opacity-80"
+            aria-label="Download Actuali on the App Store"
           >
-            Join the TestFlight
+            <img
+              src="/app-store-badge.svg"
+              alt="Download on the App Store"
+              width="143"
+              height="48"
+              class="h-12 w-auto"
+            />
           </a>
           <a
             href="/changelog"

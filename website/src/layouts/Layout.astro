@@ -14,7 +14,7 @@ const {
   noindex = false,
 } = Astro.props;
 
-const testflight = "https://testflight.apple.com/join/NsYntuXB";
+const appStore = "https://apps.apple.com/app/actuali/id6764063765";
 ---
 
 <!doctype html>
@@ -67,7 +67,7 @@ const testflight = "https://testflight.apple.com/join/NsYntuXB";
             >
           </nav>
           <a
-            href={testflight}
+            href={appStore}
             class="ml-1 hidden rounded-full bg-neutral-900 px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-neutral-700 sm:inline-block"
             >Get the app</a
           >
@@ -102,8 +102,8 @@ const testflight = "https://testflight.apple.com/join/NsYntuXB";
           >
           <a href="/support" class="transition hover:text-neutral-900">Support</a>
           <a href="/privacy" class="transition hover:text-neutral-900">Privacy</a>
-          <a href={testflight} class="transition hover:text-neutral-900"
-            >TestFlight</a
+          <a href={appStore} class="transition hover:text-neutral-900"
+            >App Store</a
           >
           <a
             href="https://github.com/MattFaz/actuali"

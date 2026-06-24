@@ -23,6 +23,15 @@ Website: [actuali.mfazz.com](https://actuali.mfazz.com)
 - **Light & dark mode**
 - No analytics, no third-party tracking. The app talks only to the Actual server you configure.
 
+## Roadmap
+
+Planned — contributions welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)):
+
+- **Encrypted budgets** — end-to-end password-protected sync (E2E)
+- **OpenID Connect / OAuth** — sign in to servers that use OAuth auth
+
+Found a bug or want to request a feature? Open a [GitHub issue](https://github.com/MattFaz/actuali/issues).
+
 ## Requirements
 
 - A self-hosted [Actual Budget server](https://actualbudget.org/docs/install/) you can reach from your phone
@@ -30,7 +39,9 @@ Website: [actuali.mfazz.com](https://actuali.mfazz.com)
 
 ## Install
 
-Actuali is available via TestFlight: [join the TestFlight](https://testflight.apple.com/join/NsYntuXB).
+Actuali is available on the App Store: [download Actuali](https://apps.apple.com/app/actuali/id6764063765).
+
+Want early access to beta builds? [Join the TestFlight](https://testflight.apple.com/join/NsYntuXB).
 
 ## Building from source
 
