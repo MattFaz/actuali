@@ -66,17 +66,45 @@ struct SettingsView: View {
                         .accessibilityHint("Example: https://actual.example.com")
 
                     if !budgetStore.isConnected {
-                        SecureField("Password", text: $password)
+                        // Show the password field before probing, when password
+                        // login is active, or when the first OpenID sign-in needs
+                        // the server password (no owner yet).
+                        if budgetStore.availableLoginMethods.isEmpty
+                            || budgetStore.passwordLoginActive
+                            || budgetStore.requiresServerPassword {
+                            SecureField(
+                                budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
+                                    ? "Server password (first sign-in)"
+                                    : "Password",
+                                text: $password
+                            )
+                        }
 
                         Button("Connect") {
                             Task {
                                 await budgetStore.connect()
-                                if budgetStore.error == nil {
+                                guard budgetStore.error == nil else { return }
+                                // Discover available auth methods, then log in with
+                                // password directly when that's the active method.
+                                await budgetStore.checkLoginMethods()
+                                if budgetStore.passwordLoginActive && !password.isEmpty {
                                     await budgetStore.login(password: password)
                                 }
                             }
                         }
-                        .disabled(budgetStore.serverURL.isEmpty || password.isEmpty || budgetStore.isLoading)
+                        .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
+
+                        if budgetStore.supportsOpenIDLogin {
+                            Button("Sign in with OpenID") {
+                                Task {
+                                    await budgetStore.loginWithOpenID(
+                                        firstTimePassword: password.isEmpty ? nil : password
+                                    )
+                                }
+                            }
+                            .disabled(budgetStore.isLoading
+                                || (budgetStore.requiresServerPassword && password.isEmpty))
+                        }
 
                         Button("Try the demo budget") {
                             Task { await budgetStore.loadDemoData() }

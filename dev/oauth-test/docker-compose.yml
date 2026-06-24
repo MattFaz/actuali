@@ -1,0 +1,27 @@
+# Local OpenID/OAuth test harness for Actuali.
+#
+# Spins up:
+#   - Dex   : a lightweight OpenID Connect provider (static config, in-memory)
+#   - actual: the official Actual Budget sync-server
+#
+# Everything is addressed via `host.docker.internal` so the SAME issuer URL
+# resolves identically from the iOS simulator's browser (via the Mac's
+# /etc/hosts) and from inside the Actual container (via the Docker host gateway).
+# See README.md for the one-time setup.
+services:
+  actual:
+    image: actualbudget/actual-server:latest
+    ports: ["5006:5006"]
+    extra_hosts: ["host.docker.internal:host-gateway"]
+    volumes: ["actual-data:/data"]
+    restart: unless-stopped
+
+  dex:
+    image: ghcr.io/dexidp/dex:latest
+    command: ["dex", "serve", "/etc/dex/config.yaml"]
+    ports: ["5556:5556"]
+    volumes: ["./dex-config.yaml:/etc/dex/config.yaml:ro"]
+    restart: unless-stopped
+
+volumes:
+  actual-data: {}

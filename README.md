@@ -19,6 +19,7 @@ Website: [actuali.mfazz.com](https://actuali.mfazz.com)
 - Budget: category-by-category budgeted vs. spent for the current month
 - Reports: spending, net worth, and cash flow widgets
 - iOS Shortcuts: a "Log Transaction" intent for Siri, widgets, and automations
+- Sign in with password or **OpenID Connect / OAuth** — the app detects which methods your server offers
 - Offline-first: every budget lives locally in SQLite; changes sync back automatically via Actual's CRDT protocol
 - **Light & dark mode**
 - No analytics, no third-party tracking. The app talks only to the Actual server you configure.
@@ -28,7 +29,6 @@ Website: [actuali.mfazz.com](https://actuali.mfazz.com)
 Planned — contributions welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)):
 
 - **Encrypted budgets** — end-to-end password-protected sync (E2E)
-- **OpenID Connect / OAuth** — sign in to servers that use OAuth auth
 
 Found a bug or want to request a feature? Open a [GitHub issue](https://github.com/MattFaz/actuali/issues).
 

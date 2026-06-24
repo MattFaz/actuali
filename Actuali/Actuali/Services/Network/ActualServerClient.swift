@@ -39,6 +39,33 @@ struct LoginResponse: Codable, Sendable {
     }
 }
 
+/// A login method advertised by `GET /account/login-methods`, e.g. `password` or `openid`.
+struct LoginMethod: Codable, Sendable, Equatable {
+    let method: String
+    let displayName: String?
+    /// SQLite stores this as 0/1; decode tolerantly as an integer.
+    let active: Int?
+
+    var isActive: Bool { (active ?? 0) != 0 }
+}
+
+struct LoginMethodsResponse: Codable, Sendable {
+    let status: String
+    let methods: [LoginMethod]?
+}
+
+/// Response from `POST /account/login` when `loginMethod == "openid"`. The server
+/// returns the OpenID provider authorization URL under `data.returnUrl` (not a token).
+struct OpenIDInitResponse: Codable, Sendable {
+    let status: String
+    let data: OpenIDInitData?
+    let reason: String?
+
+    struct OpenIDInitData: Codable, Sendable {
+        let returnUrl: String
+    }
+}
+
 struct ListFilesResponse: Codable, Sendable {
     let status: String
     let data: [RemoteFile]?
@@ -154,6 +181,121 @@ actor ActualServerClient {
 
         self.token = token
         return token
+    }
+
+    /// Discover which login methods the server supports (`password`, `openid`, …)
+    /// via `GET /account/login-methods`. Unauthenticated. Returns every method
+    /// the server reports, including inactive ones (each carries its own
+    /// `active` flag) — callers need to know a password fallback *exists* even
+    /// when it isn't the active method, because the first OpenID sign-in may
+    /// require it. Older servers without this endpoint (404) are treated as
+    /// password-only, which is the safe default.
+    func fetchLoginMethods() async throws -> [LoginMethod] {
+        guard let serverURL else {
+            throw ActualServerError.invalidURL
+        }
+
+        let url = serverURL.appendingPathComponent("/account/login-methods")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+
+        // Servers predating the login-methods endpoint only do password auth.
+        if httpResponse.statusCode == 404 {
+            return [LoginMethod(method: "password", displayName: "Password", active: 1)]
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let message = String(data: data, encoding: .utf8)
+            throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        let decoded = try JSONDecoder().decode(LoginMethodsResponse.self, from: data)
+        guard decoded.status == "ok", let methods = decoded.methods else {
+            throw ActualServerError.invalidResponse
+        }
+        return methods
+    }
+
+    /// Whether an account owner has been created yet (`GET /admin/owner-created/`,
+    /// which returns a bare JSON boolean). When this is `false` and the server
+    /// has a password fallback, the first OpenID sign-in must supply the server
+    /// password. Defaults to `true` on any failure so we don't nag the user on
+    /// servers where the endpoint is unavailable.
+    func fetchOwnerCreated() async -> Bool {
+        guard let serverURL else { return true }
+        let url = serverURL.appendingPathComponent("/admin/owner-created/")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        guard let (data, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let created = try? JSONDecoder().decode(Bool.self, from: data) else {
+            return true
+        }
+        return created
+    }
+
+    /// Begin an OpenID login by POSTing to `/account/login` with
+    /// `loginMethod = "openid"`. The server validates `returnURL` (its hostname
+    /// must match the server or be `localhost`), stores a pending request, and
+    /// returns the OpenID provider's authorization URL to open in a browser.
+    ///
+    /// - Parameters:
+    ///   - returnURL: where the server should redirect after the OP callback.
+    ///     Use a custom-scheme URL whose host is `localhost` (e.g.
+    ///     `actuali://localhost`) so it passes the server's redirect check and
+    ///     can be intercepted by `ASWebAuthenticationSession`.
+    ///   - firstTimePassword: required only when the server also has password
+    ///     auth configured and no named users exist yet (first login).
+    /// - Returns: the authorization URL to present to the user.
+    func beginOpenIDLogin(returnURL: String, firstTimePassword: String?) async throws -> URL {
+        guard let serverURL else {
+            throw ActualServerError.invalidURL
+        }
+
+        let url = serverURL.appendingPathComponent("/account/login")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        var body: [String: String] = [
+            "loginMethod": "openid",
+            "returnUrl": returnURL
+        ]
+        if let firstTimePassword, !firstTimePassword.isEmpty {
+            body["password"] = firstTimePassword
+        }
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            // Surface the server's `reason` (e.g. invalid-password, invalid-return-url) when present.
+            let reason = (try? JSONDecoder().decode(OpenIDInitResponse.self, from: data))?.reason
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode,
+                message: reason ?? String(data: data, encoding: .utf8)
+            )
+        }
+
+        let decoded = try JSONDecoder().decode(OpenIDInitResponse.self, from: data)
+        guard decoded.status == "ok",
+              let urlString = decoded.data?.returnUrl,
+              let authURL = URL(string: urlString) else {
+            throw ActualServerError.invalidResponse
+        }
+        return authURL
     }
 
     // MARK: - Files

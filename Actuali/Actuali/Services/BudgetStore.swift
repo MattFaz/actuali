@@ -54,6 +54,38 @@ final class BudgetStore: ObservableObject {
     }
 
     @Published var isConnected = false
+
+    /// Login methods advertised by the configured server (populated by
+    /// `checkLoginMethods()`). Empty until the server has been probed.
+    @Published var availableLoginMethods: [LoginMethod] = []
+
+    /// Whether the server already has an account owner. When false, the first
+    /// OpenID sign-in must supply the server password (see `requiresServerPassword`).
+    @Published var ownerExists = true
+
+    /// Whether the configured server has a password method at all (active or not).
+    var supportsPasswordLogin: Bool {
+        availableLoginMethods.contains { $0.method == "password" }
+    }
+
+    /// Whether password is the *active* login method — i.e. tapping Connect
+    /// should perform a direct password login.
+    var passwordLoginActive: Bool {
+        availableLoginMethods.contains { $0.method == "password" && $0.isActive }
+    }
+
+    /// Whether the configured server offers OpenID/OAuth login.
+    var supportsOpenIDLogin: Bool {
+        availableLoginMethods.contains { $0.method == "openid" }
+    }
+
+    /// Whether the first OpenID sign-in must include the server password: the
+    /// server still has a password fallback and no owner has been created yet.
+    /// Mirrors the official web client's "Enter server password" prompt.
+    var requiresServerPassword: Bool {
+        supportsOpenIDLogin && supportsPasswordLogin && !ownerExists
+    }
+
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
@@ -287,6 +319,53 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// Probe the configured server for its available login methods so the UI can
+    /// offer password and/or OpenID sign-in. Best-effort: on failure we fall back
+    /// to password-only so the existing flow keeps working.
+    func checkLoginMethods() async {
+        do {
+            availableLoginMethods = try await serverClient.fetchLoginMethods()
+        } catch {
+            logger.error("Failed to fetch login methods: \(error.localizedDescription, privacy: .public)")
+            availableLoginMethods = [LoginMethod(method: "password", displayName: "Password", active: 1)]
+        }
+        // Only relevant when OpenID is offered; cheap enough to always refresh.
+        if supportsOpenIDLogin {
+            ownerExists = await serverClient.fetchOwnerCreated()
+        }
+    }
+
+    /// Run the OpenID/OAuth browser sign-in flow end to end: ask the server for
+    /// an authorization URL, present it via `ASWebAuthenticationSession`, then
+    /// persist the returned token exactly like a password login.
+    /// - Parameter firstTimePassword: only needed when the server also has
+    ///   password auth and no users exist yet (first login).
+    func loginWithOpenID(firstTimePassword: String?) async {
+        isLoading = true
+        error = nil
+
+        do {
+            let authURL = try await serverClient.beginOpenIDLogin(
+                returnURL: OpenIDAuthenticator.returnURL,
+                firstTimePassword: firstTimePassword
+            )
+            let authenticator = OpenIDAuthenticator()
+            let token = try await authenticator.authenticate(authorizationURL: authURL)
+
+            await serverClient.setToken(token)
+            try? Keychain.set(token, for: "authToken")
+            isConnected = true
+            await fetchRemoteBudgets()
+        } catch OpenIDAuthError.cancelled {
+            // User dismissed the browser sheet — not an error worth surfacing.
+        } catch {
+            self.error = error.localizedDescription
+            isConnected = false
+        }
+
+        isLoading = false
+    }
+
     func logout() {
         Task {
             await serverClient.setToken(nil)
@@ -296,6 +375,9 @@ final class BudgetStore: ObservableObject {
         UserDefaults.standard.removeObject(forKey: "authToken")
         isConnected = false
         remoteBudgets = []
+        // Re-probe on the next connection in case the server URL changes.
+        availableLoginMethods = []
+        ownerExists = true
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.

@@ -1,0 +1,34 @@
+# Dex OpenID Connect provider — test configuration only. DO NOT use in production.
+#
+# The issuer is set STATICALLY so the discovery document returns the exact same
+# endpoint URLs to both the in-app browser (simulator) and the Actual server's
+# back-channel token exchange. This is what makes Dex simpler than request-host
+# derived providers (e.g. Authentik) for local simulator testing.
+issuer: http://host.docker.internal:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+oauth2:
+  # Skip the "Grant access?" consent screen so the flow is one fewer tap.
+  skipApprovalScreen: true
+
+staticClients:
+  - id: actuali
+    name: Actuali
+    secret: actuali-test-secret
+    redirectURIs:
+      # Must equal {ACTUAL_OPENID_SERVER_HOSTNAME}/openid/callback
+      - http://host.docker.internal:5006/openid/callback
+
+enablePasswordDB: true
+staticPasswords:
+  - email: "test@example.com"
+    # bcrypt hash of the literal word "password" — local test fixture only, not a real credential.
+    # Regenerate with: htpasswd -bnBC 10 "" <password> | tr -d ':\n' | sed 's/^$2y/$2a/'
+    hash: "$2a$10$QIgeM2gM.7bgDmH2CbTpGe9vOY2pgU5SFPj6Iv4TdaQCmFrx8KXwK" # sadscan:disable np.pwhash.2
+    username: "test"
+    userID: "08a8684b-db88-4b73-90a9-3cd1661f5466"
