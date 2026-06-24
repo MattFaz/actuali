@@ -43,3 +43,6 @@ Pods/
 
 # Website build output
 website/dist/
+
+# Local dev helpers (e.g. docker-compose test server)
+dev/
