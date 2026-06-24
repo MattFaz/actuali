@@ -56,6 +56,7 @@ actor SyncClient {
 
     private var fileId: String?
     private var groupId: String?
+    private var encryptKeyId: String?
     private var lastSyncedTimestamp: String?
     private var lastSuccessfulSyncTime: Date?
 
@@ -82,11 +83,13 @@ actor SyncClient {
         database: BudgetDatabase,
         fileId: String,
         groupId: String,
-        encryptionKey: SymmetricKey? = nil
+        encryptionKey: SymmetricKey? = nil,
+        keyId: String? = nil
     ) async throws {
         self.database = database
         self.fileId = fileId
         self.groupId = groupId
+        self.encryptKeyId = keyId
         self.encoder = SyncEncoder(encryptionKey: encryptionKey)
 
         // Load saved clock state
@@ -382,7 +385,7 @@ actor SyncClient {
             messages: localMessages,
             fileId: fileId,
             groupId: groupId,
-            keyId: nil,  // TODO: Support encryption key ID
+            keyId: encryptKeyId,
             since: sinceTimestamp
         )
         logger.debug("Encoded request: \(requestData.count, privacy: .public) bytes")
