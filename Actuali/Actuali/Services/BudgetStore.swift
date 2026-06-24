@@ -335,11 +335,6 @@ final class BudgetStore: ObservableObject {
     }
 
     func downloadBudget(_ remoteBudget: RemoteBudget) async {
-        guard !remoteBudget.isEncrypted else {
-            error = "Encrypted budgets are not yet supported"
-            return
-        }
-
         isLoading = true
         downloadingBudgetId = remoteBudget.id
         error = nil
@@ -351,22 +346,46 @@ final class BudgetStore: ObservableObject {
         database = nil
 
         do {
-            // Download the ZIP file
-            let zipData = try await serverClient.downloadFile(fileId: remoteBudget.id)
+            var loadedKey: LoadedKey?
+            if remoteBudget.isEncrypted {
+                guard let key = EncryptionKeyManager.load(fileId: remoteBudget.id) else {
+                    self.error = "This budget is encrypted. Enter its encryption password to open it."
+                    isLoading = false
+                    downloadingBudgetId = nil
+                    return
+                }
+                loadedKey = key
+            }
 
-            // Extract and import
+            // Download the (possibly encrypted) ZIP blob.
+            var zipData = try await serverClient.downloadFile(fileId: remoteBudget.id)
+
+            // Decrypt the whole blob for encrypted budgets.
+            if let loadedKey {
+                let info = try await serverClient.getFileInfo(fileId: remoteBudget.id)
+                guard let meta = info.encryptMeta else {
+                    throw ActualServerError.invalidResponse
+                }
+                guard meta.keyId == loadedKey.keyId else {
+                    try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
+                    self.error = "This budget's encryption key has changed. Re-enter the password."
+                    isLoading = false
+                    downloadingBudgetId = nil
+                    return
+                }
+                guard let iv = meta.iv, let authTag = meta.authTag else {
+                    throw ActualServerError.invalidResponse
+                }
+                zipData = try SyncEncryption.decrypt(
+                    ciphertext: zipData, ivBase64: iv, authTagBase64: authTag, using: loadedKey.key
+                )
+            }
+
             let metadata = try await fileManager.importBudget(
-                from: zipData,
-                fileId: remoteBudget.id,
-                groupId: remoteBudget.groupId
+                from: zipData, fileId: remoteBudget.id, groupId: remoteBudget.groupId
             )
-
-            // Set as current budget
             currentBudgetId = metadata.id
-
-            // Load the budget
             await loadLocalBudget(metadata.id)
-
         } catch {
             self.error = error.localizedDescription
         }
@@ -439,12 +458,15 @@ final class BudgetStore: ObservableObject {
             }
 
             if let db = database {
+                let loadedKey = EncryptionKeyManager.load(fileId: fileId)
                 try await syncClient?.configure(
                     database: db,
                     fileId: fileId,
-                    groupId: groupId
+                    groupId: groupId,
+                    encryptionKey: loadedKey?.key,
+                    keyId: loadedKey?.keyId
                 )
-                logger.info("Sync configuration successful")
+                logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
             } else {
                 logger.error("Database is nil, cannot configure sync")
             }
