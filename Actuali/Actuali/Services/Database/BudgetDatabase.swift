@@ -300,11 +300,15 @@ class BudgetDatabase {
                     t.description, t.notes, t.date, t.imported_description,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    p.name as payee_name,
+                    COALESCE(pa.name, p.name) as payee_name,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
+                -- Transfer payees carry no name; their display name is the
+                -- linked account's name (matches Actual's v_payees view).
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
@@ -692,11 +696,15 @@ class BudgetDatabase {
                     t.description, t.notes, t.date, t.imported_description,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    p.name as payee_name,
+                    COALESCE(pa.name, p.name) as payee_name,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
+                -- Transfer payees carry no name; their display name is the
+                -- linked account's name (matches Actual's v_payees view).
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
