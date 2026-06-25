@@ -256,14 +256,18 @@ class BudgetDatabase {
                 .fetchAll(db)
 
             // Balances in one grouped query instead of a SUM per account (N+1).
-            // Semantics match the previous per-account query exactly: every
-            // non-tombstoned transaction row for the account counts (split
-            // parents, children, and transfer legs included), and accounts
-            // with no transactions get 0.
+            // Split transactions are stored as a parent row carrying the full
+            // amount plus child rows carrying each portion, so the children sum
+            // to the parent. We must exclude parents (isParent = 0) or every
+            // split would be counted twice — matching Actual's own aggregate
+            // semantics and fetchTransactionsForReports(). Transfer legs still
+            // count; accounts with no transactions get 0.
             let balanceRows = try Row.fetchAll(db, sql: """
                 SELECT acct, COALESCE(SUM(amount), 0) AS balance
                 FROM transactions
-                WHERE acct IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
+                WHERE acct IS NOT NULL
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND (isParent = 0 OR isParent IS NULL)
                 GROUP BY acct
                 """)
             var balances: [String: Int] = [:]
