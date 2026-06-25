@@ -3,10 +3,10 @@ import Testing
 import GRDB
 @testable import Actuali
 
-/// Pins the balance semantics of `fetchAccounts()` after the per-account SUM
-/// (N+1) was replaced with a single grouped query: every non-tombstoned
-/// transaction row for the account counts (split parents/children and
-/// transfer legs included), and accounts with no transactions report 0.
+/// Pins the balance semantics of `fetchAccounts()`: every non-tombstoned,
+/// non-split-parent transaction row for the account counts (split children and
+/// transfer legs included, split parents excluded so splits aren't
+/// double-counted), and accounts with no transactions report 0.
 @MainActor
 struct BudgetDatabaseAccountBalanceTests {
 
@@ -36,6 +36,9 @@ struct BudgetDatabaseAccountBalanceTests {
                     date INTEGER,
                     transferred_id TEXT,
                     sort_order REAL,
+                    isParent INTEGER DEFAULT 0,
+                    isChild INTEGER DEFAULT 0,
+                    parent_id TEXT,
                     tombstone INTEGER DEFAULT 0
                 );
             """)
@@ -93,9 +96,12 @@ struct BudgetDatabaseAccountBalanceTests {
         #expect(accounts.first?.balance == 0)
     }
 
-    @Test func transferLegsAndSplitRowsAllCount() async throws {
-        // The balance SUM intentionally includes transfer legs and both split
-        // parent and child rows — identical to the old per-account query.
+    @Test func transferLegsCountButSplitParentsAreExcluded() async throws {
+        // Transfer legs count toward the balance. Split transactions are stored
+        // as a parent row (full amount) plus child rows (each portion); the
+        // children sum to the parent, so the balance must count the children
+        // and exclude the parent — otherwise every split is double-counted
+        // (GH #7: a checking account off by tens of thousands).
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -103,14 +109,24 @@ struct BudgetDatabaseAccountBalanceTests {
             try conn.execute(sql: """
                 INSERT INTO accounts (id, name, sort_order) VALUES ('acct-1', 'One', 1.0);
 
+                -- Transfer leg + a plain transaction.
                 INSERT INTO transactions (id, acct, amount, date, transferred_id, tombstone) VALUES
                     ('leg',  'acct-1', -3000, 20260501, 't-other', 0),
                     ('main', 'acct-1', 10000, 20260502, NULL, 0);
+
+                -- A -€100.00 purchase split into -€60.00 and -€40.00. The parent
+                -- carries the full -10000; counting it as well would yield -20000.
+                INSERT INTO transactions (id, acct, amount, date, isParent, isChild, parent_id, tombstone) VALUES
+                    ('split-parent', 'acct-1', -10000, 20260503, 1, 0, NULL,           0),
+                    ('split-c1',     'acct-1',  -6000, 20260503, 0, 1, 'split-parent', 0),
+                    ('split-c2',     'acct-1',  -4000, 20260503, 0, 1, 'split-parent', 0);
             """)
         }
 
+        // -3000 (leg) + 10000 (main) - 6000 - 4000 (children) = -3000.
+        // The -10000 split parent is intentionally excluded.
         let accounts = try await db.fetchAccounts()
-        #expect(accounts.first?.balance == 7000)
+        #expect(accounts.first?.balance == -3000)
     }
 
     @Test func tombstonedAccountsAreExcluded() async throws {
