@@ -38,6 +38,16 @@ enum BudgetStoreError: LocalizedError, Equatable {
     }
 }
 
+/// A user-configured HTTP header applied to every request to the Actual
+/// server. Used to authenticate through reverse proxies that guard the server
+/// (e.g. Cloudflare Access service tokens: `CF-Access-Client-Id` /
+/// `CF-Access-Client-Secret`). The `id` is UI-only and not persisted meaningfully.
+struct CustomHeader: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String = ""
+    var value: String = ""
+}
+
 @MainActor
 final class BudgetStore: ObservableObject {
     // MARK: - Published State
@@ -50,6 +60,17 @@ final class BudgetStore: ObservableObject {
     @Published var serverURL: String = "" {
         didSet {
             UserDefaults.standard.set(serverURL, forKey: "serverURL")
+        }
+    }
+
+    /// Extra HTTP headers the user wants stamped onto every server request
+    /// (e.g. Cloudflare Access service-token headers). Persisted in the Keychain
+    /// because values may be secrets. Assigning re-persists and pushes the live
+    /// set to the network client.
+    @Published var customHeaders: [CustomHeader] = [] {
+        didSet {
+            persistCustomHeaders()
+            applyCustomHeadersToClient()
         }
     }
 
@@ -237,6 +258,7 @@ final class BudgetStore: ObservableObject {
     private init() {
         // Restore saved state
         serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
+        customHeaders = Self.loadPersistedCustomHeaders()
         currentBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
         currencyCode = UserDefaults.standard.string(forKey: "currencyCode") ?? "USD"
         if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
@@ -265,6 +287,46 @@ final class BudgetStore: ObservableObject {
         // Empty preview store — no UserDefaults reads, no auto-load.
     }
 
+    // MARK: - Custom Headers
+
+    private static let customHeadersKey = "customHeaders"
+
+    /// Load persisted headers from the Keychain. Best-effort: returns empty on
+    /// any decode failure so a corrupt entry never blocks startup.
+    private static func loadPersistedCustomHeaders() -> [CustomHeader] {
+        guard let json = Keychain.get(for: customHeadersKey),
+              let data = json.data(using: .utf8),
+              let headers = try? JSONDecoder().decode([CustomHeader].self, from: data) else {
+            return []
+        }
+        return headers
+    }
+
+    private func persistCustomHeaders() {
+        // Drop rows the user left completely blank so they don't accumulate.
+        let meaningful = customHeaders.filter {
+            !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+        }
+        guard !meaningful.isEmpty else {
+            try? Keychain.remove(for: Self.customHeadersKey)
+            return
+        }
+        if let data = try? JSONEncoder().encode(meaningful),
+           let json = String(data: data, encoding: .utf8) {
+            try? Keychain.set(json, for: Self.customHeadersKey)
+        }
+    }
+
+    /// Push the current header set to the network client. Only rows with a
+    /// non-empty name are sent; names/values are trimmed of surrounding space.
+    private func applyCustomHeadersToClient() {
+        let headers: [(name: String, value: String)] = customHeaders
+            .map { (name: $0.name.trimmingCharacters(in: .whitespaces),
+                    value: $0.value.trimmingCharacters(in: .whitespaces)) }
+            .filter { !$0.name.isEmpty }
+        Task { await serverClient.setCustomHeaders(headers) }
+    }
+
     // MARK: - Server Connection
 
     func connect() async {
@@ -282,6 +344,9 @@ final class BudgetStore: ObservableObject {
 
         do {
             try await serverClient.configure(serverURL: normalized)
+            // Ensure the client carries the user's headers before any probe/login,
+            // so servers behind an auth proxy are reachable from the first request.
+            applyCustomHeadersToClient()
         } catch {
             self.error = error.localizedDescription
             isLoading = false
@@ -325,6 +390,11 @@ final class BudgetStore: ObservableObject {
     func checkLoginMethods() async {
         do {
             availableLoginMethods = try await serverClient.fetchLoginMethods()
+        } catch ActualServerError.authProxyBlocked {
+            // Surface the actionable hint proactively rather than waiting for the
+            // login attempt to fail with the same cryptic-looking response.
+            error = ActualServerError.authProxyBlocked.localizedDescription
+            availableLoginMethods = [LoginMethod(method: "password", displayName: "Password", active: 1)]
         } catch {
             logger.error("Failed to fetch login methods: \(error.localizedDescription, privacy: .public)")
             availableLoginMethods = [LoginMethod(method: "password", displayName: "Password", active: 1)]
