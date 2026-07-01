@@ -260,15 +260,21 @@ class BudgetDatabase {
             // amount plus child rows carrying each portion, so the children sum
             // to the parent. We must exclude parents (isParent = 0) or every
             // split would be counted twice — matching Actual's own aggregate
-            // semantics and fetchTransactionsForReports(). Transfer legs still
-            // count; accounts with no transactions get 0.
+            // semantics and fetchTransactionsForReports(). We must also exclude
+            // children whose parent is tombstoned: deleting a split tombstones
+            // the parent but leaves the child rows with tombstone = 0, so a
+            // per-row tombstone check alone would still count those orphans
+            // (matching Actual's alive view). Transfer legs still count;
+            // accounts with no transactions get 0.
             let balanceRows = try Row.fetchAll(db, sql: """
-                SELECT acct, COALESCE(SUM(amount), 0) AS balance
-                FROM transactions
-                WHERE acct IS NOT NULL
-                  AND (tombstone = 0 OR tombstone IS NULL)
-                  AND (isParent = 0 OR isParent IS NULL)
-                GROUP BY acct
+                SELECT t.acct AS acct, COALESCE(SUM(t.amount), 0) AS balance
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct IS NOT NULL
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                GROUP BY t.acct
                 """)
             var balances: [String: Int] = [:]
             for row in balanceRows {
@@ -481,21 +487,39 @@ class BudgetDatabase {
 
             // Bulk-load spent per (YYYYMM, category) up to and including the
             // target month. date is YYYYMMDD, so date / 100 = YYYYMM.
-            // Skip transfers (transferred_id NOT NULL): their amounts net to
-            // zero across linked accounts, but a single leg pinned to a
-            // budget category would inflate "spent". Skip child rows of
-            // splits — the parent carries the canonical category split.
+            // Mirrors Actual's own spent query (loot-core base.ts
+            // getSumAmountsByMonth over v_transactions_internal_alive):
+            //   * Resolve the category through category_mapping — merged/renamed
+            //     categories keep the old id on their transactions but point it
+            //     at the surviving id, so we must group by the mapped id.
+            //   * Only count on-budget accounts (accounts.offbudget = 0). A
+            //     categorised transaction in an off-budget account is not budget
+            //     spending.
+            //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
+            //     category (excluded by category IS NOT NULL); a categorised leg
+            //     is a transfer to an off-budget account, which Actual counts as
+            //     spent. Split parents carry a NULL category in Actual, so
+            //     category IS NOT NULL already excludes them (no double-count).
+            //   * Exclude split children whose parent is tombstoned. Deleting a
+            //     split tombstones the parent but leaves the child rows with
+            //     tombstone = 0, so a per-row tombstone check alone still counts
+            //     those orphans. Actual's alive view (v_transactions_layer1)
+            //     requires the parent to be alive too.
             let spentRows = try Row.fetchAll(db, sql: """
                 SELECT
                     (t.date / 100) AS month,
-                    t.category AS category_id,
+                    COALESCE(cm.transferId, t.category) AS category_id,
                     SUM(t.amount) AS spent
                 FROM transactions t
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                LEFT JOIN accounts a ON a.id = t.acct
+                LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
                   AND t.category IS NOT NULL
-                  AND t.transferred_id IS NULL
+                  AND a.offbudget = 0
                   AND (t.date / 100) <= ?
-                GROUP BY (t.date / 100), t.category
+                GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
             var spentByMonthCat: [Int: [String: Int]] = [:]
             for row in spentRows {

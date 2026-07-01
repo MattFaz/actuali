@@ -144,4 +144,29 @@ struct BudgetDatabaseAccountBalanceTests {
         let accounts = try await db.fetchAccounts()
         #expect(accounts.map(\.id) == ["acct-live"])
     }
+
+    @Test func splitChildrenOfTombstonedParentAreExcluded() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, sort_order) VALUES ('acct-1', 'One', 1.0);
+
+                INSERT INTO transactions (id, acct, amount, date, tombstone) VALUES
+                    ('main', 'acct-1', 10000, 20260502, 0);
+
+                -- A deleted split: parent is tombstoned, but its children still
+                -- carry tombstone = 0. They must not count toward the balance.
+                INSERT INTO transactions (id, acct, amount, date, isParent, isChild, parent_id, tombstone) VALUES
+                    ('dead-parent', 'acct-1', -1000, 20260503, 1, 0, NULL,          1),
+                    ('orphan-c1',   'acct-1',  -500, 20260503, 0, 1, 'dead-parent', 0),
+                    ('orphan-c2',   'acct-1',  -500, 20260503, 0, 1, 'dead-parent', 0);
+            """)
+        }
+
+        // Only the live 'main' transaction counts; the orphaned children are excluded.
+        let accounts = try await db.fetchAccounts()
+        #expect(accounts.first?.balance == 10000)
+    }
 }
