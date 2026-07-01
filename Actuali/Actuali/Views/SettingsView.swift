@@ -110,6 +110,22 @@ struct SettingsView: View {
                             Task { await budgetStore.loadDemoData() }
                         }
                         .disabled(budgetStore.isLoading)
+
+                        NavigationLink {
+                            CustomHeadersEditor(headers: $budgetStore.customHeaders)
+                        } label: {
+                            HStack {
+                                Text("Custom HTTP headers")
+                                Spacer()
+                                let count = budgetStore.customHeaders.filter {
+                                    !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+                                }.count
+                                if count > 0 {
+                                    Text("\(count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     } else {
                         HStack {
                             Text("Status")
@@ -132,7 +148,7 @@ struct SettingsView: View {
                     Text("Server Connection")
                 } footer: {
                     if !budgetStore.isConnected {
-                        Text("Example: https://actual.example.com\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data.")
+                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data.")
                     }
                 }
 
@@ -310,6 +326,57 @@ struct SettingsView: View {
                         await budgetStore.fetchRemoteBudgets()
                     }
                 }
+            }
+        }
+    }
+}
+
+/// Editor for user-defined HTTP headers sent on every server request. Edits a
+/// local draft and commits back to the bound array on disappear, so the store
+/// (and its Keychain write) is only touched once per visit rather than per
+/// keystroke.
+struct CustomHeadersEditor: View {
+    @Binding var headers: [CustomHeader]
+    @State private var draft: [CustomHeader] = []
+
+    var body: some View {
+        Form {
+            Section {
+                ForEach($draft) { $header in
+                    VStack(alignment: .leading, spacing: 4) {
+                        TextField("Header name", text: $header.name)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .font(.subheadline.weight(.medium))
+                        TextField("Value", text: $header.value)
+                            .autocapitalization(.none)
+                            .disableAutocorrection(true)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .onDelete { draft.remove(atOffsets: $0) }
+
+                Button {
+                    draft.append(CustomHeader())
+                } label: {
+                    Label("Add header", systemImage: "plus")
+                }
+            } footer: {
+                Text("Sent with every request to your server. For Cloudflare Access, add a service token as two headers: CF-Access-Client-Id and CF-Access-Client-Secret.")
+            }
+        }
+        .navigationTitle("Custom HTTP Headers")
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { EditButton() }
+        .onAppear {
+            if draft.isEmpty { draft = headers }
+        }
+        .onDisappear {
+            let cleaned = draft.filter {
+                !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+            }
+            if cleaned != headers {
+                headers = cleaned
             }
         }
     }

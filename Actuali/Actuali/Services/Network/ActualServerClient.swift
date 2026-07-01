@@ -8,6 +8,7 @@ enum ActualServerError: LocalizedError {
     case networkError(Error)
     case decodingError(Error)
     case fileNotFound
+    case authProxyBlocked
 
     var errorDescription: String? {
         switch self {
@@ -15,6 +16,8 @@ enum ActualServerError: LocalizedError {
             return "Invalid server URL"
         case .invalidResponse:
             return "Invalid response from server"
+        case .authProxyBlocked:
+            return "The server responded with a login page instead of data — it looks like it's behind an authentication proxy (e.g. Cloudflare Access). Add the proxy's credentials under Custom HTTP headers, then try again."
         case .httpError(let code, let message):
             return "HTTP error \(code): \(message ?? "Unknown error")"
         case .unauthorized:
@@ -115,6 +118,13 @@ actor ActualServerClient {
     private var serverURL: URL?
     private var token: String?
 
+    /// User-supplied headers stamped onto every outgoing request, in order.
+    /// Used to authenticate through reverse-proxy layers that sit in front of
+    /// the Actual server (e.g. Cloudflare Access service tokens). Applied
+    /// before the client's own headers so app headers like `X-ACTUAL-TOKEN`
+    /// always take precedence.
+    private var customHeaders: [(name: String, value: String)] = []
+
     init() {
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
@@ -135,6 +145,38 @@ actor ActualServerClient {
         self.token = token
     }
 
+    func setCustomHeaders(_ headers: [(name: String, value: String)]) {
+        self.customHeaders = headers
+    }
+
+    /// Build a request with the user's custom headers already applied. Callers
+    /// then set method-specific headers (which override any same-named custom
+    /// header) and the body.
+    private func makeRequest(_ url: URL) -> URLRequest {
+        var request = URLRequest(url: url)
+        for header in customHeaders {
+            request.setValue(header.value, forHTTPHeaderField: header.name)
+        }
+        return request
+    }
+
+    /// Whether a response looks like an auth proxy's login page rather than the
+    /// Actual server's JSON. Reverse proxies (Cloudflare Access, Authelia, etc.)
+    /// intercept unauthenticated requests and return an HTML login page, which
+    /// otherwise surfaces as a cryptic JSON decoding error. Detected by a
+    /// non-JSON `Content-Type` or a redirect landing on a known Access host.
+    private func looksLikeAuthProxy(_ response: HTTPURLResponse, data: Data) -> Bool {
+        if let host = response.url?.host?.lowercased(),
+           host.contains("cloudflareaccess.com") {
+            return true
+        }
+        guard let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() else {
+            return false
+        }
+        // The Actual API always answers with JSON; HTML means we hit a proxy.
+        return contentType.contains("text/html") && !data.isEmpty
+    }
+
     var isConfigured: Bool {
         serverURL != nil
     }
@@ -151,7 +193,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/account/login")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
@@ -171,6 +213,10 @@ actor ActualServerClient {
         guard httpResponse.statusCode == 200 else {
             let message = String(data: data, encoding: .utf8)
             throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        if looksLikeAuthProxy(httpResponse, data: data) {
+            throw ActualServerError.authProxyBlocked
         }
 
         let loginResponse = try JSONDecoder().decode(LoginResponse.self, from: data)
@@ -196,7 +242,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/account/login-methods")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
 
         let (data, response) = try await session.data(for: request)
@@ -215,6 +261,10 @@ actor ActualServerClient {
             throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: message)
         }
 
+        if looksLikeAuthProxy(httpResponse, data: data) {
+            throw ActualServerError.authProxyBlocked
+        }
+
         let decoded = try JSONDecoder().decode(LoginMethodsResponse.self, from: data)
         guard decoded.status == "ok", let methods = decoded.methods else {
             throw ActualServerError.invalidResponse
@@ -230,7 +280,7 @@ actor ActualServerClient {
     func fetchOwnerCreated() async -> Bool {
         guard let serverURL else { return true }
         let url = serverURL.appendingPathComponent("/admin/owner-created/")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
 
         guard let (data, response) = try? await session.data(for: request),
@@ -261,7 +311,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/account/login")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
@@ -310,7 +360,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/sync/list-user-files")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
 
@@ -349,7 +399,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/sync/download-user-file")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
@@ -386,7 +436,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/sync/get-user-file-info")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
@@ -420,7 +470,7 @@ actor ActualServerClient {
         guard let token else { throw ActualServerError.unauthorized }
 
         let url = serverURL.appendingPathComponent("/sync/user-get-key")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
@@ -454,7 +504,7 @@ actor ActualServerClient {
         }
 
         let url = serverURL.appendingPathComponent("/sync/sync")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "POST"
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue("application/actual-sync", forHTTPHeaderField: "Content-Type")
