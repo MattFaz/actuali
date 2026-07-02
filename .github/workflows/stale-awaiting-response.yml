@@ -1,0 +1,64 @@
+name: Mark stale awaiting-response issues
+
+# Companion to the awaiting-response workflow. Runs daily and looks at open
+# issues carrying the "awaiting response" label (meaning the repo owner spoke
+# last). If the owner's most recent comment is more than 14 days old, the
+# issue also gets the "stale" label. The stale label is removed by the
+# awaiting-response workflow as soon as anyone comments again, which resets
+# the clock.
+
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch: {}
+
+permissions:
+  issues: write
+
+jobs:
+  mark-stale:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Label long-quiet issues as stale
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          OWNER: ${{ github.repository_owner }}
+          AWAITING_LABEL: awaiting response
+          STALE_LABEL: stale
+          STALE_DAYS: 14
+        run: |
+          cutoff=$(date -u -d "$STALE_DAYS days ago" +%Y-%m-%dT%H:%M:%SZ)
+          echo "Cutoff: owner responses before $cutoff are stale."
+
+          gh issue list --repo "$REPO" --state open --label "$AWAITING_LABEL" \
+            --json number,labels --limit 200 \
+            | jq -c '.[]' \
+            | while read -r issue; do
+              number=$(jq -r '.number' <<<"$issue")
+
+              if jq -e --arg l "$STALE_LABEL" '.labels[] | select(.name == $l)' <<<"$issue" >/dev/null; then
+                echo "Issue #$number is already stale; skipping."
+                continue
+              fi
+
+              # The owner's latest comment on the issue.
+              last_response=$(
+                gh api --paginate "repos/$REPO/issues/$number/comments" \
+                  --jq ".[] | select(.user.login == \"$OWNER\") | .created_at" \
+                  | sort | tail -1
+              )
+
+              if [ -z "$last_response" ]; then
+                echo "Issue #$number has the label but no owner comment found; skipping."
+                continue
+              fi
+
+              # ISO-8601 UTC timestamps compare correctly as strings.
+              if [ "$last_response" \< "$cutoff" ]; then
+                echo "Issue #$number: owner last responded $last_response; marking stale."
+                gh api "repos/$REPO/issues/$number/labels" -f "labels[]=$STALE_LABEL"
+              else
+                echo "Issue #$number: owner last responded $last_response; not stale yet."
+              fi
+            done
