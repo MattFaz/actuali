@@ -191,6 +191,40 @@ enum DashboardWidget: Equatable {
         }
     }
 
+    /// Human-readable name for a widget type we don't render, shown in the
+    /// dashboard's "not currently supported" notice. Known upstream types get
+    /// curated names; anything Actual adds later falls back to a humanized
+    /// version of its raw type string.
+    static func friendlyLabel(forUnsupportedType type: String) -> String {
+        let known: [String: String] = [
+            "custom-report": "Custom Report",
+            "formula-card": "Formula",
+            "age-of-money-card": "Age of Money",
+            "sankey-card": "Sankey",
+            "calendar-card": "Calendar",
+            "crossover-card": "Crossover",
+            "budget-analysis-card": "Budget Analysis",
+            "balance-forecast-card": "Balance Forecast"
+        ]
+        if let label = known[type] { return label }
+        var words = type.split(separator: "-").map(String.init)
+        if words.last == "card" { words.removeLast() }
+        return words.map(\.capitalized).joined(separator: " ")
+    }
+
+    /// Notice labels for every unsupported widget in `widgets`, de-duplicated
+    /// while preserving first-seen order.
+    static func unsupportedLabels(in widgets: [DashboardWidget]) -> [String] {
+        let labels = widgets.compactMap { widget -> String? in
+            if case .unsupported(_, let type) = widget {
+                return friendlyLabel(forUnsupportedType: type)
+            }
+            return nil
+        }
+        var seen = Set<String>()
+        return labels.filter { seen.insert($0).inserted }
+    }
+
     static func parse(id: String, type: String, metaJSON: String?) -> DashboardWidget {
         func decode<T: Decodable>(_ type: T.Type) -> T? {
             guard let metaJSON, let data = metaJSON.data(using: .utf8) else { return nil }

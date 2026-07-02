@@ -9,31 +9,15 @@ struct DashboardView: View {
     /// nil while the fetch is in flight.
     @State private var reportTransactions: [Transaction]?
 
-    /// Widget types that are collapsed into a single top banner instead of
-    /// each rendering as a "Coming soon" card. Keep this list short; only
-    /// types that are common AND prominent on real dashboards belong here.
-    private static let hiddenTypes: [String: String] = [
-        "custom-report": "Custom Report",
-        "formula-card": "Formula"
-    ]
-
+    /// Every unsupported widget type is collapsed into the single top banner;
+    /// unsupported widgets never render as cards.
     private var hiddenTypeLabels: [String] {
-        let found = widgets.compactMap { widget -> String? in
-            if case .unsupported(_, let type) = widget {
-                return Self.hiddenTypes[type]
-            }
-            return nil
-        }
-        // De-duplicate while preserving first-seen order.
-        var seen = Set<String>()
-        return found.filter { seen.insert($0).inserted }
+        DashboardWidget.unsupportedLabels(in: widgets)
     }
 
     private var visibleWidgets: [DashboardWidget] {
         widgets.filter {
-            if case .unsupported(_, let type) = $0, Self.hiddenTypes[type] != nil {
-                return false
-            }
+            if case .unsupported = $0 { return false }
             return true
         }
     }
@@ -108,11 +92,9 @@ struct DashboardView: View {
             }
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
-        default:
-            UnsupportedWidgetView(
-                displayName: widget.displayName,
-                typeLabel: widget.typeLabel
-            )
+        case .unsupported:
+            // Filtered out of visibleWidgets; listed in the top notice instead.
+            EmptyView()
         }
     }
 

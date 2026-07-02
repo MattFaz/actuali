@@ -153,6 +153,35 @@ struct DashboardWidgetParserTests {
         #expect(widget.displayName == "Summary")
     }
 
+    @Test func friendlyLabelsForKnownUnsupportedTypes() throws {
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "age-of-money-card") == "Age of Money")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "custom-report") == "Custom Report")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "formula-card") == "Formula")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "sankey-card") == "Sankey")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "calendar-card") == "Calendar")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "crossover-card") == "Crossover")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "budget-analysis-card") == "Budget Analysis")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "balance-forecast-card") == "Balance Forecast")
+    }
+
+    @Test func friendlyLabelHumanizesUnknownFutureTypes() throws {
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "fancy-new-thing-card") == "Fancy New Thing")
+        #expect(DashboardWidget.friendlyLabel(forUnsupportedType: "gadget") == "Gadget")
+    }
+
+    @Test func unsupportedLabelsCollectsAllUnsupportedTypesDeduped() throws {
+        // Every unsupported widget must surface in the top notice — not just
+        // custom-report/formula-card — and no card is rendered for them.
+        let widgets: [DashboardWidget] = [
+            .summary(id: "s", meta: nil),
+            .unsupported(id: "u1", type: "age-of-money-card"),
+            .unsupported(id: "u2", type: "sankey-card"),
+            .unsupported(id: "u3", type: "age-of-money-card"),
+            .markdown(id: "m", meta: MarkdownMeta(content: "hi", textAlign: nil))
+        ]
+        #expect(DashboardWidget.unsupportedLabels(in: widgets) == ["Age of Money", "Sankey"])
+    }
+
     @Test func widgetIdReturnsCorrectIdForAllCases() throws {
         #expect(DashboardWidget.summary(id: "a", meta: nil).id == "a")
         #expect(DashboardWidget.netWorth(id: "b", meta: nil).id == "b")
