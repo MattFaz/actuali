@@ -22,6 +22,7 @@ struct BudgetDatabaseRolloverTests {
                     date INTEGER,
                     transferred_id TEXT,
                     parent_id TEXT,
+                    isParent INTEGER DEFAULT 0,
                     isChild INTEGER DEFAULT 0,
                     sort_order REAL,
                     tombstone INTEGER DEFAULT 0
@@ -124,6 +125,33 @@ struct BudgetDatabaseRolloverTests {
                 INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
                 VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
                 """, arguments: [UUID().uuidString, category, amount, date, parentId])
+        }
+    }
+
+    /// Inserts a LIVE split whose parent still carries a category.
+    /// Mirrors Actual's splitTransaction(): splitting a transaction that was
+    /// already categorized sets is_parent = 1 and payee = null but never clears
+    /// the parent's category — Actual masks it in the view layer instead
+    /// (CASE WHEN isParent = 1 THEN NULL).
+    private func insertCategorizedSplit(
+        _ db: BudgetDatabase,
+        date: Int,
+        parentCategory: String,
+        childSpends: [(category: String, amount: Int)]
+    ) throws {
+        let parentId = UUID().uuidString
+        let parentAmount = childSpends.reduce(0) { $0 + $1.amount }
+        try db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date, isParent, tombstone)
+                VALUES (?, 'acct-1', ?, ?, ?, 1, 0)
+                """, arguments: [parentId, parentCategory, parentAmount, date])
+            for child in childSpends {
+                try conn.execute(sql: """
+                    INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
+                    VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
+                    """, arguments: [UUID().uuidString, child.category, child.amount, date, parentId])
+            }
         }
     }
 
@@ -343,6 +371,50 @@ struct BudgetDatabaseRolloverTests {
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
         #expect(groceries?.spent == -3000)
         #expect(groceries?.available == 2000)
+    }
+
+    @Test func splitParentRetainingCategoryIsNotCounted() async throws {
+        // A transaction categorized BEFORE being split keeps its category on the
+        // parent row (Actual's splitTransaction never clears it; the view masks
+        // it with CASE WHEN isParent = 1 THEN NULL). Only the children may count
+        // toward "spent" — counting the parent too doubles the month.
+        let (db, url) = try makeDatabase(envelope: true)
+        defer { cleanup(url) }
+
+        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertCategorizedSplit(db, date: 20260510, parentCategory: "cat-groceries", childSpends: [
+            (category: "cat-groceries", amount: -2000),
+            (category: "cat-groceries", amount: -1000),
+        ])
+
+        let may = try await db.fetchBudgetMonth(month: "2026-05")
+        let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
+        #expect(groceries?.spent == -3000)
+        #expect(groceries?.available == 2000)
+    }
+
+    @Test func splitParentInPriorMonthDoesNotCorruptCarryover() async throws {
+        // The user-visible symptom from issue #10: the split lives in a PAST
+        // month, so the current month's budgeted and spent look right but the
+        // balance is off via the corrupted leftover chain.
+        // May: budget 5000, split spend -3000 -> leftover 2000.
+        // June: budget 5000, spent 0 -> available = 5000 + 2000 = 7000.
+        let (db, url) = try makeDatabase(envelope: true)
+        defer { cleanup(url) }
+
+        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertCategorizedSplit(db, date: 20260510, parentCategory: "cat-groceries", childSpends: [
+            (category: "cat-groceries", amount: -2000),
+            (category: "cat-groceries", amount: -1000),
+        ])
+        try insertBudget(db, table: "zero_budgets", month: 202606, category: "cat-groceries", amount: 5000)
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+        let groceries = june.categoryBudgets.first { $0.categoryId == "cat-groceries" }
+        #expect(groceries?.budgeted == 5000)
+        #expect(groceries?.spent == 0)
+        #expect(groceries?.carryover == 2000)
+        #expect(groceries?.available == 7000)
     }
 
     @Test func splitChildrenOfTombstonedParentAreNotCounted() async throws {
