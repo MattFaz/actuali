@@ -498,8 +498,12 @@ class BudgetDatabase {
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
-            //     spent. Split parents carry a NULL category in Actual, so
-            //     category IS NOT NULL already excludes them (no double-count).
+            //     spent.
+            //   * Exclude split parents (isParent = 1). A transaction categorised
+            //     BEFORE being split keeps its category on the parent row —
+            //     Actual's splitTransaction() never clears it, it only masks it
+            //     in the view layer (CASE WHEN isParent = 1 THEN NULL). Counting
+            //     the parent on top of its children doubles that month's spent.
             //   * Exclude split children whose parent is tombstoned. Deleting a
             //     split tombstones the parent but leaves the child rows with
             //     tombstone = 0, so a per-row tombstone check alone still counts
@@ -516,6 +520,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
                   AND (t.date / 100) <= ?
