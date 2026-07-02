@@ -726,6 +726,7 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
+                    p.transfer_acct as transfer_acct,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
@@ -736,8 +737,13 @@ class BudgetDatabase {
                     AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                -- Deleting a split tombstones only the parent; its children
+                -- keep tombstone = 0, so they must be excluded via the parent
+                -- (same rule as the fetchAccounts() balance query).
+                LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
+                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
                 """)
 
             return rows.map { row in
@@ -758,7 +764,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    transferAcct: row["transfer_acct"]
                 )
             }
         }

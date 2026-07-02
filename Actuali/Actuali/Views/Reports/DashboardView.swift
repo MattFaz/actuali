@@ -87,7 +87,12 @@ struct DashboardView: View {
             }
         case .cashFlow(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
-                CashFlowEngine.compute(meta: meta, transactions: transactions, today: Date())
+                CashFlowEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+                    today: Date()
+                )
             } content: { data in
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
             }

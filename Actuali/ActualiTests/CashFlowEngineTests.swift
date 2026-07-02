@@ -11,14 +11,17 @@ struct CashFlowEngineTests {
         return Calendar(identifier: .gregorian).date(from: c)!
     }
 
-    private func tx(date: Int, amount: Int) -> Transaction {
+    private func tx(date: Int, amount: Int,
+                    account: String = "a1",
+                    transferAcct: String? = nil) -> Transaction {
         Transaction(
             id: UUID().uuidString,
-            accountId: "a1", date: date, amount: amount,
+            accountId: account, date: date, amount: amount,
             payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false,
             transferId: nil, isParent: false, parentId: nil,
-            tombstone: false, sortOrder: nil, importedPayee: nil
+            tombstone: false, sortOrder: nil, importedPayee: nil,
+            transferAcct: transferAcct
         )
     }
 
@@ -49,6 +52,48 @@ struct CashFlowEngineTests {
                                 conditions: nil, conditionsOp: nil, showBalance: false)
         let result = CashFlowEngine.compute(meta: meta, transactions: [], today: asOf)
         #expect(result.points.allSatisfy { $0.incomeCents == 0 && $0.expenseCents == 0 })
+    }
+
+    @Test func excludesTransferLegsFromIncomeAndExpense() {
+        // A €100.00 move between two on-budget accounts produces equal and
+        // opposite legs; counting them inflates BOTH income and expense
+        // (GH #15: totals over 2x). The WebUI's cash flow filters
+        // payee.transfer_acct != null, so both legs must be excluded.
+        let transactions = [
+            tx(date: 20260310, amount: 10000, account: "savings", transferAcct: "checking"),
+            tx(date: 20260310, amount: -10000, account: "checking", transferAcct: "savings"),
+            tx(date: 20260312, amount: 5000),
+            tx(date: 20260313, amount: -2000)
+        ]
+        let meta = CashFlowMeta(name: nil,
+                                timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
+                                conditions: nil, conditionsOp: nil, showBalance: false)
+        let result = CashFlowEngine.compute(meta: meta, transactions: transactions, today: asOf)
+
+        let marchPoint = result.points.first { month(of: $0.periodStart) == 3 }
+        #expect(marchPoint?.incomeCents == 5000)
+        #expect(marchPoint?.expenseCents == 2000)
+    }
+
+    @Test func excludesOffBudgetAccounts() {
+        // The WebUI's cash flow filters account.offbudget == false; tracking
+        // account activity must not count toward income or expense.
+        let transactions = [
+            tx(date: 20260305, amount: 7000),
+            tx(date: 20260306, amount: 90000, account: "brokerage"),
+            tx(date: 20260307, amount: -40000, account: "brokerage")
+        ]
+        let meta = CashFlowMeta(name: nil,
+                                timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
+                                conditions: nil, conditionsOp: nil, showBalance: false)
+        let result = CashFlowEngine.compute(meta: meta,
+                                            transactions: transactions,
+                                            offBudgetAccountIds: ["brokerage"],
+                                            today: asOf)
+
+        let marchPoint = result.points.first { month(of: $0.periodStart) == 3 }
+        #expect(marchPoint?.incomeCents == 7000)
+        #expect(marchPoint?.expenseCents == 0)
     }
 
     @Test func excludesTombstonedAndOutOfRange() {

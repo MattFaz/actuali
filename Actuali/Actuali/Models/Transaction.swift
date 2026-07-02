@@ -25,6 +25,11 @@ struct Transaction: Identifiable, Hashable {
     var tombstone: Bool
     var sortOrder: Double? // Timestamp in ms, determines order within same date
     var importedPayee: String? // Original payee text from import / Shortcut entry
+    // Payee's transfer_acct: the account on the other side when the payee is a
+    // transfer payee, nil otherwise. Only populated by the reports fetch, where
+    // engines need it to exclude transfers the way the WebUI does. Not synced
+    // (it lives on the payee, not the transaction).
+    var transferAcct: String? = nil
 
     var dateFormatted: String {
         let year = date / 10000

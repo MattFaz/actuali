@@ -15,6 +15,7 @@ enum CashFlowEngine {
     static func compute(
         meta: CashFlowMeta?,
         transactions: [Transaction],
+        offBudgetAccountIds: Set<String> = [],
         today: Date
     ) -> CashFlowData {
         let (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
@@ -24,8 +25,13 @@ enum CashFlowEngine {
 
         let months = monthsBetween(start: start, end: end, calendar: cal)
 
+        // Match the WebUI's cash flow queries (cash-flow-spreadsheet.tsx):
+        // only on-budget accounts, and no transfer legs — a transfer's equal
+        // and opposite legs would otherwise inflate both income and expense.
         let filtered = transactions
             .filter { !$0.tombstone }
+            .filter { $0.transferAcct == nil }
+            .filter { !offBudgetAccountIds.contains($0.accountId) }
             .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp) }
 
         let points = months.map { monthStart -> CashFlowPoint in
