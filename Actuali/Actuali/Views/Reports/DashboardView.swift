@@ -9,10 +9,13 @@ struct DashboardView: View {
     /// nil while the fetch is in flight.
     @State private var reportTransactions: [Transaction]?
 
-    /// Every unsupported widget type is collapsed into the single top banner;
-    /// unsupported widgets never render as cards.
-    private var hiddenTypeLabels: [String] {
-        DashboardWidget.unsupportedLabels(in: widgets)
+    /// Unsupported widgets never render as cards; a single top banner notes
+    /// that only a limited set of reports is available.
+    private var hasUnsupportedWidgets: Bool {
+        widgets.contains {
+            if case .unsupported = $0 { return true }
+            return false
+        }
     }
 
     private var visibleWidgets: [DashboardWidget] {
@@ -32,9 +35,8 @@ struct DashboardView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    let hidden = hiddenTypeLabels
-                    if !hidden.isEmpty {
-                        UnsupportedTypesNotice(typeLabels: hidden)
+                    if hasUnsupportedWidgets {
+                        UnsupportedTypesNotice()
                     }
                     ForEach(visibleWidgets, id: \.id) { widget in
                         widgetView(for: widget)
