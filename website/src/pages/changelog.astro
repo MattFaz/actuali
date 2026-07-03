@@ -103,8 +103,8 @@ function renderMarkdown(md: string): string {
 
 // GitHub's auto-generated release notes wrap the change list in a
 // "## What's Changed" heading, end with a "**Full Changelog**: ..." line, and
-// suffix each bullet with "by @user in <PR url>". Drop all three so the page
-// shows just the change text.
+// suffix each bullet with "by @user in <PR url>". Drop all of that, plus
+// issue/PR number refs like "(#7)", so the page shows just the change text.
 function cleanReleaseBody(md: string): string {
   return (md || "")
     .replace(/\r\n/g, "\n")
@@ -116,7 +116,9 @@ function cleanReleaseBody(md: string): string {
       return true;
     })
     .map((line) =>
-      line.replace(/\s+by\s+@?[\w-]+\s+in\s+https:\/\/github\.com\/\S+\/pull\/\d+\s*$/i, "")
+      line
+        .replace(/\s+by\s+@?[\w-]+\s+in\s+https:\/\/github\.com\/\S+\/pull\/\d+\s*$/i, "")
+        .replace(/\s*\(#\d+\)/g, "")
     )
     .join("\n")
     .trim();
