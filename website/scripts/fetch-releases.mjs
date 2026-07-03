@@ -41,7 +41,9 @@ if (!res.ok) {
   const hint =
     res.status === 403 && !githubToken
       ? " (unauthenticated rate limit — set the GITHUB_TOKEN build secret)"
-      : "";
+      : res.status === 401
+        ? " (GITHUB_TOKEN is set but GitHub rejected it — expired, revoked, or mispasted; generate a fine-grained PAT with public-repo read access and update the Cloudflare build secret)"
+        : "";
   console.error(`Changelog: GitHub releases fetch failed (${res.status})${hint}`);
   process.exit(1);
 }
