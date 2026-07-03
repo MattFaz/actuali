@@ -56,18 +56,30 @@ struct DashboardView: View {
         reportTransactions = (try? await database.fetchTransactionsForReports()) ?? []
     }
 
+    /// Budget-level context conditions need (on/off-budget ops, account-name
+    /// matching) that isn't derivable from the transaction rows themselves.
+    private var conditionsContext: ConditionsFilter.Context {
+        ConditionsFilter.Context(
+            offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+            accountNames: Dictionary(
+                budgetStore.accounts.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
+    }
+
     @ViewBuilder
     private func widgetView(for widget: DashboardWidget) -> some View {
         switch widget {
         case .summary(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 80) { transactions in
-                SummaryEngine.compute(meta: meta, transactions: transactions, today: Date()).totalCents
-            } content: { totalCents in
-                SummaryWidgetView(displayName: widget.displayName, totalCents: totalCents)
+                SummaryEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
+            } content: { data in
+                SummaryWidgetView(displayName: widget.displayName, data: data)
             }
         case .netWorth(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 180) { transactions in
-                NetWorthEngine.compute(meta: meta, transactions: transactions, today: Date())
+                NetWorthEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
             } content: { data in
                 NetWorthWidgetView(displayName: widget.displayName, data: data)
             }
@@ -77,14 +89,15 @@ struct DashboardView: View {
                     meta: meta,
                     transactions: transactions,
                     offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
-                    today: Date()
+                    today: Date(),
+                    context: conditionsContext
                 )
             } content: { data in
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
             }
         case .spending(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date())
+                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date(), context: conditionsContext)
             } content: { data in
                 SpendingWidgetView(
                     displayName: widget.displayName,

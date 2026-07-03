@@ -25,6 +25,9 @@ struct WidgetRuleCondition: Codable, Equatable {
     let field: String
     let value: AnyCodable?
     let options: AnyCodable?
+    /// Present on saved-filter references; upstream drops these conditions
+    /// before filtering, so engines must skip them.
+    let customName: String?
 }
 
 /// Untyped Codable wrapper for nested JSON values. Stores the original
@@ -85,7 +88,64 @@ struct SummaryMeta: Codable, Equatable {
     let timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let content: AnyCodable?
+    let content: SummaryContent?
+
+    private enum CodingKeys: String, CodingKey {
+        case name, timeFrame, conditions, conditionsOp, content
+    }
+
+    init(
+        name: String?,
+        timeFrame: WidgetTimeFrame?,
+        conditions: [WidgetRuleCondition]?,
+        conditionsOp: String?,
+        content: SummaryContent?
+    ) {
+        self.name = name
+        self.timeFrame = timeFrame
+        self.conditions = conditions
+        self.conditionsOp = conditionsOp
+        self.content = content
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decodeIfPresent(String.self, forKey: .name)
+        timeFrame = try container.decodeIfPresent(WidgetTimeFrame.self, forKey: .timeFrame)
+        conditions = try container.decodeIfPresent([WidgetRuleCondition].self, forKey: .conditions)
+        conditionsOp = try container.decodeIfPresent(String.self, forKey: .conditionsOp)
+        // Upstream double-encodes content as a JSON string
+        // ("{\"type\":\"sum\"}"); tolerate an inline object as well.
+        if let string = try? container.decode(String.self, forKey: .content),
+           let data = string.data(using: .utf8) {
+            content = try? JSONDecoder().decode(SummaryContent.self, from: data)
+        } else {
+            content = try? container.decodeIfPresent(SummaryContent.self, forKey: .content)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(name, forKey: .name)
+        try container.encodeIfPresent(timeFrame, forKey: .timeFrame)
+        try container.encodeIfPresent(conditions, forKey: .conditions)
+        try container.encodeIfPresent(conditionsOp, forKey: .conditionsOp)
+        if let content,
+           let data = try? JSONEncoder().encode(content),
+           let string = String(data: data, encoding: .utf8) {
+            try container.encode(string, forKey: .content)
+        }
+    }
+}
+
+/// The summary widget's display mode. `type` is one of `sum`, `avgPerMonth`,
+/// `avgPerYear`, `avgPerTransact`, or `percentage`; the divisor fields only
+/// apply to `percentage`.
+struct SummaryContent: Codable, Equatable {
+    let type: String?
+    let divisorConditions: [WidgetRuleCondition]?
+    let divisorConditionsOp: String?
+    let divisorAllTimeDateRange: Bool?
 }
 
 struct NetWorthMeta: Codable, Equatable {

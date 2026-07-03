@@ -14,14 +14,15 @@ enum NetWorthEngine {
     static func compute(
         meta: NetWorthMeta?,
         transactions: [Transaction],
-        today: Date
+        today: Date,
+        context: ConditionsFilter.Context = .empty
     ) -> NetWorthData {
         let (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
         let interval = meta?.interval ?? .monthly
 
         let filtered = transactions
             .filter { !$0.tombstone }
-            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp) }
+            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
         let boundaries = intervalBoundaries(from: start, to: end, interval: interval)
 

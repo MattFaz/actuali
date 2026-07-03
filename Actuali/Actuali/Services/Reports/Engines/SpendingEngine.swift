@@ -10,7 +10,8 @@ enum SpendingEngine {
     static func compute(
         meta: SpendingMeta?,
         transactions: [Transaction],
-        today: Date
+        today: Date,
+        context: ConditionsFilter.Context = .empty
     ) -> SpendingData {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -22,7 +23,7 @@ enum SpendingEngine {
 
         let filtered = transactions
             .filter { !$0.tombstone }
-            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp) }
+            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
         let current = monthSpending(transactions: filtered, monthStart: monthStart, calendar: cal)
 

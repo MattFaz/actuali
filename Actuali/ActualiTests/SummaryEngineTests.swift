@@ -124,4 +124,85 @@ struct SummaryEngineTests {
         let result = SummaryEngine.compute(meta: nil, transactions: [], today: asOf)
         #expect(result.totalCents == 0)
     }
+
+    // MARK: - Content modes (issue #15: avg widgets showed the raw sum)
+
+    private func meta(contentType: String) -> SummaryMeta {
+        SummaryMeta(
+            name: nil,
+            timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
+            conditions: nil,
+            conditionsOp: nil,
+            content: SummaryContent(type: contentType, divisorConditions: nil,
+                                    divisorConditionsOp: nil, divisorAllTimeDateRange: nil)
+        )
+    }
+
+    @Test func avgPerTransactDividesByCount() {
+        let transactions = [
+            tx(date: 20260301, amount: -1000),
+            tx(date: 20260315, amount: -2000),
+            tx(date: 20260420, amount: -600),
+            tx(date: 20251201, amount: -99999)  // out of range: not counted
+        ]
+        let result = SummaryEngine.compute(meta: meta(contentType: "avgPerTransact"),
+                                           transactions: transactions, today: asOf)
+        #expect(result.totalCents == -1200)  // -3600 / 3
+        #expect(result.kind == .currency)
+    }
+
+    @Test func avgPerMonthUsesFractionalMonths() {
+        // asOf = 2026-05-14, YTD => Jan 1 .. May 14.
+        // numMonths = 4 + 14/31 (upstream calculatePerMonth), so a -6900 total
+        // averages to exactly -1550.
+        let transactions = [
+            tx(date: 20260110, amount: -3000),
+            tx(date: 20260310, amount: -3900)
+        ]
+        let result = SummaryEngine.compute(meta: meta(contentType: "avgPerMonth"),
+                                           transactions: transactions, today: asOf)
+        #expect(result.totalCents == -1550)
+    }
+
+    @Test func avgPerMonthEmptyDataIsZero() {
+        let result = SummaryEngine.compute(meta: meta(contentType: "avgPerMonth"),
+                                           transactions: [], today: asOf)
+        #expect(result.totalCents == 0)
+    }
+
+    @Test func percentageDividesFilteredByDivisor() {
+        let groceries = WidgetRuleCondition.makeMock(op: "is", field: "category", stringValue: "groceries")
+        let allSpending = WidgetRuleCondition.makeMock(op: "lt", field: "amount", intValue: 0)
+        let meta = SummaryMeta(
+            name: nil,
+            timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
+            conditions: [groceries],
+            conditionsOp: "and",
+            content: SummaryContent(type: "percentage",
+                                    divisorConditions: [allSpending],
+                                    divisorConditionsOp: "and",
+                                    divisorAllTimeDateRange: nil)
+        )
+        let transactions = [
+            tx(date: 20260301, amount: -2500, category: "groceries"),
+            tx(date: 20260302, amount: -7500, category: "rent")
+        ]
+        let result = SummaryEngine.compute(meta: meta, transactions: transactions, today: asOf)
+        #expect(result.kind == .percentage)
+        #expect(result.value == 25.0)
+    }
+
+    @Test func contentDecodesFromDoubleEncodedString() throws {
+        // Upstream stores meta.content as a JSON *string*:
+        // {"content":"{\"type\":\"avgPerMonth\"}"}
+        let json = #"{"name":"Avg","content":"{\"type\":\"avgPerMonth\"}"}"#
+        let meta = try JSONDecoder().decode(SummaryMeta.self, from: Data(json.utf8))
+        #expect(meta.content?.type == "avgPerMonth")
+    }
+
+    @Test func contentDecodesFromInlineObject() throws {
+        let json = #"{"name":"Sum","content":{"type":"sum"}}"#
+        let meta = try JSONDecoder().decode(SummaryMeta.self, from: Data(json.utf8))
+        #expect(meta.content?.type == "sum")
+    }
 }

@@ -16,7 +16,8 @@ enum CashFlowEngine {
         meta: CashFlowMeta?,
         transactions: [Transaction],
         offBudgetAccountIds: Set<String> = [],
-        today: Date
+        today: Date,
+        context: ConditionsFilter.Context = .empty
     ) -> CashFlowData {
         let (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
 
@@ -32,7 +33,7 @@ enum CashFlowEngine {
             .filter { !$0.tombstone }
             .filter { $0.transferAcct == nil }
             .filter { !offBudgetAccountIds.contains($0.accountId) }
-            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp) }
+            .filter { ConditionsFilter.matches(transaction: $0, conditions: meta?.conditions, op: meta?.conditionsOp, context: context) }
 
         let points = months.map { monthStart -> CashFlowPoint in
             guard let nextMonth = cal.date(byAdding: .month, value: 1, to: monthStart),
