@@ -28,3 +28,6 @@ pnpm-debug.log*
 .dev.vars*
 !.dev.vars.example
 !.env.example
+
+# fetched at build time by scripts/fetch-releases.mjs
+src/data/github-releases.json
