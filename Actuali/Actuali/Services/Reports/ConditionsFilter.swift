@@ -246,10 +246,12 @@ enum ConditionsFilter {
         case "contains", "doesNotContain", "matches":
             return matchText(txValue, op: c.op, value: decodeString(c.value))
         case "hasTags", "hasAnyTag":
-            let tags = extractTags(decodeString(c.value) ?? "")
+            let tags = TagFilter.extractTags(decodeString(c.value) ?? "")
             guard !tags.isEmpty else { return false }
             guard let notes = txValue else { return false }
-            let hit = { (tag: String) in notesContainTag(notes, tag: tag) }
+            let hit = { (tag: String) in
+                TagFilter.notesContainTag(notes, tag: tag, caseSensitive: true)
+            }
             return c.op == "hasTags" ? tags.allSatisfy(hit) : tags.contains(where: hit)
         default:
             return true
@@ -279,28 +281,6 @@ enum ConditionsFilter {
         default:
             return true
         }
-    }
-
-    /// Port of upstream `extractTagsForFilter`: every whitespace-separated
-    /// token (leading `#`s stripped) becomes a `#token` tag.
-    private static func extractTags(_ value: String) -> [String] {
-        var seen = Set<String>()
-        var tags: [String] = []
-        for token in value.split(whereSeparator: { $0.isWhitespace || $0 == "#" }) {
-            let tag = "#" + token
-            if seen.insert(tag).inserted { tags.append(tag) }
-        }
-        return tags
-    }
-
-    /// Matches upstream's tag pattern `(?<!#)tag([\s#]|$)`: the tag must not
-    /// be preceded by an extra `#` and must end at whitespace, another tag,
-    /// or the end of the notes. Case-sensitive, like upstream.
-    private static func notesContainTag(_ notes: String, tag: String) -> Bool {
-        let escaped = NSRegularExpression.escapedPattern(for: tag)
-        guard let regex = try? NSRegularExpression(pattern: "(?<!#)\(escaped)([\\s#]|$)") else { return false }
-        let range = NSRange(notes.startIndex..., in: notes)
-        return regex.firstMatch(in: notes, range: range) != nil
     }
 
     // MARK: - Value decoding

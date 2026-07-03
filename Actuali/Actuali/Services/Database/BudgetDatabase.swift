@@ -169,11 +169,34 @@ class BudgetDatabase {
 
     // MARK: - Schema Migrations
 
-    // Upstream Actual schema migrations we mirror. ALTER migrations only run if
-    // the source table exists; CREATE migrations always run (CREATE TABLE IF NOT
-    // EXISTS handles idempotency).
-    private static let upstreamSchemaMigrations: [(id: Int64, table: String, sql: String)] = [
-        (1769000000000, "schedules", "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL")
+    // Upstream Actual schema migrations we mirror. These only run if the source
+    // table exists and every `requiresColumns` column is present (otherwise
+    // they stay unapplied and are retried on a later open). When `addsColumn`
+    // is already present — a freshly downloaded file migrated by an up-to-date
+    // client — the migration is recorded as applied without executing, since
+    // the ALTER would fail with "duplicate column". CREATE migrations always
+    // run (CREATE TABLE IF NOT EXISTS handles idempotency).
+    private static let upstreamSchemaMigrations: [(
+        id: Int64, table: String, addsColumn: String?, requiresColumns: [String], sql: String
+    )] = [
+        (1769000000000, "schedules", "custom_upcoming_length", [],
+         "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL"),
+        // Upstream 1778510362740 also creates cleanup_groups (see createTableMigrations).
+        (1778510362741, "categories", "cleanup_def", [],
+         "ALTER TABLE categories ADD COLUMN cleanup_def TEXT DEFAULT NULL"),
+        (1780099200000, "custom_reports", "show_trend_lines", [],
+         "ALTER TABLE custom_reports ADD COLUMN show_trend_lines INTEGER DEFAULT 0"),
+        (1780327681000, "tags", "hidden", [],
+         "ALTER TABLE tags ADD COLUMN hidden BOOLEAN DEFAULT 0"),
+        (1780606215000, "accounts", "bank_sync_status", [],
+         "ALTER TABLE accounts ADD COLUMN bank_sync_status TEXT"),
+        // Upstream ships both indexes as one migration (1780606215001); split
+        // here so each waits for its own columns — old snapshots can lack
+        // transactions.schedule.
+        (1780606215001, "transactions", nil, ["acct", "tombstone"],
+         "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
+        (1780606215002, "transactions", nil, ["schedule"],
+         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)")
     ]
 
     // Tables added upstream after the original budget file was created. These run
@@ -214,6 +237,13 @@ class BudgetDatabase {
                 metadata TEXT,
                 tombstone INTEGER NOT NULL DEFAULT 0
             )
+        """),
+        (1778510362740, """
+            CREATE TABLE IF NOT EXISTS cleanup_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                tombstone INTEGER DEFAULT 0
+            )
         """)
     ]
 
@@ -233,14 +263,65 @@ class BudgetDatabase {
                 )
             }
 
-            // ALTER migrations: skip if source table doesn't exist
+            // Schema-guarded migrations: skip if the source table doesn't exist
+            var addedColumns: [(table: String, column: String)] = []
             for migration in Self.upstreamSchemaMigrations where !appliedIds.contains(migration.id) {
                 guard try db.tableExists(migration.table) else { continue }
+                let existing = Set(try db.columns(in: migration.table).map(\.name))
+                guard migration.requiresColumns.allSatisfy(existing.contains) else { continue }
+                if let column = migration.addsColumn, existing.contains(column) {
+                    // Downloaded file was already migrated by an up-to-date
+                    // client; ALTER would fail with "duplicate column".
+                    try db.execute(
+                        sql: "INSERT INTO __migrations__ (id) VALUES (?)",
+                        arguments: [migration.id]
+                    )
+                    continue
+                }
                 logger.info("Applying upstream schema migration \(migration.id, privacy: .public)")
                 try db.execute(sql: migration.sql)
                 try db.execute(
                     sql: "INSERT INTO __migrations__ (id) VALUES (?)",
                     arguments: [migration.id]
+                )
+                if let column = migration.addsColumn {
+                    addedColumns.append((migration.table, column))
+                }
+            }
+
+            try Self.replayStoredMessages(db, into: addedColumns)
+        }
+    }
+
+    /// CRDT messages targeting columns the local schema didn't have yet are
+    /// skipped by applyMessages but kept in messages_crdt. Once a migration
+    /// adds such a column, materialize the latest stored value per row so the
+    /// data isn't missing until the next remote edit. HLC timestamp strings
+    /// order lexicographically (filterNewMessages already relies on this), so
+    /// MAX(timestamp) per row is the winning message.
+    private static func replayStoredMessages(
+        _ db: Database,
+        into addedColumns: [(table: String, column: String)]
+    ) throws {
+        guard !addedColumns.isEmpty, try db.tableExists("messages_crdt") else { return }
+
+        for (table, column) in addedColumns {
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT row, value, MAX(timestamp) AS ts
+                FROM messages_crdt
+                WHERE dataset = ? AND column = ?
+                GROUP BY row
+                """, arguments: [table, column])
+            guard !rows.isEmpty else { continue }
+
+            logger.info("Replaying \(rows.count, privacy: .public) stored message(s) into \(table, privacy: .public).\(column, privacy: .public)")
+            let quotedTable = quotedIdentifier(table)
+            let quotedColumn = quotedIdentifier(column)
+            for row in rows {
+                guard let rowId: String = row["row"], let value: String = row["value"] else { continue }
+                try upsertValue(
+                    db, table: quotedTable, column: quotedColumn,
+                    rowId: rowId, value: CRDTValue.deserialize(value)
                 )
             }
         }
@@ -931,30 +1012,41 @@ class BudgetDatabase {
                     continue
                 }
 
-                let table = Self.quotedIdentifier(msg.dataset)
-                let column = Self.quotedIdentifier(msg.column)
-
-                // Check if row exists
-                let exists = try Row.fetchOne(db, sql: """
-                    SELECT id FROM \(table) WHERE id = ?
-                    """, arguments: [msg.row]) != nil
-
-                let deserializedValue = CRDTValue.deserialize(msg.value)
-
-                if exists {
-                    // Update existing row
-                    try db.execute(
-                        sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?",
-                        arguments: [deserializedValue, msg.row]
-                    )
-                } else {
-                    // Insert new row
-                    try db.execute(
-                        sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)",
-                        arguments: [msg.row, deserializedValue]
-                    )
-                }
+                try Self.upsertValue(
+                    db,
+                    table: Self.quotedIdentifier(msg.dataset),
+                    column: Self.quotedIdentifier(msg.column),
+                    rowId: msg.row,
+                    value: CRDTValue.deserialize(msg.value)
+                )
             }
+        }
+    }
+
+    /// Write one CRDT cell: update the row if it exists, otherwise create it
+    /// with just the id and this column. `table`/`column` must already be
+    /// schema-validated and quoted by the caller.
+    private static func upsertValue(
+        _ db: Database,
+        table: String,
+        column: String,
+        rowId: String,
+        value: DatabaseValue
+    ) throws {
+        let exists = try Row.fetchOne(db, sql: """
+            SELECT id FROM \(table) WHERE id = ?
+            """, arguments: [rowId]) != nil
+
+        if exists {
+            try db.execute(
+                sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?",
+                arguments: [value, rowId]
+            )
+        } else {
+            try db.execute(
+                sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)",
+                arguments: [rowId, value]
+            )
         }
     }
 

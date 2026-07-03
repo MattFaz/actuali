@@ -344,4 +344,54 @@ struct RulesEngineTests {
         #expect(updated.importedPayee == "X")
         #expect(changed.isEmpty)
     }
+
+    // MARK: - hasTags / hasAnyTag (upstream 26.7.0 semantics)
+
+    private func tagRule(op: String, value: String) -> Rule {
+        parseRule(
+            conditions: """
+            [{"op":"\(op)","field":"notes","value":"\(value)"}]
+            """,
+            actions: """
+            [{"op":"set","field":"category","value":"cat-tagged"}]
+            """
+        )
+    }
+
+    @Test func hasTagsMatchesAllTagsCaseInsensitively() {
+        let rule = tagRule(op: "hasTags", value: "#work #urgent")
+        let tx = makeTransaction(notes: "errand #Work also #URGENT")
+        let (updated, _) = RulesEngine.apply(tx, rules: [rule])
+        #expect(updated.categoryId == "cat-tagged")
+    }
+
+    @Test func hasTagsDoesNotFireWhenATagIsMissing() {
+        let rule = tagRule(op: "hasTags", value: "#work #urgent")
+        let tx = makeTransaction(notes: "#work only")
+        let (updated, _) = RulesEngine.apply(tx, rules: [rule])
+        #expect(updated.categoryId == nil)
+    }
+
+    @Test func hasAnyTagFiresOnAnySingleMatch() {
+        let rule = tagRule(op: "hasAnyTag", value: "#work #urgent")
+        let tx = makeTransaction(notes: "#urgent errand")
+        let (updated, _) = RulesEngine.apply(tx, rules: [rule])
+        #expect(updated.categoryId == "cat-tagged")
+    }
+
+    @Test func tagMatchingSkipsHiddenAndPartialTags() {
+        // ##work is a hidden tag ((?<!#) lookbehind) and #workout must not
+        // count as a word-boundary match for #work.
+        let rule = tagRule(op: "hasAnyTag", value: "#work")
+        let tx = makeTransaction(notes: "##work #workout")
+        let (updated, _) = RulesEngine.apply(tx, rules: [rule])
+        #expect(updated.categoryId == nil)
+    }
+
+    @Test func hasAnyTagDoesNotFireWithoutNotes() {
+        let rule = tagRule(op: "hasAnyTag", value: "#work")
+        let tx = makeTransaction(notes: nil)
+        let (updated, _) = RulesEngine.apply(tx, rules: [rule])
+        #expect(updated.categoryId == nil)
+    }
 }

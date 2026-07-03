@@ -75,7 +75,16 @@ enum RulesEngine {
             // Upstream: getApproxNumberThreshold returns floor(|n| * 7.5%).
             let threshold = floor(abs(target) * 0.075)
             return n >= target - threshold && n <= target + threshold
-        case "hasTags", "onBudget", "offBudget":
+        case "hasTags", "hasAnyTag":
+            // Upstream lowercases both the string field value and each tag, so
+            // rule-engine tag matching is case-insensitive (unlike AQL filters).
+            guard let s = stringValue(raw), let condValue = stringValue(cond.value) else { return false }
+            let tags = TagFilter.extractTags(condValue)
+            let hit = { (tag: String) in
+                TagFilter.notesContainTag(s, tag: tag, caseSensitive: false)
+            }
+            return cond.op == "hasTags" ? tags.allSatisfy(hit) : tags.contains(where: hit)
+        case "onBudget", "offBudget":
             logger.debug("Skipping unsupported condition op '\(cond.op, privacy: .public)' on field '\(cond.field, privacy: .public)'")
             return false
         default:
