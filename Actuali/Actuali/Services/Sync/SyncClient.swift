@@ -13,6 +13,7 @@ enum SyncError: LocalizedError {
     case outOfSync
     case encodingFailed
     case serverError(String)
+    case budgetTableMissing
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +27,8 @@ enum SyncError: LocalizedError {
             return "Failed to encode the sync request."
         case .serverError(let message):
             return "Server error: \(message)"
+        case .budgetTableMissing:
+            return "This budget file has no budget table to write to."
         }
     }
 }
@@ -280,6 +283,47 @@ actor SyncClient {
         try saveClock()
 
         // Note: Don't schedule sync here - let the transaction sync handle it
+    }
+
+    /// Set the budgeted amount for a category in a month (optimistic
+    /// local-first). Mirrors upstream setBudget: update the existing
+    /// (month, category) row's amount, or create the row with the
+    /// {YYYYMM}-{categoryId} id and its month/category columns.
+    func setBudgetAmount(month: String, categoryId: String, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("setBudgetAmount() - month: \(month, privacy: .public), category: \(categoryId, privacy: .private), amount: \(amount, privacy: .private)")
+
+        guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+            throw SyncError.budgetTableMissing
+        }
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        var fields: [(column: String, value: Any?)] = []
+        if !cell.exists {
+            fields.append(("month", cell.monthInt))
+            fields.append(("category", categoryId))
+        }
+        fields.append(("amount", amount))
+        let messages = try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
     }
 
     /// Force immediate sync (pull-to-refresh)
