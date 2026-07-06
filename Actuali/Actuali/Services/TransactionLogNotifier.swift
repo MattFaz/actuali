@@ -85,7 +85,9 @@ enum TransactionLogNotifier {
 
     private static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String) -> String {
         let dollars = Double(abs(amountCents)) / 100.0
-        let amountString = dollars.formatted(.currency(code: currencyCode))
+        let amountString = currencyCode.isEmpty
+            ? dollars.formatted(.number.precision(.fractionLength(2)))
+            : dollars.formatted(.currency(code: currencyCode))
         return payee.isEmpty ? amountString : "\(amountString) at \(payee)"
     }
 }

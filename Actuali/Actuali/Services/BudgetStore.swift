@@ -1035,6 +1035,9 @@ final class BudgetStore: ObservableObject {
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(2)))
+        }
         return amount.formatted(.currency(code: currencyCode))
     }
 
@@ -1042,6 +1045,9 @@ final class BudgetStore: ObservableObject {
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(0)))
+        }
         return amount.formatted(.currency(code: currencyCode).precision(.fractionLength(0)))
     }
 
