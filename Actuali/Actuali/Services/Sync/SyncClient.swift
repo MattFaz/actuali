@@ -282,6 +282,33 @@ actor SyncClient {
         // Note: Don't schedule sync here - let the transaction sync handle it
     }
 
+    /// Record a location for a payee (optimistic local-first). Callers are
+    /// responsible for the server-version guard and 500 m dedupe — this
+    /// method just writes.
+    func createPayeeLocation(_ location: PayeeLocation) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createPayeeLocation() - payee: \(location.payeeId, privacy: .private)")
+
+        // 1. Insert locally (optimistic)
+        try database.insertPayeeLocation(location)
+        logger.debug("Payee location inserted locally")
+
+        // 2. Generate CRDT messages
+        let messages = try await messageGenerator.messagesForInsert(location)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for payee location")
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Force immediate sync (pull-to-refresh)
     func syncNow() async {
         logger.info("syncNow() called - forcing immediate sync")

@@ -136,4 +136,17 @@ struct PayeeLocationTests {
     @Test func formatDistanceMatchesUpstream() {
         #expect(LocationUtils.formatDistance(meters: 100) == "328ft | 100m")
     }
+
+    @Test func payeeLocationGeneratesCRDTMessages() async throws {
+        let generator = MessageGenerator(clock: HybridLogicalClock(node: "test-node"))
+        let location = PayeeLocation(
+            id: "loc-1", payeeId: "p1", latitude: -33.85, longitude: 151.21,
+            createdAt: 1_751_760_000_000)
+        let messages = try await generator.messagesForInsert(location)
+        #expect(messages.count == 5)
+        #expect(Set(messages.map(\.dataset)) == ["payee_locations"])
+        #expect(Set(messages.map(\.row)) == ["loc-1"])
+        #expect(Set(messages.map(\.column))
+            == ["payee_id", "latitude", "longitude", "created_at", "tombstone"])
+    }
 }
