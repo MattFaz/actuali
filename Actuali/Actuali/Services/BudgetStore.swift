@@ -599,13 +599,18 @@ final class BudgetStore: ObservableObject {
     /// probe (unreachable, 404, parse error) keeps the cached answer; a
     /// successful one overwrites it. Never blocks or fails budget load.
     private func refreshPayeeLocationSupport() {
-        let key = "payeeLocationWritesEnabled_\(serverURL)"
+        let capturedURL = serverURL
+        let key = "payeeLocationWritesEnabled_\(capturedURL)"
         payeeLocationWritesEnabled = UserDefaults.standard.bool(forKey: key)
         Task { [weak self] in
             guard let self else { return }
             guard let version = await self.serverClient.fetchServerVersion() else {
                 return  // capabilities unknown — keep the cached answer
             }
+            // The user may have switched servers while the probe was in
+            // flight; a stale answer must not flip the flag for — or be
+            // persisted under — a server other than the one probed.
+            guard self.serverURL == capturedURL else { return }
             let supported = ServerVersion.supportsPayeeLocations(version)
             self.payeeLocationWritesEnabled = supported
             UserDefaults.standard.set(supported, forKey: key)
