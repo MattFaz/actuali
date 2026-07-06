@@ -66,18 +66,32 @@ actor LocationProvider {
 /// Real CoreLocation-backed source. One-shot fixes only — no continuous
 /// monitoring, no background use.
 final class CoreLocationSource: NSObject, PositionSource, @unchecked Sendable {
+    /// Single delegate-less manager reused for status reads. Creating and
+    /// reading a CLLocationManager off-main is fine as long as no delegate is
+    /// ever attached (delegate callbacks are what need a run loop).
+    private let statusManager = CLLocationManager()
+
     func authorizationStatus() -> LocationAuthStatus {
-        Self.map(CLLocationManager().authorizationStatus)
+        Self.map(statusManager.authorizationStatus)
     }
 
     func requestPermission() async -> LocationAuthStatus {
-        let current = CLLocationManager().authorizationStatus
-        guard current == .notDetermined else { return Self.map(current) }
-        // requestWhenInUseAuthorization delegate dance: hold a manager +
-        // delegate until the user answers the prompt.
-        return await withCheckedContinuation { continuation in
+        guard statusManager.authorizationStatus == .notDetermined else {
+            return Self.map(statusManager.authorizationStatus)
+        }
+        return Self.map(await Self.promptForPermission())
+    }
+
+    /// requestWhenInUseAuthorization delegate dance: hold a manager + delegate
+    /// until the user answers the prompt. Runs on the main actor because
+    /// CoreLocation delivers delegate callbacks via the run loop of the thread
+    /// that created the manager — cooperative-pool threads have none, so the
+    /// callback would never fire and the continuation would never resume.
+    @MainActor
+    private static func promptForPermission() async -> CLAuthorizationStatus {
+        await withCheckedContinuation { continuation in
             let delegate = PermissionDelegate { status in
-                continuation.resume(returning: Self.map(status))
+                continuation.resume(returning: status)
             }
             delegate.manager.delegate = delegate
             delegate.manager.requestWhenInUseAuthorization()
@@ -86,19 +100,36 @@ final class CoreLocationSource: NSObject, PositionSource, @unchecked Sendable {
 
     func fetchPosition() async throws -> Coordinates {
         // CLLocationUpdate.liveUpdates (iOS 17+) gives a simple async
-        // one-shot without delegate plumbing.
-        for try await update in CLLocationUpdate.liveUpdates() {
-            if let location = update.location {
-                return Coordinates(
-                    latitude: location.coordinate.latitude,
-                    longitude: location.coordinate.longitude)
+        // one-shot without delegate plumbing. Raced against a 15 s timeout
+        // (matching the upstream web client) so diagnostic nil-location
+        // updates can't keep the location hardware running indefinitely;
+        // cancelling the group ends the liveUpdates iteration.
+        try await withThrowingTaskGroup(of: Coordinates.self) { group in
+            group.addTask {
+                for try await update in CLLocationUpdate.liveUpdates() {
+                    if let location = update.location {
+                        return Coordinates(
+                            latitude: location.coordinate.latitude,
+                            longitude: location.coordinate.longitude)
+                    }
+                    if update.authorizationDenied {
+                        logger.info("Location fetch aborted: authorization denied")
+                        throw LocationError.permissionDenied
+                    }
+                }
+                throw LocationError.unavailable
             }
-            if update.authorizationDenied {
-                logger.info("Location fetch aborted: authorization denied")
-                throw LocationError.permissionDenied
+            group.addTask {
+                try await Task.sleep(for: .seconds(15))
+                logger.info("Location fetch timed out after 15 s")
+                throw LocationError.unavailable
             }
+            defer { group.cancelAll() }
+            guard let position = try await group.next() else {
+                throw LocationError.unavailable
+            }
+            return position
         }
-        throw LocationError.unavailable
     }
 
     private static func map(_ status: CLAuthorizationStatus) -> LocationAuthStatus {
