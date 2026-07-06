@@ -169,4 +169,31 @@ struct PayeeLocationTests {
         #expect(CRDTValue.serialize(Int64(5)) == "N:5")
         #expect(CRDTValue.deserialize("N:5") == Int64(5).databaseValue)
     }
+
+    private final class FakePositionSource: PositionSource, @unchecked Sendable {
+        var callCount = 0
+        var status: LocationAuthStatus = .granted
+        func requestPermission() async -> LocationAuthStatus { status }
+        func authorizationStatus() -> LocationAuthStatus { status }
+        func fetchPosition() async throws -> Coordinates {
+            callCount += 1
+            return Coordinates(latitude: 1, longitude: 2)
+        }
+    }
+
+    @Test func locationProviderCachesPositionFor60Seconds() async throws {
+        let fake = FakePositionSource()
+        let provider = LocationProvider(source: fake)
+        _ = try await provider.currentPosition()
+        _ = try await provider.currentPosition()
+        #expect(fake.callCount == 1)  // second call served from cache
+    }
+
+    @Test func locationProviderReturnsNilPositionWhenDenied() async {
+        let fake = FakePositionSource()
+        fake.status = .denied
+        let provider = LocationProvider(source: fake)
+        let position = try? await provider.currentPosition()
+        #expect(position == nil)
+    }
 }
