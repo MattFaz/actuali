@@ -194,6 +194,12 @@ struct CategoryBudgetRow: View {
                 Text(budgetStore.formatCurrency(category.available))
                     .foregroundColor(category.isOverspent ? .red : .green)
             }
+            if budgetStore.showBudgetProgressBars, category.showsProgressBar {
+                CategoryProgressBar(
+                    fraction: category.progressFraction,
+                    isOverspent: category.isOverspent
+                )
+            }
             HStack {
                 Button {
                     onEditBudget(category)
@@ -216,6 +222,28 @@ struct CategoryBudgetRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
+/// Available amount: green while money remains, red once overspent.
+struct CategoryProgressBar: View {
+    let fraction: Double
+    let isOverspent: Bool
+
+    var body: some View {
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color(.systemFill))
+                Capsule()
+                    .fill(isOverspent ? Color.red : Color.green)
+                    .frame(width: geometry.size.width * fraction)
+            }
+        }
+        .frame(height: 5)
+        .accessibilityElement()
+        .accessibilityLabel("Spent \(Int((fraction * 100).rounded())) percent of available")
     }
 }
 

@@ -119,6 +119,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget rows show a spent-vs-available progress bar.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showBudgetProgressBars: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
+        }
+    }
+
     // MARK: - User Preferences (per-budget, stored in UserDefaults)
 
     var defaultAccountId: String? {
@@ -246,6 +254,8 @@ final class BudgetStore: ObservableObject {
            let mode = AppearanceMode(rawValue: raw) {
             appearanceMode = mode
         }
+        showBudgetProgressBars = UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true
 
         let token = loadAndMigrateAuthToken()
 
