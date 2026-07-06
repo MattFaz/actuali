@@ -196,4 +196,17 @@ struct PayeeLocationTests {
         let position = try? await provider.currentPosition()
         #expect(position == nil)
     }
+
+    @Test(arguments: [
+        ("26.4.0", true), ("26.4.1", true), ("26.5.0", true), ("27.0.0", true),
+        ("26.3.9", false), ("25.12.0", false), ("26.4", true),
+        ("v26.4.0", false), ("", false), ("garbage", false),
+    ])
+    func serverVersionGate(version: String, expected: Bool) {
+        #expect(ServerVersion.supportsPayeeLocations(version) == expected)
+    }
+
+    @Test func serverVersionGateTreatsNilAsUnsupported() {
+        #expect(ServerVersion.supportsPayeeLocations(nil) == false)
+    }
 }

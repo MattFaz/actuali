@@ -101,6 +101,11 @@ final class BudgetStore: ObservableObject {
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
 
+    /// Whether we may WRITE payee_locations CRDT messages (server >= 26.4.0,
+    /// probed via `GET /info` after each budget load). Persisted per server
+    /// URL so offline launches keep the last known answer.
+    @Published private(set) var payeeLocationWritesEnabled = false
+
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {
@@ -576,6 +581,8 @@ final class BudgetStore: ObservableObject {
                     self?.syncState = state
                 }
 
+            refreshPayeeLocationSupport()
+
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
             // failure belongs to a stale load — don't clobber the winner's
@@ -585,6 +592,24 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
+    /// configured server, then probe `GET /info` in the background. A failed
+    /// probe (unreachable, 404, parse error) keeps the cached answer; a
+    /// successful one overwrites it. Never blocks or fails budget load.
+    private func refreshPayeeLocationSupport() {
+        let key = "payeeLocationWritesEnabled_\(serverURL)"
+        payeeLocationWritesEnabled = UserDefaults.standard.bool(forKey: key)
+        Task { [weak self] in
+            guard let self else { return }
+            guard let version = await self.serverClient.fetchServerVersion() else {
+                return  // capabilities unknown — keep the cached answer
+            }
+            let supported = ServerVersion.supportsPayeeLocations(version)
+            self.payeeLocationWritesEnabled = supported
+            UserDefaults.standard.set(supported, forKey: key)
+        }
     }
 
     func refreshData() async {

@@ -110,6 +110,22 @@ struct KeyInfoResponse: Codable, Sendable {
     }
 }
 
+/// Version gate for features that depend on the server's Actual release.
+enum ServerVersion {
+    /// payee_locations shipped in Actual 26.4.0. Writing those CRDT messages
+    /// against an older server breaks its web client with invalid-schema
+    /// sync errors, so suppress writes unless we know the server is new
+    /// enough. Reads of already-synced rows are always safe.
+    static func supportsPayeeLocations(_ version: String?) -> Bool {
+        guard let version else { return false }
+        let parts = version.split(separator: ".").map { Int($0) }
+        guard parts.count >= 2, let major = parts[0], let minor = parts[1] else {
+            return false
+        }
+        return major > 26 || (major == 26 && minor >= 4)
+    }
+}
+
 actor ActualServerClient {
     private let session: URLSession
     private var serverURL: URL?
@@ -240,6 +256,31 @@ actor ActualServerClient {
             return true
         }
         return created
+    }
+
+    private struct ServerInfoResponse: Decodable {
+        struct Build: Decodable {
+            let version: String?
+        }
+        let build: Build?
+    }
+
+    /// `GET /info` — the sync server's build metadata. Returns nil on any
+    /// failure (older servers, reverse proxies stripping the route, etc.);
+    /// callers treat nil as "capabilities unknown".
+    func fetchServerVersion() async -> String? {
+        guard let serverURL else { return nil }
+        let url = serverURL.appendingPathComponent("/info")
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+
+        guard let (data, response) = try? await session.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              httpResponse.statusCode == 200,
+              let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else {
+            return nil
+        }
+        return info.build?.version
     }
 
     /// Begin an OpenID login by POSTing to `/account/login` with
