@@ -209,4 +209,14 @@ struct PayeeLocationTests {
     @Test func serverVersionGateTreatsNilAsUnsupported() {
         #expect(ServerVersion.supportsPayeeLocations(nil) == false)
     }
+
+    @Test func shouldRecordLocationDedupesWithin500m() {
+        let here = Coordinates(latitude: 0, longitude: 0)
+        let nearLoc = PayeeLocation(id: "a", payeeId: "p", latitude: 0.001, longitude: 0, createdAt: 1)   // ~111 m
+        let farLoc = PayeeLocation(id: "b", payeeId: "p", latitude: 0.04, longitude: 0, createdAt: 2)     // ~4.4 km
+
+        #expect(BudgetStore.shouldRecordLocation(at: here, existing: []) == true)
+        #expect(BudgetStore.shouldRecordLocation(at: here, existing: [farLoc]) == true)
+        #expect(BudgetStore.shouldRecordLocation(at: here, existing: [nearLoc, farLoc]) == false)
+    }
 }
