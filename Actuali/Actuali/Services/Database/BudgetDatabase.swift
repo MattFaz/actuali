@@ -202,6 +202,22 @@ class BudgetDatabase {
     // Tables added upstream after the original budget file was created. These run
     // unconditionally so CRDT messages targeting these tables have somewhere to land.
     private static let createTableMigrations: [(id: Int64, sql: String)] = [
+        // Upstream 1768872504000 (Actual 26.4.0): payee locations. Same SQL
+        // as upstream's migration, so we reuse its id — a file already
+        // migrated by a modern client skips this cleanly.
+        (1768872504000, """
+            CREATE TABLE IF NOT EXISTS payee_locations (
+                id TEXT PRIMARY KEY,
+                payee_id TEXT,
+                latitude REAL,
+                longitude REAL,
+                created_at INTEGER,
+                tombstone INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_payee_id ON payee_locations (payee_id);
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_tombstone_payee_created ON payee_locations (tombstone, payee_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_geo_tombstone ON payee_locations (tombstone, latitude, longitude)
+            """),
         (1770000000001, """
             CREATE TABLE IF NOT EXISTS dashboard (
                 id TEXT PRIMARY KEY,
@@ -1224,5 +1240,99 @@ class BudgetDatabase {
                     payee.id
                 ])
         }
+    }
+
+    // MARK: - Payee Locations
+
+    func insertPayeeLocation(_ location: PayeeLocation) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO payee_locations (id, payee_id, latitude, longitude, created_at, tombstone)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, arguments: [
+                    location.id,
+                    location.payeeId,
+                    location.latitude,
+                    location.longitude,
+                    location.createdAt,
+                    location.tombstone ? 1 : 0
+                ])
+        }
+    }
+
+    /// Non-tombstoned locations for a payee, newest first (upstream
+    /// getPayeeLocations ordering).
+    func fetchPayeeLocations(payeeId: String) async throws -> [PayeeLocation] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, payee_id, latitude, longitude, created_at
+                FROM payee_locations
+                WHERE tombstone IS NOT 1 AND payee_id = ?
+                ORDER BY created_at DESC
+                """, arguments: [payeeId])
+            return rows.map { row in
+                PayeeLocation(
+                    id: row["id"],
+                    payeeId: row["payee_id"],
+                    latitude: row["latitude"],
+                    longitude: row["longitude"],
+                    createdAt: row["created_at"]
+                )
+            }
+        }
+    }
+
+    /// Nearby payees: closest non-tombstoned location per non-tombstoned
+    /// payee within `maxDistanceMeters`, ascending by distance, limit 10
+    /// (upstream getNearbyPayees). Distance is computed in Swift because the
+    /// system SQLite math functions (acos etc.) aren't guaranteed on iOS.
+    func fetchNearbyPayees(
+        latitude: Double,
+        longitude: Double,
+        maxDistanceMeters: Double = LocationUtils.defaultMaxDistanceMeters
+    ) async throws -> [NearbyPayee] {
+        guard LocationUtils.isValidCoordinate(latitude: latitude, longitude: longitude),
+              maxDistanceMeters.isFinite, maxDistanceMeters > 0 else {
+            return []
+        }
+        let rows = try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT pl.id AS location_id, pl.payee_id, pl.latitude, pl.longitude, pl.created_at,
+                       p.name, p.transfer_acct
+                FROM payee_locations pl
+                JOIN payees p ON p.id = pl.payee_id
+                WHERE pl.tombstone IS NOT 1 AND p.tombstone IS NOT 1
+                """)
+        }
+        var closestByPayee: [String: NearbyPayee] = [:]
+        for row in rows {
+            let location = PayeeLocation(
+                id: row["location_id"],
+                payeeId: row["payee_id"],
+                latitude: row["latitude"],
+                longitude: row["longitude"],
+                createdAt: row["created_at"]
+            )
+            let distance = LocationUtils.calculateDistanceMeters(
+                lat1: latitude, lon1: longitude,
+                lat2: location.latitude, lon2: location.longitude
+            )
+            guard distance <= maxDistanceMeters else { continue }
+            if let existing = closestByPayee[location.payeeId],
+               existing.distanceMeters <= distance {
+                continue
+            }
+            let payee = Payee(
+                id: location.payeeId,
+                name: row["name"] ?? "Unknown",
+                transferAccountId: row["transfer_acct"]
+            )
+            closestByPayee[location.payeeId] = NearbyPayee(
+                payee: payee, location: location, distanceMeters: distance)
+        }
+        return closestByPayee.values
+            .sorted { $0.distanceMeters < $1.distanceMeters }
+            .prefix(10)
+            .map { $0 }
     }
 }
