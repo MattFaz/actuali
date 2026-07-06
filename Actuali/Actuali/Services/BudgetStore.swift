@@ -158,7 +158,12 @@ final class BudgetStore: ObservableObject {
     /// (no database, query error) degrades to "no suggestions".
     func fetchNearbyPayees(latitude: Double, longitude: Double) async -> [NearbyPayee] {
         guard let database else { return [] }
-        return (try? await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)) ?? []
+        do {
+            return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
+        } catch {
+            logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 
     /// Accounts for App Intents (the Log Transaction Shortcut).
