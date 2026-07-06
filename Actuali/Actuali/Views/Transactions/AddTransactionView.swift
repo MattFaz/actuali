@@ -498,7 +498,9 @@ private struct AmountInputField: UIViewRepresentable {
     }
 }
 
-private struct CategoryPickerView: View {
+/// Searchable category list, shared by the transaction form and the
+/// uncategorized-transactions quick-categorize flow.
+struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?

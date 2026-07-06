@@ -438,6 +438,90 @@ class BudgetDatabase {
         }
     }
 
+    /// Joins + filter shared by the uncategorized list and count queries.
+    /// Mirrors the WebUI's "uncategorized" pseudo-account filter
+    /// (desktop-client accountFilter('uncategorized')): on-budget account,
+    /// no category, not a split parent (children are where categories live),
+    /// and not a transfer unless the other side is off-budget — money leaving
+    /// the budget still needs a category. Children of tombstoned split
+    /// parents are excluded like fetchTransactionsForReports().
+    private static let uncategorizedJoins = """
+        FROM transactions t
+        JOIN accounts a ON a.id = t.acct
+        LEFT JOIN payee_mapping pm ON pm.id = t.description
+        LEFT JOIN payees p ON p.id = pm.targetId
+        LEFT JOIN accounts ta ON ta.id = p.transfer_acct
+        LEFT JOIN transactions par ON par.id = t.parent_id
+        """
+
+    private static let uncategorizedWhere = """
+        WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND (t.isParent = 0 OR t.isParent IS NULL)
+          AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+          AND t.category IS NULL
+          AND (a.offbudget = 0 OR a.offbudget IS NULL)
+          AND (a.tombstone = 0 OR a.tombstone IS NULL)
+          AND (p.transfer_acct IS NULL OR ta.offbudget = 1)
+        """
+
+    /// All transactions still needing a category, newest first (GH #26).
+    /// Split children carry no payee of their own, so their display name
+    /// falls back to the parent's payee.
+    func fetchUncategorizedTransactions() async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id,
+                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name
+                \(Self.uncategorizedJoins)
+                -- Transfer payees carry no name; their display name is the
+                -- linked account's name (matches Actual's v_payees view).
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                -- Parent's payee, as the fallback for split children.
+                LEFT JOIN payee_mapping ppm ON ppm.id = par.description
+                LEFT JOIN payees pp ON pp.id = ppm.targetId
+                LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
+                    AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
+                \(Self.uncategorizedWhere)
+                ORDER BY t.date DESC, t.sort_order DESC
+                """)
+
+            return rows.map { row in
+                Transaction(
+                    id: row["id"],
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: row["payee_name"],
+                    categoryId: nil,
+                    categoryName: nil,
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+            }
+        }
+    }
+
+    /// Number of transactions `fetchUncategorizedTransactions()` would
+    /// return, without materializing the rows (drives the Budget tab link).
+    func fetchUncategorizedCount() async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) \(Self.uncategorizedJoins) \(Self.uncategorizedWhere)") ?? 0
+        }
+    }
+
     // MARK: - Categories
 
     func fetchCategoryGroups() async throws -> [CategoryGroup] {

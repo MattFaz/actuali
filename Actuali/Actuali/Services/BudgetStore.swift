@@ -95,6 +95,9 @@ final class BudgetStore: ObservableObject {
     @Published var remoteBudgets: [RemoteBudget] = []
     @Published var accounts: [Account] = []
     @Published var transactions: [Transaction] = []
+    /// How many transactions still need a category (drives the Budget tab
+    /// link to UncategorizedTransactionsView).
+    @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var currentBudgetMonth: BudgetMonth?
@@ -510,6 +513,7 @@ final class BudgetStore: ObservableObject {
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
+            let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
@@ -526,6 +530,7 @@ final class BudgetStore: ObservableObject {
             }
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -621,6 +626,7 @@ final class BudgetStore: ObservableObject {
             // leave the UI with a mixed snapshot.
             let fetchedAccounts = try await database.fetchAccounts()
             let fetchedTransactions = try await database.fetchTransactions()
+            let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
@@ -632,6 +638,7 @@ final class BudgetStore: ObservableObject {
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -677,6 +684,17 @@ final class BudgetStore: ObservableObject {
     func fetchTransactions(for accountId: String) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(accountId: accountId) ?? []
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
+    /// All transactions still needing a category (see
+    /// BudgetDatabase.fetchUncategorizedTransactions for the exact filter).
+    func fetchUncategorizedTransactions() async -> [Transaction] {
+        do {
+            return try await database?.fetchUncategorizedTransactions() ?? []
         } catch {
             self.error = error.localizedDescription
             return []

@@ -54,6 +54,21 @@ struct BudgetView: View {
                             .padding(.vertical, 4)
                         }
 
+                        if budgetStore.uncategorizedCount > 0 {
+                            Section {
+                                NavigationLink {
+                                    UncategorizedTransactionsView()
+                                } label: {
+                                    Label {
+                                        Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
+                                    } icon: {
+                                        Image(systemName: "questionmark.circle.fill")
+                                            .foregroundStyle(.orange)
+                                    }
+                                }
+                            }
+                        }
+
                         ForEach(groupedCategories, id: \.0) { groupName, categories in
                             Section(groupName) {
                                 ForEach(categories) { category in
