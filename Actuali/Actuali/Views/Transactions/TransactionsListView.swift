@@ -17,60 +17,58 @@ struct TransactionsListView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if budgetStore.transactions.isEmpty && !budgetStore.isLoading {
-                    ContentUnavailableView(
-                        "No Transactions",
-                        systemImage: "list.bullet.rectangle",
-                        description: Text("Transactions will appear here once you load a budget")
-                    )
-                } else {
-                    List {
-                        ForEach(filteredTransactions) { transaction in
+        Group {
+            if budgetStore.transactions.isEmpty && !budgetStore.isLoading {
+                ContentUnavailableView(
+                    "No Transactions",
+                    systemImage: "list.bullet.rectangle",
+                    description: Text("Transactions will appear here once you load a budget")
+                )
+            } else {
+                List {
+                    ForEach(filteredTransactions) { transaction in
+                        Button {
+                            editingTransaction = transaction
+                        } label: {
+                            TransactionRow(transaction: transaction)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            Button(role: .destructive) {
+                                Task {
+                                    await budgetStore.deleteTransaction(transaction)
+                                }
+                            } label: {
+                                Label("Delete", systemImage: "trash")
+                            }
                             Button {
                                 editingTransaction = transaction
                             } label: {
-                                TransactionRow(transaction: transaction)
-                                    .contentShape(Rectangle())
+                                Label("Edit", systemImage: "pencil")
                             }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await budgetStore.deleteTransaction(transaction)
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                Button {
-                                    editingTransaction = transaction
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.yellow)
-                            }
+                            .tint(.yellow)
                         }
                     }
                 }
             }
-            .navigationTitle("Transactions")
-            .searchable(text: $searchText, prompt: "Search transactions")
-            .refreshable {
+        }
+        .navigationTitle("All Accounts")
+        .searchable(text: $searchText, prompt: "Search transactions")
+        .refreshable {
+            await budgetStore.refreshData()
+        }
+        .sheet(item: $editingTransaction, onDismiss: {
+            Task {
                 await budgetStore.refreshData()
             }
-            .sheet(item: $editingTransaction, onDismiss: {
-                Task {
-                    await budgetStore.refreshData()
-                }
-            }) { transaction in
-                AddTransactionView(editing: transaction)
-                    .environmentObject(budgetStore)
-            }
-            .overlay {
-                if budgetStore.isLoading {
-                    ProgressView()
-                }
+        }) { transaction in
+            AddTransactionView(editing: transaction)
+                .environmentObject(budgetStore)
+        }
+        .overlay {
+            if budgetStore.isLoading {
+                ProgressView()
             }
         }
     }
@@ -147,6 +145,8 @@ struct ClearedIndicator: View {
 }
 
 #Preview {
-    TransactionsListView()
-        .environmentObject(BudgetStore.previewInstance())
+    NavigationStack {
+        TransactionsListView()
+    }
+    .environmentObject(BudgetStore.previewInstance())
 }
