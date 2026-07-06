@@ -1268,6 +1268,7 @@ class BudgetDatabase {
                 SELECT id, payee_id, latitude, longitude, created_at
                 FROM payee_locations
                 WHERE tombstone IS NOT 1 AND payee_id = ?
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL AND created_at IS NOT NULL
                 ORDER BY created_at DESC
                 """, arguments: [payeeId])
             return rows.map { row in
@@ -1302,6 +1303,7 @@ class BudgetDatabase {
                 FROM payee_locations pl
                 JOIN payees p ON p.id = pl.payee_id
                 WHERE pl.tombstone IS NOT 1 AND p.tombstone IS NOT 1
+                  AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL AND pl.created_at IS NOT NULL
                 """)
         }
         var closestByPayee: [String: NearbyPayee] = [:]
@@ -1331,7 +1333,9 @@ class BudgetDatabase {
                 payee: payee, location: location, distanceMeters: distance)
         }
         return closestByPayee.values
-            .sorted { $0.distanceMeters < $1.distanceMeters }
+            .sorted {
+                ($0.distanceMeters, $0.payee.id) < ($1.distanceMeters, $1.payee.id)
+            }
             .prefix(10)
             .map { $0 }
     }

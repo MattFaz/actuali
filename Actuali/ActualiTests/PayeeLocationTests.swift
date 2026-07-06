@@ -109,6 +109,30 @@ struct PayeeLocationTests {
         #expect(locations.map(\.id) == ["b", "a"])  // created_at DESC, tombstones excluded
     }
 
+    /// CRDT sync applies one message per column, so a payee_locations row can
+    /// exist with only payee_id set. Both fetches must skip it, not crash on
+    /// decoding NULL into a non-optional.
+    @Test func fetchesSkipPartiallySyncedRows() async throws {
+        let path = makeDatabasePath()
+        try makeLegacyFixture(path)
+        let database = try BudgetDatabase(path: path)
+        try database.insertPayee(Payee(id: "p1", name: "P1", transferAccountId: nil))
+        try database.insertPayeeLocation(PayeeLocation(id: "full", payeeId: "p1", latitude: 0, longitude: 0, createdAt: 100))
+
+        let queue = try DatabaseQueue(path: path.path)
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO payee_locations (id, payee_id) VALUES (?, ?)",
+                arguments: ["partial", "p1"])
+        }
+
+        let locations = try await database.fetchPayeeLocations(payeeId: "p1")
+        #expect(locations.map(\.id) == ["full"])
+
+        let nearby = try await database.fetchNearbyPayees(latitude: 0, longitude: 0, maxDistanceMeters: 500)
+        #expect(nearby.map(\.location.id) == ["full"])
+    }
+
     @Test func formatDistanceMatchesUpstream() {
         #expect(LocationUtils.formatDistance(meters: 100) == "328ft | 100m")
     }
