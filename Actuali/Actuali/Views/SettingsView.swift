@@ -177,6 +177,10 @@ struct SettingsView: View {
                     }
 
                     Picker("Currency", selection: $budgetStore.currencyCode) {
+                        // Empty code = no currency, matching Actual's
+                        // defaultCurrencyCode convention. Amounts render as
+                        // plain numbers.
+                        Text("None").tag("")
                         ForEach(Self.currencyOptions, id: \.code) { option in
                             Text("\(option.symbol) \(option.code)").tag(option.code)
                         }
