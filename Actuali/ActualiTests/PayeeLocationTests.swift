@@ -148,5 +148,25 @@ struct PayeeLocationTests {
         #expect(Set(messages.map(\.row)) == ["loc-1"])
         #expect(Set(messages.map(\.column))
             == ["payee_id", "latitude", "longitude", "created_at", "tombstone"])
+
+        // Pin the wire values — coordinates must keep full Double precision.
+        let byColumn = Dictionary(uniqueKeysWithValues: messages.map { ($0.column, $0.value) })
+        #expect(byColumn["latitude"] == "N:-33.85")
+        #expect(byColumn["longitude"] == "N:151.21")
+        #expect(byColumn["created_at"] == "N:1751760000000")
+        #expect(byColumn["payee_id"] == "S:p1")
+        #expect(byColumn["tombstone"] == "N:0")
+    }
+
+    @Test func crdtValueRoundTripsDoublesWithoutTruncation() {
+        // Fractional doubles keep full precision on the wire.
+        #expect(CRDTValue.serialize(-33.85) == "N:-33.85")
+        #expect(CRDTValue.deserialize("N:-33.85") == (-33.85).databaseValue)
+        #expect(CRDTValue.serialize(151.21) == "N:151.21")
+        #expect(CRDTValue.deserialize("N:151.21") == 151.21.databaseValue)
+        // Ints keep the bare "N:5" form — no ".0" suffix.
+        #expect(CRDTValue.serialize(5) == "N:5")
+        #expect(CRDTValue.serialize(Int64(5)) == "N:5")
+        #expect(CRDTValue.deserialize("N:5") == Int64(5).databaseValue)
     }
 }
