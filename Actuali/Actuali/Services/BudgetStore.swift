@@ -247,21 +247,30 @@ final class BudgetStore: ObservableObject {
             appearanceMode = mode
         }
 
-        if let token = loadAndMigrateAuthToken() {
-            Task {
-                // Configure server URL and token for sync to work on app resume
-                try? await serverClient.configure(serverURL: serverURL)
-                await serverClient.setToken(token)
-                isConnected = true
-            }
-        }
+        let token = loadAndMigrateAuthToken()
 
-        // Load local budget if available
+        // Load local budget if available. The saved session is configured in
+        // the same task, before the load, so the initial sync below is
+        // authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             loadTask = Task {
+                if let token { await configureSavedSession(token: token) }
                 await loadLocalBudget(budgetId)
+                // On a cold launch the scene becomes .active before
+                // loadLocalBudget has wired syncClient, so the scenePhase
+                // foreground sync no-ops. Sync here once the client exists.
+                await syncOnForeground()
             }
+        } else if let token {
+            Task { await configureSavedSession(token: token) }
         }
+    }
+
+    /// Configure server URL and token for sync to work on launch and app resume
+    private func configureSavedSession(token: String) async {
+        try? await serverClient.configure(serverURL: serverURL)
+        await serverClient.setToken(token)
+        isConnected = true
     }
 
     private init(forPreview: Void) {

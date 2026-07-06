@@ -56,7 +56,7 @@ struct TransactionsListView: View {
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, prompt: "Search transactions")
         .refreshable {
-            await budgetStore.refreshData()
+            await budgetStore.sync()
         }
         .sheet(item: $editingTransaction, onDismiss: {
             Task {

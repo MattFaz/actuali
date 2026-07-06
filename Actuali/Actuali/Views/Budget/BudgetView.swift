@@ -126,6 +126,9 @@ struct BudgetView: View {
                 }
             }
             .refreshable {
+                await budgetStore.sync()
+                // sync() refreshes the current calendar month; re-fetch in
+                // case the user is viewing a different month.
                 await budgetStore.fetchBudgetMonth(selectedMonth)
             }
             .overlay {
