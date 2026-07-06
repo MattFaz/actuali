@@ -22,6 +22,7 @@ struct AddTransactionView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
+    @State private var nearbyPayees: [NearbyPayee] = []
 
     @FocusState private var payeeFocused: Bool
 
@@ -95,6 +96,27 @@ struct AddTransactionView: View {
             // while the lookup was in flight — don't clobber their choice.
             guard !userPickedCategory else { return }
             selectedCategoryId = cat
+        }
+    }
+
+    /// Load nearby payees when the payee field gains focus. Requests
+    /// permission on first use; every failure path degrades to "no
+    /// suggestions" silently.
+    private func loadNearbyPayees() {
+        guard !isEditing else { return }
+        Task { @MainActor in
+            let provider = BudgetStore.locationProvider
+            var status = await provider.authorizationStatus()
+            if status == .notDetermined {
+                status = await provider.requestPermission()
+            }
+            guard status == .granted,
+                  let position = try? await provider.currentPosition() else {
+                nearbyPayees = []
+                return
+            }
+            nearbyPayees = await budgetStore.fetchNearbyPayees(
+                latitude: position.latitude, longitude: position.longitude)
         }
     }
 
@@ -181,6 +203,7 @@ struct AddTransactionView: View {
                                 }
                             }
                             .onChange(of: payeeFocused) { _, focused in
+                                if focused { loadNearbyPayees() }
                                 guard focused, !payeeName.isEmpty else { return }
                                 DispatchQueue.main.async {
                                     UIApplication.shared.sendAction(
@@ -204,6 +227,30 @@ struct AddTransactionView: View {
                                         Text(payee.name)
                                             .foregroundStyle(.primary)
                                         Spacer()
+                                    }
+                                }
+                            }
+                        }
+
+                        if payeeFocused,
+                           payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           !nearbyPayees.isEmpty {
+                            ForEach(nearbyPayees.prefix(5)) { nearby in
+                                Button {
+                                    payeeName = nearby.payee.name
+                                    payeeFocused = false
+                                    applyCategoryFromHistory(payeeId: nearby.payee.id)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "location.fill")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
+                                        Text(nearby.payee.name)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        Text(LocationUtils.formatDistance(meters: nearby.distanceMeters))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
                             }
