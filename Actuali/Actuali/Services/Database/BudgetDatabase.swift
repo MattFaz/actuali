@@ -795,6 +795,48 @@ class BudgetDatabase {
         }
     }
 
+    /// Where a budget amount write for (month, category) must land: which
+    /// budget table this file uses, and the row to update or create.
+    struct BudgetCellRef: Equatable {
+        let table: String   // "zero_budgets" (envelope) or "reflect_budgets" (tracking)
+        let rowId: String
+        let monthInt: Int   // YYYYMM
+        let exists: Bool
+    }
+
+    /// Resolve the budget cell for a month ("2026-07") and category. Mirrors
+    /// upstream setBudget (loot-core budget/actions.ts): look the row up by
+    /// (month, category) and reuse its id — rows written by other clients may
+    /// not follow the {YYYYMM}-{categoryId} convention, and inserting a second
+    /// row for the same cell would fork it. Returns nil when the file has no
+    /// budget table or the month string is malformed.
+    func budgetCell(month: String, categoryId: String) throws -> BudgetCellRef? {
+        let monthInt = Self.monthStringToInt(month)
+        guard monthInt > 0 else { return nil }
+
+        return try dbQueue.read { db in
+            let table: String
+            if try db.tableExists("zero_budgets") {
+                table = "zero_budgets"
+            } else if try db.tableExists("reflect_budgets") {
+                table = "reflect_budgets"
+            } else {
+                return nil
+            }
+
+            let existingId = try String.fetchOne(db, sql: """
+                SELECT id FROM \(table) WHERE month = ? AND category = ?
+                """, arguments: [monthInt, categoryId])
+
+            return BudgetCellRef(
+                table: table,
+                rowId: existingId ?? "\(monthInt)-\(categoryId)",
+                monthInt: monthInt,
+                exists: existingId != nil
+            )
+        }
+    }
+
     private static func monthStringToInt(_ month: String) -> Int {
         // Convert "2025-12" to 202512
         let parts = month.split(separator: "-")

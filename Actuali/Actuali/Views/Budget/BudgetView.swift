@@ -18,6 +18,7 @@ private let monthTitleFormatter: DateFormatter = {
 struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
+    @State private var editingCategory: CategoryBudget?
 
     var body: some View {
         NavigationStack {
@@ -72,7 +73,9 @@ struct BudgetView: View {
                         ForEach(groupedCategories, id: \.0) { groupName, categories in
                             Section(groupName) {
                                 ForEach(categories) { category in
-                                    CategoryBudgetRow(category: category)
+                                    CategoryBudgetRow(category: category) {
+                                        editingCategory = $0
+                                    }
                                 }
                             }
                         }
@@ -128,6 +131,9 @@ struct BudgetView: View {
             .refreshable {
                 await budgetStore.fetchBudgetMonth(selectedMonth)
             }
+            .sheet(item: $editingCategory) { category in
+                EditBudgetAmountSheet(category: category)
+            }
             .overlay {
                 if budgetStore.isLoading {
                     ProgressView()
@@ -174,6 +180,7 @@ struct BudgetView: View {
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var onEditBudget: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -185,9 +192,20 @@ struct CategoryBudgetRow: View {
                     .foregroundColor(category.isOverspent ? .red : .green)
             }
             HStack {
-                Text("Budgeted: \(budgetStore.formatCurrency(category.budgeted))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    onEditBudget(category)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Budgeted: \(budgetStore.formatCurrency(category.budgeted))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "pencil")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
                 Spacer()
                 Text("Spent: \(budgetStore.formatCurrency(abs(category.spent)))")
                     .font(.caption)
@@ -195,6 +213,78 @@ struct CategoryBudgetRow: View {
             }
         }
         .padding(.vertical, 2)
+    }
+}
+
+/// Edit the budgeted amount for one category-month. Saving writes through
+/// the sync engine (optimistic local-first) and refreshes the month.
+struct EditBudgetAmountSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    let category: CategoryBudget
+
+    @State private var amountText: String
+    @State private var errorMessage: String?
+    @State private var isSaving = false
+
+    init(category: CategoryBudget) {
+        self.category = category
+        let initial = category.budgeted == 0
+            ? ""
+            : String(format: "%.2f", Double(category.budgeted) / 100.0)
+        _amountText = State(initialValue: initial)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    AmountInputField(text: $amountText)
+                } header: {
+                    Text("Budgeted in \(MonthPicker.title(for: category.month))")
+                } footer: {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle(category.categoryName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") { save() }
+                        .disabled(isSaving)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isSaving)
+    }
+
+    private func save() {
+        isSaving = true
+        errorMessage = nil
+        Task {
+            do {
+                // An emptied field means "no longer budgeted", i.e. zero.
+                let cents = try BudgetStore.budgetAmountCents(
+                    from: amountText.isEmpty ? "0" : amountText
+                )
+                try await budgetStore.setBudgetAmount(
+                    month: category.month,
+                    categoryId: category.categoryId,
+                    amountCents: cents
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+                isSaving = false
+            }
+        }
     }
 }
 

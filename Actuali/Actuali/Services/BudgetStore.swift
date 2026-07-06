@@ -1028,6 +1028,28 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    // MARK: - Budget Amounts
+
+    /// Parse the budget edit field ("25.50") into non-negative cents.
+    static func budgetAmountCents(from string: String) throws -> Int {
+        guard let dollars = Double(string),
+              let cents = Transaction.cents(fromDollars: dollars),
+              cents >= 0 else {
+            throw BudgetStoreError.invalidAmount
+        }
+        return cents
+    }
+
+    /// Set the budgeted amount for a category, then refetch the month so the
+    /// published Available/carryover figures recompute from the new value.
+    func setBudgetAmount(month: String, categoryId: String, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
+    }
+
     // MARK: - Currency Formatting
 
     /// Format an amount in cents to a currency string using the budget's currency
