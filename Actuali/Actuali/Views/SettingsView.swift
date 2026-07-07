@@ -192,6 +192,8 @@ struct SettingsView: View {
                         }
                     }
 
+                    Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
+
                     if budgetStore.currentBudgetId != nil {
                         Picker("Default Account", selection: $budgetStore.defaultAccountId) {
                             Text("None").tag(nil as String?)

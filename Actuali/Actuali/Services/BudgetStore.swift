@@ -119,6 +119,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget rows show a spent-vs-available progress bar.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showBudgetProgressBars: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
+        }
+    }
+
     // MARK: - User Preferences (per-budget, stored in UserDefaults)
 
     var defaultAccountId: String? {
@@ -246,22 +254,33 @@ final class BudgetStore: ObservableObject {
            let mode = AppearanceMode(rawValue: raw) {
             appearanceMode = mode
         }
+        showBudgetProgressBars = UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true
 
-        if let token = loadAndMigrateAuthToken() {
-            Task {
-                // Configure server URL and token for sync to work on app resume
-                try? await serverClient.configure(serverURL: serverURL)
-                await serverClient.setToken(token)
-                isConnected = true
-            }
-        }
+        let token = loadAndMigrateAuthToken()
 
-        // Load local budget if available
+        // Load local budget if available. The saved session is configured in
+        // the same task, before the load, so the initial sync below is
+        // authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             loadTask = Task {
+                if let token { await configureSavedSession(token: token) }
                 await loadLocalBudget(budgetId)
+                // On a cold launch the scene becomes .active before
+                // loadLocalBudget has wired syncClient, so the scenePhase
+                // foreground sync no-ops. Sync here once the client exists.
+                await syncOnForeground()
             }
+        } else if let token {
+            Task { await configureSavedSession(token: token) }
         }
+    }
+
+    /// Configure server URL and token for sync to work on launch and app resume
+    private func configureSavedSession(token: String) async {
+        try? await serverClient.configure(serverURL: serverURL)
+        await serverClient.setToken(token)
+        isConnected = true
     }
 
     private init(forPreview: Void) {
@@ -1026,6 +1045,28 @@ final class BudgetStore: ObservableObject {
             guard requestedBudgetMonth == month else { return }
             self.error = error.localizedDescription
         }
+    }
+
+    // MARK: - Budget Amounts
+
+    /// Parse the budget edit field ("25.50") into non-negative cents.
+    static func budgetAmountCents(from string: String) throws -> Int {
+        guard let dollars = Double(string),
+              let cents = Transaction.cents(fromDollars: dollars),
+              cents >= 0 else {
+            throw BudgetStoreError.invalidAmount
+        }
+        return cents
+    }
+
+    /// Set the budgeted amount for a category, then refetch the month so the
+    /// published Available/carryover figures recompute from the new value.
+    func setBudgetAmount(month: String, categoryId: String, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
     }
 
     // MARK: - Currency Formatting

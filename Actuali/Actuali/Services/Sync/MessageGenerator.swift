@@ -57,6 +57,30 @@ actor MessageGenerator {
         return messages
     }
 
+    /// Generate messages for raw (dataset, row, column) writes — for tables
+    /// like zero_budgets/reflect_budgets whose dataset is chosen at runtime
+    /// and so can't be a CRDTSyncable's static datasetName.
+    func messages(
+        dataset: String,
+        row: String,
+        fields: [(column: String, value: Any?)]
+    ) async throws -> [CRDTMessage] {
+        var messages: [CRDTMessage] = []
+
+        for (column, value) in fields {
+            let timestamp = try await clock.send()
+            messages.append(CRDTMessage(
+                timestamp: timestamp,
+                dataset: dataset,
+                row: row,
+                column: column,
+                value: CRDTValue.serialize(value)
+            ))
+        }
+
+        return messages
+    }
+
     /// Generate a tombstone message (soft delete)
     func messageForDelete<T: CRDTSyncable>(_ object: T) async throws -> CRDTMessage {
         let timestamp = try await clock.send()

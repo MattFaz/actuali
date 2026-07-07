@@ -356,7 +356,7 @@ struct AddTransactionView: View {
 /// taps `.` (or `,` in comma-decimal locales), the field switches to standard
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
-private struct AmountInputField: UIViewRepresentable {
+struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
 
     func makeUIView(context: Context) -> UITextField {
