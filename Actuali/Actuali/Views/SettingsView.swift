@@ -177,6 +177,10 @@ struct SettingsView: View {
                     }
 
                     Picker("Currency", selection: $budgetStore.currencyCode) {
+                        // Empty code = no currency, matching Actual's
+                        // defaultCurrencyCode convention. Amounts render as
+                        // plain numbers.
+                        Text("None").tag("")
                         ForEach(Self.currencyOptions, id: \.code) { option in
                             Text("\(option.symbol) \(option.code)").tag(option.code)
                         }
@@ -187,6 +191,8 @@ struct SettingsView: View {
                             Text(mode.label).tag(mode)
                         }
                     }
+
+                    Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     if budgetStore.currentBudgetId != nil {
                         Picker("Default Account", selection: $budgetStore.defaultAccountId) {
@@ -253,6 +259,18 @@ struct SettingsView: View {
                             .disabled(budgetStore.syncState == .syncing)
                         }
                     }
+                }
+
+                Section {
+                    NavigationLink {
+                        WalletAutomationView()
+                    } label: {
+                        Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
+                    }
+                } header: {
+                    Text("Automations")
+                } footer: {
+                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
                 }
 
                 Section {

@@ -1,0 +1,143 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout
+  title="Wallet Automation · Actuali"
+  description="Log tap-to-pay purchases from Apple Wallet into Actuali automatically with a Shortcuts automation."
+>
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Log Wallet payments automatically</h1>
+      <p class="text-neutral-500">
+        Every time you tap to pay with Apple Wallet, a Shortcuts automation can log the purchase into Actuali in the
+        background — no need to open the app.
+      </p>
+    </header>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">How it works</h2>
+      <p class="text-neutral-700">
+        Actuali ships a <strong>Log Transaction</strong> action that any shortcut or automation can run — there is nothing
+        to install. iOS lets you trigger an automation whenever a specific Wallet card is charged, so you connect the two:
+        one automation per card, each passing the transaction's amount and merchant straight into your budget.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Before you start</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>Install Actuali and connect it to your Actual Budget server.</li>
+        <li>
+          Set a <strong>Default Account</strong> in the app's Settings, or plan to pick an account in each automation (step
+          6 below).
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Set it up</h2>
+      <ol class="list-decimal space-y-2 pl-6 text-neutral-700">
+        <li>Open the <strong>Shortcuts</strong> app and go to the <strong>Automation</strong> tab.</li>
+        <img
+          src="/wallet-automation/step-1.png"
+          alt="iOS Wallet Automation - Step 1"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <li>Create <strong>New Automation</strong>, then search and choose <strong>Wallet</strong>.</li>
+        <img
+          src="/wallet-automation/step-2.png"
+          alt="iOS Wallet Automation - Step 2"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <li>
+          Select the Wallet card you want to track, keep <strong>Run Immediately</strong>, and tap <strong>Next</strong
+          >.
+        </li>
+        <img
+          src="/wallet-automation/step-3.png"
+          alt="iOS Wallet Automation - Step 3"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <li>Choose <strong>Create New Shortcut</strong></li>
+        <img
+          src="/wallet-automation/step-4.png"
+          alt="iOS Wallet Automation - Step 4"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <li>Tap <strong>Add Action</strong>, and search for <strong>Log Transaction</strong> from Actuali.</li>
+        <img
+          src="/wallet-automation/step-5.png"
+          alt="iOS Wallet Automation - Step 5"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <img
+          src="/wallet-automation/step-6.png"
+          alt="iOS Wallet Automation - Step 6"
+          class="my-2 w-full max-w-sm rounded-xl"
+          loading="lazy"
+        />
+        <li>
+          Tap the action's <strong>Amount</strong> field, Tap <strong>Select Variable</strong>, Tap <strong
+            >Shortcut Input</strong
+          >.
+        </li>
+        <img
+          src="/wallet-automation/step-7.png"
+          alt="iOS Wallet Automation - Step 7"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <img
+          src="/wallet-automation/step-8.png"
+          alt="iOS Wallet Automation - Step 8"
+          class="my-2 w-full max-w-sm"
+          loading="lazy"
+        />
+        <li>
+          Repeat for <strong>Payee</strong>, tap on the <strong>Shortcut Input</strong> and change the variable to <strong
+            >Merchant</strong
+          >
+          <i> (or Name)</i>.
+        </li>
+
+        <li>Tap <strong>Account</strong> and select the relevant Account from Actuali.</li>
+      </ol>
+      <p class="text-neutral-700 underline">Repeat for each card you want to track.</p>
+      <p class="text-neutral-700">
+        From then on, tapping to pay logs the purchase automatically and Actuali confirms it with a notification.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Troubleshooting</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Nothing gets logged?</strong> Check that the automation is set to Run Immediately and that the Log Transaction
+          action's Amount and Payee fields use the transaction's variables, not blank values.
+        </li>
+        <li>
+          <strong>"No account" error notification?</strong> Set a Default Account in Actuali's Settings, or choose an Account
+          inside the automation's action.
+        </li>
+        <li>
+          <strong>Wrong account?</strong> Each automation can target its own account — edit the automation and set the Account
+          field to match the card.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Questions?</h2>
+      <p class="text-neutral-700">
+        See the <a href="/support" class="underline hover:text-neutral-900">support page</a> or email
+        <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900">actuali@mfazz.com</a>.
+      </p>
+    </section>
+  </article>
+</Layout>

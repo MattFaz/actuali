@@ -30,7 +30,10 @@ struct ReportsTabView: View {
             }
             .navigationTitle("Reports")
             .task { await reload() }
-            .refreshable { await reload() }
+            .refreshable {
+                await budgetStore.sync()
+                await reload()
+            }
         }
     }
 

@@ -95,6 +95,9 @@ final class BudgetStore: ObservableObject {
     @Published var remoteBudgets: [RemoteBudget] = []
     @Published var accounts: [Account] = []
     @Published var transactions: [Transaction] = []
+    /// How many transactions still need a category (drives the Budget tab
+    /// link to UncategorizedTransactionsView).
+    @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var currentBudgetMonth: BudgetMonth?
@@ -118,6 +121,14 @@ final class BudgetStore: ObservableObject {
     @Published var appearanceMode: AppearanceMode = .system {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode")
+        }
+    }
+
+    /// Whether Budget rows show a spent-vs-available progress bar.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showBudgetProgressBars: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
         }
     }
 
@@ -263,22 +274,33 @@ final class BudgetStore: ObservableObject {
            let mode = AppearanceMode(rawValue: raw) {
             appearanceMode = mode
         }
+        showBudgetProgressBars = UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true
 
-        if let token = loadAndMigrateAuthToken() {
-            Task {
-                // Configure server URL and token for sync to work on app resume
-                try? await serverClient.configure(serverURL: serverURL)
-                await serverClient.setToken(token)
-                isConnected = true
-            }
-        }
+        let token = loadAndMigrateAuthToken()
 
-        // Load local budget if available
+        // Load local budget if available. The saved session is configured in
+        // the same task, before the load, so the initial sync below is
+        // authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             loadTask = Task {
+                if let token { await configureSavedSession(token: token) }
                 await loadLocalBudget(budgetId)
+                // On a cold launch the scene becomes .active before
+                // loadLocalBudget has wired syncClient, so the scenePhase
+                // foreground sync no-ops. Sync here once the client exists.
+                await syncOnForeground()
             }
+        } else if let token {
+            Task { await configureSavedSession(token: token) }
         }
+    }
+
+    /// Configure server URL and token for sync to work on launch and app resume
+    private func configureSavedSession(token: String) async {
+        try? await serverClient.configure(serverURL: serverURL)
+        await serverClient.setToken(token)
+        isConnected = true
     }
 
     private init(forPreview: Void) {
@@ -530,6 +552,7 @@ final class BudgetStore: ObservableObject {
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
+            let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
@@ -546,6 +569,7 @@ final class BudgetStore: ObservableObject {
             }
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -666,6 +690,7 @@ final class BudgetStore: ObservableObject {
             // leave the UI with a mixed snapshot.
             let fetchedAccounts = try await database.fetchAccounts()
             let fetchedTransactions = try await database.fetchTransactions()
+            let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
@@ -677,6 +702,7 @@ final class BudgetStore: ObservableObject {
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -722,6 +748,17 @@ final class BudgetStore: ObservableObject {
     func fetchTransactions(for accountId: String) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(accountId: accountId) ?? []
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
+    /// All transactions still needing a category (see
+    /// BudgetDatabase.fetchUncategorizedTransactions for the exact filter).
+    func fetchUncategorizedTransactions() async -> [Transaction] {
+        do {
+            return try await database?.fetchUncategorizedTransactions() ?? []
         } catch {
             self.error = error.localizedDescription
             return []
@@ -1103,6 +1140,28 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    // MARK: - Budget Amounts
+
+    /// Parse the budget edit field ("25.50") into non-negative cents.
+    static func budgetAmountCents(from string: String) throws -> Int {
+        guard let dollars = Double(string),
+              let cents = Transaction.cents(fromDollars: dollars),
+              cents >= 0 else {
+            throw BudgetStoreError.invalidAmount
+        }
+        return cents
+    }
+
+    /// Set the budgeted amount for a category, then refetch the month so the
+    /// published Available/carryover figures recompute from the new value.
+    func setBudgetAmount(month: String, categoryId: String, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
+    }
+
     // MARK: - Currency Formatting
 
     /// Format an amount in cents to a currency string using the budget's currency
@@ -1110,6 +1169,9 @@ final class BudgetStore: ObservableObject {
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(2)))
+        }
         return amount.formatted(.currency(code: currencyCode))
     }
 
@@ -1117,6 +1179,9 @@ final class BudgetStore: ObservableObject {
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(0)))
+        }
         return amount.formatted(.currency(code: currencyCode).precision(.fractionLength(0)))
     }
 

@@ -403,7 +403,7 @@ struct AddTransactionView: View {
 /// taps `.` (or `,` in comma-decimal locales), the field switches to standard
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
-private struct AmountInputField: UIViewRepresentable {
+struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
 
     func makeUIView(context: Context) -> UITextField {
@@ -545,7 +545,9 @@ private struct AmountInputField: UIViewRepresentable {
     }
 }
 
-private struct CategoryPickerView: View {
+/// Searchable category list, shared by the transaction form and the
+/// uncategorized-transactions quick-categorize flow.
+struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?

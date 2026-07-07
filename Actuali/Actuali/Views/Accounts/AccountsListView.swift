@@ -27,13 +27,17 @@ struct AccountsListView: View {
                 } else {
                     List {
                         Section {
-                            HStack {
-                                Text("Net Worth")
-                                    .font(.headline)
-                                Spacer()
-                                Text(budgetStore.formatCurrency(totalBalance))
-                                    .font(.headline)
-                                    .foregroundColor(totalBalance > 0 ? .green : (totalBalance < 0 ? .red : .primary))
+                            NavigationLink {
+                                TransactionsListView()
+                            } label: {
+                                HStack {
+                                    Text("All Accounts")
+                                        .font(.headline)
+                                    Spacer()
+                                    Text(budgetStore.formatCurrency(totalBalance))
+                                        .font(.headline)
+                                        .foregroundColor(totalBalance > 0 ? .green : (totalBalance < 0 ? .red : .primary))
+                                }
                             }
                         }
 
