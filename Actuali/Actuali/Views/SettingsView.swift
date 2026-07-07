@@ -260,6 +260,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        WalletAutomationView()
+                    } label: {
+                        Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
+                    }
+                } header: {
+                    Text("Automations")
+                } footer: {
+                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                }
+
+                Section {
                     HStack {
                         Text("Version")
                         Spacer()
