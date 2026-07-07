@@ -998,7 +998,7 @@ final class BudgetStore: ObservableObject {
     /// Fire-and-forget: attach the current position to `payeeId`. All guards
     /// and failures collapse to "do nothing" — recording a location must
     /// never affect the save that triggered it.
-    private func recordPayeeLocationIfAppropriate(payeeId: String) {
+    func recordPayeeLocationIfAppropriate(payeeId: String) {
         guard payeeLocationWritesEnabled else { return }
         Task { [weak self] in
             guard let self else { return }

@@ -78,6 +78,8 @@ final class TransactionLogger {
         )
 
         try await store.createTransaction(transaction)
+        // With when-in-use permission, background automations get no fix and silently skip.
+        store.recordPayeeLocationIfAppropriate(payeeId: payee.id)
         logger.info("Logged transaction \(transaction.id, privacy: .public) for \(payee.name, privacy: .public)")
         return transaction
     }
