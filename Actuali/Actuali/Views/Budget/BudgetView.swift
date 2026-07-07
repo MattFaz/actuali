@@ -94,11 +94,19 @@ struct BudgetView: View {
                             }
                     )
                 } else if !budgetStore.isLoading {
-                    ContentUnavailableView(
-                        "No Budget Loaded",
-                        systemImage: "chart.pie",
-                        description: Text("Go to Settings to connect to your Actual Budget server")
-                    )
+                    if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
+                        ContentUnavailableView(
+                            "Select a Budget",
+                            systemImage: "chart.pie",
+                            description: Text("You're connected. Choose a budget in Settings to load it here.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "No Budget Loaded",
+                            systemImage: "chart.pie",
+                            description: Text("Go to Settings to connect to your Actual Budget server")
+                        )
+                    }
                 }
             }
             .navigationTitle("Budget")

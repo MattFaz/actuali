@@ -19,11 +19,19 @@ struct AccountsListView: View {
         NavigationStack {
             Group {
                 if budgetStore.accounts.isEmpty && !budgetStore.isLoading {
-                    ContentUnavailableView(
-                        "No Budget Loaded",
-                        systemImage: "dollarsign.circle",
-                        description: Text("Go to Settings to connect to your Actual Budget server")
-                    )
+                    if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
+                        ContentUnavailableView(
+                            "Select a Budget",
+                            systemImage: "dollarsign.circle",
+                            description: Text("You're connected. Choose a budget in Settings to load it here.")
+                        )
+                    } else {
+                        ContentUnavailableView(
+                            "No Budget Loaded",
+                            systemImage: "dollarsign.circle",
+                            description: Text("Go to Settings to connect to your Actual Budget server")
+                        )
+                    }
                 } else {
                     List {
                         Section {
