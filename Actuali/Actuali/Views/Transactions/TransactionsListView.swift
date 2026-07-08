@@ -9,11 +9,8 @@ struct TransactionsListView: View {
         if searchText.isEmpty {
             return budgetStore.transactions
         }
-        return budgetStore.transactions.filter { transaction in
-            transaction.payeeName?.localizedCaseInsensitiveContains(searchText) == true ||
-            transaction.categoryName?.localizedCaseInsensitiveContains(searchText) == true ||
-            transaction.notes?.localizedCaseInsensitiveContains(searchText) == true
-        }
+        let matcher = TransactionSearchMatcher(searchText)
+        return budgetStore.transactions.filter { matcher.matches($0) }
     }
 
     var body: some View {
@@ -54,7 +51,7 @@ struct TransactionsListView: View {
             }
         }
         .navigationTitle("All Accounts")
-        .searchable(text: $searchText, prompt: "Search transactions")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .refreshable {
             await budgetStore.sync()
         }
