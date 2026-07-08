@@ -13,11 +13,8 @@ struct AccountDetailView: View {
         if searchText.isEmpty {
             return transactions
         }
-        return transactions.filter { transaction in
-            transaction.payeeName?.localizedCaseInsensitiveContains(searchText) == true ||
-            transaction.categoryName?.localizedCaseInsensitiveContains(searchText) == true ||
-            transaction.notes?.localizedCaseInsensitiveContains(searchText) == true
-        }
+        let matcher = TransactionSearchMatcher(searchText)
+        return transactions.filter { matcher.matches($0) }
     }
 
     var body: some View {
