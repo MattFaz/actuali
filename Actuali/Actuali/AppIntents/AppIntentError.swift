@@ -8,6 +8,7 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     case noBudgetLoaded
     case accountUnavailable
     case invalidAmount
+    case noAmountReceived
     case writeFailed(underlying: String)
 
     var errorDescription: String? {
@@ -18,6 +19,8 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
             return "Account is no longer available. Edit your shortcut to pick a different account."
         case .invalidAmount:
             return "Amount must be greater than 0."
+        case .noAmountReceived:
+            return "No amount was received from the automation. iOS sometimes runs Wallet automations before the transaction details are available."
         case .writeFailed(let underlying):
             return "Couldn't save transaction. Tap to retry. (\(underlying))"
         }

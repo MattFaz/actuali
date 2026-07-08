@@ -85,7 +85,7 @@ import Layout from "../../layouts/Layout.astro";
         <li>
           Tap the action's <strong>Amount</strong> field, Tap <strong>Select Variable</strong>, Tap <strong
             >Shortcut Input</strong
-          >.
+          >. Then tap the <strong>Shortcut Input</strong> variable and change it to <strong>Amount</strong>.
         </li>
         <img
           src="/wallet-automation/step-7.png"
@@ -120,6 +120,11 @@ import Layout from "../../layouts/Layout.astro";
         <li>
           <strong>Nothing gets logged?</strong> Check that the automation is set to Run Immediately and that the Log Transaction
           action's Amount and Payee fields use the transaction's variables, not blank values.
+        </li>
+        <li>
+          <strong>"No amount was received" notification?</strong> iOS occasionally runs the automation before Wallet has
+          the transaction details. This depends on the card, bank, and terminal and is outside the app's control — add
+          the transaction manually and it usually works again on the next tap.
         </li>
         <li>
           <strong>"No account" error notification?</strong> Set a Default Account in Actuali's Settings, or choose an Account

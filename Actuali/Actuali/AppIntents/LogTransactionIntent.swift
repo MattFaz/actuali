@@ -12,8 +12,11 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: "Account")
     var account: AccountEntity?
 
+    // String, not Double: Wallet's amount coerces to 0 as a Number for some
+    // cards, but the text form carries the real value (issue #41). Parsed
+    // via AmountParser, which handles currency symbols and locale separators.
     @Parameter(title: "Amount")
-    var amount: Double
+    var amount: String
 
     @Parameter(title: "Payee")
     var payee: String
@@ -41,8 +44,15 @@ struct LogTransactionIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult {
-        // Validate amount.
-        guard amount.isFinite, amount > 0 else {
+        // Validate amount. An empty string means the automation ran before
+        // Wallet had the transaction details — surface that distinctly so
+        // users know it isn't a configuration problem.
+        guard !amount.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await reportFailure(.noAmountReceived)
+            throw LogTransactionError.noAmountReceived
+        }
+        guard let parsedAmount = AmountParser.parse(amount),
+              parsedAmount.isFinite, parsedAmount > 0 else {
             await reportFailure(.invalidAmount)
             throw LogTransactionError.invalidAmount
         }
@@ -73,7 +83,7 @@ struct LogTransactionIntent: AppIntent {
         }
 
         // Compute signed cents.
-        guard let unsigned = Transaction.cents(fromDollars: amount) else {
+        guard let unsigned = Transaction.cents(fromDollars: parsedAmount) else {
             await reportFailure(.invalidAmount)
             throw LogTransactionError.invalidAmount
         }
@@ -113,7 +123,7 @@ struct LogTransactionIntent: AppIntent {
         await TransactionLogNotifier.notifyFailure(
             message: error.errorDescription ?? "Unknown error",
             payee: payee,
-            amountCents: Transaction.cents(fromDollars: amount) ?? 0
+            amountCents: AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) } ?? 0
         )
     }
 }
