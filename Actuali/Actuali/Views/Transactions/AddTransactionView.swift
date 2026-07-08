@@ -26,18 +26,25 @@ struct AddTransactionView: View {
 
     @FocusState private var payeeFocused: Bool
 
-    /// Initializer for the "Add" flow.
-    init(accountId: String, selectedTab: Binding<Int?> = .constant(nil)) {
+    /// Initializer for the "Add" flow. The optional prefill parameters carry
+    /// whatever a failed Wallet automation received (see TransactionPrefill).
+    init(
+        accountId: String,
+        payee: String = "",
+        amountCents: Int? = nil,
+        date: Date = Date(),
+        selectedTab: Binding<Int?> = .constant(nil)
+    ) {
         self.editing = nil
         _selectedAccountId = State(initialValue: accountId)
         _selectedTab = selectedTab
-        _amount = State(initialValue: "")
+        _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: .expense)
-        _payeeName = State(initialValue: "")
+        _payeeName = State(initialValue: payee)
         _transferToAccountId = State(initialValue: nil)
         _selectedCategoryId = State(initialValue: nil)
         _notes = State(initialValue: "")
-        _date = State(initialValue: Date())
+        _date = State(initialValue: date)
         _cleared = State(initialValue: false)
     }
 

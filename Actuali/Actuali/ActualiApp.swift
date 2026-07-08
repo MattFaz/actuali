@@ -9,6 +9,7 @@ import SwiftUI
 
 @main
 struct ActualiApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var budgetStore = BudgetStore.shared
     @Environment(\.scenePhase) private var scenePhase
 

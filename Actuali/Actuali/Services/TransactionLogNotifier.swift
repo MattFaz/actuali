@@ -37,7 +37,7 @@ enum TransactionLogNotifier {
         }
     }
 
-    static func notifyFailure(message: String, payee: String?, amountCents: Int?) async {
+    static func notifyFailure(message: String, payee: String?, amountCents: Int?, prefill: TransactionPrefill? = nil) async {
         let center = UNUserNotificationCenter.current()
 
         // Request permission lazily on first call. Quietly ignore denial — without
@@ -56,6 +56,10 @@ enum TransactionLogNotifier {
         content.title = "Couldn't log transaction"
         content.body = composeBody(message: message, payee: payee, amountCents: amountCents)
         content.sound = .default
+        if let prefill {
+            content.body += " Tap to add it manually."
+            content.userInfo = prefill.userInfo
+        }
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionFailure.\(UUID().uuidString)",

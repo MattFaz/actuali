@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @StateObject private var notificationRouter = NotificationRouter.shared
 
     /// Presents whenever the store publishes an error; dismissing clears it
     /// so the next failure can present again.
@@ -26,6 +27,31 @@ struct ContentView: View {
             } message: {
                 Text(budgetStore.error ?? "")
             }
+            .sheet(item: $notificationRouter.pendingPrefill) { prefill in
+                if let accountId = resolvedAccountId(for: prefill) {
+                    AddTransactionView(
+                        accountId: accountId,
+                        payee: prefill.payee,
+                        amountCents: prefill.amountCents,
+                        date: prefill.date
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "No Accounts",
+                        systemImage: "banknote",
+                        description: Text("Add an account to create transactions")
+                    )
+                }
+            }
+    }
+
+    /// The notification's account if it is still open, else the default
+    /// account, else any open account (mirrors `AddTransactionTabView`).
+    private func resolvedAccountId(for prefill: TransactionPrefill) -> String? {
+        let openAccounts = budgetStore.accounts.filter { !$0.closed }
+        if let id = prefill.accountId, openAccounts.contains(where: { $0.id == id }) { return id }
+        if let id = budgetStore.defaultAccountId, openAccounts.contains(where: { $0.id == id }) { return id }
+        return openAccounts.first?.id
     }
 }
 

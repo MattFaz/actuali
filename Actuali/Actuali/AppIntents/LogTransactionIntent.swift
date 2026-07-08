@@ -120,10 +120,17 @@ struct LogTransactionIntent: AppIntent {
 
     @MainActor
     private func reportFailure(_ error: LogTransactionError) async {
+        let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
         await TransactionLogNotifier.notifyFailure(
             message: error.errorDescription ?? "Unknown error",
             payee: payee,
-            amountCents: AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) } ?? 0
+            amountCents: amountCents ?? 0,
+            prefill: TransactionPrefill(
+                accountId: account?.id ?? BudgetStore.shared.defaultAccountId,
+                payee: payee,
+                amountCents: amountCents,
+                date: date ?? Date()
+            )
         )
     }
 }
