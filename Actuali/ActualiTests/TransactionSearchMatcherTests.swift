@@ -59,14 +59,27 @@ struct TransactionSearchMatcherTests {
         #expect(TransactionSearchMatcher("12,5").matches(makeTransaction(amount: -1250)))
     }
 
-    @Test func singleFractionDigitMeansTensOfCents() {
+    @Test func trailingSeparatorBehavesLikeWholeNumber() {
+        #expect(TransactionSearchMatcher("19.").matches(makeTransaction(amount: -1905)))
+        #expect(TransactionSearchMatcher("$19.").matches(makeTransaction(amount: -1905)))
+        #expect(TransactionSearchMatcher("19,").matches(makeTransaction(amount: 1999)))
+        #expect(!TransactionSearchMatcher("19.").matches(makeTransaction(amount: -2000)))
+    }
+
+    @Test func partialDecimalMatchesAsPrefixOnCents() {
+        // "19.0" narrows to 19.00-19.09 while typing toward "19.05".
+        #expect(TransactionSearchMatcher("19.0").matches(makeTransaction(amount: -1905)))
+        #expect(!TransactionSearchMatcher("19.0").matches(makeTransaction(amount: -1910)))
         #expect(TransactionSearchMatcher("12.5").matches(makeTransaction(amount: -1250)))
+        #expect(TransactionSearchMatcher("12.5").matches(makeTransaction(amount: -1259)))
         #expect(!TransactionSearchMatcher("12.5").matches(makeTransaction(amount: -1205)))
+        #expect(!TransactionSearchMatcher("12.5").matches(makeTransaction(amount: -1260)))
     }
 
     @Test func fractionOnlyQueryMatchesCents() {
         #expect(TransactionSearchMatcher(".50").matches(makeTransaction(amount: -50)))
         #expect(TransactionSearchMatcher("0.50").matches(makeTransaction(amount: 50)))
+        #expect(TransactionSearchMatcher(".5").matches(makeTransaction(amount: -55)))
     }
 
     @Test func groupingSeparatorQueryIsNotTreatedAsAmount() {

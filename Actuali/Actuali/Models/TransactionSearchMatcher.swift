@@ -3,25 +3,20 @@ import Foundation
 /// Matches transactions against the free-text query from the transactions
 /// search field. Text queries match payee, category, and notes; queries that
 /// parse as a currency amount also match the transaction amount, ignoring
-/// sign so "12.50" finds both payments and refunds. Mirrors the Actual web
-/// app: a decimal query ("12.50") requires the exact amount, while a whole
-/// number ("12") matches any amount from 12.00 through 12.99.
+/// sign so "12.50" finds both payments and refunds.
+///
+/// Digits the query leaves unspecified are treated as wildcards, so results
+/// narrow progressively while typing toward an exact amount: "19" matches
+/// 19.00-19.99, "19." the same, "19.0" matches 19.00-19.09, and "19.05" is
+/// exact.
 struct TransactionSearchMatcher {
     private let query: String
-    /// Exact cents to match when the query includes a decimal part.
-    private let exactCents: Int?
-    /// Whole-dollar value to match (truncating cents) when the query is an integer.
-    private let wholeDollars: Int?
+    /// Absolute amounts (in cents) the query matches, when it parses as one.
+    private let amountRange: ClosedRange<Int>?
 
     init(_ query: String) {
         self.query = query.trimmingCharacters(in: .whitespaces)
-        if let (cents, isWholeNumber) = Self.parseAmount(self.query) {
-            exactCents = isWholeNumber ? nil : cents
-            wholeDollars = isWholeNumber ? cents / 100 : nil
-        } else {
-            exactCents = nil
-            wholeDollars = nil
-        }
+        amountRange = Self.parseAmountRange(self.query)
     }
 
     func matches(_ transaction: Transaction) -> Bool {
@@ -33,22 +28,18 @@ struct TransactionSearchMatcher {
             transaction.notes?.localizedCaseInsensitiveContains(query) == true {
             return true
         }
-        let magnitude = abs(transaction.amount)
-        if let exactCents, magnitude == exactCents {
-            return true
-        }
-        if let wholeDollars, magnitude / 100 == wholeDollars {
+        if let amountRange, amountRange.contains(abs(transaction.amount)) {
             return true
         }
         return false
     }
 
     /// Parse the query as a currency amount, e.g. "12", "12.50", "$12.50",
-    /// "-12,50". Returns the absolute value in cents, and whether the query
-    /// was a whole number (no decimal separator). A separator followed by
-    /// anything other than 1-2 digits (e.g. the grouping in "1,234") is
-    /// ambiguous, so the query is not treated as an amount.
-    private static func parseAmount(_ text: String) -> (cents: Int, isWholeNumber: Bool)? {
+    /// "-12,5". Returns the range of absolute cent values it matches, with
+    /// untyped fraction digits acting as wildcards. A separator followed by
+    /// more than 2 digits (e.g. the grouping in "1,234") is ambiguous, so
+    /// the query is not treated as an amount.
+    private static func parseAmountRange(_ text: String) -> ClosedRange<Int>? {
         var text = text
         if text.hasPrefix("-") {
             text.removeFirst()
@@ -61,7 +52,7 @@ struct TransactionSearchMatcher {
         if let separatorIndex = text.firstIndex(where: { $0 == "." || $0 == "," }) {
             integerPart = text[..<separatorIndex]
             fractionPart = text[text.index(after: separatorIndex)...]
-            guard (1...2).contains(fractionPart.count) else { return nil }
+            guard fractionPart.count <= 2 else { return nil }
         } else {
             integerPart = text[...]
             fractionPart = ""
@@ -69,13 +60,13 @@ struct TransactionSearchMatcher {
 
         let digits = integerPart + fractionPart
         guard !digits.isEmpty, digits.count <= 12,
-              digits.allSatisfy({ $0.isASCII && $0.isNumber }) else { return nil }
+              digits.allSatisfy({ $0.isASCII && $0.isNumber }),
+              let base = Int(digits) else { return nil }
 
-        let dollars = Int(integerPart) ?? 0
-        var fractionCents = Int(fractionPart) ?? 0
-        if fractionPart.count == 1 {
-            fractionCents *= 10
-        }
-        return (dollars * 100 + fractionCents, fractionPart.isEmpty)
+        // One cents "slot" per untyped fraction digit: "19" -> 1900...1999,
+        // "19.0" -> 1900...1909, "19.05" -> exactly 1905.
+        let slot = fractionPart.count == 0 ? 100 : (fractionPart.count == 1 ? 10 : 1)
+        let lower = base * slot
+        return lower...(lower + slot - 1)
     }
 }
