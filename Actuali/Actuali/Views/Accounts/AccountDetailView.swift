@@ -68,7 +68,7 @@ struct AccountDetailView: View {
             }
         }
         .navigationTitle(account.name)
-        .searchable(text: $searchText, prompt: "Search transactions")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

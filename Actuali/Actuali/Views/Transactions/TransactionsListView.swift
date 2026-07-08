@@ -54,7 +54,7 @@ struct TransactionsListView: View {
             }
         }
         .navigationTitle("All Accounts")
-        .searchable(text: $searchText, prompt: "Search transactions")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .refreshable {
             await budgetStore.sync()
         }
