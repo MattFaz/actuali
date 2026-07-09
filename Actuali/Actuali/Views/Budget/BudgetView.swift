@@ -25,44 +25,47 @@ struct BudgetView: View {
             Group {
                 if let budget = budgetStore.currentBudgetMonth {
                     List {
+                        // 2x2 grid: the reading order follows the money —
+                        // came in, allocated, went out, left over. Two rows
+                        // because four currency amounts don't fit across
+                        // narrow devices.
                         Section {
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text("Budgeted")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text(budgetStore.formatCurrency(budget.totalBudgeted))
-                                        .font(.headline)
+                            VStack(spacing: 12) {
+                                HStack(alignment: .top) {
+                                    SummaryStat(
+                                        label: "Income",
+                                        value: budgetStore.formatCurrency(budget.totalIncome)
+                                    )
+                                    Spacer()
+                                    SummaryStat(
+                                        label: "Budgeted",
+                                        value: budgetStore.formatCurrency(budget.totalBudgeted),
+                                        alignment: .trailing
+                                    )
                                 }
-                                Spacer()
-                                VStack(alignment: .center) {
-                                    Text("Spent")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text(budgetStore.formatCurrency(abs(budget.totalOutflow)))
-                                        .font(.headline)
-                                }
-                                Spacer()
-                                // Envelope budgets lead with unallocated funds;
-                                // tracking budgets have no to-budget concept, so
-                                // fall back to the total of category balances.
-                                if let toBudget = budget.toBudget {
-                                    VStack(alignment: .trailing) {
-                                        Text("To Budget")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        Text(budgetStore.formatCurrency(toBudget))
-                                            .font(.headline)
-                                            .foregroundColor(toBudget >= 0 ? .green : .red)
-                                    }
-                                } else {
-                                    VStack(alignment: .trailing) {
-                                        Text("Available")
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                        Text(budgetStore.formatCurrency(budget.totalAvailable))
-                                            .font(.headline)
-                                            .foregroundColor(budget.totalAvailable >= 0 ? .green : .red)
+                                HStack(alignment: .top) {
+                                    SummaryStat(
+                                        label: "Spent",
+                                        value: budgetStore.formatCurrency(abs(budget.totalOutflow))
+                                    )
+                                    Spacer()
+                                    // Envelope budgets lead with unallocated funds;
+                                    // tracking budgets have no to-budget concept, so
+                                    // fall back to the total of category balances.
+                                    if let toBudget = budget.toBudget {
+                                        SummaryStat(
+                                            label: "To Budget",
+                                            value: budgetStore.formatCurrency(toBudget),
+                                            valueColor: toBudget >= 0 ? .green : .red,
+                                            alignment: .trailing
+                                        )
+                                    } else {
+                                        SummaryStat(
+                                            label: "Available",
+                                            value: budgetStore.formatCurrency(budget.totalAvailable),
+                                            valueColor: budget.totalAvailable >= 0 ? .green : .red,
+                                            alignment: .trailing
+                                        )
                                     }
                                 }
                             }
@@ -90,6 +93,27 @@ struct BudgetView: View {
                                     CategoryBudgetRow(category: category) {
                                         editingCategory = $0
                                     }
+                                }
+                            }
+                        }
+
+                        // Income group last, matching the bottom of the web
+                        // UI's budget table.
+                        if !budget.incomeCategories.isEmpty {
+                            Section {
+                                ForEach(budget.incomeCategories) { income in
+                                    IncomeCategoryRow(
+                                        income: income,
+                                        // Only tracking budgets budget income;
+                                        // envelope budgets just receive it.
+                                        showsBudgeted: budget.toBudget == nil
+                                    )
+                                }
+                            } header: {
+                                HStack {
+                                    Text(budget.incomeCategories.first?.groupName ?? "Income")
+                                    Spacer()
+                                    Text("Received \(budgetStore.formatCurrency(budget.totalIncome))")
                                 }
                             }
                         }
@@ -239,6 +263,51 @@ struct CategoryBudgetRow: View {
                 .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
                 Spacer()
                 Text("Spent: \(budgetStore.formatCurrency(abs(category.spent)))")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.vertical, 2)
+    }
+}
+
+/// One labeled amount in the summary card at the top of the Budget tab.
+struct SummaryStat: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+    var alignment: HorizontalAlignment = .leading
+
+    var body: some View {
+        VStack(alignment: alignment) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.headline)
+                .foregroundColor(valueColor)
+        }
+    }
+}
+
+/// One income category: name and the amount received this month. Tracking
+/// budgets can budget income, so they also get a "Budgeted" caption.
+struct IncomeCategoryRow: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let income: IncomeCategory
+    var showsBudgeted = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(income.categoryName)
+                    .font(.body)
+                Spacer()
+                Text(budgetStore.formatCurrency(income.received))
+                    .foregroundColor(income.received > 0 ? .green : .secondary)
+            }
+            if showsBudgeted {
+                Text("Budgeted: \(budgetStore.formatCurrency(income.budgeted))")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

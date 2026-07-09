@@ -877,9 +877,31 @@ class BudgetDatabase {
                 )
             }
 
+            // Income categories, shown as their own section like the web
+            // UI's Income group. "Received" is the month's net activity on
+            // the category (income transactions are positive amounts).
+            let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
+                guard cat.isIncome == 1 else { return nil }
+                guard cat.hidden != 1 else { return nil }
+                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
+                let group = groupsById[cat.catGroup ?? ""]
+
+                return IncomeCategory(
+                    month: month,
+                    categoryId: cat.id,
+                    categoryName: cat.name ?? "Unknown",
+                    groupName: group?.name ?? "Income",
+                    sortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
+                    budgeted: targetBudgets[cat.id]?.amount ?? 0,
+                    received: targetSpent[cat.id] ?? 0
+                )
+            }
+            .sorted { $0.sortOrder < $1.sortOrder }
+
             return BudgetMonth(
                 month: month,
                 categoryBudgets: categoryBudgets,
+                incomeCategories: incomeCategories,
                 toBudget: isEnvelope ? runningToBudget : nil
             )
         }
