@@ -20,11 +20,19 @@
 			remoteGlobalIDString = A7550B852EE7B4F7007026DC;
 			remoteInfo = Actuali;
 		};
+		AB00000000000000000010DF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A7550B7E2EE7B4F7007026DC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = A7550B852EE7B4F7007026DC;
+			remoteInfo = Actuali;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		A7550B862EE7B4F7007026DC /* Actuali.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Actuali.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AB0000000000000000000BDF /* ActualiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -36,6 +44,11 @@
 		A79D4A9E2FA1F8F000D5A2DF /* ActualiTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ActualiTests;
+			sourceTree = "<group>";
+		};
+		AB0000000000000000000ADF /* ActualiUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ActualiUITests;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -58,6 +71,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AB0000000000000000000EDF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -66,6 +86,7 @@
 			children = (
 				A7550B882EE7B4F7007026DC /* Actuali */,
 				A79D4A9E2FA1F8F000D5A2DF /* ActualiTests */,
+				AB0000000000000000000ADF /* ActualiUITests */,
 				A7550B872EE7B4F7007026DC /* Products */,
 			);
 			sourceTree = "<group>";
@@ -75,6 +96,7 @@
 			children = (
 				A7550B862EE7B4F7007026DC /* Actuali.app */,
 				A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */,
+				AB0000000000000000000BDF /* ActualiUITests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -130,6 +152,29 @@
 			productReference = A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
+		AB0000000000000000000CDF /* ActualiUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AB00000000000000000012DF /* Build configuration list for PBXNativeTarget "ActualiUITests" */;
+			buildPhases = (
+				AB0000000000000000000DDF /* Sources */,
+				AB0000000000000000000EDF /* Frameworks */,
+				AB0000000000000000000FDF /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AB00000000000000000011DF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				AB0000000000000000000ADF /* ActualiUITests */,
+			);
+			name = ActualiUITests;
+			packageProductDependencies = (
+			);
+			productName = ActualiUITests;
+			productReference = AB0000000000000000000BDF /* ActualiUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -144,6 +189,10 @@
 						CreatedOnToolsVersion = 26.1.1;
 					};
 					A79D4A9C2FA1F8F000D5A2DF = {
+						CreatedOnToolsVersion = 26.4.1;
+						TestTargetID = A7550B852EE7B4F7007026DC;
+					};
+					AB0000000000000000000CDF = {
 						CreatedOnToolsVersion = 26.4.1;
 						TestTargetID = A7550B852EE7B4F7007026DC;
 					};
@@ -170,6 +219,7 @@
 			targets = (
 				A7550B852EE7B4F7007026DC /* Actuali */,
 				A79D4A9C2FA1F8F000D5A2DF /* ActualiTests */,
+				AB0000000000000000000CDF /* ActualiUITests */,
 			);
 		};
 /* End PBXProject section */
@@ -183,6 +233,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		A79D4A9B2FA1F8F000D5A2DF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AB0000000000000000000FDF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -206,6 +263,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AB0000000000000000000DDF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -213,6 +277,11 @@
 			isa = PBXTargetDependency;
 			target = A7550B852EE7B4F7007026DC /* Actuali */;
 			targetProxy = A79D4AA12FA1F8F000D5A2DF /* PBXContainerItemProxy */;
+		};
+		AB00000000000000000011DF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = A7550B852EE7B4F7007026DC /* Actuali */;
+			targetProxy = AB00000000000000000010DF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -353,8 +422,8 @@
 				INFOPLIST_FILE = "Info-Debug.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -389,8 +458,8 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
-				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_LSRequiresIPhoneOS = YES;
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "Actuali uses your location to suggest nearby payees and remember where you transact. Location data stays in your budget file on your own server.";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
 				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
@@ -457,6 +526,42 @@
 			};
 			name = Release;
 		};
+		AB00000000000000000013DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOSUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Actuali;
+			};
+			name = Debug;
+		};
+		AB00000000000000000014DF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOSUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = Actuali;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -483,6 +588,15 @@
 			buildConfigurations = (
 				A79D4AA42FA1F8F000D5A2DF /* Debug */,
 				A79D4AA52FA1F8F000D5A2DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AB00000000000000000012DF /* Build configuration list for PBXNativeTarget "ActualiUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AB00000000000000000013DF /* Debug */,
+				AB00000000000000000014DF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

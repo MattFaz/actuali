@@ -12,18 +12,23 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
 
     @Published var pendingPrefill: TransactionPrefill?
 
-    nonisolated func userNotificationCenter(
+    // These async delegate methods must stay MainActor-isolated: the bridged
+    // completion handler runs on whatever executor the method finishes on,
+    // and UIKit's post-response work (state restoration, snapshotting)
+    // asserts it is on the main thread. Marking them nonisolated crashes the
+    // app on every notification tap.
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
         guard let prefill = TransactionPrefill(userInfo: response.notification.request.content.userInfo)
         else { return }
-        await MainActor.run { pendingPrefill = prefill }
+        pendingPrefill = prefill
     }
 
     // Show automation banners even while the app is foregrounded — without
     // this, iOS silently drops them and in-app users never see failures.
-    nonisolated func userNotificationCenter(
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
