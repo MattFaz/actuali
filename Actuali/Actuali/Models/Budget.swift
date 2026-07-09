@@ -5,6 +5,11 @@ struct BudgetMonth: Identifiable, Hashable {
     let month: String // Format: "2025-01"
     var categoryBudgets: [CategoryBudget]
 
+    /// Income categories for the month, shown as their own section below the
+    /// expense groups — mirrors the Income group at the bottom of the Actual
+    /// web UI's budget table.
+    var incomeCategories: [IncomeCategory] = []
+
     /// Unallocated funds for this month ("To Budget" in Actual): income plus
     /// what last month left over, minus everything budgeted. Only meaningful
     /// for envelope budgets — nil for tracking budgets.
@@ -28,6 +33,21 @@ struct BudgetMonth: Identifiable, Hashable {
     var totalAvailable: Int {
         categoryBudgets.reduce(0) { $0 + $1.available }
     }
+
+    var totalIncome: Int {
+        incomeCategories.reduce(0) { $0 + $1.received }
+    }
+}
+
+struct IncomeCategory: Identifiable, Hashable {
+    var id: String { "\(month)-\(categoryId)" }
+    let month: String
+    let categoryId: String
+    var categoryName: String
+    var groupName: String
+    var sortOrder: Double
+    var budgeted: Int // In cents; only meaningful for tracking budgets
+    var received: Int // In cents (positive when money came in)
 }
 
 struct CategoryBudget: Identifiable, Hashable {
