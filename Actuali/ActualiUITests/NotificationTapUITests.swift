@@ -56,4 +56,43 @@ final class NotificationTapUITests: XCTestCase {
         XCTAssertTrue(prefilfledPayee.waitForExistence(timeout: 5),
                       "prefilled add-transaction sheet not shown")
     }
+
+    /// Tapping the "Logged transaction" success notification should land on
+    /// the All Accounts transaction list.
+    @MainActor
+    func testTappingSuccessNotificationOpensAllAccounts() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-postSuccessNotification"]
+        app.launch()
+
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+
+        let bannerQuery = springboard.descendants(matching: .any).matching(
+            NSPredicate(format: "label CONTAINS[c] 'Logged transaction' OR identifier CONTAINS[c] 'NotificationShortLook' OR identifier CONTAINS[c] 'BannerView'")
+        ).firstMatch
+        var banner: XCUIElement?
+        for _ in 0..<30 {
+            let alert = springboard.alerts.firstMatch
+            if alert.exists,
+               let allowButton = alert.buttons.allElementsBoundByIndex.first(where: { $0.label == "Allow" }) {
+                allowButton.tap()
+            }
+            if bannerQuery.exists {
+                banner = bannerQuery
+                break
+            }
+            sleep(2)
+        }
+        guard let banner else {
+            XCTFail("success notification banner never appeared. springboard tree:\n\(springboard.debugDescription)")
+            return
+        }
+        banner.tap()
+
+        sleep(3)
+        XCTAssertEqual(app.state, .runningForeground, "app not foreground after tapping the notification")
+
+        XCTAssertTrue(app.navigationBars["All Accounts"].waitForExistence(timeout: 5),
+                      "All Accounts list not shown after tapping the success notification")
+    }
 }

@@ -1,7 +1,13 @@
 import SwiftUI
 
+/// Value-based route for the All Accounts transaction list, so the
+/// notification tap can programmatically reset the stack onto it.
+struct AllAccountsRoute: Hashable {}
+
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @StateObject private var notificationRouter = NotificationRouter.shared
+    @State private var path = NavigationPath()
 
     var totalBalance: Int {
         budgetStore.accounts.reduce(0) { $0 + $1.balance }
@@ -16,7 +22,7 @@ struct AccountsListView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             Group {
                 if budgetStore.accounts.isEmpty && !budgetStore.isLoading {
                     if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
@@ -35,9 +41,7 @@ struct AccountsListView: View {
                 } else {
                     List {
                         Section {
-                            NavigationLink {
-                                TransactionsListView()
-                            } label: {
+                            NavigationLink(value: AllAccountsRoute()) {
                                 HStack {
                                     Text("All Accounts")
                                         .font(.headline)
@@ -80,6 +84,13 @@ struct AccountsListView: View {
             .navigationDestination(for: Account.self) { account in
                 AccountDetailView(account: account)
             }
+            .navigationDestination(for: AllAccountsRoute.self) { _ in
+                TransactionsListView()
+            }
+            .onAppear(perform: consumePendingAllAccountsNavigation)
+            .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
+                if pending { consumePendingAllAccountsNavigation() }
+            }
             .refreshable {
                 await budgetStore.sync()
             }
@@ -91,6 +102,15 @@ struct AccountsListView: View {
         }
     }
 
+    /// Tapping a success notification lands here: jump the stack straight to
+    /// All Accounts (replacing anything the user had pushed) and clear the
+    /// signal. onAppear covers cold starts and tab switches; onChange covers
+    /// taps while this tab is already showing.
+    private func consumePendingAllAccountsNavigation() {
+        guard notificationRouter.pendingAllAccountsNavigation else { return }
+        path = NavigationPath([AllAccountsRoute()])
+        notificationRouter.pendingAllAccountsNavigation = false
+    }
 }
 
 struct AccountRow: View {
