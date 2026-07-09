@@ -694,7 +694,8 @@ class BudgetDatabase {
                 SELECT
                     (t.date / 100) AS month,
                     COALESCE(cm.transferId, t.category) AS category_id,
-                    SUM(t.amount) AS spent
+                    SUM(t.amount) AS spent,
+                    SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END) AS outflow
                 FROM transactions t
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN accounts a ON a.id = t.acct
@@ -708,17 +709,49 @@ class BudgetDatabase {
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
             var spentByMonthCat: [Int: [String: Int]] = [:]
+            // Outflow-only spending (inflows like refunds excluded) for the
+            // target month. The leftover chain needs the net, but the summary
+            // "Spent" total shows money that actually went out.
+            var targetOutflowByCat: [String: Int] = [:]
             for row in spentRows {
                 let m: Int = row["month"] ?? 0
                 guard m > 0, let categoryId: String = row["category_id"] else { continue }
                 let spent: Int = row["spent"] ?? 0
                 spentByMonthCat[m, default: [:]][categoryId] = spent
+                if m == targetMonthInt {
+                    targetOutflowByCat[categoryId] = row["outflow"] ?? 0
+                }
             }
 
+            // "Hold for next month" amounts, keyed by YYYYMM. Upstream writes
+            // zero_budget_months ids as sheet month strings ("2026-07"); parse
+            // digits defensively in case another client wrote "202607".
+            var bufferedByMonth: [Int: Int] = [:]
+            if isEnvelope, try db.tableExists("zero_budget_months") {
+                let bufferRows = try Row.fetchAll(db, sql: "SELECT id, buffered FROM zero_budget_months")
+                for row in bufferRows {
+                    guard let id: String = row["id"],
+                          let m = Int(id.filter(\.isNumber)),
+                          (1...12).contains(m % 100),
+                          m <= targetMonthInt else { continue }
+                    bufferedByMonth[m] = row["buffered"] ?? 0
+                }
+            }
+
+            // Category id sets for the envelope "to budget" math. Hidden
+            // categories still count toward the totals (upstream includes
+            // them in the summary sheet); only tombstoned ones drop out.
+            let categories = try CategoryRecord
+                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
+                .fetchAll(db)
+            let incomeCatIds = Set(categories.filter { $0.isIncome == 1 }.map { $0.id })
+            let expenseCatIds = Set(categories.filter { $0.isIncome != 1 }.map { $0.id })
+
             // Determine the earliest month we need to walk from. min over any
-            // budget row or any spent row. If neither, just use the target.
+            // budget row, spent row, or held amount. If none, just use the target.
             let earliestMonth: Int = {
-                let candidates = budgetByMonthCat.keys.map { $0 } + spentByMonthCat.keys.map { $0 }
+                let candidates = Array(budgetByMonthCat.keys) + Array(spentByMonthCat.keys)
+                    + Array(bufferedByMonth.keys)
                 return candidates.min() ?? targetMonthInt
             }()
 
@@ -731,10 +764,49 @@ class BudgetDatabase {
             // iterations so the next month knows whether to clamp.
             var lastFlag: [String: Bool] = [:]
 
+            // Envelope "To Budget" accumulators (mirrors loot-core
+            // envelope.ts createSummary):
+            //   to-budget = income + from-last-month + last-month-overspent
+            //               - budgeted - buffered
+            // where from-last-month = prior to-budget + prior buffered, and
+            // last-month-overspent is the negative leftover the clamp below
+            // strips from categories — that debt comes out of this month's
+            // unallocated funds instead.
+            var runningToBudget = 0
+            var priorBuffered = 0
+
             var m = earliestMonth
             while m <= targetMonthInt {
                 let budgetsForMonth = budgetByMonthCat[m] ?? [:]
                 let spentForMonth = spentByMonthCat[m] ?? [:]
+
+                if isEnvelope {
+                    var income = 0
+                    var bufferedAuto = 0
+                    for cat in incomeCatIds {
+                        let amount = spentForMonth[cat] ?? 0
+                        income += amount
+                        // Income marked "carryover" is auto-held for next
+                        // month unless a manual hold overrides it.
+                        if budgetsForMonth[cat]?.flag == true {
+                            bufferedAuto += amount
+                        }
+                    }
+                    var budgetedTotal = 0
+                    var lastMonthOverspent = 0
+                    for cat in expenseCatIds {
+                        budgetedTotal += budgetsForMonth[cat]?.amount ?? 0
+                        if !(lastFlag[cat] ?? false) {
+                            lastMonthOverspent += min(0, runningLeftover[cat] ?? 0)
+                        }
+                    }
+                    let manualBuffered = bufferedByMonth[m] ?? 0
+                    let buffered = manualBuffered != 0 ? manualBuffered : bufferedAuto
+                    runningToBudget = income + runningToBudget + priorBuffered
+                        + lastMonthOverspent - budgetedTotal - buffered
+                    priorBuffered = buffered
+                }
+
                 let touchedCats = Set(budgetsForMonth.keys)
                     .union(spentForMonth.keys)
                     .union(runningLeftover.keys)
@@ -773,9 +845,6 @@ class BudgetDatabase {
             // contribution (post clamp / flag). Reverse-derive by recomputing
             // available - budgeted - spent for each category we touched.
 
-            let categories = try CategoryRecord
-                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
-                .fetchAll(db)
             let groups = try CategoryGroupRecord
                 .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
                 .fetchAll(db)
@@ -802,12 +871,17 @@ class BudgetDatabase {
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
+                    outflow: targetOutflowByCat[cat.id] ?? 0,
                     available: available,
                     carryover: priorContribution
                 )
             }
 
-            return BudgetMonth(month: month, categoryBudgets: categoryBudgets)
+            return BudgetMonth(
+                month: month,
+                categoryBudgets: categoryBudgets,
+                toBudget: isEnvelope ? runningToBudget : nil
+            )
         }
     }
 

@@ -39,17 +39,31 @@ struct BudgetView: View {
                                     Text("Spent")
                                         .font(.caption)
                                         .foregroundStyle(.secondary)
-                                    Text(budgetStore.formatCurrency(abs(budget.totalSpent)))
+                                    Text(budgetStore.formatCurrency(abs(budget.totalOutflow)))
                                         .font(.headline)
                                 }
                                 Spacer()
-                                VStack(alignment: .trailing) {
-                                    Text("Available")
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                    Text(budgetStore.formatCurrency(budget.totalAvailable))
-                                        .font(.headline)
-                                        .foregroundColor(budget.totalAvailable >= 0 ? .green : .red)
+                                // Envelope budgets lead with unallocated funds;
+                                // tracking budgets have no to-budget concept, so
+                                // fall back to the total of category balances.
+                                if let toBudget = budget.toBudget {
+                                    VStack(alignment: .trailing) {
+                                        Text("To Budget")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text(budgetStore.formatCurrency(toBudget))
+                                            .font(.headline)
+                                            .foregroundColor(toBudget >= 0 ? .green : .red)
+                                    }
+                                } else {
+                                    VStack(alignment: .trailing) {
+                                        Text("Available")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                        Text(budgetStore.formatCurrency(budget.totalAvailable))
+                                            .font(.headline)
+                                            .foregroundColor(budget.totalAvailable >= 0 ? .green : .red)
+                                    }
                                 }
                             }
                             .padding(.vertical, 4)

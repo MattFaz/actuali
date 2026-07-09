@@ -5,12 +5,24 @@ struct BudgetMonth: Identifiable, Hashable {
     let month: String // Format: "2025-01"
     var categoryBudgets: [CategoryBudget]
 
+    /// Unallocated funds for this month ("To Budget" in Actual): income plus
+    /// what last month left over, minus everything budgeted. Only meaningful
+    /// for envelope budgets — nil for tracking budgets.
+    var toBudget: Int?
+
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
 
     var totalSpent: Int {
         categoryBudgets.reduce(0) { $0 + $1.spent }
+    }
+
+    /// Money that actually left the budget this month — inflows (refunds,
+    /// reimbursements) are excluded so a positive-heavy month doesn't show
+    /// a misleading "Spent" total.
+    var totalOutflow: Int {
+        categoryBudgets.reduce(0) { $0 + $1.outflow }
     }
 
     var totalAvailable: Int {
@@ -28,7 +40,8 @@ struct CategoryBudget: Identifiable, Hashable {
     var groupSortOrder: Double
     var categorySortOrder: Double
     var budgeted: Int // In cents
-    var spent: Int // In cents (negative value)
+    var spent: Int // In cents (negative value, net of inflows)
+    var outflow: Int = 0 // In cents (negative transactions only)
     var available: Int // In cents (budgeted + spent + carryover)
     var carryover: Int
 
