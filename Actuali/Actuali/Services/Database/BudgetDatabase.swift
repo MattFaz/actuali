@@ -403,7 +403,7 @@ class BudgetDatabase {
                     t.description, t.notes, t.date, t.imported_description,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    COALESCE(pa.name, p.name) as payee_name,
+                    COALESCE(pa.name, p.name, cpa.name, cp.name) as payee_name,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
@@ -412,6 +412,24 @@ class BudgetDatabase {
                 -- linked account's name (matches Actual's v_payees view).
                 LEFT JOIN accounts pa ON pa.id = p.transfer_acct
                     AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                -- Split parents may carry no payee of their own (payees can
+                -- live on the children, GH #47). When the live children agree
+                -- on one payee, display it; mixed payees resolve NULL and the
+                -- UI labels the row "Split".
+                LEFT JOIN (
+                    SELECT ct.parent_id AS parent_id,
+                           CASE WHEN COUNT(DISTINCT ct.description) = 1
+                                THEN MIN(ct.description) END AS payee
+                    FROM transactions ct
+                    WHERE ct.isChild = 1
+                      AND (ct.tombstone = 0 OR ct.tombstone IS NULL)
+                      AND ct.description IS NOT NULL
+                    GROUP BY ct.parent_id
+                ) child_payee ON t.isParent = 1 AND child_payee.parent_id = t.id
+                LEFT JOIN payee_mapping cpm ON cpm.id = child_payee.payee
+                LEFT JOIN payees cp ON cp.id = cpm.targetId
+                LEFT JOIN accounts cpa ON cpa.id = cp.transfer_acct
+                    AND (cpa.tombstone = 0 OR cpa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
@@ -429,6 +447,85 @@ class BudgetDatabase {
             arguments.append(String(limit))
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+
+            // Split parents have no category of their own; carry the live
+            // children's category + amount as portions so the list row can
+            // show the breakdown ("Food $6.00, Fun $4.00") without opening it.
+            let parentIds: [String] = rows.compactMap { row in
+                (row["isParent"] == 1) ? row["id"] : nil
+            }
+            var splitPortions: [String: [Transaction.SplitPortion]] = [:]
+            if !parentIds.isEmpty {
+                let placeholders = Array(repeating: "?", count: parentIds.count).joined(separator: ", ")
+                let childRows = try Row.fetchAll(db, sql: """
+                    SELECT ct.parent_id AS parent_id, ct.amount AS amount,
+                           c.name AS category_name
+                    FROM transactions ct
+                    LEFT JOIN category_mapping cm ON cm.id = ct.category
+                    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, ct.category)
+                    WHERE ct.parent_id IN (\(placeholders))
+                      AND (ct.tombstone = 0 OR ct.tombstone IS NULL)
+                    ORDER BY ct.sort_order DESC
+                    """, arguments: StatementArguments(parentIds))
+                for childRow in childRows {
+                    guard let parentId: String = childRow["parent_id"] else { continue }
+                    splitPortions[parentId, default: []].append(Transaction.SplitPortion(
+                        categoryName: childRow["category_name"],
+                        amount: childRow["amount"] ?? 0
+                    ))
+                }
+            }
+
+            return rows.map { row in
+                let id: String = row["id"]
+                var transaction = Transaction(
+                    id: id,
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: row["payee_name"],
+                    categoryId: row["category"],
+                    categoryName: row["category_name"],
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+                transaction.splitPortions = splitPortions[id]
+                return transaction
+            }
+        }
+    }
+
+    /// All live children of a split parent, in entry order (descending
+    /// sort_order, matching the list convention).
+    func fetchChildTransactions(parentId: String) async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id,
+                    COALESCE(pa.name, p.name) as payee_name,
+                    c.name as category_name
+                FROM transactions t
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.parent_id = ?
+                ORDER BY t.sort_order DESC
+                """, arguments: [parentId])
 
             return rows.map { row in
                 Transaction(
@@ -1237,12 +1334,32 @@ class BudgetDatabase {
         }
     }
 
+    /// Inserts a split parent, its children and their CRDT messages in a
+    /// single SQLite transaction, so a failure on any row rolls back
+    /// everything and no partial split can persist.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func insertSplit(
+        parent: Transaction,
+        children: [Transaction],
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.insertTransactionRow(db, parent)
+            for child in children {
+                try Self.insertTransactionRow(db, child)
+            }
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     private static func insertTransactionRow(_ db: Database, _ transaction: Transaction) throws {
-        // sort_order uses current timestamp (ms) so new transactions appear at the top
-        let sortOrder = Date().timeIntervalSince1970 * 1000
+        // sort_order defaults to the current timestamp (ms) so new
+        // transactions appear at the top; split rows pass explicit values so
+        // children keep their entry order under the parent.
+        let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, parent_id, tombstone, sort_order, imported_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1255,6 +1372,7 @@ class BudgetDatabase {
                 transaction.reconciled ? 1 : 0,
                 transaction.transferId,
                 transaction.isParent ? 1 : 0,
+                transaction.parentId != nil ? 1 : 0,
                 transaction.parentId,
                 transaction.tombstone ? 1 : 0,
                 sortOrder,

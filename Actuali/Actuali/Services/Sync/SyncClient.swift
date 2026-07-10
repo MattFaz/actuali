@@ -221,6 +221,34 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Create a split parent and its children atomically (optimistic
+    /// local-first). Like transfers, all rows and their CRDT messages commit
+    /// in one SQLite transaction and rules are skipped — the caller builds
+    /// every row explicitly.
+    func createSplit(parent: Transaction, children: [Transaction]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createSplit() - parent: \(parent.id, privacy: .private), children: \(children.count, privacy: .public)")
+
+        // 1. Generate CRDT messages for every row up front
+        var messages = try await messageGenerator.messagesForInsert(parent)
+        for child in children {
+            messages += try await messageGenerator.messagesForInsert(child)
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for split")
+
+        // 2. Persist rows + messages in one DB transaction, then update merkle
+        for msg in try database.insertSplit(parent: parent, children: children, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Split stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 3. Sync to push all rows to the server (rate-limited)
+        await automaticSync()
+    }
+
     /// Update an existing transaction (optimistic local-first)
     /// - Parameters:
     ///   - transaction: The full updated transaction (used for both local UPDATE and CRDT field values)

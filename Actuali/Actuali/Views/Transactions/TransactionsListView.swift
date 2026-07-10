@@ -80,14 +80,34 @@ struct TransactionRow: View {
         budgetStore.accounts.first { $0.id == transaction.accountId }?.name ?? "Unknown Account"
     }
 
+    /// Caption under the payee. Split parents show their children's
+    /// breakdown ("Food $6.00, Fun $4.00"); amounts are unsigned because the
+    /// row's total already carries the sign.
+    private var categoryLabel: String {
+        if let portions = transaction.splitPortions, !portions.isEmpty {
+            return portions.map { portion in
+                let name = portion.categoryName ?? "Uncategorized"
+                return "\(name) \(budgetStore.formatCurrency(abs(portion.amount)))"
+            }.joined(separator: ", ")
+        }
+        return transaction.categoryName ?? (transaction.isParent ? "Split" : "Uncategorized")
+    }
+
     var body: some View {
         HStack(spacing: 10) {
             ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
             VStack(alignment: .leading, spacing: 2) {
-                Text(transaction.payeeName ?? "Unknown")
+                // Split parents may resolve no payee (mixed child payees) —
+                // label them "Split" like the desktop app, not "Unknown".
+                Text(transaction.payeeName ?? (transaction.isParent ? "Split" : "Unknown"))
                     .font(.body)
                 HStack(spacing: 4) {
-                    Text(transaction.categoryName ?? "Uncategorized")
+                    if transaction.isParent {
+                        Image(systemName: "arrow.triangle.branch")
+                            .font(.caption2)
+                            .foregroundStyle(.secondary)
+                    }
+                    Text(categoryLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     if let notes = transaction.notes, !notes.isEmpty {

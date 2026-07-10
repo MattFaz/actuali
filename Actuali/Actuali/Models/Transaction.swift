@@ -30,6 +30,15 @@ struct Transaction: Identifiable, Hashable {
     // engines need it to exclude transfers the way the WebUI does. Not synced
     // (it lives on the payee, not the transaction).
     var transferAcct: String? = nil
+    // One entry per live child of a split parent, in entry order. Only
+    // populated by fetchTransactions for isParent rows, so the list row can
+    // show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
+    var splitPortions: [SplitPortion]? = nil
+
+    struct SplitPortion: Hashable {
+        var categoryName: String?
+        var amount: Int  // cents, signed like the parent
+    }
 
     var dateFormatted: String {
         let year = date / 10000
@@ -97,6 +106,7 @@ extension Transaction: CRDTSyncable {
             "reconciled": reconciled ? 1 : 0,
             "transferred_id": transferId,
             "isParent": isParent ? 1 : 0,
+            "isChild": parentId != nil ? 1 : 0,
             "parent_id": parentId,
             "tombstone": tombstone ? 1 : 0,
             "sort_order": sortOrder ?? Date().timeIntervalSince1970 * 1000,

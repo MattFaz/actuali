@@ -23,6 +23,8 @@ struct AddTransactionView: View {
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
     @State private var nearbyPayees: [NearbyPayee] = []
+    @State private var splitLines: [BudgetStore.SplitLineForm] = []
+    @State private var splitChildren: [Transaction] = []
 
     @FocusState private var payeeFocused: Bool
 
@@ -68,6 +70,22 @@ struct AddTransactionView: View {
 
     private var isEditing: Bool { editing != nil }
     private var isTransfer: Bool { txType == .transfer }
+    private var isEditingSplitParent: Bool { editing?.isParent == true }
+    private var isSplitting: Bool { !splitLines.isEmpty }
+
+    /// Cents still unassigned across the split lines, nil while the total or
+    /// any line doesn't parse yet.
+    private var splitRemainingCents: Int? {
+        guard let dollars = Double(amount),
+              let total = Transaction.cents(fromDollars: dollars) else { return nil }
+        var assigned = 0
+        for line in splitLines {
+            guard let lineDollars = Double(line.amount),
+                  let cents = Transaction.cents(fromDollars: lineDollars) else { return nil }
+            assigned += cents
+        }
+        return total - assigned
+    }
 
     /// Open accounts ordered to match the webapp's AccountAutocomplete:
     /// on-budget first, then off-budget, each group by sort_order.
@@ -171,12 +189,16 @@ struct AddTransactionView: View {
                             }
                         }
                         .pickerStyle(.segmented)
+                        // A split parent's amount and sign are the children's
+                        // sum; both are edited through the split, not here.
+                        .disabled(isEditingSplitParent)
                     }
 
                     HStack {
                         Text(amountSignSymbol)
                             .foregroundStyle(amountSignColor)
                         AmountInputField(text: $amount)
+                            .disabled(isEditingSplitParent)
                     }
                 }
 
@@ -263,21 +285,63 @@ struct AddTransactionView: View {
                             }
                         }
 
-                        NavigationLink {
-                            CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                userPickedCategory = true
-                            }
-                        } label: {
+                        if isEditingSplitParent {
+                            // The category lives on the children; show the
+                            // breakdown in its own section below.
                             HStack {
                                 Text("Category")
                                 Spacer()
-                                Text(selectedCategoryName)
+                                Text("Split")
                                     .foregroundStyle(.secondary)
+                            }
+                        } else if !isSplitting {
+                            NavigationLink {
+                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                                    userPickedCategory = true
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Category")
+                                    Spacer()
+                                    Text(selectedCategoryName)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            if !isEditing {
+                                Button {
+                                    splitLines = [.init(), .init()]
+                                } label: {
+                                    Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
+                                }
                             }
                         }
                     }
 
                     DatePicker("Date", selection: $date, displayedComponents: .date)
+                }
+
+                if isSplitting && !isTransfer {
+                    splitEntrySection
+                }
+
+                if isEditingSplitParent && !splitChildren.isEmpty {
+                    Section("Split Breakdown") {
+                        ForEach(splitChildren) { child in
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(child.categoryName ?? "Uncategorized")
+                                    if let childNotes = child.notes, !childNotes.isEmpty {
+                                        Text(childNotes)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                Spacer()
+                                Text(budgetStore.formatCurrency(child.amount))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
                 }
 
                 Section {
@@ -328,6 +392,41 @@ struct AddTransactionView: View {
                 }
             }
             .disabled(isLoading)
+            .task {
+                if let editing, editing.isParent {
+                    splitChildren = await budgetStore.fetchSplitChildren(parentId: editing.id)
+                }
+            }
+        }
+    }
+
+    /// Editable split lines for the add flow: one category + amount per
+    /// line, with the unassigned remainder in the footer.
+    private var splitEntrySection: some View {
+        Section {
+            ForEach($splitLines) { $line in
+                SplitLineRow(line: $line)
+            }
+            .onDelete { offsets in
+                splitLines.remove(atOffsets: offsets)
+            }
+            Button {
+                splitLines.append(.init())
+            } label: {
+                Label("Add Line", systemImage: "plus")
+            }
+            Button(role: .destructive) {
+                splitLines = []
+            } label: {
+                Text("Remove Split")
+            }
+        } header: {
+            Text("Split")
+        } footer: {
+            if let remaining = splitRemainingCents, remaining != 0 {
+                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                    .foregroundStyle(.red)
+            }
         }
     }
 
@@ -355,6 +454,7 @@ struct AddTransactionView: View {
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
         if isTransfer && transferToAccountId == nil { return true }
+        if isSplitting && !isTransfer && splitRemainingCents != 0 { return true }
         return false
     }
 
@@ -372,7 +472,8 @@ struct AddTransactionView: View {
             categoryId: selectedCategoryId,
             notes: notes,
             date: date,
-            cleared: cleared
+            cleared: cleared,
+            splits: isTransfer ? [] : splitLines
         )
 
         do {
@@ -400,6 +501,45 @@ struct AddTransactionView: View {
         date = Date()
         cleared = false
         errorMessage = nil
+        splitLines = []
+    }
+}
+
+/// One editable split line: a category picked through a sheet and an amount.
+/// Borderless button so the amount field keeps its own tap target in the row.
+private struct SplitLineRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Binding var line: BudgetStore.SplitLineForm
+    @State private var showCategoryPicker = false
+
+    private var categoryName: String {
+        guard let id = line.categoryId else { return "Category" }
+        for group in budgetStore.categoryGroups {
+            if let match = group.categories.first(where: { $0.id == id }) {
+                return match.name
+            }
+        }
+        return "Category"
+    }
+
+    var body: some View {
+        HStack {
+            Button {
+                showCategoryPicker = true
+            } label: {
+                Text(categoryName)
+                    .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
+            }
+            .buttonStyle(.borderless)
+            Spacer()
+            AmountInputField(text: $line.amount)
+                .frame(width: 110)
+        }
+        .sheet(isPresented: $showCategoryPicker) {
+            NavigationStack {
+                CategoryPickerView(selectedCategoryId: $line.categoryId)
+            }
+        }
     }
 }
 

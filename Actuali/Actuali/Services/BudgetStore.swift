@@ -15,6 +15,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case missingTransferDestination
     case payeeCreationFailed(String)
     case cannotConvertToTransfer
+    case cannotConvertToSplit
+    case splitNeedsTwoLines
+    case splitAmountMismatch
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +37,12 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Failed to create payee: \(message)"
         case .cannotConvertToTransfer:
             return "Can't convert an existing transaction into a transfer"
+        case .cannotConvertToSplit:
+            return "Can't convert an existing transaction into a split"
+        case .splitNeedsTwoLines:
+            return "A split needs at least two lines"
+        case .splitAmountMismatch:
+            return "Split amounts must add up to the total"
         }
     }
 }
@@ -872,12 +881,44 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Children share their parent's account, date and cleared state; keep
+    /// them aligned after a parent edit (mirrors desktop split behavior —
+    /// reports read the children, so a stale child date would misfile them).
+    private func cascadeSharedFieldsToChildren(of parent: Transaction) async throws {
+        guard let database else { return }
+        for child in try await database.fetchChildTransactions(parentId: parent.id) {
+            var updated = child
+            updated.accountId = parent.accountId
+            updated.date = parent.date
+            updated.cleared = parent.cleared
+            if updated != child {
+                try await updateTransaction(updated, original: child)
+            }
+        }
+    }
+
+    /// Split children of a parent, for the edit sheet's breakdown display.
+    /// Failures collapse to an empty list — display only.
+    func fetchSplitChildren(parentId: String) async -> [Transaction] {
+        guard let database else { return [] }
+        return (try? await database.fetchChildTransactions(parentId: parentId)) ?? []
+    }
+
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
         do {
             guard let syncClient else {
                 throw BudgetStoreError.syncNotConfigured
+            }
+            // Deleting a split deletes its children too — orphaned children
+            // would be invisible in the list but still feed reports.
+            if transaction.isParent, let database {
+                for child in try await database.fetchChildTransactions(parentId: transaction.id) {
+                    var deletedChild = child
+                    deletedChild.tombstone = true
+                    try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
+                }
             }
             var deleted = transaction
             deleted.tombstone = true
@@ -904,6 +945,30 @@ final class BudgetStore: ObservableObject {
         var notes: String
         var date: Date
         var cleared: Bool
+        var splits: [SplitLineForm] = []
+    }
+
+    /// One line of a split entered in the form. `amount` is raw field text,
+    /// unsigned like `TransactionForm.amount`.
+    struct SplitLineForm: Identifiable, Equatable {
+        let id: UUID
+        var categoryId: String?
+        var amount: String
+        var notes: String
+
+        init(id: UUID = UUID(), categoryId: String? = nil, amount: String = "", notes: String = "") {
+            self.id = id
+            self.categoryId = categoryId
+            self.amount = amount
+            self.notes = notes
+        }
+    }
+
+    /// A validated split line: signed cents, ready to become a child row.
+    struct SplitPlanLine: Equatable {
+        var categoryId: String?
+        var amountCents: Int
+        var notes: String?
     }
 
     /// The store-side action a form resolves to. Validation and routing are
@@ -911,6 +976,7 @@ final class BudgetStore: ObservableObject {
     enum TransactionFormPlan: Equatable {
         case transfer(toAccountId: String, amountCents: Int)
         case standard(amountCents: Int)
+        case split(amountCents: Int, lines: [SplitPlanLine])
     }
 
     static func plan(for form: TransactionForm) throws -> TransactionFormPlan {
@@ -925,10 +991,42 @@ final class BudgetStore: ObservableObject {
             }
             return .transfer(toAccountId: toAccountId, amountCents: unsignedCents)
         case .expense:
-            return .standard(amountCents: -unsignedCents)
+            return try planStandardOrSplit(form, amountCents: -unsignedCents, sign: -1)
         case .income:
-            return .standard(amountCents: unsignedCents)
+            return try planStandardOrSplit(form, amountCents: unsignedCents, sign: 1)
         }
+    }
+
+    /// Resolve an expense/income form to `.standard`, or `.split` when split
+    /// lines are present: every line must parse to a positive amount and the
+    /// lines must add up exactly to the total.
+    private static func planStandardOrSplit(
+        _ form: TransactionForm,
+        amountCents: Int,
+        sign: Int
+    ) throws -> TransactionFormPlan {
+        guard !form.splits.isEmpty else {
+            return .standard(amountCents: amountCents)
+        }
+        guard form.splits.count >= 2 else {
+            throw BudgetStoreError.splitNeedsTwoLines
+        }
+        let lines = try form.splits.map { line in
+            guard let dollars = Double(line.amount),
+                  let cents = Transaction.cents(fromDollars: dollars),
+                  cents > 0 else {
+                throw BudgetStoreError.invalidAmount
+            }
+            return SplitPlanLine(
+                categoryId: line.categoryId,
+                amountCents: sign * cents,
+                notes: line.notes.isEmpty ? nil : line.notes
+            )
+        }
+        guard lines.map(\.amountCents).reduce(0, +) == amountCents else {
+            throw BudgetStoreError.splitAmountMismatch
+        }
+        return .split(amountCents: amountCents, lines: lines)
     }
 
     /// Save the add/edit form: transfers become a paired transfer, everything
@@ -956,19 +1054,84 @@ final class BudgetStore: ObservableObject {
                 cleared: form.cleared
             )
 
+        case .split(let amountCents, let lines):
+            // Converting an existing transaction into a split would leave its
+            // history (transfer links, reconciliation) on a parent whose
+            // children were never reconciled. Refuse, like transfers; the UI
+            // hides split entry when editing.
+            guard original == nil else {
+                throw BudgetStoreError.cannotConvertToSplit
+            }
+            let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
+            let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+            let parentId = UUID().uuidString
+            // Explicit sort orders keep the children in entry order under the parent
+            let parentSort = Date().timeIntervalSince1970 * 1000
+            let parent = Transaction(
+                id: parentId,
+                accountId: form.accountId,
+                date: date,
+                amount: amountCents,
+                payeeId: payeeId,
+                payeeName: payeeName,
+                categoryId: nil,  // split parents never carry a category
+                categoryName: nil,
+                notes: notes,
+                cleared: form.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: true,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: parentSort,
+                importedPayee: payeeName
+            )
+            let children = lines.enumerated().map { index, line in
+                Transaction(
+                    id: UUID().uuidString,
+                    accountId: form.accountId,
+                    date: date,
+                    amount: line.amountCents,
+                    payeeId: nil,  // the payee lives on the parent
+                    payeeName: nil,
+                    categoryId: line.categoryId,
+                    categoryName: nil,
+                    notes: line.notes,
+                    cleared: form.cleared,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: parentId,
+                    tombstone: false,
+                    sortOrder: parentSort - Double(index + 1),
+                    importedPayee: nil
+                )
+            }
+            guard let syncClient else {
+                throw BudgetStoreError.syncNotConfigured
+            }
+            try await syncClient.createSplit(parent: parent, children: children)
+            await refreshDataOnly()
+            if let payeeId {
+                recordPayeeLocationIfAppropriate(payeeId: payeeId)
+            }
+
         case .standard(let amountCents):
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
 
             if let original {
+                // Split parents: the amount is the children's sum and the
+                // category lives on the children — never overwrite either
+                // from the form.
                 let updated = Transaction(
                     id: original.id,
                     accountId: form.accountId,
                     date: date,
-                    amount: amountCents,
+                    amount: original.isParent ? original.amount : amountCents,
                     payeeId: payeeId,
                     payeeName: payeeName,
-                    categoryId: form.categoryId,
+                    categoryId: original.isParent ? nil : form.categoryId,
                     categoryName: nil,
                     notes: notes,
                     cleared: form.cleared,
@@ -980,6 +1143,9 @@ final class BudgetStore: ObservableObject {
                     sortOrder: original.sortOrder
                 )
                 try await updateTransaction(updated, original: original)
+                if original.isParent {
+                    try await cascadeSharedFieldsToChildren(of: updated)
+                }
             } else {
                 let transaction = Transaction(
                     id: UUID().uuidString,
