@@ -5,8 +5,17 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var transactions: [Transaction] = []
+    @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var editingTransaction: Transaction?
+
+    var filteredTransactions: [Transaction] {
+        if searchText.isEmpty {
+            return transactions
+        }
+        let matcher = TransactionSearchMatcher(searchText)
+        return transactions.filter { matcher.matches($0) }
+    }
 
     var body: some View {
         List {
@@ -23,8 +32,11 @@ struct AccountDetailView: View {
                 if transactions.isEmpty {
                     Text("No transactions")
                         .foregroundStyle(.secondary)
+                } else if filteredTransactions.isEmpty {
+                    Text("No matching transactions")
+                        .foregroundStyle(.secondary)
                 } else {
-                    ForEach(transactions) { transaction in
+                    ForEach(filteredTransactions) { transaction in
                         Button {
                             editingTransaction = transaction
                         } label: {
@@ -53,6 +65,7 @@ struct AccountDetailView: View {
             }
         }
         .navigationTitle(account.name)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {

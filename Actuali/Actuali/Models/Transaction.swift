@@ -25,6 +25,20 @@ struct Transaction: Identifiable, Hashable {
     var tombstone: Bool
     var sortOrder: Double? // Timestamp in ms, determines order within same date
     var importedPayee: String? // Original payee text from import / Shortcut entry
+    // Payee's transfer_acct: the account on the other side when the payee is a
+    // transfer payee, nil otherwise. Only populated by the reports fetch, where
+    // engines need it to exclude transfers the way the WebUI does. Not synced
+    // (it lives on the payee, not the transaction).
+    var transferAcct: String? = nil
+    // One entry per live child of a split parent, in entry order. Only
+    // populated by fetchTransactions for isParent rows, so the list row can
+    // show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
+    var splitPortions: [SplitPortion]? = nil
+
+    struct SplitPortion: Hashable {
+        var categoryName: String?
+        var amount: Int  // cents, signed like the parent
+    }
 
     var dateFormatted: String {
         let year = date / 10000
@@ -92,6 +106,7 @@ extension Transaction: CRDTSyncable {
             "reconciled": reconciled ? 1 : 0,
             "transferred_id": transferId,
             "isParent": isParent ? 1 : 0,
+            "isChild": parentId != nil ? 1 : 0,
             "parent_id": parentId,
             "tombstone": tombstone ? 1 : 0,
             "sort_order": sortOrder ?? Date().timeIntervalSince1970 * 1000,

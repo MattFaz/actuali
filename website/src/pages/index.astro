@@ -5,40 +5,28 @@ const appStore = "https://apps.apple.com/app/actuali/id6764063765";
 
 const screens = [
   {
-    title: "Accounts at a glance",
-    body: "Net worth, balances, and which accounts are on-budget — the first thing you see.",
-    src: "/screenshots/accounts.png",
-    alt: "The Accounts tab showing net worth and account balances.",
-  },
-  {
-    title: "Every transaction, searchable",
-    body: "Scroll and search your full history, with cleared status and categories at a glance.",
-    src: "/screenshots/transactions.png",
-    alt: "An account's transaction list with recent entries.",
+    title: "Every account, every transaction",
+    body: "Balances grouped by on- and off-budget, a combined All Accounts view, and your full history with cleared status at a glance. Search any account by payee, category, notes — or the amount you half-remember.",
+    src: "/screenshots/view-accounts.png",
+    alt: "The All Accounts view showing a searchable transaction list.",
   },
   {
     title: "Log in seconds",
-    body: "Expense, income, or transfer — a couple of taps and it syncs straight into your budget.",
-    src: "/screenshots/add-transaction.png",
+    body: "Expense, income, or transfer — payees autocomplete, the category fills in from your history with that payee, and nearby payees are suggested based on where you are. A couple of taps and it syncs into your budget.",
+    src: "/screenshots/add-transactions.png",
     alt: "The Add Transaction screen with type, amount, account, and category.",
   },
   {
-    title: "Budget at a glance",
-    body: "Category-by-category budgeted vs spent for the current month. No month-end surprises.",
-    src: "/screenshots/budget.png",
-    alt: "The Budget tab showing category totals for the current month.",
+    title: "Budget you can act on",
+    body: "Budgeted vs spent per category with progress bars, leftover balances that roll over month to month, and an uncategorized-transactions view so nothing slips through. Edit budgeted amounts right from your phone.",
+    src: "/screenshots/view-budgets.png",
+    alt: "The Budget tab showing category totals and progress bars for the current month.",
   },
   {
-    title: "Reports that matter",
-    body: "Net worth trends, cash flow, and spending vs. your average — a dashboard that syncs from your Actual server.",
-    src: "/screenshots/reports.png",
-    alt: "The Reports tab showing net worth and cash flow charts.",
-  },
-  {
-    title: "Your data, your server",
-    body: "Connect the Actual server you self-host — or tap Try the demo budget to explore with sample data first.",
-    src: "/screenshots/settings.png",
-    alt: "The Settings tab showing server connection options.",
+    title: "Reports, day or night",
+    body: "The dashboard you configured in the Actual webapp — net worth, cash flow, spending vs your average — rendered natively. Light and Dark mode follow your system, or pin whichever you prefer.",
+    src: "/screenshots/reports-dark-light.png",
+    alt: "The Reports tab shown half in dark mode and half in light mode.",
   },
 ];
 
@@ -55,6 +43,12 @@ const icons: Record<string, string> = {
     '<rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.5h.01M7 16.5h.01"/>',
   offline:
     '<path d="M5 12.5a7 7 0 0 1 11-1.5"/><path d="M8.5 16a3.5 3.5 0 0 1 5 0"/><path d="M12 19.5h.01"/><path d="m3 3 18 18"/>',
+  filter: '<path d="M22 3H2l8 9.5V19l4 2v-8.5L22 3Z"/>',
+  chart:
+    '<path d="M3 3v18h18"/><path d="M18 17V9"/><path d="M13 17V5"/><path d="M8 17v-3"/>',
+  pin: '<path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/>',
+  pencil:
+    '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
   sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/>',
   shield:
     '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/>',
@@ -68,18 +62,38 @@ const supported = [
   },
   {
     icon: "bolt",
-    title: "iOS Shortcuts",
-    body: 'Log a transaction with Siri, a Home Screen widget, or an automation. The "Log Transaction" shortcut takes amount, account, payee, and category and writes straight into your budget.',
+    title: "Siri, Shortcuts & Wallet",
+    body: 'Log a transaction with Siri, a Home Screen widget, or an automation — amounts work even when they arrive as text. Pair it with the <a href="/guides/wallet-automation" class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">Apple Wallet automation guide</a> to log Apple Pay purchases as you make them. If a background log ever fails, tapping the notification opens a prefilled form so nothing is lost.',
+  },
+  {
+    icon: "search",
+    title: "Search everything",
+    body: "Search your full history or a single account by payee, category, or notes — and by amount, so \"that charge for about $45\" takes two seconds to find. Cleared status and categories are visible right in the list.",
+  },
+  {
+    icon: "pin",
+    title: "Smart payees",
+    body: "Payees autocomplete as you type, the category auto-fills from your history with that payee, nearby payees are suggested from where you've logged before, and Apple Pay-style merchant strings get cleaned up automatically.",
+  },
+  {
+    icon: "filter",
+    title: "Your rules, respected",
+    body: "The rules you built in Actual run on transactions logged from the app and from Shortcuts — rename rules, category rules, and note edits apply before the row is written, exactly like on desktop.",
+  },
+  {
+    icon: "pencil",
+    title: "Budgets you can edit",
+    body: "Change budgeted amounts in-app, watch per-category progress bars, and let leftover balances carry over month to month. Hidden categories and your custom ordering match the webapp.",
+  },
+  {
+    icon: "chart",
+    title: "Your reports dashboard",
+    body: "The Reports tab renders the dashboard you configured in the Actual webapp — Net Worth, Cash Flow, Spending, and Summary widgets with real data, synced from your server.",
   },
   {
     icon: "theme",
     title: "Light & Dark mode",
     body: "Follows your system appearance by default, or pin it to Light or Dark from Settings. Tuned for both so your morning coffee log doesn't blind you.",
-  },
-  {
-    icon: "search",
-    title: "Search, accounts, and budgets",
-    body: "Browse and search your full transaction history, see balances and net worth across accounts, and check category-by-category budgeted vs spent for the current month.",
   },
 ];
 
@@ -181,21 +195,21 @@ const privacy = [
         </p>
       </div>
 
-      <div class="relative mx-auto w-full max-w-[17rem] sm:max-w-xs">
+      <div class="relative mx-auto w-full max-w-[19rem] sm:max-w-sm">
         <div
           class="pointer-events-none absolute -inset-6 -z-10 rounded-full bg-violet-200/40 blur-2xl"
           aria-hidden="true"
         >
         </div>
         <div
-          class="overflow-hidden rounded-[2.75rem] border border-neutral-200 bg-white p-2 shadow-2xl ring-1 ring-black/5"
+          class="overflow-hidden rounded-3xl shadow-2xl ring-1 ring-black/5"
         >
           <img
-            src="/screenshots/accounts.png"
+            src="/screenshots/hero.png"
             width="1320"
             height="2868"
-            alt="The Accounts tab of the Actuali app."
-            class="block w-full rounded-[2.25rem]"
+            alt="The Accounts tab of the Actuali app showing net worth and account balances."
+            class="block w-full"
             loading="eager"
           />
         </div>
@@ -219,11 +233,11 @@ const privacy = [
       </p>
     </div>
 
-    <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+    <div class="grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
       {
         screens.map((screen) => (
           <div class="group space-y-4">
-            <div class="overflow-hidden rounded-3xl border border-neutral-200 bg-white shadow-lg transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl">
+            <div class="overflow-hidden rounded-3xl shadow-lg ring-1 ring-black/5 transition duration-300 group-hover:-translate-y-1 group-hover:shadow-xl">
               <img
                 src={screen.src}
                 width="1320"
@@ -276,7 +290,7 @@ const privacy = [
               />
             </div>
             <h3 class="font-semibold">{feature.title}</h3>
-            <p class="mt-1.5 text-sm text-neutral-600">{feature.body}</p>
+            <p class="mt-1.5 text-sm text-neutral-600" set:html={feature.body} />
           </div>
         ))
       }

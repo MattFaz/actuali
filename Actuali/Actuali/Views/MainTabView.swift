@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MainTabView: View {
     @State private var selectedTab = initialTab()
+    @StateObject private var notificationRouter = NotificationRouter.shared
 
     private static func initialTab() -> Int {
         #if DEBUG
@@ -45,6 +46,9 @@ struct MainTabView: View {
                     Label("Settings", systemImage: "gear")
                 }
                 .tag(4)
+        }
+        .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
+            if pending { selectedTab = 0 }
         }
     }
 }

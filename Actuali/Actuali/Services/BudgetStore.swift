@@ -15,6 +15,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case missingTransferDestination
     case payeeCreationFailed(String)
     case cannotConvertToTransfer
+    case cannotConvertToSplit
+    case splitNeedsTwoLines
+    case splitAmountMismatch
 
     var errorDescription: String? {
         switch self {
@@ -34,6 +37,12 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Failed to create payee: \(message)"
         case .cannotConvertToTransfer:
             return "Can't convert an existing transaction into a transfer"
+        case .cannotConvertToSplit:
+            return "Can't convert an existing transaction into a split"
+        case .splitNeedsTwoLines:
+            return "A split needs at least two lines"
+        case .splitAmountMismatch:
+            return "Split amounts must add up to the total"
         }
     }
 }
@@ -116,11 +125,19 @@ final class BudgetStore: ObservableObject {
     @Published var remoteBudgets: [RemoteBudget] = []
     @Published var accounts: [Account] = []
     @Published var transactions: [Transaction] = []
+    /// How many transactions still need a category (drives the Budget tab
+    /// link to UncategorizedTransactionsView).
+    @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var currentBudgetMonth: BudgetMonth?
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
+
+    /// Whether we may WRITE payee_locations CRDT messages (server >= 26.4.0,
+    /// probed via `GET /info` after each budget load). Persisted per server
+    /// URL so offline launches keep the last known answer.
+    @Published private(set) var payeeLocationWritesEnabled = false
 
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
@@ -134,6 +151,14 @@ final class BudgetStore: ObservableObject {
     @Published var appearanceMode: AppearanceMode = .system {
         didSet {
             UserDefaults.standard.set(appearanceMode.rawValue, forKey: "appearanceMode")
+        }
+    }
+
+    /// Whether Budget rows show a spent-vs-available progress bar.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showBudgetProgressBars: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
         }
     }
 
@@ -166,6 +191,21 @@ final class BudgetStore: ObservableObject {
     /// underlying `database` remains private to enforce that writes go through
     /// store methods.
     var databaseForLogger: BudgetDatabase? { database }
+
+    /// Shared provider — one position cache for the whole app.
+    static let locationProvider = LocationProvider()
+
+    /// Nearby payees for the add-transaction form. Every failure path
+    /// (no database, query error) degrades to "no suggestions".
+    func fetchNearbyPayees(latitude: Double, longitude: Double) async -> [NearbyPayee] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
+        } catch {
+            logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
 
     /// Accounts for App Intents (the Log Transaction Shortcut).
     ///
@@ -265,22 +305,33 @@ final class BudgetStore: ObservableObject {
            let mode = AppearanceMode(rawValue: raw) {
             appearanceMode = mode
         }
+        showBudgetProgressBars = UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true
 
-        if let token = loadAndMigrateAuthToken() {
-            Task {
-                // Configure server URL and token for sync to work on app resume
-                try? await serverClient.configure(serverURL: serverURL)
-                await serverClient.setToken(token)
-                isConnected = true
-            }
-        }
+        let token = loadAndMigrateAuthToken()
 
-        // Load local budget if available
+        // Load local budget if available. The saved session is configured in
+        // the same task, before the load, so the initial sync below is
+        // authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
             loadTask = Task {
+                if let token { await configureSavedSession(token: token) }
                 await loadLocalBudget(budgetId)
+                // On a cold launch the scene becomes .active before
+                // loadLocalBudget has wired syncClient, so the scenePhase
+                // foreground sync no-ops. Sync here once the client exists.
+                await syncOnForeground()
             }
+        } else if let token {
+            Task { await configureSavedSession(token: token) }
         }
+    }
+
+    /// Configure server URL and token for sync to work on launch and app resume
+    private func configureSavedSession(token: String) async {
+        try? await serverClient.configure(serverURL: serverURL)
+        await serverClient.setToken(token)
+        isConnected = true
     }
 
     private init(forPreview: Void) {
@@ -580,6 +631,7 @@ final class BudgetStore: ObservableObject {
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
+            let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
@@ -596,6 +648,7 @@ final class BudgetStore: ObservableObject {
             }
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -646,6 +699,8 @@ final class BudgetStore: ObservableObject {
                     self?.syncState = state
                 }
 
+            refreshPayeeLocationSupport()
+
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
             // failure belongs to a stale load — don't clobber the winner's
@@ -655,6 +710,29 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
+    }
+
+    /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
+    /// configured server, then probe `GET /info` in the background. A failed
+    /// probe (unreachable, 404, parse error) keeps the cached answer; a
+    /// successful one overwrites it. Never blocks or fails budget load.
+    private func refreshPayeeLocationSupport() {
+        let capturedURL = serverURL
+        let key = "payeeLocationWritesEnabled_\(capturedURL)"
+        payeeLocationWritesEnabled = UserDefaults.standard.bool(forKey: key)
+        Task { [weak self] in
+            guard let self else { return }
+            guard let version = await self.serverClient.fetchServerVersion() else {
+                return  // capabilities unknown — keep the cached answer
+            }
+            // The user may have switched servers while the probe was in
+            // flight; a stale answer must not flip the flag for — or be
+            // persisted under — a server other than the one probed.
+            guard self.serverURL == capturedURL else { return }
+            let supported = ServerVersion.supportsPayeeLocations(version)
+            self.payeeLocationWritesEnabled = supported
+            UserDefaults.standard.set(supported, forKey: key)
+        }
     }
 
     func refreshData() async {
@@ -691,6 +769,7 @@ final class BudgetStore: ObservableObject {
             // leave the UI with a mixed snapshot.
             let fetchedAccounts = try await database.fetchAccounts()
             let fetchedTransactions = try await database.fetchTransactions()
+            let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
@@ -702,6 +781,7 @@ final class BudgetStore: ObservableObject {
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
+            uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
@@ -747,6 +827,17 @@ final class BudgetStore: ObservableObject {
     func fetchTransactions(for accountId: String) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(accountId: accountId) ?? []
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
+    /// All transactions still needing a category (see
+    /// BudgetDatabase.fetchUncategorizedTransactions for the exact filter).
+    func fetchUncategorizedTransactions() async -> [Transaction] {
+        do {
+            return try await database?.fetchUncategorizedTransactions() ?? []
         } catch {
             self.error = error.localizedDescription
             return []
@@ -860,12 +951,44 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Children share their parent's account, date and cleared state; keep
+    /// them aligned after a parent edit (mirrors desktop split behavior —
+    /// reports read the children, so a stale child date would misfile them).
+    private func cascadeSharedFieldsToChildren(of parent: Transaction) async throws {
+        guard let database else { return }
+        for child in try await database.fetchChildTransactions(parentId: parent.id) {
+            var updated = child
+            updated.accountId = parent.accountId
+            updated.date = parent.date
+            updated.cleared = parent.cleared
+            if updated != child {
+                try await updateTransaction(updated, original: child)
+            }
+        }
+    }
+
+    /// Split children of a parent, for the edit sheet's breakdown display.
+    /// Failures collapse to an empty list — display only.
+    func fetchSplitChildren(parentId: String) async -> [Transaction] {
+        guard let database else { return [] }
+        return (try? await database.fetchChildTransactions(parentId: parentId)) ?? []
+    }
+
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
         do {
             guard let syncClient else {
                 throw BudgetStoreError.syncNotConfigured
+            }
+            // Deleting a split deletes its children too — orphaned children
+            // would be invisible in the list but still feed reports.
+            if transaction.isParent, let database {
+                for child in try await database.fetchChildTransactions(parentId: transaction.id) {
+                    var deletedChild = child
+                    deletedChild.tombstone = true
+                    try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
+                }
             }
             var deleted = transaction
             deleted.tombstone = true
@@ -892,6 +1015,30 @@ final class BudgetStore: ObservableObject {
         var notes: String
         var date: Date
         var cleared: Bool
+        var splits: [SplitLineForm] = []
+    }
+
+    /// One line of a split entered in the form. `amount` is raw field text,
+    /// unsigned like `TransactionForm.amount`.
+    struct SplitLineForm: Identifiable, Equatable {
+        let id: UUID
+        var categoryId: String?
+        var amount: String
+        var notes: String
+
+        init(id: UUID = UUID(), categoryId: String? = nil, amount: String = "", notes: String = "") {
+            self.id = id
+            self.categoryId = categoryId
+            self.amount = amount
+            self.notes = notes
+        }
+    }
+
+    /// A validated split line: signed cents, ready to become a child row.
+    struct SplitPlanLine: Equatable {
+        var categoryId: String?
+        var amountCents: Int
+        var notes: String?
     }
 
     /// The store-side action a form resolves to. Validation and routing are
@@ -899,6 +1046,7 @@ final class BudgetStore: ObservableObject {
     enum TransactionFormPlan: Equatable {
         case transfer(toAccountId: String, amountCents: Int)
         case standard(amountCents: Int)
+        case split(amountCents: Int, lines: [SplitPlanLine])
     }
 
     static func plan(for form: TransactionForm) throws -> TransactionFormPlan {
@@ -913,10 +1061,42 @@ final class BudgetStore: ObservableObject {
             }
             return .transfer(toAccountId: toAccountId, amountCents: unsignedCents)
         case .expense:
-            return .standard(amountCents: -unsignedCents)
+            return try planStandardOrSplit(form, amountCents: -unsignedCents, sign: -1)
         case .income:
-            return .standard(amountCents: unsignedCents)
+            return try planStandardOrSplit(form, amountCents: unsignedCents, sign: 1)
         }
+    }
+
+    /// Resolve an expense/income form to `.standard`, or `.split` when split
+    /// lines are present: every line must parse to a positive amount and the
+    /// lines must add up exactly to the total.
+    private static func planStandardOrSplit(
+        _ form: TransactionForm,
+        amountCents: Int,
+        sign: Int
+    ) throws -> TransactionFormPlan {
+        guard !form.splits.isEmpty else {
+            return .standard(amountCents: amountCents)
+        }
+        guard form.splits.count >= 2 else {
+            throw BudgetStoreError.splitNeedsTwoLines
+        }
+        let lines = try form.splits.map { line in
+            guard let dollars = Double(line.amount),
+                  let cents = Transaction.cents(fromDollars: dollars),
+                  cents > 0 else {
+                throw BudgetStoreError.invalidAmount
+            }
+            return SplitPlanLine(
+                categoryId: line.categoryId,
+                amountCents: sign * cents,
+                notes: line.notes.isEmpty ? nil : line.notes
+            )
+        }
+        guard lines.map(\.amountCents).reduce(0, +) == amountCents else {
+            throw BudgetStoreError.splitAmountMismatch
+        }
+        return .split(amountCents: amountCents, lines: lines)
     }
 
     /// Save the add/edit form: transfers become a paired transfer, everything
@@ -944,19 +1124,84 @@ final class BudgetStore: ObservableObject {
                 cleared: form.cleared
             )
 
+        case .split(let amountCents, let lines):
+            // Converting an existing transaction into a split would leave its
+            // history (transfer links, reconciliation) on a parent whose
+            // children were never reconciled. Refuse, like transfers; the UI
+            // hides split entry when editing.
+            guard original == nil else {
+                throw BudgetStoreError.cannotConvertToSplit
+            }
+            let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
+            let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+            let parentId = UUID().uuidString
+            // Explicit sort orders keep the children in entry order under the parent
+            let parentSort = Date().timeIntervalSince1970 * 1000
+            let parent = Transaction(
+                id: parentId,
+                accountId: form.accountId,
+                date: date,
+                amount: amountCents,
+                payeeId: payeeId,
+                payeeName: payeeName,
+                categoryId: nil,  // split parents never carry a category
+                categoryName: nil,
+                notes: notes,
+                cleared: form.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: true,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: parentSort,
+                importedPayee: payeeName
+            )
+            let children = lines.enumerated().map { index, line in
+                Transaction(
+                    id: UUID().uuidString,
+                    accountId: form.accountId,
+                    date: date,
+                    amount: line.amountCents,
+                    payeeId: nil,  // the payee lives on the parent
+                    payeeName: nil,
+                    categoryId: line.categoryId,
+                    categoryName: nil,
+                    notes: line.notes,
+                    cleared: form.cleared,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: parentId,
+                    tombstone: false,
+                    sortOrder: parentSort - Double(index + 1),
+                    importedPayee: nil
+                )
+            }
+            guard let syncClient else {
+                throw BudgetStoreError.syncNotConfigured
+            }
+            try await syncClient.createSplit(parent: parent, children: children)
+            await refreshDataOnly()
+            if let payeeId {
+                recordPayeeLocationIfAppropriate(payeeId: payeeId)
+            }
+
         case .standard(let amountCents):
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
 
             if let original {
+                // Split parents: the amount is the children's sum and the
+                // category lives on the children — never overwrite either
+                // from the form.
                 let updated = Transaction(
                     id: original.id,
                     accountId: form.accountId,
                     date: date,
-                    amount: amountCents,
+                    amount: original.isParent ? original.amount : amountCents,
                     payeeId: payeeId,
                     payeeName: payeeName,
-                    categoryId: form.categoryId,
+                    categoryId: original.isParent ? nil : form.categoryId,
                     categoryName: nil,
                     notes: notes,
                     cleared: form.cleared,
@@ -968,6 +1213,9 @@ final class BudgetStore: ObservableObject {
                     sortOrder: original.sortOrder
                 )
                 try await updateTransaction(updated, original: original)
+                if original.isParent {
+                    try await cascadeSharedFieldsToChildren(of: updated)
+                }
             } else {
                 let transaction = Transaction(
                     id: UUID().uuidString,
@@ -989,6 +1237,9 @@ final class BudgetStore: ObservableObject {
                     importedPayee: payeeName
                 )
                 try await createTransaction(transaction)
+                if let payeeId {
+                    recordPayeeLocationIfAppropriate(payeeId: payeeId)
+                }
             }
         }
     }
@@ -1003,6 +1254,51 @@ final class BudgetStore: ObservableObject {
             return try await findOrCreatePayee(name: name).id
         } catch {
             throw BudgetStoreError.payeeCreationFailed(error.localizedDescription)
+        }
+    }
+
+    /// Record only when no existing location for the payee is within 500 m
+    /// (upstream dedupe rule).
+    static func shouldRecordLocation(at position: Coordinates, existing: [PayeeLocation]) -> Bool {
+        !existing.contains { location in
+            LocationUtils.calculateDistanceMeters(
+                lat1: position.latitude, lon1: position.longitude,
+                lat2: location.latitude, lon2: location.longitude
+            ) <= LocationUtils.defaultMaxDistanceMeters
+        }
+    }
+
+    /// Fire-and-forget: attach the current position to `payeeId`. All guards
+    /// and failures collapse to "do nothing" — recording a location must
+    /// never affect the save that triggered it.
+    func recordPayeeLocationIfAppropriate(payeeId: String) {
+        guard payeeLocationWritesEnabled else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            let provider = Self.locationProvider
+            guard await provider.authorizationStatus() == .granted,
+                  let position = try? await provider.currentPosition(),
+                  LocationUtils.isValidCoordinate(
+                      latitude: position.latitude, longitude: position.longitude),
+                  let database = self.database,
+                  let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
+                  Self.shouldRecordLocation(at: position, existing: existing),
+                  let syncClient = self.syncClient else {
+                return
+            }
+            let location = PayeeLocation(
+                id: UUID().uuidString,
+                payeeId: payeeId,
+                latitude: position.latitude,
+                longitude: position.longitude,
+                createdAt: Int64(Date().timeIntervalSince1970 * 1000)
+            )
+            do {
+                try await syncClient.createPayeeLocation(location)
+                logger.debug("Recorded payee location for \(payeeId, privacy: .private)")
+            } catch {
+                logger.error("Failed to record payee location: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
@@ -1080,6 +1376,28 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    // MARK: - Budget Amounts
+
+    /// Parse the budget edit field ("25.50") into non-negative cents.
+    static func budgetAmountCents(from string: String) throws -> Int {
+        guard let dollars = Double(string),
+              let cents = Transaction.cents(fromDollars: dollars),
+              cents >= 0 else {
+            throw BudgetStoreError.invalidAmount
+        }
+        return cents
+    }
+
+    /// Set the budgeted amount for a category, then refetch the month so the
+    /// published Available/carryover figures recompute from the new value.
+    func setBudgetAmount(month: String, categoryId: String, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
+    }
+
     // MARK: - Currency Formatting
 
     /// Format an amount in cents to a currency string using the budget's currency
@@ -1087,6 +1405,9 @@ final class BudgetStore: ObservableObject {
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(2)))
+        }
         return amount.formatted(.currency(code: currencyCode))
     }
 
@@ -1094,6 +1415,9 @@ final class BudgetStore: ObservableObject {
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
         let amount = Double(cents) / 100.0
+        guard !currencyCode.isEmpty else {
+            return amount.formatted(.number.precision(.fractionLength(0)))
+        }
         return amount.formatted(.currency(code: currencyCode).precision(.fractionLength(0)))
     }
 

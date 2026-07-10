@@ -13,6 +13,7 @@ enum SyncError: LocalizedError {
     case outOfSync
     case encodingFailed
     case serverError(String)
+    case budgetTableMissing
 
     var errorDescription: String? {
         switch self {
@@ -26,6 +27,8 @@ enum SyncError: LocalizedError {
             return "Failed to encode the sync request."
         case .serverError(let message):
             return "Server error: \(message)"
+        case .budgetTableMissing:
+            return "This budget file has no budget table to write to."
         }
     }
 }
@@ -218,6 +221,34 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Create a split parent and its children atomically (optimistic
+    /// local-first). Like transfers, all rows and their CRDT messages commit
+    /// in one SQLite transaction and rules are skipped — the caller builds
+    /// every row explicitly.
+    func createSplit(parent: Transaction, children: [Transaction]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createSplit() - parent: \(parent.id, privacy: .private), children: \(children.count, privacy: .public)")
+
+        // 1. Generate CRDT messages for every row up front
+        var messages = try await messageGenerator.messagesForInsert(parent)
+        for child in children {
+            messages += try await messageGenerator.messagesForInsert(child)
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for split")
+
+        // 2. Persist rows + messages in one DB transaction, then update merkle
+        for msg in try database.insertSplit(parent: parent, children: children, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Split stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 3. Sync to push all rows to the server (rate-limited)
+        await automaticSync()
+    }
+
     /// Update an existing transaction (optimistic local-first)
     /// - Parameters:
     ///   - transaction: The full updated transaction (used for both local UPDATE and CRDT field values)
@@ -280,6 +311,74 @@ actor SyncClient {
         try saveClock()
 
         // Note: Don't schedule sync here - let the transaction sync handle it
+    }
+
+    /// Record a location for a payee (optimistic local-first). Callers are
+    /// responsible for the server-version guard and 500 m dedupe — this
+    /// method just writes.
+    func createPayeeLocation(_ location: PayeeLocation) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createPayeeLocation() - payee: \(location.payeeId, privacy: .private)")
+
+        // 1. Insert locally (optimistic)
+        try database.insertPayeeLocation(location)
+        logger.debug("Payee location inserted locally")
+
+        // 2. Generate CRDT messages
+        let messages = try await messageGenerator.messagesForInsert(location)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for payee location")
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
+    /// Set the budgeted amount for a category in a month (optimistic
+    /// local-first). Mirrors upstream setBudget: update the existing
+    /// (month, category) row's amount, or create the row with the
+    /// {YYYYMM}-{categoryId} id and its month/category columns.
+    func setBudgetAmount(month: String, categoryId: String, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("setBudgetAmount() - month: \(month, privacy: .public), category: \(categoryId, privacy: .private), amount: \(amount, privacy: .private)")
+
+        guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+            throw SyncError.budgetTableMissing
+        }
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        var fields: [(column: String, value: Any?)] = []
+        if !cell.exists {
+            fields.append(("month", cell.monthInt))
+            fields.append(("category", categoryId))
+        }
+        fields.append(("amount", amount))
+        let messages = try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
     }
 
     /// Force immediate sync (pull-to-refresh)

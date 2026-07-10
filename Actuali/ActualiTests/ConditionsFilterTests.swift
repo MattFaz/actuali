@@ -147,6 +147,122 @@ struct ConditionsFilterTests {
         let cond = WidgetRuleCondition.makeMock(op: "contains", field: "notes", stringValue: "bluebird")
         #expect(ConditionsFilter.matches(transaction: tx, conditions: [cond], op: "and"))
     }
+
+    // MARK: - Upstream parity added for issue #15
+
+    private func decode(_ json: String) -> WidgetRuleCondition {
+        try! JSONDecoder().decode(WidgetRuleCondition.self, from: Data(json.utf8))
+    }
+
+    @Test func onBudgetOpExcludesOffBudgetAccounts() {
+        let context = ConditionsFilter.Context(offBudgetAccountIds: ["invest"], accountNames: [:])
+        let cond = decode(#"{"op":"onBudget","field":"account","value":null}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(account: "checking"),
+                                         conditions: [cond], op: "and", context: context))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(account: "invest"),
+                                          conditions: [cond], op: "and", context: context))
+    }
+
+    @Test func offBudgetOpMatchesOnlyOffBudgetAccounts() {
+        let context = ConditionsFilter.Context(offBudgetAccountIds: ["invest"], accountNames: [:])
+        let cond = decode(#"{"op":"offBudget","field":"account","value":null}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(account: "invest"),
+                                         conditions: [cond], op: "and", context: context))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(account: "checking"),
+                                          conditions: [cond], op: "and", context: context))
+    }
+
+    @Test func outflowOptionGatesSignAndNegates() {
+        // "outflow greater than 5.00" => amount < 0 and -amount > 500
+        let cond = decode(#"{"op":"gt","field":"amount","value":500,"options":{"outflow":true}}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(amount: -600), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(amount: -400), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(amount: 700), conditions: [cond], op: "and"))
+    }
+
+    @Test func inflowOptionGatesSign() {
+        let cond = decode(#"{"op":"gt","field":"amount","value":500,"options":{"inflow":true}}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(amount: 600), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(amount: -600), conditions: [cond], op: "and"))
+    }
+
+    @Test func legacyAmountInflowFieldName() {
+        let cond = decode(#"{"op":"gt","field":"amount-inflow","value":500}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(amount: 600), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(amount: -600), conditions: [cond], op: "and"))
+    }
+
+    @Test func isBetweenComparesRawAmount() {
+        let cond = decode(#"{"op":"isbetween","field":"amount","value":{"num1":-2000,"num2":-500}}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(amount: -1000), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(amount: -3000), conditions: [cond], op: "and"))
+    }
+
+    @Test func dateIsMonthMatchesWholeMonth() {
+        // Transaction date is 20260301.
+        let cond = decode(#"{"op":"is","field":"date","value":"2026-03"}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(), conditions: [cond], op: "and"))
+        let other = decode(#"{"op":"is","field":"date","value":"2026-04"}"#)
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(), conditions: [other], op: "and"))
+    }
+
+    @Test func dateComparisonOps() {
+        let cond = decode(#"{"op":"gte","field":"date","value":"2026-03-01"}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(), conditions: [cond], op: "and"))
+        let later = decode(#"{"op":"gt","field":"date","value":"2026-03-01"}"#)
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(), conditions: [later], op: "and"))
+    }
+
+    @Test func categoryIsNothingMatchesUncategorizedButNotTransfers() {
+        let cond = decode(#"{"op":"is","field":"category","value":null}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(category: nil), conditions: [cond], op: "and"))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"), conditions: [cond], op: "and"))
+
+        // Transfer legs are uncategorized but must not match (upstream
+        // conditionSpecialCases adds transfer=false).
+        var transfer = makeTransaction(category: nil)
+        transfer.transferId = "other-leg"
+        #expect(!ConditionsFilter.matches(transaction: transfer, conditions: [cond], op: "and"))
+    }
+
+    @Test func idContainsMatchesReferencedName() {
+        var tx = makeTransaction(payee: "payee-uuid")
+        tx.payeeName = "Woolworths Metro"
+        let cond = WidgetRuleCondition.makeMock(op: "contains", field: "payee", stringValue: "woolworths")
+        #expect(ConditionsFilter.matches(transaction: tx, conditions: [cond], op: "and"))
+        let miss = WidgetRuleCondition.makeMock(op: "contains", field: "payee", stringValue: "coles")
+        #expect(!ConditionsFilter.matches(transaction: tx, conditions: [miss], op: "and"))
+    }
+
+    @Test func matchesOpUsesRegex() {
+        var tx = makeTransaction(payee: "payee-uuid")
+        tx.payeeName = "Uber Eats 123"
+        let cond = WidgetRuleCondition.makeMock(op: "matches", field: "payee", stringValue: "^uber")
+        #expect(ConditionsFilter.matches(transaction: tx, conditions: [cond], op: "and"))
+    }
+
+    @Test func customNameConditionsAreSkipped() {
+        // Saved-filter references (customName) are dropped upstream before
+        // filtering; an otherwise-impossible condition must not exclude rows.
+        let cond = decode(#"{"op":"is","field":"category","value":"nope","customName":"My saved filter"}"#)
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"),
+                                         conditions: [cond], op: "and"))
+    }
+
+    @Test func oneOfEmptyArrayMatchesNothing() {
+        let cond = WidgetRuleCondition.makeMock(op: "oneOf", field: "category", stringArrayValue: [])
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"),
+                                          conditions: [cond], op: "and"))
+    }
+
+    @Test func hasTagsMatchesTagBoundaries() {
+        var tx = makeTransaction()
+        tx.notes = "dinner #eating-out with friends"
+        let cond = WidgetRuleCondition.makeMock(op: "hasTags", field: "notes", stringValue: "#eating-out")
+        #expect(ConditionsFilter.matches(transaction: tx, conditions: [cond], op: "and"))
+        let miss = WidgetRuleCondition.makeMock(op: "hasTags", field: "notes", stringValue: "#travel")
+        #expect(!ConditionsFilter.matches(transaction: tx, conditions: [miss], op: "and"))
+    }
 }
 
 /// Test helper to build WidgetRuleCondition values from primitives.

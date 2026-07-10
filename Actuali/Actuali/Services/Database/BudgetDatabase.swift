@@ -169,16 +169,55 @@ class BudgetDatabase {
 
     // MARK: - Schema Migrations
 
-    // Upstream Actual schema migrations we mirror. ALTER migrations only run if
-    // the source table exists; CREATE migrations always run (CREATE TABLE IF NOT
-    // EXISTS handles idempotency).
-    private static let upstreamSchemaMigrations: [(id: Int64, table: String, sql: String)] = [
-        (1769000000000, "schedules", "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL")
+    // Upstream Actual schema migrations we mirror. These only run if the source
+    // table exists and every `requiresColumns` column is present (otherwise
+    // they stay unapplied and are retried on a later open). When `addsColumn`
+    // is already present — a freshly downloaded file migrated by an up-to-date
+    // client — the migration is recorded as applied without executing, since
+    // the ALTER would fail with "duplicate column". CREATE migrations always
+    // run (CREATE TABLE IF NOT EXISTS handles idempotency).
+    private static let upstreamSchemaMigrations: [(
+        id: Int64, table: String, addsColumn: String?, requiresColumns: [String], sql: String
+    )] = [
+        (1769000000000, "schedules", "custom_upcoming_length", [],
+         "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL"),
+        // Upstream 1778510362740 also creates cleanup_groups (see createTableMigrations).
+        (1778510362741, "categories", "cleanup_def", [],
+         "ALTER TABLE categories ADD COLUMN cleanup_def TEXT DEFAULT NULL"),
+        (1780099200000, "custom_reports", "show_trend_lines", [],
+         "ALTER TABLE custom_reports ADD COLUMN show_trend_lines INTEGER DEFAULT 0"),
+        (1780327681000, "tags", "hidden", [],
+         "ALTER TABLE tags ADD COLUMN hidden BOOLEAN DEFAULT 0"),
+        (1780606215000, "accounts", "bank_sync_status", [],
+         "ALTER TABLE accounts ADD COLUMN bank_sync_status TEXT"),
+        // Upstream ships both indexes as one migration (1780606215001); split
+        // here so each waits for its own columns — old snapshots can lack
+        // transactions.schedule.
+        (1780606215001, "transactions", nil, ["acct", "tombstone"],
+         "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
+        (1780606215002, "transactions", nil, ["schedule"],
+         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)")
     ]
 
     // Tables added upstream after the original budget file was created. These run
     // unconditionally so CRDT messages targeting these tables have somewhere to land.
     private static let createTableMigrations: [(id: Int64, sql: String)] = [
+        // Upstream 1768872504000 (Actual 26.4.0): payee locations. Same SQL
+        // as upstream's migration, so we reuse its id — a file already
+        // migrated by a modern client skips this cleanly.
+        (1768872504000, """
+            CREATE TABLE IF NOT EXISTS payee_locations (
+                id TEXT PRIMARY KEY,
+                payee_id TEXT,
+                latitude REAL,
+                longitude REAL,
+                created_at INTEGER,
+                tombstone INTEGER DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_payee_id ON payee_locations (payee_id);
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_tombstone_payee_created ON payee_locations (tombstone, payee_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_payee_locations_geo_tombstone ON payee_locations (tombstone, latitude, longitude)
+            """),
         (1770000000001, """
             CREATE TABLE IF NOT EXISTS dashboard (
                 id TEXT PRIMARY KEY,
@@ -214,6 +253,13 @@ class BudgetDatabase {
                 metadata TEXT,
                 tombstone INTEGER NOT NULL DEFAULT 0
             )
+        """),
+        (1778510362740, """
+            CREATE TABLE IF NOT EXISTS cleanup_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                tombstone INTEGER DEFAULT 0
+            )
         """)
     ]
 
@@ -233,14 +279,65 @@ class BudgetDatabase {
                 )
             }
 
-            // ALTER migrations: skip if source table doesn't exist
+            // Schema-guarded migrations: skip if the source table doesn't exist
+            var addedColumns: [(table: String, column: String)] = []
             for migration in Self.upstreamSchemaMigrations where !appliedIds.contains(migration.id) {
                 guard try db.tableExists(migration.table) else { continue }
+                let existing = Set(try db.columns(in: migration.table).map(\.name))
+                guard migration.requiresColumns.allSatisfy(existing.contains) else { continue }
+                if let column = migration.addsColumn, existing.contains(column) {
+                    // Downloaded file was already migrated by an up-to-date
+                    // client; ALTER would fail with "duplicate column".
+                    try db.execute(
+                        sql: "INSERT INTO __migrations__ (id) VALUES (?)",
+                        arguments: [migration.id]
+                    )
+                    continue
+                }
                 logger.info("Applying upstream schema migration \(migration.id, privacy: .public)")
                 try db.execute(sql: migration.sql)
                 try db.execute(
                     sql: "INSERT INTO __migrations__ (id) VALUES (?)",
                     arguments: [migration.id]
+                )
+                if let column = migration.addsColumn {
+                    addedColumns.append((migration.table, column))
+                }
+            }
+
+            try Self.replayStoredMessages(db, into: addedColumns)
+        }
+    }
+
+    /// CRDT messages targeting columns the local schema didn't have yet are
+    /// skipped by applyMessages but kept in messages_crdt. Once a migration
+    /// adds such a column, materialize the latest stored value per row so the
+    /// data isn't missing until the next remote edit. HLC timestamp strings
+    /// order lexicographically (filterNewMessages already relies on this), so
+    /// MAX(timestamp) per row is the winning message.
+    private static func replayStoredMessages(
+        _ db: Database,
+        into addedColumns: [(table: String, column: String)]
+    ) throws {
+        guard !addedColumns.isEmpty, try db.tableExists("messages_crdt") else { return }
+
+        for (table, column) in addedColumns {
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT row, value, MAX(timestamp) AS ts
+                FROM messages_crdt
+                WHERE dataset = ? AND column = ?
+                GROUP BY row
+                """, arguments: [table, column])
+            guard !rows.isEmpty else { continue }
+
+            logger.info("Replaying \(rows.count, privacy: .public) stored message(s) into \(table, privacy: .public).\(column, privacy: .public)")
+            let quotedTable = quotedIdentifier(table)
+            let quotedColumn = quotedIdentifier(column)
+            for row in rows {
+                guard let rowId: String = row["row"], let value: String = row["value"] else { continue }
+                try upsertValue(
+                    db, table: quotedTable, column: quotedColumn,
+                    rowId: rowId, value: CRDTValue.deserialize(value)
                 )
             }
         }
@@ -306,7 +403,7 @@ class BudgetDatabase {
                     t.description, t.notes, t.date, t.imported_description,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    COALESCE(pa.name, p.name) as payee_name,
+                    COALESCE(pa.name, p.name, cpa.name, cp.name) as payee_name,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
@@ -315,6 +412,24 @@ class BudgetDatabase {
                 -- linked account's name (matches Actual's v_payees view).
                 LEFT JOIN accounts pa ON pa.id = p.transfer_acct
                     AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                -- Split parents may carry no payee of their own (payees can
+                -- live on the children, GH #47). When the live children agree
+                -- on one payee, display it; mixed payees resolve NULL and the
+                -- UI labels the row "Split".
+                LEFT JOIN (
+                    SELECT ct.parent_id AS parent_id,
+                           CASE WHEN COUNT(DISTINCT ct.description) = 1
+                                THEN MIN(ct.description) END AS payee
+                    FROM transactions ct
+                    WHERE ct.isChild = 1
+                      AND (ct.tombstone = 0 OR ct.tombstone IS NULL)
+                      AND ct.description IS NOT NULL
+                    GROUP BY ct.parent_id
+                ) child_payee ON t.isParent = 1 AND child_payee.parent_id = t.id
+                LEFT JOIN payee_mapping cpm ON cpm.id = child_payee.payee
+                LEFT JOIN payees cp ON cp.id = cpm.targetId
+                LEFT JOIN accounts cpa ON cpa.id = cp.transfer_acct
+                    AND (cpa.tombstone = 0 OR cpa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
@@ -332,6 +447,85 @@ class BudgetDatabase {
             arguments.append(String(limit))
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+
+            // Split parents have no category of their own; carry the live
+            // children's category + amount as portions so the list row can
+            // show the breakdown ("Food $6.00, Fun $4.00") without opening it.
+            let parentIds: [String] = rows.compactMap { row in
+                (row["isParent"] == 1) ? row["id"] : nil
+            }
+            var splitPortions: [String: [Transaction.SplitPortion]] = [:]
+            if !parentIds.isEmpty {
+                let placeholders = Array(repeating: "?", count: parentIds.count).joined(separator: ", ")
+                let childRows = try Row.fetchAll(db, sql: """
+                    SELECT ct.parent_id AS parent_id, ct.amount AS amount,
+                           c.name AS category_name
+                    FROM transactions ct
+                    LEFT JOIN category_mapping cm ON cm.id = ct.category
+                    LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, ct.category)
+                    WHERE ct.parent_id IN (\(placeholders))
+                      AND (ct.tombstone = 0 OR ct.tombstone IS NULL)
+                    ORDER BY ct.sort_order DESC
+                    """, arguments: StatementArguments(parentIds))
+                for childRow in childRows {
+                    guard let parentId: String = childRow["parent_id"] else { continue }
+                    splitPortions[parentId, default: []].append(Transaction.SplitPortion(
+                        categoryName: childRow["category_name"],
+                        amount: childRow["amount"] ?? 0
+                    ))
+                }
+            }
+
+            return rows.map { row in
+                let id: String = row["id"]
+                var transaction = Transaction(
+                    id: id,
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: row["payee_name"],
+                    categoryId: row["category"],
+                    categoryName: row["category_name"],
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+                transaction.splitPortions = splitPortions[id]
+                return transaction
+            }
+        }
+    }
+
+    /// All live children of a split parent, in entry order (descending
+    /// sort_order, matching the list convention).
+    func fetchChildTransactions(parentId: String) async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id,
+                    COALESCE(pa.name, p.name) as payee_name,
+                    c.name as category_name
+                FROM transactions t
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.parent_id = ?
+                ORDER BY t.sort_order DESC
+                """, arguments: [parentId])
 
             return rows.map { row in
                 Transaction(
@@ -354,6 +548,90 @@ class BudgetDatabase {
                     importedPayee: row["imported_description"]
                 )
             }
+        }
+    }
+
+    /// Joins + filter shared by the uncategorized list and count queries.
+    /// Mirrors the WebUI's "uncategorized" pseudo-account filter
+    /// (desktop-client accountFilter('uncategorized')): on-budget account,
+    /// no category, not a split parent (children are where categories live),
+    /// and not a transfer unless the other side is off-budget — money leaving
+    /// the budget still needs a category. Children of tombstoned split
+    /// parents are excluded like fetchTransactionsForReports().
+    private static let uncategorizedJoins = """
+        FROM transactions t
+        JOIN accounts a ON a.id = t.acct
+        LEFT JOIN payee_mapping pm ON pm.id = t.description
+        LEFT JOIN payees p ON p.id = pm.targetId
+        LEFT JOIN accounts ta ON ta.id = p.transfer_acct
+        LEFT JOIN transactions par ON par.id = t.parent_id
+        """
+
+    private static let uncategorizedWhere = """
+        WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND (t.isParent = 0 OR t.isParent IS NULL)
+          AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+          AND t.category IS NULL
+          AND (a.offbudget = 0 OR a.offbudget IS NULL)
+          AND (a.tombstone = 0 OR a.tombstone IS NULL)
+          AND (p.transfer_acct IS NULL OR ta.offbudget = 1)
+        """
+
+    /// All transactions still needing a category, newest first (GH #26).
+    /// Split children carry no payee of their own, so their display name
+    /// falls back to the parent's payee.
+    func fetchUncategorizedTransactions() async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id,
+                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name
+                \(Self.uncategorizedJoins)
+                -- Transfer payees carry no name; their display name is the
+                -- linked account's name (matches Actual's v_payees view).
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                -- Parent's payee, as the fallback for split children.
+                LEFT JOIN payee_mapping ppm ON ppm.id = par.description
+                LEFT JOIN payees pp ON pp.id = ppm.targetId
+                LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
+                    AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
+                \(Self.uncategorizedWhere)
+                ORDER BY t.date DESC, t.sort_order DESC
+                """)
+
+            return rows.map { row in
+                Transaction(
+                    id: row["id"],
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: row["payee_name"],
+                    categoryId: nil,
+                    categoryName: nil,
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+            }
+        }
+    }
+
+    /// Number of transactions `fetchUncategorizedTransactions()` would
+    /// return, without materializing the rows (drives the Budget tab link).
+    func fetchUncategorizedCount() async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) \(Self.uncategorizedJoins) \(Self.uncategorizedWhere)") ?? 0
         }
     }
 
@@ -498,8 +776,12 @@ class BudgetDatabase {
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
-            //     spent. Split parents carry a NULL category in Actual, so
-            //     category IS NOT NULL already excludes them (no double-count).
+            //     spent.
+            //   * Exclude split parents (isParent = 1). A transaction categorised
+            //     BEFORE being split keeps its category on the parent row —
+            //     Actual's splitTransaction() never clears it, it only masks it
+            //     in the view layer (CASE WHEN isParent = 1 THEN NULL). Counting
+            //     the parent on top of its children doubles that month's spent.
             //   * Exclude split children whose parent is tombstoned. Deleting a
             //     split tombstones the parent but leaves the child rows with
             //     tombstone = 0, so a per-row tombstone check alone still counts
@@ -509,30 +791,64 @@ class BudgetDatabase {
                 SELECT
                     (t.date / 100) AS month,
                     COALESCE(cm.transferId, t.category) AS category_id,
-                    SUM(t.amount) AS spent
+                    SUM(t.amount) AS spent,
+                    SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END) AS outflow
                 FROM transactions t
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
                   AND (t.date / 100) <= ?
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
             var spentByMonthCat: [Int: [String: Int]] = [:]
+            // Outflow-only spending (inflows like refunds excluded) for the
+            // target month. The leftover chain needs the net, but the summary
+            // "Spent" total shows money that actually went out.
+            var targetOutflowByCat: [String: Int] = [:]
             for row in spentRows {
                 let m: Int = row["month"] ?? 0
                 guard m > 0, let categoryId: String = row["category_id"] else { continue }
                 let spent: Int = row["spent"] ?? 0
                 spentByMonthCat[m, default: [:]][categoryId] = spent
+                if m == targetMonthInt {
+                    targetOutflowByCat[categoryId] = row["outflow"] ?? 0
+                }
             }
 
+            // "Hold for next month" amounts, keyed by YYYYMM. Upstream writes
+            // zero_budget_months ids as sheet month strings ("2026-07"); parse
+            // digits defensively in case another client wrote "202607".
+            var bufferedByMonth: [Int: Int] = [:]
+            if isEnvelope, try db.tableExists("zero_budget_months") {
+                let bufferRows = try Row.fetchAll(db, sql: "SELECT id, buffered FROM zero_budget_months")
+                for row in bufferRows {
+                    guard let id: String = row["id"],
+                          let m = Int(id.filter(\.isNumber)),
+                          (1...12).contains(m % 100),
+                          m <= targetMonthInt else { continue }
+                    bufferedByMonth[m] = row["buffered"] ?? 0
+                }
+            }
+
+            // Category id sets for the envelope "to budget" math. Hidden
+            // categories still count toward the totals (upstream includes
+            // them in the summary sheet); only tombstoned ones drop out.
+            let categories = try CategoryRecord
+                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
+                .fetchAll(db)
+            let incomeCatIds = Set(categories.filter { $0.isIncome == 1 }.map { $0.id })
+            let expenseCatIds = Set(categories.filter { $0.isIncome != 1 }.map { $0.id })
+
             // Determine the earliest month we need to walk from. min over any
-            // budget row or any spent row. If neither, just use the target.
+            // budget row, spent row, or held amount. If none, just use the target.
             let earliestMonth: Int = {
-                let candidates = budgetByMonthCat.keys.map { $0 } + spentByMonthCat.keys.map { $0 }
+                let candidates = Array(budgetByMonthCat.keys) + Array(spentByMonthCat.keys)
+                    + Array(bufferedByMonth.keys)
                 return candidates.min() ?? targetMonthInt
             }()
 
@@ -545,10 +861,49 @@ class BudgetDatabase {
             // iterations so the next month knows whether to clamp.
             var lastFlag: [String: Bool] = [:]
 
+            // Envelope "To Budget" accumulators (mirrors loot-core
+            // envelope.ts createSummary):
+            //   to-budget = income + from-last-month + last-month-overspent
+            //               - budgeted - buffered
+            // where from-last-month = prior to-budget + prior buffered, and
+            // last-month-overspent is the negative leftover the clamp below
+            // strips from categories — that debt comes out of this month's
+            // unallocated funds instead.
+            var runningToBudget = 0
+            var priorBuffered = 0
+
             var m = earliestMonth
             while m <= targetMonthInt {
                 let budgetsForMonth = budgetByMonthCat[m] ?? [:]
                 let spentForMonth = spentByMonthCat[m] ?? [:]
+
+                if isEnvelope {
+                    var income = 0
+                    var bufferedAuto = 0
+                    for cat in incomeCatIds {
+                        let amount = spentForMonth[cat] ?? 0
+                        income += amount
+                        // Income marked "carryover" is auto-held for next
+                        // month unless a manual hold overrides it.
+                        if budgetsForMonth[cat]?.flag == true {
+                            bufferedAuto += amount
+                        }
+                    }
+                    var budgetedTotal = 0
+                    var lastMonthOverspent = 0
+                    for cat in expenseCatIds {
+                        budgetedTotal += budgetsForMonth[cat]?.amount ?? 0
+                        if !(lastFlag[cat] ?? false) {
+                            lastMonthOverspent += min(0, runningLeftover[cat] ?? 0)
+                        }
+                    }
+                    let manualBuffered = bufferedByMonth[m] ?? 0
+                    let buffered = manualBuffered != 0 ? manualBuffered : bufferedAuto
+                    runningToBudget = income + runningToBudget + priorBuffered
+                        + lastMonthOverspent - budgetedTotal - buffered
+                    priorBuffered = buffered
+                }
+
                 let touchedCats = Set(budgetsForMonth.keys)
                     .union(spentForMonth.keys)
                     .union(runningLeftover.keys)
@@ -587,9 +942,6 @@ class BudgetDatabase {
             // contribution (post clamp / flag). Reverse-derive by recomputing
             // available - budgeted - spent for each category we touched.
 
-            let categories = try CategoryRecord
-                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
-                .fetchAll(db)
             let groups = try CategoryGroupRecord
                 .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
                 .fetchAll(db)
@@ -616,12 +968,81 @@ class BudgetDatabase {
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
+                    outflow: targetOutflowByCat[cat.id] ?? 0,
                     available: available,
                     carryover: priorContribution
                 )
             }
 
-            return BudgetMonth(month: month, categoryBudgets: categoryBudgets)
+            // Income categories, shown as their own section like the web
+            // UI's Income group. "Received" is the month's net activity on
+            // the category (income transactions are positive amounts).
+            let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
+                guard cat.isIncome == 1 else { return nil }
+                guard cat.hidden != 1 else { return nil }
+                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
+                let group = groupsById[cat.catGroup ?? ""]
+
+                return IncomeCategory(
+                    month: month,
+                    categoryId: cat.id,
+                    categoryName: cat.name ?? "Unknown",
+                    groupName: group?.name ?? "Income",
+                    sortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
+                    budgeted: targetBudgets[cat.id]?.amount ?? 0,
+                    received: targetSpent[cat.id] ?? 0
+                )
+            }
+            .sorted { $0.sortOrder < $1.sortOrder }
+
+            return BudgetMonth(
+                month: month,
+                categoryBudgets: categoryBudgets,
+                incomeCategories: incomeCategories,
+                toBudget: isEnvelope ? runningToBudget : nil
+            )
+        }
+    }
+
+    /// Where a budget amount write for (month, category) must land: which
+    /// budget table this file uses, and the row to update or create.
+    struct BudgetCellRef: Equatable {
+        let table: String   // "zero_budgets" (envelope) or "reflect_budgets" (tracking)
+        let rowId: String
+        let monthInt: Int   // YYYYMM
+        let exists: Bool
+    }
+
+    /// Resolve the budget cell for a month ("2026-07") and category. Mirrors
+    /// upstream setBudget (loot-core budget/actions.ts): look the row up by
+    /// (month, category) and reuse its id — rows written by other clients may
+    /// not follow the {YYYYMM}-{categoryId} convention, and inserting a second
+    /// row for the same cell would fork it. Returns nil when the file has no
+    /// budget table or the month string is malformed.
+    func budgetCell(month: String, categoryId: String) throws -> BudgetCellRef? {
+        let monthInt = Self.monthStringToInt(month)
+        guard monthInt > 0 else { return nil }
+
+        return try dbQueue.read { db in
+            let table: String
+            if try db.tableExists("zero_budgets") {
+                table = "zero_budgets"
+            } else if try db.tableExists("reflect_budgets") {
+                table = "reflect_budgets"
+            } else {
+                return nil
+            }
+
+            let existingId = try String.fetchOne(db, sql: """
+                SELECT id FROM \(table) WHERE month = ? AND category = ?
+                """, arguments: [monthInt, categoryId])
+
+            return BudgetCellRef(
+                table: table,
+                rowId: existingId ?? "\(monthInt)-\(categoryId)",
+                monthInt: monthInt,
+                exists: existingId != nil
+            )
         }
     }
 
@@ -721,6 +1142,7 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
+                    p.transfer_acct as transfer_acct,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
@@ -731,8 +1153,13 @@ class BudgetDatabase {
                     AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                -- Deleting a split tombstones only the parent; its children
+                -- keep tombstone = 0, so they must be excluded via the parent
+                -- (same rule as the fetchAccounts() balance query).
+                LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
+                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
                 """)
 
             return rows.map { row in
@@ -753,7 +1180,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    transferAcct: row["transfer_acct"]
                 )
             }
         }
@@ -919,30 +1347,41 @@ class BudgetDatabase {
                     continue
                 }
 
-                let table = Self.quotedIdentifier(msg.dataset)
-                let column = Self.quotedIdentifier(msg.column)
-
-                // Check if row exists
-                let exists = try Row.fetchOne(db, sql: """
-                    SELECT id FROM \(table) WHERE id = ?
-                    """, arguments: [msg.row]) != nil
-
-                let deserializedValue = CRDTValue.deserialize(msg.value)
-
-                if exists {
-                    // Update existing row
-                    try db.execute(
-                        sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?",
-                        arguments: [deserializedValue, msg.row]
-                    )
-                } else {
-                    // Insert new row
-                    try db.execute(
-                        sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)",
-                        arguments: [msg.row, deserializedValue]
-                    )
-                }
+                try Self.upsertValue(
+                    db,
+                    table: Self.quotedIdentifier(msg.dataset),
+                    column: Self.quotedIdentifier(msg.column),
+                    rowId: msg.row,
+                    value: CRDTValue.deserialize(msg.value)
+                )
             }
+        }
+    }
+
+    /// Write one CRDT cell: update the row if it exists, otherwise create it
+    /// with just the id and this column. `table`/`column` must already be
+    /// schema-validated and quoted by the caller.
+    private static func upsertValue(
+        _ db: Database,
+        table: String,
+        column: String,
+        rowId: String,
+        value: DatabaseValue
+    ) throws {
+        let exists = try Row.fetchOne(db, sql: """
+            SELECT id FROM \(table) WHERE id = ?
+            """, arguments: [rowId]) != nil
+
+        if exists {
+            try db.execute(
+                sql: "UPDATE \(table) SET \(column) = ? WHERE id = ?",
+                arguments: [value, rowId]
+            )
+        } else {
+            try db.execute(
+                sql: "INSERT INTO \(table) (id, \(column)) VALUES (?, ?)",
+                arguments: [rowId, value]
+            )
         }
     }
 
@@ -991,12 +1430,32 @@ class BudgetDatabase {
         }
     }
 
+    /// Inserts a split parent, its children and their CRDT messages in a
+    /// single SQLite transaction, so a failure on any row rolls back
+    /// everything and no partial split can persist.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func insertSplit(
+        parent: Transaction,
+        children: [Transaction],
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.insertTransactionRow(db, parent)
+            for child in children {
+                try Self.insertTransactionRow(db, child)
+            }
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     private static func insertTransactionRow(_ db: Database, _ transaction: Transaction) throws {
-        // sort_order uses current timestamp (ms) so new transactions appear at the top
-        let sortOrder = Date().timeIntervalSince1970 * 1000
+        // sort_order defaults to the current timestamp (ms) so new
+        // transactions appear at the top; split rows pass explicit values so
+        // children keep their entry order under the parent.
+        let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, parent_id, tombstone, sort_order, imported_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1009,6 +1468,7 @@ class BudgetDatabase {
                 transaction.reconciled ? 1 : 0,
                 transaction.transferId,
                 transaction.isParent ? 1 : 0,
+                transaction.parentId != nil ? 1 : 0,
                 transaction.parentId,
                 transaction.tombstone ? 1 : 0,
                 sortOrder,
@@ -1120,5 +1580,103 @@ class BudgetDatabase {
                     payee.id
                 ])
         }
+    }
+
+    // MARK: - Payee Locations
+
+    func insertPayeeLocation(_ location: PayeeLocation) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO payee_locations (id, payee_id, latitude, longitude, created_at, tombstone)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, arguments: [
+                    location.id,
+                    location.payeeId,
+                    location.latitude,
+                    location.longitude,
+                    location.createdAt,
+                    location.tombstone ? 1 : 0
+                ])
+        }
+    }
+
+    /// Non-tombstoned locations for a payee, newest first (upstream
+    /// getPayeeLocations ordering).
+    func fetchPayeeLocations(payeeId: String) async throws -> [PayeeLocation] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, payee_id, latitude, longitude, created_at
+                FROM payee_locations
+                WHERE tombstone IS NOT 1 AND payee_id = ?
+                  AND latitude IS NOT NULL AND longitude IS NOT NULL AND created_at IS NOT NULL
+                ORDER BY created_at DESC
+                """, arguments: [payeeId])
+            return rows.map { row in
+                PayeeLocation(
+                    id: row["id"],
+                    payeeId: row["payee_id"],
+                    latitude: row["latitude"],
+                    longitude: row["longitude"],
+                    createdAt: row["created_at"]
+                )
+            }
+        }
+    }
+
+    /// Nearby payees: closest non-tombstoned location per non-tombstoned
+    /// payee within `maxDistanceMeters`, ascending by distance, limit 10
+    /// (upstream getNearbyPayees). Distance is computed in Swift because the
+    /// system SQLite math functions (acos etc.) aren't guaranteed on iOS.
+    func fetchNearbyPayees(
+        latitude: Double,
+        longitude: Double,
+        maxDistanceMeters: Double = LocationUtils.defaultMaxDistanceMeters
+    ) async throws -> [NearbyPayee] {
+        guard LocationUtils.isValidCoordinate(latitude: latitude, longitude: longitude),
+              maxDistanceMeters.isFinite, maxDistanceMeters > 0 else {
+            return []
+        }
+        let rows = try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT pl.id AS location_id, pl.payee_id, pl.latitude, pl.longitude, pl.created_at,
+                       p.name, p.transfer_acct
+                FROM payee_locations pl
+                JOIN payees p ON p.id = pl.payee_id
+                WHERE pl.tombstone IS NOT 1 AND p.tombstone IS NOT 1
+                  AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL AND pl.created_at IS NOT NULL
+                """)
+        }
+        var closestByPayee: [String: NearbyPayee] = [:]
+        for row in rows {
+            let location = PayeeLocation(
+                id: row["location_id"],
+                payeeId: row["payee_id"],
+                latitude: row["latitude"],
+                longitude: row["longitude"],
+                createdAt: row["created_at"]
+            )
+            let distance = LocationUtils.calculateDistanceMeters(
+                lat1: latitude, lon1: longitude,
+                lat2: location.latitude, lon2: location.longitude
+            )
+            guard distance <= maxDistanceMeters else { continue }
+            if let existing = closestByPayee[location.payeeId],
+               existing.distanceMeters <= distance {
+                continue
+            }
+            let payee = Payee(
+                id: location.payeeId,
+                name: row["name"] ?? "Unknown",
+                transferAccountId: row["transfer_acct"]
+            )
+            closestByPayee[location.payeeId] = NearbyPayee(
+                payee: payee, location: location, distanceMeters: distance)
+        }
+        return closestByPayee.values
+            .sorted {
+                ($0.distanceMeters, $0.payee.id) < ($1.distanceMeters, $1.payee.id)
+            }
+            .prefix(10)
+            .map { $0 }
     }
 }

@@ -25,6 +25,7 @@ struct SettingsView: View {
     @State private var password = ""
     @State private var showingResetSyncConfirm = false
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
+    @State private var showingBudgetSelectPrompt = false
 
     private static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -52,6 +53,22 @@ struct SettingsView: View {
                 }
             }
         )
+    }
+
+    private func openBudget(_ budget: BudgetStore.RemoteBudget) {
+        if budget.isEncrypted && EncryptionKeyManager.load(fileId: budget.id) == nil {
+            budgetToUnlock = budget
+        } else {
+            Task { await budgetStore.downloadBudget(budget) }
+        }
+    }
+
+    /// One-time nudge after connecting: surface budget selection so a fresh
+    /// connection doesn't leave the user staring at empty tabs.
+    private func promptBudgetSelectionIfNeeded() {
+        if budgetStore.currentBudgetId == nil && !budgetStore.remoteBudgets.isEmpty {
+            showingBudgetSelectPrompt = true
+        }
     }
 
     var body: some View {
@@ -152,10 +169,15 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Preferences") {
-                    if budgetStore.isConnected {
+                if budgetStore.isConnected {
+                    Section {
                         Picker("Budget", selection: budgetPickerBinding) {
-                            Text("None").tag(nil as String?)
+                            // Placeholder until a budget is chosen — deliberately
+                            // not offered again afterwards, so "None" can't be
+                            // (re)selected.
+                            if budgetPickerBinding.wrappedValue == nil {
+                                Text("Select a Budget").tag(nil as String?)
+                            }
                             // Render a placeholder tag for the current cloudFileId
                             // when remoteBudgets hasn't loaded yet (or doesn't
                             // include it), so SwiftUI can match the selection
@@ -173,11 +195,7 @@ struct SettingsView: View {
 
                         ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
                             Button {
-                                if EncryptionKeyManager.load(fileId: budget.id) != nil {
-                                    Task { await budgetStore.downloadBudget(budget) }
-                                } else {
-                                    budgetToUnlock = budget
-                                }
+                                openBudget(budget)
                             } label: {
                                 HStack {
                                     Image(systemName: "lock.fill").foregroundStyle(.secondary)
@@ -190,9 +208,31 @@ struct SettingsView: View {
                             }
                             .disabled(budgetStore.downloadingBudgetId != nil)
                         }
-                    }
 
+                        if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                            Button("Refresh Budgets") {
+                                Task { await budgetStore.fetchRemoteBudgets() }
+                            }
+                        }
+                    } header: {
+                        Text("Budget")
+                    } footer: {
+                        if budgetStore.currentBudgetId == nil {
+                            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                                Text("No budgets were found on your server. Create one in Actual Budget, then tap Refresh Budgets.")
+                            } else {
+                                Text("Select a budget to load it onto this device. The app stays empty until one is chosen.")
+                            }
+                        }
+                    }
+                }
+
+                Section("Preferences") {
                     Picker("Currency", selection: $budgetStore.currencyCode) {
+                        // Empty code = no currency, matching Actual's
+                        // defaultCurrencyCode convention. Amounts render as
+                        // plain numbers.
+                        Text("None").tag("")
                         ForEach(Self.currencyOptions, id: \.code) { option in
                             Text("\(option.symbol) \(option.code)").tag(option.code)
                         }
@@ -203,6 +243,8 @@ struct SettingsView: View {
                             Text(mode.label).tag(mode)
                         }
                     }
+
+                    Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     if budgetStore.currentBudgetId != nil {
                         Picker("Default Account", selection: $budgetStore.defaultAccountId) {
@@ -272,6 +314,18 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {
+                        WalletAutomationView()
+                    } label: {
+                        Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
+                    }
+                } header: {
+                    Text("Automations")
+                } footer: {
+                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                }
+
+                Section {
                     HStack {
                         Text("Version")
                         Spacer()
@@ -315,15 +369,31 @@ struct SettingsView: View {
             } message: {
                 Text("Discards the local sync marker and re-adopts the server's view of your budget. Any transactions or edits made since the last successful sync may need to be re-entered.")
             }
+            .confirmationDialog(
+                "Select a Budget",
+                isPresented: $showingBudgetSelectPrompt,
+                titleVisibility: .visible
+            ) {
+                ForEach(budgetStore.remoteBudgets) { budget in
+                    Button(budget.name) {
+                        openBudget(budget)
+                    }
+                }
+                Button("Not Now", role: .cancel) {}
+            } message: {
+                Text("You're connected! Choose which budget to load onto this device.")
+            }
             .task {
                 if budgetStore.isConnected {
                     await budgetStore.fetchRemoteBudgets()
+                    promptBudgetSelectionIfNeeded()
                 }
             }
             .onChange(of: budgetStore.isConnected) { _, isConnected in
                 if isConnected {
                     Task {
                         await budgetStore.fetchRemoteBudgets()
+                        promptBudgetSelectionIfNeeded()
                     }
                 }
             }

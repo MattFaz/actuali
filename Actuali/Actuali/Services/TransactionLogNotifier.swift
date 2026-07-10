@@ -4,6 +4,18 @@ import os
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "TransactionLogNotifier")
 
+/// Marker payload carried on a success notification. Tapping a notification
+/// with this marker navigates to the All Accounts transaction list.
+enum TransactionLoggedMarker {
+    static let kind = "com.mfazz.Actuali.transactionLogged"
+
+    static var userInfo: [AnyHashable: Any] { ["kind": kind] }
+
+    static func isPresent(in userInfo: [AnyHashable: Any]) -> Bool {
+        userInfo["kind"] as? String == kind
+    }
+}
+
 @MainActor
 enum TransactionLogNotifier {
 
@@ -23,6 +35,7 @@ enum TransactionLogNotifier {
         content.title = "Logged transaction"
         content.body = composeSuccessBody(payee: payee, amountCents: amountCents, currencyCode: currencyCode)
         // No sound — quiet success banner that auto-dismisses.
+        content.userInfo = TransactionLoggedMarker.userInfo
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionSuccess.\(UUID().uuidString)",
@@ -37,7 +50,7 @@ enum TransactionLogNotifier {
         }
     }
 
-    static func notifyFailure(message: String, payee: String?, amountCents: Int?) async {
+    static func notifyFailure(message: String, payee: String?, amountCents: Int?, prefill: TransactionPrefill? = nil) async {
         let center = UNUserNotificationCenter.current()
 
         // Request permission lazily on first call. Quietly ignore denial — without
@@ -56,6 +69,10 @@ enum TransactionLogNotifier {
         content.title = "Couldn't log transaction"
         content.body = composeBody(message: message, payee: payee, amountCents: amountCents)
         content.sound = .default
+        if let prefill {
+            content.body += " Tap to add it manually."
+            content.userInfo = prefill.userInfo
+        }
 
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionFailure.\(UUID().uuidString)",
@@ -85,7 +102,9 @@ enum TransactionLogNotifier {
 
     private static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String) -> String {
         let dollars = Double(abs(amountCents)) / 100.0
-        let amountString = dollars.formatted(.currency(code: currencyCode))
+        let amountString = currencyCode.isEmpty
+            ? dollars.formatted(.number.precision(.fractionLength(2)))
+            : dollars.formatted(.currency(code: currencyCode))
         return payee.isEmpty ? amountString : "\(amountString) at \(payee)"
     }
 }

@@ -25,7 +25,9 @@ enum CRDTValue {
         case let n as Int64:
             return "N:\(n)"
         case let d as Double:
-            return "N:\(Int(d))"
+            // Full precision — upstream parses "N:" payloads with parseFloat,
+            // so fractional values (e.g. coordinates) must not be truncated.
+            return "N:\(d)"
         case let s as String:
             return "S:\(s)"
         case let b as Bool:

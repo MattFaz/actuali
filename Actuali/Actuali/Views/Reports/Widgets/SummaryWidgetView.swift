@@ -3,18 +3,24 @@ import SwiftUI
 struct SummaryWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     let displayName: String
-    let totalCents: Int
+    let data: SummaryData
 
     private var formatted: String {
-        // Display absolute value; the color communicates direction. Matches the
-        // webapp's Summary widget rendering (e.g., "$95,597.58" in red for
-        // spending instead of "-$95,597.58").
-        budgetStore.formatCurrency(abs(totalCents))
+        switch data.kind {
+        case .currency:
+            // Display absolute value; the color communicates direction. Matches
+            // the webapp's Summary widget rendering (e.g., "$95,597.58" in red
+            // for spending instead of "-$95,597.58").
+            return budgetStore.formatCurrency(abs(data.totalCents))
+        case .percentage:
+            let number = abs(data.value).formatted(.number.precision(.fractionLength(0...2)))
+            return "\(number)%"
+        }
     }
 
     private var color: Color {
-        if totalCents > 0 { return .green }
-        if totalCents < 0 { return .red }
+        if data.value > 0 { return .green }
+        if data.value < 0 { return .red }
         return .primary
     }
 
@@ -39,8 +45,9 @@ struct SummaryWidgetView: View {
 
 #Preview {
     VStack {
-        SummaryWidgetView(displayName: "Spent This Month", totalCents: -316310)
-        SummaryWidgetView(displayName: "Saved This Month", totalCents: 1188352)
+        SummaryWidgetView(displayName: "Spent This Month", data: SummaryData(value: -316310, kind: .currency))
+        SummaryWidgetView(displayName: "Saved This Month", data: SummaryData(value: 1188352, kind: .currency))
+        SummaryWidgetView(displayName: "Savings Rate", data: SummaryData(value: 27.15, kind: .percentage))
     }
     .padding()
     .environmentObject(BudgetStore.previewInstance())

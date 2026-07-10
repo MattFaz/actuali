@@ -8,17 +8,20 @@ Website: [actuali.mfazz.com](https://actuali.mfazz.com)
 
 ## Screenshots
 
-| Accounts | Transactions | Budget |
-|-|-|-|
-| ![Accounts tab showing net worth and account balances](website/public/screenshots/accounts.png) | ![Transactions tab with search and recent entries](website/public/screenshots/transactions.png) | ![Budget tab showing budgeted vs spent per category](website/public/screenshots/budget.png) |
+| Accounts | Add Transactions | Budget | Reports |
+|-|-|-|-|
+| ![All Accounts view with a searchable transaction list](website/public/screenshots/view-accounts.png) | ![Add Transaction screen with type, amount, account, and category](website/public/screenshots/add-transactions.png) | ![Budget tab showing budgeted vs spent per category](website/public/screenshots/view-budgets.png) | ![Reports tab shown half in dark mode and half in light mode](website/public/screenshots/reports-dark-light.png) |
 
 ## Features
 
-- Accounts: net worth and balances across on-budget and off-budget accounts
-- Transactions: browse and search your full history; add expenses, deposits, and transfers
-- Budget: category-by-category budgeted vs. spent for the current month
-- Reports: spending, net worth, and cash flow widgets
-- iOS Shortcuts: a "Log Transaction" intent for Siri, widgets, and automations
+- Accounts: net worth and balances grouped by on-budget and off-budget, plus a combined All Accounts view
+- Transactions: browse your full history or a single account; search by payee, category, notes, or amount; add expenses, deposits, and transfers; swipe to edit or delete
+- Smart payees: autocomplete from existing payees, category auto-fill from payee history, nearby payee suggestions based on location, and automatic cleanup of Apple Pay-style merchant strings
+- Rules: your Actual Budget rules run on transactions logged from the app and from Shortcuts, just like on desktop
+- Budget: category-by-category budgeted vs. spent with progress bars, month-to-month carryover, in-app editing of budgeted amounts, and an uncategorized-transactions view
+- Reports: renders the dashboard you configured in the Actual webapp — Net Worth, Cash Flow, Spending, and Summary widgets with real data
+- iOS Shortcuts: a "Log Transaction" intent for Siri, widgets, and automations — amounts work even when passed as text, and a failed background log posts a notification that opens a prefilled form. Pairs with the [Apple Wallet automation guide](https://actuali.mfazz.com/guides/wallet-automation) to log Apple Pay purchases as you make them
+- Demo budget: explore the whole app with realistic sample data, no server required
 - Sign in with password or **OpenID Connect / OAuth** — the app detects which methods your server offers
 - Offline-first: every budget lives locally in SQLite; changes sync back automatically via Actual's CRDT protocol
 - **Light & dark mode**

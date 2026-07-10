@@ -1,14 +1,16 @@
 ---
 import Layout from "../layouts/Layout.astro";
+// Fetched by scripts/fetch-releases.mjs before `astro build` (see that file
+// for why the fetch can't live here in the frontmatter).
+import rawReleases from "../data/github-releases.json";
 
 // This page is rendered at build time. Run `npm run deploy` before each
 // release so the latest GitHub release shows up here.
 export const prerender = true;
 
-const REPO = "MattFaz/actuali";
 // Releases at or below this version are kept in the manual archive below.
 // Anything newer is pulled live from GitHub Releases at build time.
-const ARCHIVE_MAX_VERSION = "1.0.2";
+const ARCHIVE_MAX_VERSION = "1.0.1";
 
 interface GithubRelease {
   version: string;
@@ -100,8 +102,9 @@ function renderMarkdown(md: string): string {
 }
 
 // GitHub's auto-generated release notes wrap the change list in a
-// "## What's Changed" heading and end with a "**Full Changelog**: ..." line.
-// Drop both so the page shows just the bulleted changes.
+// "## What's Changed" heading, end with a "**Full Changelog**: ..." line, and
+// suffix each bullet with "by @user in <PR url>". Drop all of that, plus
+// issue/PR number refs like "(#7)", so the page shows just the change text.
 function cleanReleaseBody(md: string): string {
   return (md || "")
     .replace(/\r\n/g, "\n")
@@ -112,68 +115,30 @@ function cleanReleaseBody(md: string): string {
       if (/^\*+\s*full changelog\b/i.test(t)) return false;
       return true;
     })
+    .map((line) =>
+      line
+        .replace(/\s+by\s+@?[\w-]+\s+in\s+https:\/\/github\.com\/\S+\/pull\/\d+\s*$/i, "")
+        .replace(/\s*\(#\d+\)/g, "")
+    )
     .join("\n")
     .trim();
 }
 
 const cutoff = parseVersion(ARCHIVE_MAX_VERSION);
-// Authenticate the fetch when a token is available. Cloudflare's build runners
-// share egress IPs, so the unauthenticated GitHub limit (60 req/hr/IP) is often
-// already exhausted and the fetch 403s — silently dropping us to the archive.
-// A token raises the limit to 5,000 req/hr. Set GITHUB_TOKEN as a build env var
-// in Cloudflare (Workers & Pages > Settings > Variables and Secrets).
-const githubToken = process.env.GITHUB_TOKEN;
-let githubReleases: GithubRelease[] = [];
-try {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "User-Agent": "actuali-website",
-  };
-  if (githubToken) headers.Authorization = `Bearer ${githubToken}`;
-  const res = await fetch(
-    `https://api.github.com/repos/${REPO}/releases?per_page=100`,
-    { headers }
-  );
-  if (res.ok) {
-    const data = (await res.json()) as Array<{
-      tag_name: string;
-      published_at: string;
-      body: string;
-      draft: boolean;
-      prerelease: boolean;
-    }>;
-    githubReleases = data
-      .filter((r) => !r.draft && !r.prerelease)
-      .filter((r) => compareVersions(parseVersion(r.tag_name), cutoff) > 0)
-      .sort((a, b) => compareVersions(parseVersion(b.tag_name), parseVersion(a.tag_name)))
-      .map((r) => ({
-        version: (r.tag_name || "").replace(/^v/, ""),
-        date: formatDate(r.published_at),
-        bodyHtml: renderMarkdown(cleanReleaseBody(r.body || "")),
-      }));
-  } else {
-    // Fail the build loudly. A silent fallback here is what shipped an
-    // archive-only changelog (missing v1.0.3) while the deploy looked green.
-    const hint = res.status === 403 && !githubToken
-      ? " (unauthenticated rate limit — set the GITHUB_TOKEN build env var)"
-      : "";
-    throw new Error(`GitHub releases fetch failed (${res.status})${hint}`);
-  }
-} catch (err) {
-  console.error("Changelog: GitHub releases fetch failed.", err);
-  throw err;
-}
+const githubReleases: GithubRelease[] = (rawReleases as Array<{
+  tag_name: string;
+  published_at: string;
+  body: string;
+}>)
+  .filter((r) => compareVersions(parseVersion(r.tag_name), cutoff) > 0)
+  .sort((a, b) => compareVersions(parseVersion(b.tag_name), parseVersion(a.tag_name)))
+  .map((r) => ({
+    version: (r.tag_name || "").replace(/^v/, ""),
+    date: formatDate(r.published_at),
+    bodyHtml: renderMarkdown(cleanReleaseBody(r.body || "")),
+  }));
 
 const archivedReleases: Release[] = [
-  {
-    version: "1.0.2",
-    build: 39,
-    date: "June 24, 2026",
-    highlights: [
-      "Encrypted budgets: Actuali now opens and syncs end-to-end encrypted budgets. Pick an encrypted budget in Settings and enter its encryption password to unlock it on this device — the password is kept in the device Keychain and is never sent to the server, and your data is encrypted before it syncs.",
-      "Sync: fixed the first transaction added right after opening a budget occasionally not reaching the server. Later transactions synced fine; now the first write made before the initial sync finishes is pushed correctly too.",
-    ],
-  },
   {
     version: "1.0.1",
     build: 38,

@@ -9,31 +9,18 @@ struct DashboardView: View {
     /// nil while the fetch is in flight.
     @State private var reportTransactions: [Transaction]?
 
-    /// Widget types that are collapsed into a single top banner instead of
-    /// each rendering as a "Coming soon" card. Keep this list short; only
-    /// types that are common AND prominent on real dashboards belong here.
-    private static let hiddenTypes: [String: String] = [
-        "custom-report": "Custom Report",
-        "formula-card": "Formula"
-    ]
-
-    private var hiddenTypeLabels: [String] {
-        let found = widgets.compactMap { widget -> String? in
-            if case .unsupported(_, let type) = widget {
-                return Self.hiddenTypes[type]
-            }
-            return nil
+    /// Unsupported widgets never render as cards; a single top banner notes
+    /// that only a limited set of reports is available.
+    private var hasUnsupportedWidgets: Bool {
+        widgets.contains {
+            if case .unsupported = $0 { return true }
+            return false
         }
-        // De-duplicate while preserving first-seen order.
-        var seen = Set<String>()
-        return found.filter { seen.insert($0).inserted }
     }
 
     private var visibleWidgets: [DashboardWidget] {
         widgets.filter {
-            if case .unsupported(_, let type) = $0, Self.hiddenTypes[type] != nil {
-                return false
-            }
+            if case .unsupported = $0 { return false }
             return true
         }
     }
@@ -48,9 +35,8 @@ struct DashboardView: View {
         } else {
             ScrollView {
                 LazyVStack(spacing: 12) {
-                    let hidden = hiddenTypeLabels
-                    if !hidden.isEmpty {
-                        UnsupportedTypesNotice(typeLabels: hidden)
+                    if hasUnsupportedWidgets {
+                        UnsupportedTypesNotice()
                     }
                     ForEach(visibleWidgets, id: \.id) { widget in
                         widgetView(for: widget)
@@ -70,30 +56,48 @@ struct DashboardView: View {
         reportTransactions = (try? await database.fetchTransactionsForReports()) ?? []
     }
 
+    /// Budget-level context conditions need (on/off-budget ops, account-name
+    /// matching) that isn't derivable from the transaction rows themselves.
+    private var conditionsContext: ConditionsFilter.Context {
+        ConditionsFilter.Context(
+            offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+            accountNames: Dictionary(
+                budgetStore.accounts.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first }
+            )
+        )
+    }
+
     @ViewBuilder
     private func widgetView(for widget: DashboardWidget) -> some View {
         switch widget {
         case .summary(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 80) { transactions in
-                SummaryEngine.compute(meta: meta, transactions: transactions, today: Date()).totalCents
-            } content: { totalCents in
-                SummaryWidgetView(displayName: widget.displayName, totalCents: totalCents)
+                SummaryEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
+            } content: { data in
+                SummaryWidgetView(displayName: widget.displayName, data: data)
             }
         case .netWorth(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 180) { transactions in
-                NetWorthEngine.compute(meta: meta, transactions: transactions, today: Date())
+                NetWorthEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
             } content: { data in
                 NetWorthWidgetView(displayName: widget.displayName, data: data)
             }
         case .cashFlow(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
-                CashFlowEngine.compute(meta: meta, transactions: transactions, today: Date())
+                CashFlowEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+                    today: Date(),
+                    context: conditionsContext
+                )
             } content: { data in
                 CashFlowWidgetView(displayName: widget.displayName, data: data)
             }
         case .spending(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date())
+                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date(), context: conditionsContext)
             } content: { data in
                 SpendingWidgetView(
                     displayName: widget.displayName,
@@ -103,11 +107,9 @@ struct DashboardView: View {
             }
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
-        default:
-            UnsupportedWidgetView(
-                displayName: widget.displayName,
-                typeLabel: widget.typeLabel
-            )
+        case .unsupported:
+            // Filtered out of visibleWidgets; listed in the top notice instead.
+            EmptyView()
         }
     }
 
