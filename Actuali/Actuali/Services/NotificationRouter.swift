@@ -3,27 +3,42 @@ import Foundation
 import UIKit
 import UserNotifications
 
-/// Publishes the prefill from a tapped log-failure notification so the UI can
-/// open the add-transaction form. Set as the notification-center delegate at
-/// launch (via `AppDelegate`) so taps that cold-start the app are delivered.
+/// Routes tapped notifications to pending UI state: a log-failure tap opens
+/// the add-transaction form with its prefill; a log-success tap navigates to
+/// the All Accounts transaction list. Set as the notification-center delegate
+/// at launch (via `AppDelegate`) so taps that cold-start the app are delivered.
 @MainActor
 final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
     static let shared = NotificationRouter()
 
     @Published var pendingPrefill: TransactionPrefill?
+    @Published var pendingAllAccountsNavigation = false
 
-    nonisolated func userNotificationCenter(
+    // These async delegate methods must stay MainActor-isolated: the bridged
+    // completion handler runs on whatever executor the method finishes on,
+    // and UIKit's post-response work (state restoration, snapshotting)
+    // asserts it is on the main thread. Marking them nonisolated crashes the
+    // app on every notification tap.
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard let prefill = TransactionPrefill(userInfo: response.notification.request.content.userInfo)
-        else { return }
-        await MainActor.run { pendingPrefill = prefill }
+        route(userInfo: response.notification.request.content.userInfo)
+    }
+
+    /// Maps a tapped notification's payload to pending UI state. Internal so
+    /// unit tests can drive it without a real UNNotificationResponse.
+    func route(userInfo: [AnyHashable: Any]) {
+        if let prefill = TransactionPrefill(userInfo: userInfo) {
+            pendingPrefill = prefill
+        } else if TransactionLoggedMarker.isPresent(in: userInfo) {
+            pendingAllAccountsNavigation = true
+        }
     }
 
     // Show automation banners even while the app is foregrounded — without
     // this, iOS silently drops them and in-app users never see failures.
-    nonisolated func userNotificationCenter(
+    func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {

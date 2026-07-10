@@ -417,6 +417,39 @@ struct BudgetDatabaseRolloverTests {
         #expect(groceries?.available == 7000)
     }
 
+    @Test func outflowExcludesInflowsWhileNetSpentDrivesAvailable() async throws {
+        // May: budget 5000, spend -2000, refund +500.
+        // Net spent (-1500) drives Available; outflow (-2000) is what the
+        // summary "Spent" shows — refunds must not shrink it.
+        let (db, url) = try makeDatabase(envelope: true)
+        defer { cleanup(url) }
+
+        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000)
+        try insertSpend(db, date: 20260512, category: "cat-groceries", amount: 500)
+
+        let may = try await db.fetchBudgetMonth(month: "2026-05")
+        let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
+        #expect(groceries?.spent == -1500)
+        #expect(groceries?.outflow == -2000)
+        #expect(groceries?.available == 3500)
+        #expect(may.totalOutflow == -2000)
+    }
+
+    @Test func outflowOnlyCountsTargetMonth() async throws {
+        // April outflows must not bleed into May's summary Spent.
+        let (db, url) = try makeDatabase(envelope: true)
+        defer { cleanup(url) }
+
+        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -4000)
+        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -1000)
+
+        let may = try await db.fetchBudgetMonth(month: "2026-05")
+        let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
+        #expect(groceries?.outflow == -1000)
+        #expect(may.totalOutflow == -1000)
+    }
+
     @Test func splitChildrenOfTombstonedParentAreNotCounted() async throws {
         // Deleting a split tombstones the parent but leaves the child rows with
         // tombstone = 0. Those orphans must not count toward "spent".
