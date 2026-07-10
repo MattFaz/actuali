@@ -321,7 +321,7 @@ actor ActualServerClient {
     func fetchServerVersion() async -> String? {
         guard let serverURL else { return nil }
         let url = serverURL.appendingPathComponent("/info")
-        var request = URLRequest(url: url)
+        var request = makeRequest(url)
         request.httpMethod = "GET"
 
         guard let (data, response) = try? await session.data(for: request),

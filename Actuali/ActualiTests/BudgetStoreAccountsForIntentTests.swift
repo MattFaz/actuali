@@ -37,7 +37,10 @@ struct BudgetStoreAccountsForIntentTests {
                     date INTEGER,
                     transferred_id TEXT,
                     sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
+                    tombstone INTEGER DEFAULT 0,
+                    isParent INTEGER DEFAULT 0,
+                    isChild INTEGER DEFAULT 0,
+                    parent_id TEXT
                 );
             """)
         }
