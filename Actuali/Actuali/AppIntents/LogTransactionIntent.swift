@@ -53,8 +53,8 @@ struct LogTransactionIntent: AppIntent {
         }
         guard let parsedAmount = AmountParser.parse(amount),
               parsedAmount.isFinite, parsedAmount > 0 else {
-            await reportFailure(.invalidAmount)
-            throw LogTransactionError.invalidAmount
+            await reportFailure(.invalidAmount(received: amount))
+            throw LogTransactionError.invalidAmount(received: amount)
         }
 
         // Resolve account: explicit parameter, else defaultAccountId, else error.
@@ -84,8 +84,8 @@ struct LogTransactionIntent: AppIntent {
 
         // Compute signed cents.
         guard let unsigned = Transaction.cents(fromDollars: parsedAmount) else {
-            await reportFailure(.invalidAmount)
-            throw LogTransactionError.invalidAmount
+            await reportFailure(.invalidAmount(received: amount))
+            throw LogTransactionError.invalidAmount(received: amount)
         }
         let amountCents = isIncome ? unsigned : -unsigned
 
