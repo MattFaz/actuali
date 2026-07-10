@@ -7,7 +7,7 @@ import Foundation
 enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceConvertible {
     case noBudgetLoaded
     case accountUnavailable
-    case invalidAmount
+    case invalidAmount(received: String)
     case noAmountReceived
     case writeFailed(underlying: String)
 
@@ -17,8 +17,11 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
             return "Open Actuali and select a budget first."
         case .accountUnavailable:
             return "Account is no longer available. Edit your shortcut to pick a different account."
-        case .invalidAmount:
-            return "Amount must be greater than 0."
+        case .invalidAmount(let received):
+            // Show what the automation actually delivered: issue #41 failures
+            // hinge on whether iOS passed the real text or a coerced "0".
+            let shown = received.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)
+            return "Amount must be greater than 0 (received \"\(shown)\")."
         case .noAmountReceived:
             return "No amount was received from the automation. iOS sometimes runs Wallet automations before the transaction details are available."
         case .writeFailed(let underlying):
