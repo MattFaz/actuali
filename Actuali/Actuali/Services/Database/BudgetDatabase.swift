@@ -179,6 +179,12 @@ class BudgetDatabase {
     private static let upstreamSchemaMigrations: [(
         id: Int64, table: String, addsColumn: String?, requiresColumns: [String], sql: String
     )] = [
+        // Second half of upstream 1765518577215 (multiple dashboards, see
+        // createTableMigrations): widgets gain a page pointer. Files that
+        // predate the migration get the column here so page-assignment CRDT
+        // messages can land instead of being skipped.
+        (1765518577216, "dashboard", "dashboard_page_id", [],
+         "ALTER TABLE dashboard ADD COLUMN dashboard_page_id TEXT"),
         (1769000000000, "schedules", "custom_upcoming_length", [],
          "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL"),
         // Upstream 1778510362740 also creates cleanup_groups (see createTableMigrations).
@@ -202,6 +208,19 @@ class BudgetDatabase {
     // Tables added upstream after the original budget file was created. These run
     // unconditionally so CRDT messages targeting these tables have somewhere to land.
     private static let createTableMigrations: [(id: Int64, sql: String)] = [
+        // Upstream 1765518577215 (multiple dashboards): pages table. Only the
+        // schema half of upstream's migration — upstream also mints a default
+        // "Main" page and moves widgets onto it, but that half generates no
+        // CRDT messages and forks a fresh page id on every client that runs
+        // it, so doing it here would add yet another divergent page. Pageless
+        // widgets still render via the fallback in fetchWidgets().
+        (1765518577215, """
+            CREATE TABLE IF NOT EXISTS dashboard_pages (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """),
         // Upstream 1768872504000 (Actual 26.4.0): payee locations. Same SQL
         // as upstream's migration, so we reuse its id — a file already
         // migrated by a modern client skips this cleanly.
@@ -1209,12 +1228,40 @@ class BudgetDatabase {
 
     func fetchWidgets() async throws -> [DashboardWidget] {
         try await dbQueue.read { db in
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, type, meta
-                FROM dashboard
+            // The web app treats pages as separate dashboards and opens the
+            // first live one (ReportsDashboardRouter → dashboardPages[0]), so
+            // widgets on other, deleted, or unknown pages must not render.
+            // Upstream's migration mints a fresh "Main" page id on every
+            // client that runs it, so a synced budget can carry full
+            // duplicate widget sets under orphaned page ids (GH: Reports
+            // showed every widget twice).
+            let firstLivePageId = try String.fetchOne(db, sql: """
+                SELECT id FROM dashboard_pages
                 WHERE (tombstone = 0 OR tombstone IS NULL)
-                ORDER BY y ASC, x ASC
+                ORDER BY rowid ASC
+                LIMIT 1
                 """)
+
+            let rows: [Row]
+            if let firstLivePageId {
+                rows = try Row.fetchAll(db, sql: """
+                    SELECT id, type, meta
+                    FROM dashboard
+                    WHERE (tombstone = 0 OR tombstone IS NULL)
+                      AND dashboard_page_id = ?
+                    ORDER BY y ASC, x ASC
+                    """, arguments: [firstLivePageId])
+            } else {
+                // Pre-pages budget (or every page deleted): widgets carry no
+                // page id.
+                rows = try Row.fetchAll(db, sql: """
+                    SELECT id, type, meta
+                    FROM dashboard
+                    WHERE (tombstone = 0 OR tombstone IS NULL)
+                      AND dashboard_page_id IS NULL
+                    ORDER BY y ASC, x ASC
+                    """)
+            }
 
             return rows.compactMap { row -> DashboardWidget? in
                 guard let id = row["id"] as String?,

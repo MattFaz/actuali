@@ -20,14 +20,30 @@ struct BudgetDatabaseDashboardTests {
         x: Int = 0,
         y: Int = 0,
         meta: String? = nil,
+        tombstone: Int = 0,
+        pageId: String? = nil
+    ) throws {
+        let queue = try DatabaseQueue(path: path.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO dashboard (id, type, x, y, meta, tombstone, dashboard_page_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, arguments: [id, type, x, y, meta, tombstone, pageId])
+        }
+    }
+
+    private func insertPage(
+        path: URL,
+        id: String,
+        name: String,
         tombstone: Int = 0
     ) throws {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO dashboard (id, type, x, y, meta, tombstone)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: [id, type, x, y, meta, tombstone])
+                INSERT INTO dashboard_pages (id, name, tombstone)
+                VALUES (?, ?, ?)
+                """, arguments: [id, name, tombstone])
         }
     }
 
@@ -69,6 +85,50 @@ struct BudgetDatabaseDashboardTests {
 
         let widgets = try await database.fetchWidgets()
         #expect(widgets.map(\.id) == ["top-left", "top-right", "bottom"])
+    }
+
+    // The web app treats dashboard pages as separate dashboards and renders
+    // only the first live page (ReportsDashboardRouter redirects to
+    // dashboardPages[0]). Upstream's multiple-dashboards migration runs
+    // per-client and mints a fresh "Main" page id each time, so a synced
+    // budget can carry orphaned page ids and full duplicate widget sets
+    // (GH: Reports showed every widget twice).
+    @Test func showsOnlyFirstLivePageWhenPagesExist() async throws {
+        let (database, path) = try makeDatabase()
+        try insertPage(path: path, id: "page-main", name: "Main")
+        try insertPage(path: path, id: "page-second", name: "Second")
+        try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
+
+        try insertWidget(path: path, id: "main-1", type: "summary-card", y: 2,
+                         meta: "{}", pageId: "page-main")
+        try insertWidget(path: path, id: "main-0", type: "summary-card", y: 0,
+                         meta: "{}", pageId: "page-main")
+        try insertWidget(path: path, id: "second-page", type: "summary-card",
+                         meta: "{}", pageId: "page-second")
+        try insertWidget(path: path, id: "on-deleted-page", type: "summary-card",
+                         meta: "{}", pageId: "page-deleted")
+        try insertWidget(path: path, id: "orphan", type: "summary-card",
+                         meta: "{}", pageId: "page-ghost")
+        try insertWidget(path: path, id: "pageless", type: "summary-card",
+                         meta: "{}")
+
+        let widgets = try await database.fetchWidgets()
+        #expect(widgets.map(\.id) == ["main-0", "main-1"])
+    }
+
+    // Budgets from servers that predate multiple dashboards have no page
+    // rows; their widgets carry no page id and must still render. Widgets
+    // pointing at a page that no longer exists stay hidden, matching the web.
+    @Test func fallsBackToPagelessWidgetsWhenNoLivePages() async throws {
+        let (database, path) = try makeDatabase()
+        try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
+
+        try insertWidget(path: path, id: "pageless", type: "summary-card", meta: "{}")
+        try insertWidget(path: path, id: "orphan", type: "summary-card",
+                         meta: "{}", pageId: "page-ghost")
+
+        let widgets = try await database.fetchWidgets()
+        #expect(widgets.map(\.id) == ["pageless"])
     }
 
     @Test func unknownTypeReturnsAsUnsupported() async throws {
