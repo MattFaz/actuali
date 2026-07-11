@@ -210,6 +210,9 @@ struct DashboardWidgetParserTests {
         #expect(DashboardWidget.cashFlow(id: "c", meta: nil).id == "c")
         #expect(DashboardWidget.spending(id: "d", meta: nil).id == "d")
         #expect(DashboardWidget.markdown(id: "e", meta: MarkdownMeta(content: "hi", textAlign: nil)).id == "e")
+        #expect(DashboardWidget.ageOfMoney(id: "g", meta: nil).id == "g")
+        #expect(DashboardWidget.formula(id: "h", meta: nil).id == "h")
+        #expect(DashboardWidget.customReport(id: "i", meta: nil).id == "i")
         #expect(DashboardWidget.unsupported(id: "f", type: "sankey-card").id == "f")
     }
 }

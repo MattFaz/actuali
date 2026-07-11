@@ -9,6 +9,11 @@ struct DashboardView: View {
     /// nil while the fetch is in flight.
     @State private var reportTransactions: [Transaction]?
 
+    /// Configs referenced by custom-report widgets plus the week-start pref,
+    /// loaded alongside the transactions.
+    @State private var customReportConfigs: [String: CustomReportConfig] = [:]
+    @State private var firstDayOfWeekIdx = 0
+
     /// Unsupported widgets never render as cards; a single top banner notes
     /// that only a limited set of reports is available.
     private var hasUnsupportedWidgets: Bool {
@@ -53,6 +58,15 @@ struct DashboardView: View {
             reportTransactions = []
             return
         }
+        // Fetch configs + week pref BEFORE assigning reportTransactions:
+        // WidgetCard recomputes when the transactions change and the compute
+        // closures read these, so they must land first.
+        let reportIds = widgets.compactMap { widget -> String? in
+            if case .customReport(_, let meta) = widget { return meta?.id }
+            return nil
+        }
+        customReportConfigs = (try? await database.fetchCustomReportConfigs(ids: reportIds)) ?? [:]
+        firstDayOfWeekIdx = (try? await database.fetchFirstDayOfWeekIdx()) ?? 0
         reportTransactions = (try? await database.fetchTransactionsForReports()) ?? []
     }
 
@@ -107,9 +121,35 @@ struct DashboardView: View {
             }
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
-        case .ageOfMoney, .formula, .customReport:
-            // Rendered by a later task; placeholder keeps the switch exhaustive.
-            EmptyView()
+        case .ageOfMoney(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 160) { transactions in
+                AgeOfMoneyEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
+            } content: { data in
+                AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .formula(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 100) { transactions in
+                FormulaEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
+            } content: { result in
+                FormulaWidgetView(displayName: widget.displayName, result: result)
+            }
+        case .customReport(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
+                CustomReportEngine.compute(
+                    config: (meta?.id).flatMap { customReportConfigs[$0] },
+                    transactions: transactions,
+                    reportContext: CustomReportEngine.ReportContext(
+                        categories: budgetStore.categoryGroups.flatMap(\.categories),
+                        groups: budgetStore.categoryGroups,
+                        offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+                        firstDayOfWeekIdx: firstDayOfWeekIdx
+                    ),
+                    filterContext: conditionsContext,
+                    today: Date()
+                )
+            } content: { data in
+                CustomReportWidgetView(data: data)
+            }
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
             EmptyView()
