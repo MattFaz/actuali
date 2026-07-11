@@ -23,11 +23,11 @@ struct AgeOfMoneyData: Equatable {
 /// a per-month cumulative rolling average of the same window.
 enum AgeOfMoneyEngine {
 
-    private static var cal: Calendar {
+    private static let cal: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
         return c
-    }
+    }()
 
     static func compute(
         meta: AgeOfMoneyMeta?,
@@ -47,15 +47,17 @@ enum AgeOfMoneyEngine {
         // around). Transfers to/from off-budget accounts count as real
         // spending/income (upstream's $or on payee.transfer_acct).
         let pool = transactions
-            .filter { !$0.tombstone }
-            .filter { $0.date <= fixedEndYMD }
-            .filter { !context.offBudgetAccountIds.contains($0.accountId) }
-            .filter { $0.transferAcct == nil
-                      || context.offBudgetAccountIds.contains($0.transferAcct!) }
-            .filter { ConditionsFilter.matches(transaction: $0,
-                                               conditions: meta?.conditions,
-                                               op: meta?.conditionsOp,
-                                               context: context) }
+            .filter { tx in
+                !tx.tombstone
+                    && tx.date <= fixedEndYMD
+                    && !context.offBudgetAccountIds.contains(tx.accountId)
+                    && (tx.transferAcct == nil
+                        || context.offBudgetAccountIds.contains(tx.transferAcct!))
+                    && ConditionsFilter.matches(transaction: tx,
+                                                conditions: meta?.conditions,
+                                                op: meta?.conditionsOp,
+                                                context: context)
+            }
             .sorted { lhs, rhs in
                 if lhs.date != rhs.date { return lhs.date < rhs.date }
                 return (lhs.sortOrder ?? 0, lhs.id) < (rhs.sortOrder ?? 0, rhs.id)

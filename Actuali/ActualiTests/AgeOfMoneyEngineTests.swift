@@ -160,4 +160,54 @@ struct AgeOfMoneyEngineTests {
         #expect(marchOnly.currentAge == 14)
         #expect(marchOnly.insufficientData == false)
     }
+
+    // MARK: - Edge-case pins
+
+    @Test func expenseWithNoIncomeAtAllYieldsNilAgeAndInsufficientData() {
+        // No bucket is ever touched: no age is recorded (currentAge nil,
+        // no graph points), but the uncovered expense flags insufficient data.
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(),
+            transactions: [tx("e", date: 20260115, amount: -50_000)],
+            today: today, context: .empty)
+        #expect(data.currentAge == nil)
+        #expect(data.points.isEmpty)
+        #expect(data.insufficientData == true)
+    }
+
+    @Test func expenseDatedBeforeOnlyIncomeBucketClampsAgeToZero() {
+        // The expense (Jan 10) drains the Feb 1 bucket; the raw day distance
+        // is -22 but upstream clamps with max(0, days) → age 0.
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(),
+            transactions: [tx("e", date: 20260110, amount: -50_000),
+                           tx("i", date: 20260201, amount: 100_000)],
+            today: today, context: .empty)
+        #expect(data.currentAge == 0)
+        #expect(data.insufficientData == false)
+    }
+
+    @Test func sameDayIncomeAndExpenseYieldAgeZero() {
+        // Upstream: "handles income and expenses on the same day (age = 0)".
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(),
+            transactions: [tx("i", date: 20260115, amount: 100_000),
+                           tx("e", date: 20260115, amount: -50_000)],
+            today: today, context: .empty)
+        #expect(data.currentAge == 0)
+        #expect(data.insufficientData == false)
+    }
+
+    @Test func transactionsAfterTodayAreExcludedFromThePool() {
+        // fixedEnd = min(resolved end, today) — a future-dated expense
+        // (Aug 1 with today = Jul 11) must not reach the FIFO at all.
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(),
+            transactions: [tx("i", date: 20260101, amount: 100_000),
+                           tx("e", date: 20260801, amount: -50_000)],
+            today: today, context: .empty)
+        #expect(data.currentAge == nil)
+        #expect(data.points.isEmpty)
+        #expect(data.insufficientData == false)
+    }
 }
