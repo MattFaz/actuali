@@ -27,6 +27,15 @@ struct CustomReportData: Equatable {
 /// offending option so the card can explain itself.
 enum CustomReportEngine {
 
+    /// Row keys for the synthetic rows upstream appends after the real
+    /// categories/groups (ReportOptions.ts: uncategorizedCategory,
+    /// offBudgetCategory, transferCategory, uncategorizedGroup).
+    private enum Synthetic {
+        static let uncategorized = "uncategorized"
+        static let offBudget = "off_budget"
+        static let transfer = "transfer"
+    }
+
     struct ReportContext {
         var categories: [Category]       // in budget sort order
         var groups: [CategoryGroup]      // in budget sort order
@@ -77,6 +86,8 @@ enum CustomReportEngine {
         let groupsById = Dictionary(uniqueKeysWithValues: reportContext.groups.map { ($0.id, $0) })
 
         // Filter (upstream: conditions, then filterHiddenItems) — single pass.
+        // Category resolves through the lookup, mirroring upstream's query
+        // join: a dangling categoryId behaves exactly like no category.
         let pool = live.filter { tx in
             guard tx.date >= startYMD && tx.date <= endYMD else { return false }
             guard ConditionsFilter.matches(transaction: tx, conditions: config.conditions,
@@ -89,7 +100,7 @@ enum CustomReportEngine {
             }
             let offBudget = reportContext.offBudgetAccountIds.contains(tx.accountId)
             if !config.showOffBudget && offBudget { return false }
-            if !config.showUncategorized && tx.categoryId == nil && !offBudget { return false }
+            if !config.showUncategorized && category == nil && !offBudget { return false }
             return true
         }
 
@@ -109,11 +120,23 @@ enum CustomReportEngine {
             let key = bucketKey(forYMD: tx.date, interval: config.interval,
                                 firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
             guard let idx = bucketIndex[key] else { continue }
+            // Upstream filterHiddenItems: only categorized on-budget txs land
+            // on regular rows; everything else goes to the synthetic rows —
+            // off-budget txs (even categorized ones) to "Off budget", then
+            // uncategorized transfers to "Transfers", the rest to
+            // "Uncategorized". Group mode folds all three into one group.
+            let category = tx.categoryId.flatMap { categoriesById[$0] }
+            let offBudget = reportContext.offBudgetAccountIds.contains(tx.accountId)
             let groupKey: String
             switch config.groupBy {
-            case "Category": groupKey = tx.categoryId ?? "uncategorized"
+            case "Category":
+                if let category, !offBudget { groupKey = category.id }
+                else if offBudget { groupKey = Synthetic.offBudget }
+                else if tx.transferAcct != nil { groupKey = Synthetic.transfer }
+                else { groupKey = Synthetic.uncategorized }
             case "Group":
-                groupKey = tx.categoryId.flatMap { categoriesById[$0]?.groupId } ?? "uncategorized"
+                if let category, !offBudget { groupKey = category.groupId }
+                else { groupKey = Synthetic.uncategorized }
             default: groupKey = ""   // Interval
             }
             var cell = cells[groupKey, default: [:]][idx, default: Cell()]
@@ -129,24 +152,32 @@ enum CustomReportEngine {
             }
         }
 
-        // groupBy Interval → bars per bucket (web renders intervalData here).
+        // groupBy Interval → one row per bucket (web renders intervalData here).
         if config.groupBy == "Interval" {
             let row = cells[""] ?? [:]
-            let bars = labels.enumerated().map { idx, label in
-                CustomReportData.Bar(label: label, valueUnits: row[idx].map(value) ?? 0)
+            let values = labels.indices.map { row[$0].map(value) ?? 0 }
+            if config.graphType == "TableGraph" {
+                data.kind = .table(zip(labels, values).map { .init(name: $0, totalUnits: $1) })
+            } else {
+                data.kind = .bars(zip(labels, values).map { .init(label: $0, valueUnits: $1) },
+                                  signed: config.balanceType == "Net")
             }
-            data.kind = .bars(bars, signed: config.balanceType == "Net")
             return data
         }
 
-        // Named groups in budget order.
+        // Named groups in budget order. Upstream (ReportOptions.categoryLists)
+        // always appends the synthetic rows; when their txs are filtered out
+        // they total zero and fall to the showEmpty filter like any other row.
         let orderedGroups: [(key: String, name: String)]
         if config.groupBy == "Category" {
-            orderedGroups = reportContext.categories.map { ($0.id, $0.name) }
-                + (config.showUncategorized ? [("uncategorized", "Uncategorized")] : [])
+            orderedGroups = reportContext.categories.map { ($0.id, $0.name) } + [
+                (Synthetic.uncategorized, "Uncategorized"),
+                (Synthetic.offBudget, "Off budget"),
+                (Synthetic.transfer, "Transfers"),
+            ]
         } else {
             orderedGroups = reportContext.groups.map { ($0.id, $0.name) }
-                + (config.showUncategorized ? [("uncategorized", "Uncategorized")] : [])
+                + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
         }
 
         struct GroupTotal { let key: String; let name: String; let total: Double; let perBucket: [Double] }

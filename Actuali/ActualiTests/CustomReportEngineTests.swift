@@ -26,8 +26,9 @@ struct CustomReportEngineTests {
             firstDayOfWeekIdx: 0)
     }
 
-    private func tx(_ id: String, date: Int, amount: Int, category: String?) -> Transaction {
-        Transaction(id: id, accountId: "a1", date: date, amount: amount,
+    private func tx(_ id: String, date: Int, amount: Int, category: String?,
+                    account: String = "a1") -> Transaction {
+        Transaction(id: id, accountId: account, date: date, amount: amount,
                     payeeId: nil, payeeName: nil, categoryId: category, categoryName: nil,
                     notes: nil, cleared: true, reconciled: false, transferId: nil,
                     isParent: false, parentId: nil, tombstone: false,
@@ -36,13 +37,14 @@ struct CustomReportEngineTests {
 
     private func config(
         mode: String, groupBy: String, balance: String, interval: String,
-        graph: String, sortBy: String = "desc"
+        graph: String, sortBy: String = "desc",
+        showOffBudget: Bool = false, showUncategorized: Bool = false
     ) -> CustomReportConfig {
         CustomReportConfig(
             id: "r", name: "Test", mode: mode, groupBy: groupBy, balanceType: balance,
             interval: interval, graphType: graph, dateRange: "All time", dateStatic: false,
             startDate: nil, endDate: nil, includeCurrent: true, showEmpty: false,
-            showOffBudget: false, showHidden: false, showUncategorized: false,
+            showOffBudget: showOffBudget, showHidden: false, showUncategorized: showUncategorized,
             sortBy: sortBy, conditions: nil, conditionsOp: "and")
     }
 
@@ -145,5 +147,78 @@ struct CustomReportEngineTests {
         // budget sort = context order: Food, Rent, Fun (hidden dropped, empty dropped)
         #expect(rows.map(\.name) == ["Food", "Rent", "Fun"])
         #expect(rows.map(\.totalUnits) == [-100.0, -200.0, -50.0])
+    }
+
+    @Test func offBudgetMoneyLandsInSyntheticRowsConsistently() {
+        // showOffBudget=true + showUncategorized=false: off-budget txs (even
+        // categorized ones — upstream routes any off-budget tx to the
+        // "Off budget" row) must appear in Category and Group outputs and the
+        // totals must match the Interval output for the same config.
+        var ctx = reportContext
+        ctx.offBudgetAccountIds = ["a-off"]
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food"),                    // Food 100
+            tx("2", date: 20260615, amount: -4_000,  category: nil,     account: "a-off"),   // off-budget 40
+            tx("3", date: 20260620, amount: -1_000,  category: "c-fun", account: "a-off"),   // off-budget 10
+        ]
+        func run(groupBy: String) -> CustomReportData {
+            CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", sortBy: "budget",
+                               showOffBudget: true),
+                transactions: txs, reportContext: ctx, filterContext: .empty, today: today)
+        }
+        guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
+              case .bars(let byGroup, _) = run(groupBy: "Group").kind,
+              case .bars(let byInterval, _) = run(groupBy: "Interval").kind else {
+            Issue.record("expected bars for all three groupings"); return
+        }
+        #expect(byCategory.map(\.label) == ["Food", "Off budget"])
+        #expect(byCategory.map(\.valueUnits) == [100.0, 50.0])
+        #expect(byGroup.map(\.label) == ["Living", "Uncategorized & Off budget"])
+        #expect(byGroup.map(\.valueUnits) == [100.0, 50.0])
+        let total = byInterval.map(\.valueUnits).reduce(0, +)
+        #expect(total == 150.0)
+        #expect(byCategory.map(\.valueUnits).reduce(0, +) == total)
+        #expect(byGroup.map(\.valueUnits).reduce(0, +) == total)
+    }
+
+    @Test func danglingCategoryFallsBackToUncategorized() {
+        // A categoryId missing from the context behaves like no category at
+        // all (upstream joins through the categories table), so with
+        // showUncategorized=true it lands in the "Uncategorized" row — and
+        // in the combined group under groupBy Group. It never vanishes.
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
+            tx("2", date: 20260615, amount: -4_000,  category: "c-ghost"),  // dangling
+        ]
+        func run(groupBy: String) -> CustomReportData {
+            CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", sortBy: "budget",
+                               showUncategorized: true),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+        }
+        guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
+              case .bars(let byGroup, _) = run(groupBy: "Group").kind else {
+            Issue.record("expected bars for both groupings"); return
+        }
+        #expect(byCategory.map(\.label) == ["Food", "Uncategorized"])
+        #expect(byCategory.map(\.valueUnits) == [100.0, 40.0])
+        #expect(byGroup.map(\.label) == ["Living", "Uncategorized & Off budget"])
+        #expect(byGroup.map(\.valueUnits) == [100.0, 40.0])
+    }
+
+    @Test func intervalTableShowsIntervalRows() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Net",
+                           interval: "Monthly", graph: "TableGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .table(let rows) = data.kind else {
+            Issue.record("expected table, got \(data.kind)"); return
+        }
+        #expect(rows.map(\.name) == ["Jun '26", "Jul '26"])
+        #expect(rows.map(\.totalUnits) == [-300.0, -50.0])
     }
 }
