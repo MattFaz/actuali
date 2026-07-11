@@ -137,4 +137,129 @@ struct BudgetDatabaseReportsFetchTests {
         let ids = try await db.fetchTransactionsForReports().map(\.id).sorted()
         #expect(ids == ["live-c1", "live-c2", "main"])
     }
+
+    // MARK: - custom_reports configs
+
+    @Test func fetchesCustomReportConfigs() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            // A synced budget file carries upstream columns the app's own
+            // migration doesn't create; add them so the fetch reads real values.
+            try conn.execute(sql: """
+                ALTER TABLE custom_reports ADD COLUMN date_static INTEGER DEFAULT 0;
+                ALTER TABLE custom_reports ADD COLUMN include_current INTEGER DEFAULT 0;
+                ALTER TABLE custom_reports ADD COLUMN sort_by TEXT DEFAULT 'desc';
+
+                INSERT INTO custom_reports
+                    (id, name, mode, group_by, balance_type, interval, graph_type,
+                     date_range, date_static, start_date, end_date, include_current,
+                     show_empty, show_offbudget, show_hidden, show_uncategorized,
+                     sort_by, conditions, conditions_op, tombstone)
+                VALUES
+                    ('r1', 'Category Spending', 'total', 'Category', 'Payment', 'Monthly',
+                     'BarGraph', 'All time', 0, '2025-08-30', '2026-04-26', 1,
+                     0, 0, 0, 0, 'name',
+                     '[{"field":"transfer","op":"is","value":false,"type":"boolean"}]',
+                     'and', 0),
+                    ('r2', 'Deleted', 'total', 'Category', 'Payment', 'Monthly',
+                     'BarGraph', 'All time', 0, NULL, NULL, 1,
+                     0, 0, 0, 0, 'desc', NULL, 'and', 1);
+            """)
+        }
+
+        let configs = try await db.fetchCustomReportConfigs(ids: ["r1", "r2", "missing"])
+        #expect(configs.count == 1)
+        let r1 = try #require(configs["r1"])
+        #expect(r1.name == "Category Spending")
+        #expect(r1.mode == "total")
+        #expect(r1.groupBy == "Category")
+        #expect(r1.balanceType == "Payment")
+        #expect(r1.graphType == "BarGraph")
+        #expect(r1.dateRange == "All time")
+        #expect(r1.dateStatic == false)
+        #expect(r1.includeCurrent == true)
+        #expect(r1.sortBy == "name")
+        #expect(r1.startDate == "2025-08-30")
+        #expect(r1.endDate == "2026-04-26")
+        #expect(r1.conditions?.first?.field == "transfer")
+        #expect(r1.conditionsOp == "and")
+
+        let empty = try await db.fetchCustomReportConfigs(ids: [])
+        #expect(empty.isEmpty)
+    }
+
+    /// The app's own migration creates `custom_reports` without upstream's
+    /// later columns (date_static, include_current, sort_by); the fetch must
+    /// default them instead of failing.
+    @Test func fetchesCustomReportConfigsWhenUpstreamColumnsMissing() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO custom_reports
+                    (id, name, mode, group_by, balance_type, interval, graph_type,
+                     date_range, conditions, conditions_op, tombstone)
+                VALUES
+                    ('r1', 'Net Worth', 'time', 'Group', 'Net', 'Weekly',
+                     'LineGraph', 'Year to date', NULL, 'or', 0)
+            """)
+        }
+
+        let configs = try await db.fetchCustomReportConfigs(ids: ["r1"])
+        let r1 = try #require(configs["r1"])
+        #expect(r1.name == "Net Worth")
+        #expect(r1.interval == "Weekly")
+        #expect(r1.dateStatic == false)
+        #expect(r1.includeCurrent == false)
+        #expect(r1.sortBy == "desc")
+        #expect(r1.conditions == nil)
+        #expect(r1.conditionsOp == "or")
+    }
+
+    // MARK: - firstDayOfWeekIdx preference
+
+    @Test func firstDayOfWeekDefaultsToSunday() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        // No preferences table in this fixture: must default to 0 (Sunday).
+        #expect(try await db.fetchFirstDayOfWeekIdx() == 0)
+    }
+
+    @Test func firstDayOfWeekReadsPreference() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                INSERT INTO preferences (id, value) VALUES ('firstDayOfWeekIdx', '1');
+            """)
+        }
+
+        #expect(try await db.fetchFirstDayOfWeekIdx() == 1)
+    }
+
+    @Test func firstDayOfWeekDefaultsWhenRowMissingOrInvalid() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD');
+            """)
+        }
+        #expect(try await db.fetchFirstDayOfWeekIdx() == 0)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO preferences (id, value) VALUES ('firstDayOfWeekIdx', 'bogus');
+            """)
+        }
+        #expect(try await db.fetchFirstDayOfWeekIdx() == 0)
+    }
 }
