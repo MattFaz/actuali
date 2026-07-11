@@ -26,8 +26,8 @@ enum ReportDateRange {
         let allTime = (earliest ?? today, latest ?? today)
 
         if dateStatic {
-            let s = parse(startDate) ?? allTime.0
-            let e = parse(endDate) ?? today
+            let s = parseRangeStart(startDate) ?? allTime.0
+            let e = parseRangeEnd(endDate) ?? today
             return (s, e)
         }
 
@@ -101,11 +101,38 @@ enum ReportDateRange {
         return cal.date(byAdding: .day, value: -delta, to: cal.startOfDay(for: date))!
     }
 
-    private static func parse(_ s: String?) -> Date? {
-        guard let s else { return nil }
+    private static let isoFormatter: DateFormatter = {
         let f = DateFormatter()
-        f.dateFormat = s.count == 7 ? "yyyy-MM" : "yyyy-MM-dd"
+        f.dateFormat = "yyyy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
-        return f.date(from: s)
+        return f
+    }()
+
+    private static let isoMonthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM"
+        f.timeZone = TimeZone(identifier: "UTC")
+        return f
+    }()
+
+    /// Parse a range start. YYYY-MM snaps to first-of-month, YYYY-MM-DD is used as-is.
+    private static func parseRangeStart(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        if let d = isoFormatter.date(from: s) { return d }
+        if let d = isoMonthFormatter.date(from: s) { return d }  // already first-of-month
+        return nil
+    }
+
+    /// Parse a range end. YYYY-MM expands to end-of-month so the range is
+    /// inclusive of the entire month, matching upstream behavior. YYYY-MM-DD
+    /// is used as-is.
+    private static func parseRangeEnd(_ s: String?) -> Date? {
+        guard let s else { return nil }
+        if let d = isoFormatter.date(from: s) { return d }
+        if let d = isoMonthFormatter.date(from: s) {
+            let nextMonth = cal.date(byAdding: .month, value: 1, to: d)!
+            return cal.date(byAdding: .day, value: -1, to: nextMonth)!
+        }
+        return nil
     }
 }
