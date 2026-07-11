@@ -785,6 +785,9 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+        } catch is CancellationError {
+            // The caller's task was cancelled (e.g. a .refreshable task the
+            // system tore down). Nothing failed — never alarm the user.
         } catch {
             // If the budget was switched mid-fetch, the failure belongs to
             // the old database — don't surface it over the new budget.
@@ -1323,14 +1326,22 @@ final class BudgetStore: ObservableObject {
 
     /// Force immediate sync
     func sync() async {
-        logger.info("sync() called")
-        if syncClient == nil {
-            logger.notice("syncClient is nil, cannot sync!")
+        // Pull-to-refresh runs this inside SwiftUI's .refreshable task, which
+        // the system cancels on further scroll interaction or when the
+        // hosting scroll view goes away (tab switch). Run the pipeline in an
+        // unstructured task so a UI-driven cancellation can't abort a sync
+        // mid-flight or poison the refresh reads with CancellationError.
+        let work = Task {
+            logger.info("sync() called")
+            if syncClient == nil {
+                logger.notice("syncClient is nil, cannot sync!")
+            }
+            await syncClient?.syncNow()
+            lastSyncTime = Date()
+            logger.debug("sync() completed, refreshing data...")
+            await refreshDataOnly()
         }
-        await syncClient?.syncNow()
-        lastSyncTime = Date()
-        logger.debug("sync() completed, refreshing data...")
-        await refreshDataOnly()
+        await work.value
     }
 
     /// Discard local sync state and re-adopt the server's Merkle tree.
@@ -1370,6 +1381,8 @@ final class BudgetStore: ObservableObject {
             // month flips), this result is stale — drop it.
             guard requestedBudgetMonth == month else { return }
             currentBudgetMonth = fetched
+        } catch is CancellationError {
+            // Hosting view task cancelled (rapid month flips) — not an error.
         } catch {
             guard requestedBudgetMonth == month else { return }
             self.error = error.localizedDescription

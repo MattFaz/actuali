@@ -29,7 +29,10 @@ struct ReportsTabView: View {
                 }
             }
             .navigationTitle("Reports")
-            .task { await reload() }
+            // Keyed to the open database so the initial load re-runs when
+            // the budget finishes opening (launching straight onto this tab
+            // races loadLocalBudget) and when the budget is switched.
+            .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) { await reload() }
             .refreshable {
                 await budgetStore.sync()
                 await reload()
@@ -46,6 +49,11 @@ struct ReportsTabView: View {
             let fetched = try await database.fetchWidgets()
             self.widgets = fetched
             self.loadError = nil
+        } catch is CancellationError {
+            // The hosting task was torn down (tab switch, refresh gesture
+            // cancelled). Keep whatever is on screen; the next appearance
+            // reloads.
+            return
         } catch {
             self.loadError = error.localizedDescription
         }
