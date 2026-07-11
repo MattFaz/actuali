@@ -81,4 +81,36 @@ struct FormulaEngineTests {
             transactions: [], today: today, context: .empty)
         #expect(result == .value(5))
     }
+
+    @Test func subtractionIsLeftAssociative() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=10-2-3"), transactions: [], today: today, context: .empty)
+        #expect(result == .value(5))
+    }
+
+    @Test func decimalLiteralsParse() {
+        // Bare leading-dot decimals (".5") and standard decimals both parse.
+        let bareDot = FormulaEngine.compute(
+            meta: meta(formula: "=.5+1.25"), transactions: [], today: today, context: .empty)
+        #expect(bareDot == .value(1.75))
+        let standard = FormulaEngine.compute(
+            meta: meta(formula: "=0.5+1.25"), transactions: [], today: today, context: .empty)
+        #expect(standard == .value(1.75))
+    }
+
+    @Test(arguments: [
+        "=",            // empty expression
+        "=query(",      // missing argument
+        "=1.2.3",       // malformed number
+        "=1 2",         // trailing garbage
+        "=(1+2",        // unclosed paren
+        #"=query("a"#,  // unclosed quote
+    ])
+    func malformedFormulasAreUnsupported(formula: String) {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+        guard case .unsupported = result else {
+            Issue.record("expected .unsupported for \(formula), got \(result)"); return
+        }
+    }
 }

@@ -54,7 +54,7 @@ enum FormulaEngine {
         // Upstream only date-filters when the timeFrame has a mode.
         if let timeFrame = query.timeFrame, timeFrame.mode != nil {
             let (start, end) = TimeFrame.resolve(timeFrame, asOf: today)
-            let startYMD = ymd(start), endYMD = ymd(end)
+            let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
             pool = pool.filter { $0.date >= startYMD && $0.date <= endYMD }
         }
         let cents = pool
@@ -66,7 +66,7 @@ enum FormulaEngine {
         return Double(cents) / 100
     }
 
-    private static func ymd(_ date: Date) -> Int {
+    private static func ymdInt(from date: Date) -> Int {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         let c = cal.dateComponents([.year, .month, .day], from: date)
