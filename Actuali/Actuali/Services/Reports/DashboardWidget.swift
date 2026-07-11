@@ -207,6 +207,32 @@ struct MarkdownMeta: Codable, Equatable {
     }
 }
 
+struct AgeOfMoneyMeta: Codable, Equatable {
+    let name: String?
+    let timeFrame: WidgetTimeFrame?
+    let conditions: [WidgetRuleCondition]?
+    let conditionsOp: String?
+    let granularity: String?  // "daily" | "weekly" | "monthly"; nil = monthly
+}
+
+struct FormulaQueryMeta: Codable, Equatable {
+    let conditions: [WidgetRuleCondition]?
+    let conditionsOp: String?
+    let timeFrame: WidgetTimeFrame?
+}
+
+struct FormulaMeta: Codable, Equatable {
+    let name: String?
+    let formula: String?
+    let queries: [String: FormulaQueryMeta]?
+}
+
+struct CustomReportMeta: Codable, Equatable {
+    /// References a row in the `custom_reports` table.
+    let id: String?
+    let name: String?
+}
+
 // MARK: - DashboardWidget enum
 
 enum DashboardWidget: Equatable {
@@ -215,6 +241,9 @@ enum DashboardWidget: Equatable {
     case cashFlow(id: String, meta: CashFlowMeta?)
     case spending(id: String, meta: SpendingMeta?)
     case markdown(id: String, meta: MarkdownMeta)
+    case ageOfMoney(id: String, meta: AgeOfMoneyMeta?)
+    case formula(id: String, meta: FormulaMeta?)
+    case customReport(id: String, meta: CustomReportMeta?)
     case unsupported(id: String, type: String)
 
     var id: String {
@@ -224,6 +253,9 @@ enum DashboardWidget: Equatable {
              .cashFlow(let id, _),
              .spending(let id, _),
              .markdown(let id, _),
+             .ageOfMoney(let id, _),
+             .formula(let id, _),
+             .customReport(let id, _),
              .unsupported(let id, _):
             return id
         }
@@ -236,6 +268,9 @@ enum DashboardWidget: Equatable {
         case .cashFlow: return "Cash Flow"
         case .spending: return "Spending"
         case .markdown: return "Notes"
+        case .ageOfMoney: return "Age of Money"
+        case .formula: return "Formula"
+        case .customReport: return "Custom Report"
         case .unsupported(_, let type): return type
         }
     }
@@ -247,6 +282,9 @@ enum DashboardWidget: Equatable {
         case .cashFlow(_, let meta): return meta?.name ?? typeLabel
         case .spending(_, let meta): return meta?.name ?? typeLabel
         case .markdown: return typeLabel
+        case .ageOfMoney(_, let meta): return meta?.name ?? typeLabel
+        case .formula(_, let meta): return meta?.name ?? typeLabel
+        case .customReport(_, let meta): return meta?.name ?? typeLabel
         case .unsupported: return typeLabel
         }
     }
@@ -271,6 +309,12 @@ enum DashboardWidget: Equatable {
                 return .markdown(id: id, meta: meta)
             }
             return .unsupported(id: id, type: type)
+        case "age-of-money-card":
+            return .ageOfMoney(id: id, meta: decode(AgeOfMoneyMeta.self))
+        case "formula-card":
+            return .formula(id: id, meta: decode(FormulaMeta.self))
+        case "custom-report":
+            return .customReport(id: id, meta: decode(CustomReportMeta.self))
         default:
             return .unsupported(id: id, type: type)
         }

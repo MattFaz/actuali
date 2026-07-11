@@ -153,6 +153,57 @@ struct DashboardWidgetParserTests {
         #expect(widget.displayName == "Summary")
     }
 
+    @Test func parsesAgeOfMoneyCard() throws {
+        let meta = """
+        {"conditions":[{"field":"account","op":"onBudget","value":null,"type":"id"}],
+         "conditionsOp":"and",
+         "timeFrame":{"start":"2025-06","end":"2026-06","mode":"full"},
+         "granularity":"monthly"}
+        """
+        let widget = DashboardWidget.parse(id: "w1", type: "age-of-money-card", metaJSON: meta)
+        if case .ageOfMoney(let id, let parsed) = widget {
+            #expect(id == "w1")
+            #expect(parsed?.timeFrame?.mode == .full)
+            #expect(parsed?.granularity == "monthly")
+            #expect(parsed?.conditions?.count == 1)
+            #expect(widget.displayName == "Age of Money")
+        } else {
+            Issue.record("Expected .ageOfMoney, got \(widget)")
+        }
+    }
+
+    @Test func parsesFormulaCard() throws {
+        let meta = """
+        {"name":"Saved This Month","fontSize":41.9,
+         "formula":"=query(\\"expenses\\")+query(\\"income\\")",
+         "queries":{"expenses":{"conditions":[{"field":"amount","op":"lt","value":0,"type":"number"}],
+                                "conditionsOp":"and",
+                                "timeFrame":{"start":"2026-04-01","end":"2026-04-30","mode":"sliding-window"}}}}
+        """
+        let widget = DashboardWidget.parse(id: "w2", type: "formula-card", metaJSON: meta)
+        if case .formula(_, let parsed) = widget {
+            #expect(parsed?.formula == "=query(\"expenses\")+query(\"income\")")
+            #expect(parsed?.queries?["expenses"]?.timeFrame?.mode == .slidingWindow)
+            #expect(widget.displayName == "Saved This Month")
+        } else {
+            Issue.record("Expected .formula, got \(widget)")
+        }
+    }
+
+    @Test func parsesCustomReportCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w3",
+            type: "custom-report",
+            metaJSON: #"{"id":"1878500d-0aca-495a-9602-271aac118dcf"}"#
+        )
+        if case .customReport(_, let parsed) = widget {
+            #expect(parsed?.id == "1878500d-0aca-495a-9602-271aac118dcf")
+            #expect(widget.displayName == "Custom Report")
+        } else {
+            Issue.record("Expected .customReport, got \(widget)")
+        }
+    }
+
     @Test func widgetIdReturnsCorrectIdForAllCases() throws {
         #expect(DashboardWidget.summary(id: "a", meta: nil).id == "a")
         #expect(DashboardWidget.netWorth(id: "b", meta: nil).id == "b")

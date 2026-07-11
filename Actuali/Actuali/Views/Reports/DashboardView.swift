@@ -107,6 +107,9 @@ struct DashboardView: View {
             }
         case .markdown(_, let meta):
             MarkdownWidgetView(meta: meta)
+        case .ageOfMoney, .formula, .customReport:
+            // Rendered by a later task; placeholder keeps the switch exhaustive.
+            EmptyView()
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
             EmptyView()
