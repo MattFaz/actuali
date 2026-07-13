@@ -330,6 +330,14 @@ struct AddTransactionView: View {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text(child.categoryName ?? "Uncategorized")
+                                    // Only overrides are interesting; inherited
+                                    // payees just repeat the parent's.
+                                    if let childPayee = child.payeeName,
+                                       childPayee != editing?.payeeName {
+                                        Text(childPayee)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
                                     if let childNotes = child.notes, !childNotes.isEmpty {
                                         Text(childNotes)
                                             .font(.caption)
@@ -523,17 +531,26 @@ private struct SplitLineRow: View {
     }
 
     var body: some View {
-        HStack {
-            Button {
-                showCategoryPicker = true
-            } label: {
-                Text(categoryName)
-                    .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Button {
+                    showCategoryPicker = true
+                } label: {
+                    Text(categoryName)
+                        .foregroundStyle(line.categoryId == nil ? Color.secondary : Color.primary)
+                }
+                .buttonStyle(.borderless)
+                Spacer()
+                AmountInputField(text: $line.amount)
+                    .frame(width: 110)
             }
-            .buttonStyle(.borderless)
-            Spacer()
-            AmountInputField(text: $line.amount)
-                .frame(width: 110)
+            // Empty payee inherits the transaction's payee
+            TextField("Payee (optional)", text: $line.payeeName)
+                .font(.subheadline)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.words)
+            TextField("Notes (optional)", text: $line.notes)
+                .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {
             NavigationStack {

@@ -89,6 +89,22 @@ struct BudgetStoreSplitPlanTests {
         }
     }
 
+    @Test func splitLineCarriesPayeeOverrideAndTrimsEmptyToInherit() throws {
+        var overridden = line("cat-a", "6.00")
+        overridden.payeeName = "Pharmacy"
+        var inherited = line("cat-b", "4.00")
+        inherited.payeeName = "   "
+
+        let plan = try BudgetStore.plan(for: form(
+            type: .expense, amount: "10.00",
+            splits: [overridden, inherited]
+        ))
+        #expect(plan == .split(amountCents: -1000, lines: [
+            .init(categoryId: "cat-a", amountCents: -600, notes: nil, payeeName: "Pharmacy"),
+            .init(categoryId: "cat-b", amountCents: -400, notes: nil, payeeName: nil)
+        ]))
+    }
+
     @Test func transferTakesPrecedenceOverSplits() throws {
         // The form hides split entry for transfers; if stale lines linger in
         // the form state, the transfer still wins.

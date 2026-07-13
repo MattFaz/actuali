@@ -147,8 +147,8 @@ struct BudgetStoreSplitSaveTests {
             #expect(child["isChild"] == 1)
             #expect(child["isParent"] == 0)
             #expect(child["parent_id"] == (parent["id"] as String?))
-            // The payee lives on the parent
-            #expect(child["description"] == nil)
+            // Children inherit the parent's payee (Actual's makeChild semantics)
+            #expect(child["description"] == createdPayee.id)
         }
         // Children keep the entered order via descending sort_order
         #expect(first["amount"] == -600)
@@ -168,6 +168,76 @@ struct BudgetStoreSplitSaveTests {
             try Int.fetchOne(db, sql: "SELECT COUNT(DISTINCT row) FROM messages_crdt WHERE dataset = 'transactions'") ?? -1
         }
         #expect(messageRows == 3)
+    }
+
+    @Test func splitLinePayeeOverrideCreatesDistinctChildPayee() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        var overridden = BudgetStore.SplitLineForm(categoryId: "cat-med", amount: "6.00")
+        overridden.payeeName = "Pharmacy"
+        try await store.saveTransaction(form(
+            type: .expense, amount: "10.00", payeeName: "Costco",
+            splits: [overridden, .init(categoryId: "cat-food", amount: "4.00")]
+        ))
+
+        let all = try rows(path: path)
+        #expect(all.count == 3)
+        let costco = try #require(store.payees.first { $0.name == "Costco" })
+        let pharmacy = try #require(store.payees.first { $0.name == "Pharmacy" })
+        #expect(all[0]["description"] == costco.id)   // parent
+        #expect(all[1]["description"] == pharmacy.id) // overridden line
+        #expect(all[2]["description"] == costco.id)   // inherits parent
+    }
+
+    @Test func editingParentPayeeCascadesToChildrenThatMatchedIt() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO payees (id, name) VALUES
+                    ('p-old', 'Old Grocer'),
+                    ('p-other', 'Pharmacy');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('p-old', 'p-old'),
+                    ('p-other', 'p-other');
+
+                INSERT INTO transactions (id, acct, category, description, amount, date, isParent, isChild, parent_id, sort_order) VALUES
+                    ('parent',    'acct-1', NULL,       'p-old',   -1000, 20260601, 1, 0, NULL,     10),
+                    ('c-match',   'acct-1', 'cat-food', 'p-old',    -600, 20260601, 0, 1, 'parent',  9),
+                    ('c-override','acct-1', 'cat-med',  'p-other',  -400, 20260601, 0, 1, 'parent',  8);
+            """)
+        }
+        store.payees = [
+            Payee(id: "p-old", name: "Old Grocer", transferAccountId: nil, tombstone: false),
+            Payee(id: "p-other", name: "Pharmacy", transferAccountId: nil, tombstone: false)
+        ]
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20260601, amount: -1000,
+            payeeId: "p-old", payeeName: "Old Grocer", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+
+        var edit = form(amount: "10.00", payeeName: "New Grocer")
+        edit.date = Transaction.date(fromYYYYMMDD: 20260601)
+        try await store.saveTransaction(edit, editing: original)
+
+        let newPayee = try #require(store.payees.first { $0.name == "New Grocer" })
+        let all = try rows(path: path)
+        let payees = Dictionary(uniqueKeysWithValues: all.map { ($0["id"] as String, $0["description"] as String?) })
+        // Parent and the child that shared its payee follow the edit; the
+        // deliberately different child keeps its own payee (Actual semantics).
+        #expect(payees == [
+            "parent": newPayee.id,
+            "c-match": newPayee.id,
+            "c-override": "p-other"
+        ])
     }
 
     @Test func editingIntoASplitIsRejected() async throws {

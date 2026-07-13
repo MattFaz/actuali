@@ -979,13 +979,21 @@ final class BudgetStore: ObservableObject {
     /// Children share their parent's account, date and cleared state; keep
     /// them aligned after a parent edit (mirrors desktop split behavior —
     /// reports read the children, so a stale child date would misfile them).
-    private func cascadeSharedFieldsToChildren(of parent: Transaction) async throws {
+    /// A payee change follows Actual's rule: children whose payee matched
+    /// the parent's old payee follow it; per-line overrides keep theirs.
+    private func cascadeSharedFieldsToChildren(
+        of parent: Transaction,
+        originalPayeeId: String?
+    ) async throws {
         guard let database else { return }
         for child in try await database.fetchChildTransactions(parentId: parent.id) {
             var updated = child
             updated.accountId = parent.accountId
             updated.date = parent.date
             updated.cleared = parent.cleared
+            if child.payeeId == originalPayeeId {
+                updated.payeeId = parent.payeeId
+            }
             if updated != child {
                 try await updateTransaction(updated, original: child)
             }
@@ -1044,26 +1052,31 @@ final class BudgetStore: ObservableObject {
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
-    /// unsigned like `TransactionForm.amount`.
+    /// unsigned like `TransactionForm.amount`. An empty `payeeName` means
+    /// the line inherits the transaction's payee (Actual's makeChild rule).
     struct SplitLineForm: Identifiable, Equatable {
         let id: UUID
         var categoryId: String?
         var amount: String
         var notes: String
+        var payeeName: String
 
-        init(id: UUID = UUID(), categoryId: String? = nil, amount: String = "", notes: String = "") {
+        init(id: UUID = UUID(), categoryId: String? = nil, amount: String = "", notes: String = "", payeeName: String = "") {
             self.id = id
             self.categoryId = categoryId
             self.amount = amount
             self.notes = notes
+            self.payeeName = payeeName
         }
     }
 
     /// A validated split line: signed cents, ready to become a child row.
+    /// `payeeName` nil means inherit the parent's payee.
     struct SplitPlanLine: Equatable {
         var categoryId: String?
         var amountCents: Int
         var notes: String?
+        var payeeName: String? = nil
     }
 
     /// The store-side action a form resolves to. Validation and routing are
@@ -1112,10 +1125,12 @@ final class BudgetStore: ObservableObject {
                   cents > 0 else {
                 throw BudgetStoreError.invalidAmount
             }
+            let payeeName = line.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
             return SplitPlanLine(
                 categoryId: line.categoryId,
                 amountCents: sign * cents,
-                notes: line.notes.isEmpty ? nil : line.notes
+                notes: line.notes.isEmpty ? nil : line.notes,
+                payeeName: payeeName.isEmpty ? nil : payeeName
             )
         }
         guard lines.map(\.amountCents).reduce(0, +) == amountCents else {
@@ -1181,14 +1196,26 @@ final class BudgetStore: ObservableObject {
                 sortOrder: parentSort,
                 importedPayee: payeeName
             )
-            let children = lines.enumerated().map { index, line in
-                Transaction(
+            var children: [Transaction] = []
+            for (index, line) in lines.enumerated() {
+                // Children inherit the parent's payee unless the line names
+                // its own (Actual's makeChild semantics).
+                let childPayeeId: String?
+                let childPayeeName: String?
+                if let lineName = line.payeeName, lineName != payeeName {
+                    childPayeeId = try await resolvePayeeId(name: lineName, editing: nil)
+                    childPayeeName = lineName
+                } else {
+                    childPayeeId = payeeId
+                    childPayeeName = payeeName
+                }
+                children.append(Transaction(
                     id: UUID().uuidString,
                     accountId: form.accountId,
                     date: date,
                     amount: line.amountCents,
-                    payeeId: nil,  // the payee lives on the parent
-                    payeeName: nil,
+                    payeeId: childPayeeId,
+                    payeeName: childPayeeName,
                     categoryId: line.categoryId,
                     categoryName: nil,
                     notes: line.notes,
@@ -1200,7 +1227,7 @@ final class BudgetStore: ObservableObject {
                     tombstone: false,
                     sortOrder: parentSort - Double(index + 1),
                     importedPayee: nil
-                )
+                ))
             }
             guard let syncClient else {
                 throw BudgetStoreError.syncNotConfigured
@@ -1239,7 +1266,8 @@ final class BudgetStore: ObservableObject {
                 )
                 try await updateTransaction(updated, original: original)
                 if original.isParent {
-                    try await cascadeSharedFieldsToChildren(of: updated)
+                    try await cascadeSharedFieldsToChildren(
+                        of: updated, originalPayeeId: original.payeeId)
                 }
             } else {
                 let transaction = Transaction(
