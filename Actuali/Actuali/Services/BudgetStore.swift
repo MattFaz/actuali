@@ -836,6 +836,18 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Every transaction counting toward a category's spend, optionally
+    /// narrowed to one "yyyy-MM" month (see
+    /// BudgetDatabase.fetchCategoryTransactions for the exact filter).
+    func fetchCategoryTransactions(categoryId: String, month: String? = nil) async -> [Transaction] {
+        do {
+            return try await database?.fetchCategoryTransactions(categoryId: categoryId, month: month) ?? []
+        } catch {
+            self.error = error.localizedDescription
+            return []
+        }
+    }
+
     /// All transactions still needing a category (see
     /// BudgetDatabase.fetchUncategorizedTransactions for the exact filter).
     func fetchUncategorizedTransactions() async -> [Transaction] {

@@ -19,6 +19,7 @@ struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
+    @State private var transactionsDestination: CategoryTransactionsDestination?
 
     var body: some View {
         NavigationStack {
@@ -90,9 +91,19 @@ struct BudgetView: View {
                         ForEach(groupedCategories, id: \.0) { groupName, categories in
                             Section(groupName) {
                                 ForEach(categories) { category in
-                                    CategoryBudgetRow(category: category) {
-                                        editingCategory = $0
-                                    }
+                                    CategoryBudgetRow(
+                                        category: category,
+                                        onEditBudget: { editingCategory = $0 },
+                                        // Name shows all time, Spent shows the
+                                        // displayed month (GH #56).
+                                        onShowTransactions: { category, month in
+                                            transactionsDestination = CategoryTransactionsDestination(
+                                                categoryId: category.categoryId,
+                                                categoryName: category.categoryName,
+                                                month: month
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -183,6 +194,9 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            .navigationDestination(item: $transactionsDestination) { destination in
+                CategoryTransactionsView(destination: destination)
+            }
             .overlay {
                 if budgetStore.isLoading {
                     ProgressView()
@@ -230,12 +244,21 @@ struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
+    /// Push the category's transactions: month narrows to one "yyyy-MM",
+    /// nil means all time (GH #56).
+    var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(category.categoryName)
-                    .font(.body)
+                Button {
+                    onShowTransactions(category, nil)
+                } label: {
+                    Text(category.categoryName)
+                        .font(.body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("All transactions for \(category.categoryName)")
                 Spacer()
                 Text(budgetStore.formatCurrency(category.available))
                     .foregroundColor(category.isOverspent ? .red : .green)
@@ -262,9 +285,20 @@ struct CategoryBudgetRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
                 Spacer()
-                Text("Spent: \(budgetStore.formatCurrency(abs(category.spent)))")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Button {
+                    onShowTransactions(category, category.month)
+                } label: {
+                    HStack(spacing: 4) {
+                        Text("Spent: \(budgetStore.formatCurrency(abs(category.spent)))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "list.bullet")
+                            .font(.caption2)
+                            .foregroundStyle(.tint)
+                    }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
             }
         }
         .padding(.vertical, 2)

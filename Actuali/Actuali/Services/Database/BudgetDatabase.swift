@@ -654,6 +654,84 @@ class BudgetDatabase {
         }
     }
 
+    /// Every transaction that counts toward a category's spend, newest first,
+    /// optionally narrowed to one "yyyy-MM" month (GH #56). Mirrors the
+    /// budget month's spent query so the list reconciles with the "Spent"
+    /// figure the user tapped: split children included (that's where split
+    /// spend lives), split parents excluded even when a pre-split category
+    /// lingers on the parent row, category ids resolved through
+    /// category_mapping, and tombstoned rows / orphaned children /
+    /// off-budget accounts filtered out.
+    func fetchCategoryTransactions(categoryId: String, month: String?) async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            var sql = """
+                SELECT
+                    t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id,
+                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
+                    c.name as category_name
+                FROM transactions t
+                JOIN accounts a ON a.id = t.acct
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                -- Transfer payees carry no name; their display name is the
+                -- linked account's name (matches Actual's v_payees view).
+                LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+                    AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+                -- Parent's payee, as the fallback for split children.
+                LEFT JOIN transactions par ON par.id = t.parent_id
+                LEFT JOIN payee_mapping ppm ON ppm.id = par.description
+                LEFT JOIN payees pp ON pp.id = ppm.targetId
+                LEFT JOIN accounts ppa ON ppa.id = pp.transfer_acct
+                    AND (ppa.tombstone = 0 OR ppa.tombstone IS NULL)
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                  AND COALESCE(cm.transferId, t.category) = ?
+                  AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
+                """
+
+            var arguments: [DatabaseValueConvertible] = [categoryId]
+
+            // Dates are YYYYMMDD ints, so date/100 is the YYYYMM month.
+            if let month, let monthInt = Int(month.replacingOccurrences(of: "-", with: "")) {
+                sql += " AND (t.date / 100) = ?"
+                arguments.append(monthInt)
+            }
+
+            sql += " ORDER BY t.date DESC, t.sort_order DESC"
+
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
+
+            return rows.map { row in
+                Transaction(
+                    id: row["id"],
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: row["payee_name"],
+                    categoryId: row["category"],
+                    categoryName: row["category_name"],
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+            }
+        }
+    }
+
     // MARK: - Categories
 
     func fetchCategoryGroups() async throws -> [CategoryGroup] {
