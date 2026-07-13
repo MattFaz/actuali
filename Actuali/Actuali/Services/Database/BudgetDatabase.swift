@@ -163,7 +163,15 @@ class BudgetDatabase {
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
-        dbQueue = try DatabaseQueue(path: path.path)
+        // Concurrent opens of the same file are expected: on a cold headless
+        // Shortcut launch, the store's budget load races the temporary
+        // connection `accountsForIntent()` opens for entity resolution. GRDB's
+        // default busy mode (.immediateError) turns that brief overlap into a
+        // spurious SQLITE_BUSY, which BudgetStore then treats as a failed
+        // load. Wait for the lock instead — contention here is milliseconds.
+        var config = Configuration()
+        config.busyMode = .timeout(5)
+        dbQueue = try DatabaseQueue(path: path.path, configuration: config)
         try runPendingMigrations()
     }
 
@@ -282,7 +290,32 @@ class BudgetDatabase {
         """)
     ]
 
+    /// Whether `runPendingMigrations()` would perform any write. Mirrors the
+    /// guards of the write path below so a fully migrated file opens without
+    /// ever taking the write lock — opening is a hot, concurrent path (see
+    /// `init`). Migrations whose guards aren't satisfied yet (source table or
+    /// required columns missing) are not work: the write path would skip them
+    /// too. Internal for tests.
+    static func pendingMigrationWork(_ db: Database) throws -> Bool {
+        guard try db.tableExists("__migrations__") else { return true }
+        let appliedIds = Set(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__"))
+
+        if createTableMigrations.contains(where: { !appliedIds.contains($0.id) }) {
+            return true
+        }
+        for migration in upstreamSchemaMigrations where !appliedIds.contains(migration.id) {
+            guard try db.tableExists(migration.table) else { continue }
+            let existing = Set(try db.columns(in: migration.table).map(\.name))
+            guard migration.requiresColumns.allSatisfy(existing.contains) else { continue }
+            // Runnable (ALTER/CREATE INDEX), or the column already exists and
+            // needs its bookkeeping row — either way the write path has work.
+            return true
+        }
+        return false
+    }
+
     private func runPendingMigrations() throws {
+        guard try dbQueue.read({ try Self.pendingMigrationWork($0) }) else { return }
         try dbQueue.write { db in
             try db.execute(sql: "CREATE TABLE IF NOT EXISTS __migrations__ (id INTEGER PRIMARY KEY)")
 

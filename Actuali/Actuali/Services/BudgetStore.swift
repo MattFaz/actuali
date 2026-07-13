@@ -241,10 +241,16 @@ final class BudgetStore: ObservableObject {
         if syncClient != nil { return }
         if let loadTask {
             await loadTask.value
-            return
+            // A completed load that produced no database *failed* — e.g. a
+            // transient SQLITE_BUSY when a cold headless launch raced the
+            // entity query's temporary connection (actios-tq4w). Never cache
+            // that failure for the process lifetime: fall through and retry,
+            // so every automation run gets a fresh attempt.
+            if database != nil { return }
         }
         // No in-flight load (e.g. a freshly spawned headless process where the
-        // init() Task hasn't been retained). Start one and await it.
+        // init() Task hasn't been retained), or the last load failed. Start a
+        // fresh one and await it.
         guard let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) else { return }
         let task = Task { await loadLocalBudget(budgetId) }
         loadTask = task
@@ -301,6 +307,12 @@ final class BudgetStore: ObservableObject {
     func configureForTesting(database: BudgetDatabase, syncClient: SyncClient) {
         self.database = database
         self.syncClient = syncClient
+    }
+
+    /// Test-only: install an already-completed load task that produced no
+    /// database, simulating an init()-time load that failed (actios-tq4w).
+    func simulateFailedInitialLoadForTesting() {
+        loadTask = Task {}
     }
     #endif
 
