@@ -227,7 +227,7 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Preferences") {
+                Section {
                     Picker("Currency", selection: $budgetStore.currencyCode) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
@@ -244,6 +244,12 @@ struct SettingsView: View {
                         }
                     }
 
+                    Picker("Start Page", selection: $budgetStore.startTab) {
+                        ForEach(StartTab.allCases) { tab in
+                            Text(tab.label).tag(tab)
+                        }
+                    }
+
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     if budgetStore.currentBudgetId != nil {
@@ -254,6 +260,10 @@ struct SettingsView: View {
                             }
                         }
                     }
+                } header: {
+                    Text("Preferences")
+                } footer: {
+                    Text("Start Page takes effect the next time the app opens.")
                 }
 
                 if budgetStore.currentBudgetId != nil {

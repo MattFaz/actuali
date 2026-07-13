@@ -154,6 +154,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Tab the app opens on at launch. Persisted to UserDefaults, defaults to
+    /// Accounts. Read at launch via StartTab.persisted, so changes apply on
+    /// the next launch.
+    @Published var startTab: StartTab = .accounts {
+        didSet {
+            UserDefaults.standard.set(startTab.rawValue, forKey: StartTab.defaultsKey)
+        }
+    }
+
     /// Whether Budget rows show a spent-vs-available progress bar.
     /// Persisted to UserDefaults, defaults to on.
     @Published var showBudgetProgressBars: Bool = true {
@@ -305,6 +314,7 @@ final class BudgetStore: ObservableObject {
            let mode = AppearanceMode(rawValue: raw) {
             appearanceMode = mode
         }
+        startTab = StartTab.persisted
         showBudgetProgressBars = UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true
 

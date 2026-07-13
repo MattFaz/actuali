@@ -12,7 +12,7 @@ struct MainTabView: View {
             return tab
         }
         #endif
-        return 0
+        return StartTab.persisted.tabTag
     }
 
     var body: some View {
@@ -25,7 +25,7 @@ struct MainTabView: View {
 
             BudgetView()
                 .tabItem {
-                    Label("Budget", systemImage: "chart.pie")
+                    Label("Budget", systemImage: "wallet.bifold")
                 }
                 .tag(1)
 
