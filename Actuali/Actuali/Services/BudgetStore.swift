@@ -1042,8 +1042,9 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Split children of a parent, for the edit sheet's breakdown display.
-    /// Failures collapse to an empty list — display only.
+    /// Split children of a parent, for the edit sheet's editable split lines.
+    /// Failures collapse to an empty list — the sheet then behaves like the
+    /// old read-only form (amount/category protected by the standard path).
     func fetchSplitChildren(parentId: String) async -> [Transaction] {
         guard let database else { return [] }
         return (try? await database.fetchChildTransactions(parentId: parentId)) ?? []
@@ -1096,15 +1097,19 @@ final class BudgetStore: ObservableObject {
     /// One line of a split entered in the form. `amount` is raw field text,
     /// unsigned like `TransactionForm.amount`. An empty `payeeName` means
     /// the line inherits the transaction's payee (Actual's makeChild rule).
+    /// `childId` links the line to an existing child row when editing a
+    /// split parent; nil means the line is new.
     struct SplitLineForm: Identifiable, Equatable {
         let id: UUID
+        var childId: String?
         var categoryId: String?
         var amount: String
         var notes: String
         var payeeName: String
 
-        init(id: UUID = UUID(), categoryId: String? = nil, amount: String = "", notes: String = "", payeeName: String = "") {
+        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", notes: String = "", payeeName: String = "") {
             self.id = id
+            self.childId = childId
             self.categoryId = categoryId
             self.amount = amount
             self.notes = notes
@@ -1119,6 +1124,7 @@ final class BudgetStore: ObservableObject {
         var amountCents: Int
         var notes: String?
         var payeeName: String? = nil
+        var childId: String? = nil
     }
 
     /// The store-side action a form resolves to. Validation and routing are
@@ -1172,7 +1178,8 @@ final class BudgetStore: ObservableObject {
                 categoryId: line.categoryId,
                 amountCents: sign * cents,
                 notes: line.notes.isEmpty ? nil : line.notes,
-                payeeName: payeeName.isEmpty ? nil : payeeName
+                payeeName: payeeName.isEmpty ? nil : payeeName,
+                childId: line.childId
             )
         }
         guard lines.map(\.amountCents).reduce(0, +) == amountCents else {
@@ -1207,12 +1214,21 @@ final class BudgetStore: ObservableObject {
             )
 
         case .split(let amountCents, let lines):
-            // Converting an existing transaction into a split would leave its
-            // history (transfer links, reconciliation) on a parent whose
-            // children were never reconciled. Refuse, like transfers; the UI
-            // hides split entry when editing.
-            guard original == nil else {
-                throw BudgetStoreError.cannotConvertToSplit
+            if let original {
+                // Editing an existing split parent: reconcile its children
+                // against the form's lines. Converting a non-split into a
+                // split stays refused — that would leave its history
+                // (transfer links, reconciliation) on a parent whose
+                // children were never reconciled.
+                guard original.isParent else {
+                    throw BudgetStoreError.cannotConvertToSplit
+                }
+                try await updateSplit(
+                    original: original, form: form,
+                    amountCents: amountCents, lines: lines,
+                    date: date, notes: notes
+                )
+                return
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
@@ -1336,6 +1352,137 @@ final class BudgetStore: ObservableObject {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
             }
+        }
+    }
+
+    /// Apply an edited split form to an existing split parent: the parent
+    /// takes the form's total/payee/notes/date/cleared, lines with a
+    /// `childId` update their child row, lines without one become new
+    /// children, and children missing from the form are tombstoned.
+    private func updateSplit(
+        original: Transaction,
+        form: TransactionForm,
+        amountCents: Int,
+        lines: [SplitPlanLine],
+        date: Int,
+        notes: String?
+    ) async throws {
+        guard let syncClient, let database else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
+        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+        let parent = Transaction(
+            id: original.id,
+            accountId: form.accountId,
+            date: date,
+            amount: amountCents,
+            payeeId: payeeId,
+            payeeName: payeeName,
+            categoryId: nil,  // split parents never carry a category
+            categoryName: nil,
+            notes: notes,
+            cleared: form.cleared,
+            reconciled: original.reconciled,
+            transferId: original.transferId,
+            isParent: true,
+            parentId: nil,
+            tombstone: original.tombstone,
+            sortOrder: original.sortOrder
+        )
+        let parentChanges = Self.changedFields(original: original, updated: parent)
+        if !parentChanges.isEmpty {
+            try await syncClient.updateTransaction(parent, changedFields: parentChanges)
+        }
+
+        let existingChildren = try await database.fetchChildTransactions(parentId: original.id)
+        let childrenById = Dictionary(uniqueKeysWithValues: existingChildren.map { ($0.id, $0) })
+
+        // Existing children keep their sort_order (updates never move rows);
+        // new lines slot in below the current minimum, preserving the order
+        // they were appended in the form.
+        var nextNewSort = (existingChildren.compactMap(\.sortOrder).min()
+            ?? original.sortOrder
+            ?? Date().timeIntervalSince1970 * 1000)
+
+        for line in lines {
+            let existing = line.childId.flatMap { childrenById[$0] }
+            // Children inherit the parent's payee unless the line names its
+            // own (Actual's makeChild semantics). A line whose payee matched
+            // the parent's loads back as "inherit", so a parent payee edit
+            // follows through here just like cascadeSharedFieldsToChildren.
+            let childPayeeId: String?
+            let childPayeeName: String?
+            if let lineName = line.payeeName, lineName != payeeName {
+                childPayeeId = try await resolvePayeeId(name: lineName, editing: existing)
+                childPayeeName = lineName
+            } else {
+                childPayeeId = payeeId
+                childPayeeName = payeeName
+            }
+
+            if let existing {
+                let updated = Transaction(
+                    id: existing.id,
+                    accountId: form.accountId,
+                    date: date,
+                    amount: line.amountCents,
+                    payeeId: childPayeeId,
+                    payeeName: childPayeeName,
+                    categoryId: line.categoryId,
+                    categoryName: nil,
+                    notes: line.notes,
+                    cleared: form.cleared,
+                    reconciled: existing.reconciled,
+                    transferId: existing.transferId,
+                    isParent: false,
+                    parentId: original.id,
+                    tombstone: false,
+                    sortOrder: existing.sortOrder
+                )
+                let changes = Self.changedFields(original: existing, updated: updated)
+                if !changes.isEmpty {
+                    try await syncClient.updateTransaction(updated, changedFields: changes)
+                }
+            } else {
+                nextNewSort -= 1
+                // Rules are skipped, matching createSplit — the user just
+                // spelled out every field on this line explicitly.
+                try await syncClient.createTransaction(Transaction(
+                    id: UUID().uuidString,
+                    accountId: form.accountId,
+                    date: date,
+                    amount: line.amountCents,
+                    payeeId: childPayeeId,
+                    payeeName: childPayeeName,
+                    categoryId: line.categoryId,
+                    categoryName: nil,
+                    notes: line.notes,
+                    cleared: form.cleared,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: original.id,
+                    tombstone: false,
+                    sortOrder: nextNewSort,
+                    importedPayee: nil
+                ), applyRules: false)
+            }
+        }
+
+        // Lines removed from the form tombstone their child rows — orphaned
+        // children would be invisible in the list but still feed reports.
+        let keptIds = Set(lines.compactMap(\.childId))
+        for child in existingChildren where !keptIds.contains(child.id) {
+            var deleted = child
+            deleted.tombstone = true
+            try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+        }
+
+        await refreshDataOnly()
+        if let payeeId {
+            recordPayeeLocationIfAppropriate(payeeId: payeeId)
         }
     }
 

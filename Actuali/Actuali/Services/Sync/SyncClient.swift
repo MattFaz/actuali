@@ -152,8 +152,10 @@ actor SyncClient {
 
     // MARK: - Public API
 
-    /// Create a transaction (optimistic local-first)
-    func createTransaction(_ transaction: Transaction) async throws {
+    /// Create a transaction (optimistic local-first).
+    /// `applyRules: false` skips the rules pass — used for split children,
+    /// whose every field the caller spelled out explicitly (like `createSplit`).
+    func createTransaction(_ transaction: Transaction, applyRules: Bool = true) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -163,7 +165,7 @@ actor SyncClient {
         //    transfer flow already builds both legs explicitly and we don't want
         //    rules rewriting the linked payee/account.
         let finalTransaction: Transaction
-        if transaction.transferId == nil {
+        if applyRules, transaction.transferId == nil {
             let rules = (try? database.fetchRules()) ?? []
             let (updated, changed) = RulesEngine.apply(transaction, rules: rules)
             if !changed.isEmpty {

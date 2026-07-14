@@ -105,6 +105,19 @@ struct BudgetStoreSplitPlanTests {
         ]))
     }
 
+    @Test func splitLineCarriesChildIdForEditReconciliation() throws {
+        var existing = line("cat-a", "6.00")
+        existing.childId = "child-1"
+        let plan = try BudgetStore.plan(for: form(
+            type: .expense, amount: "10.00",
+            splits: [existing, line("cat-b", "4.00")]
+        ))
+        #expect(plan == .split(amountCents: -1000, lines: [
+            .init(categoryId: "cat-a", amountCents: -600, notes: nil, childId: "child-1"),
+            .init(categoryId: "cat-b", amountCents: -400, notes: nil, childId: nil)
+        ]))
+    }
+
     @Test func transferTakesPrecedenceOverSplits() throws {
         // The form hides split entry for transfers; if stale lines linger in
         // the form state, the transfer still wins.
