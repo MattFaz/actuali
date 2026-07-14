@@ -447,15 +447,35 @@ class BudgetDatabase {
 
     // MARK: - Transactions
 
-    func fetchTransactions(accountId: String? = nil, limit: Int = 100) async throws -> [Transaction] {
+    /// Rows per page in the transaction lists. One page is the default for
+    /// `fetchTransactions`, and TransactionPager treats a shorter page as
+    /// the end of the result set.
+    static let transactionPageSize = 500
+
+    /// Page through transactions newest-first, optionally scoped to one
+    /// account and/or filtered by a free-text search. `search` applies the
+    /// TransactionSearchMatcher semantics (payee, category, notes, and
+    /// progressive amount matching) in SQL so it covers full history, not
+    /// just the loaded page.
+    func fetchTransactions(
+        accountId: String? = nil,
+        limit: Int = BudgetDatabase.transactionPageSize,
+        offset: Int = 0,
+        search: String? = nil
+    ) async throws -> [Transaction] {
         try await dbQueue.read { db in
+            // The list's display payee: own payee first (transfer payees show
+            // the linked account's name), else the split children's agreed
+            // payee. Referenced by both SELECT and the search filter, which
+            // must match what the row visibly shows.
+            let payeeNameSQL = "COALESCE(pa.name, p.name, cpa.name, cp.name)"
             var sql = """
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    COALESCE(pa.name, p.name, cpa.name, cp.name) as payee_name,
+                    \(payeeNameSQL) as payee_name,
                     c.name as category_name
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
@@ -488,15 +508,39 @@ class BudgetDatabase {
                   AND (t.isChild = 0 OR t.isChild IS NULL)
                 """
 
-            var arguments: [String] = []
+            var arguments: [(any DatabaseValueConvertible)?] = []
 
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
             }
 
-            sql += " ORDER BY t.date DESC, t.sort_order DESC LIMIT ?"
-            arguments.append(String(limit))
+            if let search {
+                let matcher = TransactionSearchMatcher(search)
+                if !matcher.text.isEmpty {
+                    let escaped = matcher.text
+                        .replacingOccurrences(of: "\\", with: "\\\\")
+                        .replacingOccurrences(of: "%", with: "\\%")
+                        .replacingOccurrences(of: "_", with: "\\_")
+                    let pattern = "%\(escaped)%"
+                    var clauses = [
+                        "\(payeeNameSQL) LIKE ? ESCAPE '\\'",
+                        "c.name LIKE ? ESCAPE '\\'",
+                        "t.notes LIKE ? ESCAPE '\\'"
+                    ]
+                    arguments.append(contentsOf: [pattern, pattern, pattern])
+                    if let range = matcher.amountCentsRange {
+                        clauses.append("ABS(t.amount) BETWEEN ? AND ?")
+                        arguments.append(range.lowerBound)
+                        arguments.append(range.upperBound)
+                    }
+                    sql += " AND (" + clauses.joined(separator: " OR ") + ")"
+                }
+            }
+
+            sql += " ORDER BY t.date DESC, t.sort_order DESC LIMIT ? OFFSET ?"
+            arguments.append(limit)
+            arguments.append(offset)
 
             let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(arguments))
 

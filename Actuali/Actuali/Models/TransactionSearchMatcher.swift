@@ -19,6 +19,13 @@ struct TransactionSearchMatcher {
         amountRange = Self.parseAmountRange(self.query)
     }
 
+    /// The trimmed query text, for callers that push matching into SQL.
+    var text: String { query }
+
+    /// Absolute cent range the query matches as an amount, if it parses as
+    /// one, for callers that push matching into SQL.
+    var amountCentsRange: ClosedRange<Int>? { amountRange }
+
     func matches(_ transaction: Transaction) -> Bool {
         if query.isEmpty {
             return true

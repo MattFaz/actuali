@@ -4,17 +4,34 @@ struct AccountDetailView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
 
-    @State private var transactions: [Transaction] = []
+    @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var editingTransaction: Transaction?
 
-    var filteredTransactions: [Transaction] {
-        if searchText.isEmpty {
-            return transactions
+    private var searchQuery: String? {
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The pager is created on first use rather than in init because its
+    /// fetch closure needs the environment store, which isn't available
+    /// until body/task time.
+    private func currentPager() -> TransactionPager {
+        if let pager { return pager }
+        let store = budgetStore
+        let accountId = account.id
+        let created = TransactionPager { offset, limit, search in
+            await store.fetchTransactions(
+                accountId: accountId, limit: limit, offset: offset, search: search
+            )
         }
-        let matcher = TransactionSearchMatcher(searchText)
-        return transactions.filter { matcher.matches($0) }
+        pager = created
+        return created
+    }
+
+    private func reload() async {
+        await currentPager().loadFirstPage(search: searchQuery)
     }
 
     var body: some View {
@@ -29,14 +46,11 @@ struct AccountDetailView: View {
             }
 
             Section("Recent Transactions") {
-                if transactions.isEmpty {
-                    Text("No transactions")
+                if let pager, pager.transactions.isEmpty {
+                    Text(searchQuery == nil ? "No transactions" : "No matching transactions")
                         .foregroundStyle(.secondary)
-                } else if filteredTransactions.isEmpty {
-                    Text("No matching transactions")
-                        .foregroundStyle(.secondary)
-                } else {
-                    ForEach(filteredTransactions) { transaction in
+                } else if let pager {
+                    ForEach(pager.transactions) { transaction in
                         Button {
                             editingTransaction = transaction
                         } label: {
@@ -48,7 +62,7 @@ struct AccountDetailView: View {
                             Button(role: .destructive) {
                                 Task {
                                     await budgetStore.deleteTransaction(transaction)
-                                    transactions = await budgetStore.fetchTransactions(for: account.id)
+                                    await reload()
                                 }
                             } label: {
                                 Label("Delete", systemImage: "trash")
@@ -60,6 +74,16 @@ struct AccountDetailView: View {
                             }
                             .tint(.yellow)
                         }
+                    }
+                    if pager.hasMore {
+                        // Sentinel row: appearing near the bottom of the list
+                        // pulls in the next page.
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .task { await pager.loadNextPage() }
                     }
                 }
             }
@@ -77,7 +101,7 @@ struct AccountDetailView: View {
         }
         .sheet(isPresented: $showingAddTransaction, onDismiss: {
             Task {
-                transactions = await budgetStore.fetchTransactions(for: account.id)
+                await reload()
             }
         }) {
             AddTransactionView(accountId: account.id)
@@ -85,18 +109,23 @@ struct AccountDetailView: View {
         }
         .sheet(item: $editingTransaction, onDismiss: {
             Task {
-                transactions = await budgetStore.fetchTransactions(for: account.id)
+                await reload()
             }
         }) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
-        .task {
-            transactions = await budgetStore.fetchTransactions(for: account.id)
+        .task(id: searchText) {
+            // Debounce keystrokes; the initial (empty) load runs immediately.
+            if searchQuery != nil {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+            }
+            await reload()
         }
         .refreshable {
             await budgetStore.sync()
-            transactions = await budgetStore.fetchTransactions(for: account.id)
+            await reload()
         }
     }
 }

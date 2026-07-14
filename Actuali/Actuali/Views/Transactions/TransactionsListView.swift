@@ -2,28 +2,47 @@ import SwiftUI
 
 struct TransactionsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var editingTransaction: Transaction?
 
-    var filteredTransactions: [Transaction] {
-        if searchText.isEmpty {
-            return budgetStore.transactions
+    private var searchQuery: String? {
+        let trimmed = searchText.trimmingCharacters(in: .whitespaces)
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The pager is created on first use rather than in init because its
+    /// fetch closure needs the environment store, which isn't available
+    /// until body/task time.
+    private func currentPager() -> TransactionPager {
+        if let pager { return pager }
+        let store = budgetStore
+        let created = TransactionPager { offset, limit, search in
+            await store.fetchTransactions(limit: limit, offset: offset, search: search)
         }
-        let matcher = TransactionSearchMatcher(searchText)
-        return budgetStore.transactions.filter { matcher.matches($0) }
+        pager = created
+        return created
+    }
+
+    private func reload() async {
+        await currentPager().loadFirstPage(search: searchQuery)
     }
 
     var body: some View {
         Group {
-            if budgetStore.transactions.isEmpty && !budgetStore.isLoading {
-                ContentUnavailableView(
-                    "No Transactions",
-                    systemImage: "list.bullet.rectangle",
-                    description: Text("Transactions will appear here once you load a budget")
-                )
-            } else {
+            if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
+                if searchQuery == nil {
+                    ContentUnavailableView(
+                        "No Transactions",
+                        systemImage: "list.bullet.rectangle",
+                        description: Text("Transactions will appear here once you load a budget")
+                    )
+                } else {
+                    ContentUnavailableView.search(text: searchText)
+                }
+            } else if let pager {
                 List {
-                    ForEach(filteredTransactions) { transaction in
+                    ForEach(pager.transactions) { transaction in
                         Button {
                             editingTransaction = transaction
                         } label: {
@@ -35,6 +54,7 @@ struct TransactionsListView: View {
                             Button(role: .destructive) {
                                 Task {
                                     await budgetStore.deleteTransaction(transaction)
+                                    await reload()
                                 }
                             } label: {
                                 Label("Delete", systemImage: "trash")
@@ -47,17 +67,37 @@ struct TransactionsListView: View {
                             .tint(.yellow)
                         }
                     }
+                    if pager.hasMore {
+                        // Sentinel row: appearing near the bottom of the list
+                        // pulls in the next page.
+                        HStack {
+                            Spacer()
+                            ProgressView()
+                            Spacer()
+                        }
+                        .task { await pager.loadNextPage() }
+                    }
                 }
             }
         }
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .task(id: searchText) {
+            // Debounce keystrokes; the initial (empty) load runs immediately.
+            if searchQuery != nil {
+                try? await Task.sleep(for: .milliseconds(250))
+                if Task.isCancelled { return }
+            }
+            await reload()
+        }
         .refreshable {
             await budgetStore.sync()
+            await reload()
         }
         .sheet(item: $editingTransaction, onDismiss: {
             Task {
                 await budgetStore.refreshData()
+                await reload()
             }
         }) { transaction in
             AddTransactionView(editing: transaction)

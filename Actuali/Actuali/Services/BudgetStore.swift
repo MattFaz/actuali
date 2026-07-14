@@ -865,9 +865,23 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Transactions
 
-    func fetchTransactions(for accountId: String) async -> [Transaction] {
+    /// One page of transactions (newest first), optionally scoped to an
+    /// account and/or filtered by free-text search. See
+    /// BudgetDatabase.fetchTransactions for the exact semantics.
+    func fetchTransactions(
+        accountId: String? = nil,
+        limit: Int = BudgetDatabase.transactionPageSize,
+        offset: Int = 0,
+        search: String? = nil
+    ) async -> [Transaction] {
         do {
-            return try await database?.fetchTransactions(accountId: accountId) ?? []
+            return try await database?.fetchTransactions(
+                accountId: accountId, limit: limit, offset: offset, search: search
+            ) ?? []
+        } catch is CancellationError {
+            // The caller's task was cancelled (e.g. a superseded .task(id:)
+            // search reload). Nothing failed — never alarm the user.
+            return []
         } catch {
             self.error = error.localizedDescription
             return []
