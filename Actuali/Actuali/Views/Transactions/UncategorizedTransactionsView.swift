@@ -8,10 +8,19 @@ struct UncategorizedTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
 
     @State private var transactions: [Transaction] = []
+    @State private var searchText = ""
     @State private var loaded = false
     @State private var categorizing: Transaction?
     @State private var pickedCategoryId: String?
     @State private var editingTransaction: Transaction?
+
+    private var filteredTransactions: [Transaction] {
+        if searchText.isEmpty {
+            return transactions
+        }
+        let matcher = TransactionSearchMatcher(searchText)
+        return transactions.filter { matcher.matches($0) }
+    }
 
     var body: some View {
         Group {
@@ -23,7 +32,11 @@ struct UncategorizedTransactionsView: View {
                 )
             } else {
                 List {
-                    ForEach(transactions) { transaction in
+                    if !transactions.isEmpty && filteredTransactions.isEmpty {
+                        Text("No matching transactions")
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(filteredTransactions) { transaction in
                         Button {
                             pickedCategoryId = nil
                             categorizing = transaction
@@ -59,6 +72,7 @@ struct UncategorizedTransactionsView: View {
         }
         .navigationTitle("Uncategorized")
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .task { await reload() }
         .refreshable {
             await budgetStore.sync()

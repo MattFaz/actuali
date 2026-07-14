@@ -18,11 +18,20 @@ struct CategoryTransactionsView: View {
     let destination: CategoryTransactionsDestination
 
     @State private var transactions: [Transaction] = []
+    @State private var searchText = ""
     @State private var loaded = false
     @State private var editingTransaction: Transaction?
 
     private var scopeTitle: String {
         destination.month.map { MonthPicker.title(for: $0) } ?? "All Time"
+    }
+
+    private var filteredTransactions: [Transaction] {
+        if searchText.isEmpty {
+            return transactions
+        }
+        let matcher = TransactionSearchMatcher(searchText)
+        return transactions.filter { matcher.matches($0) }
     }
 
     var body: some View {
@@ -36,7 +45,11 @@ struct CategoryTransactionsView: View {
             } else {
                 List {
                     Section {
-                        ForEach(transactions) { transaction in
+                        if !transactions.isEmpty && filteredTransactions.isEmpty {
+                            Text("No matching transactions")
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(filteredTransactions) { transaction in
                             Group {
                                 // Split children only display at full
                                 // opacity, without tap/swipe: the edit form
@@ -77,7 +90,9 @@ struct CategoryTransactionsView: View {
                         HStack {
                             Text(scopeTitle)
                             Spacer()
-                            Text("Total \(budgetStore.formatCurrency(transactions.reduce(0) { $0 + $1.amount }))")
+                            // Sums the filtered rows so the total matches
+                            // what's on screen while searching.
+                            Text("Total \(budgetStore.formatCurrency(filteredTransactions.reduce(0) { $0 + $1.amount }))")
                         }
                     }
                 }
@@ -85,6 +100,7 @@ struct CategoryTransactionsView: View {
         }
         .navigationTitle(destination.categoryName)
         .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .task { await reload() }
         .refreshable {
             await budgetStore.sync()
