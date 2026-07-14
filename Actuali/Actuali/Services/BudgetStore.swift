@@ -171,6 +171,20 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Budget tab shows a badge with the overspent-category
+    /// count (GH #68). Persisted to UserDefaults, defaults to on.
+    @Published var showOverspentBadge: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showOverspentBadge, forKey: "showOverspentBadge")
+        }
+    }
+
+    /// Count the Budget tab badge displays: the current month's overspent
+    /// categories, or 0 when the badge is turned off in Settings.
+    var overspentBadgeCount: Int {
+        showOverspentBadge ? (currentBudgetMonth?.overspentCount ?? 0) : 0
+    }
+
     // MARK: - User Preferences (per-budget, stored in UserDefaults)
 
     var defaultAccountId: String? {
@@ -329,6 +343,8 @@ final class BudgetStore: ObservableObject {
         startTab = StartTab.persisted
         showBudgetProgressBars = UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true
+        showOverspentBadge = UserDefaults.standard
+            .object(forKey: "showOverspentBadge") as? Bool ?? true
 
         let token = loadAndMigrateAuthToken()
 

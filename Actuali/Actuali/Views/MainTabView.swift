@@ -3,6 +3,7 @@ import SwiftUI
 struct MainTabView: View {
     @State private var selectedTab = initialTab()
     @StateObject private var notificationRouter = NotificationRouter.shared
+    @EnvironmentObject private var budgetStore: BudgetStore
 
     private static func initialTab() -> Int {
         #if DEBUG
@@ -13,6 +14,20 @@ struct MainTabView: View {
         }
         #endif
         return StartTab.persisted.tabTag
+    }
+
+    private var overspentCount: Int {
+        budgetStore.overspentBadgeCount
+    }
+
+    /// The numeric tab badge isn't surfaced to accessibility on its own, so
+    /// mirror it as a spoken value on the tab label.
+    private var overspentBadgeValue: String {
+        switch overspentCount {
+        case 0: ""
+        case 1: "1 overspent category"
+        default: "\(overspentCount) overspent categories"
+        }
     }
 
     var body: some View {
@@ -26,7 +41,9 @@ struct MainTabView: View {
             BudgetView()
                 .tabItem {
                     Label("Budget", systemImage: "wallet.bifold")
+                        .accessibilityValue(overspentBadgeValue)
                 }
+                .badge(overspentCount)
                 .tag(1)
 
             AddTransactionTabView(selectedTab: $selectedTab)

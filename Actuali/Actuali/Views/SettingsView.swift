@@ -252,6 +252,8 @@ struct SettingsView: View {
 
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
+                    Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
+
                     if budgetStore.currentBudgetId != nil {
                         Picker("Default Account", selection: $budgetStore.defaultAccountId) {
                             Text("None").tag(nil as String?)
