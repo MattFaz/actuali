@@ -342,6 +342,29 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Tombstone a recorded payee location (optimistic local-first).
+    func deletePayeeLocation(_ location: PayeeLocation) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("deletePayeeLocation() - id: \(location.id, privacy: .private)")
+
+        // 1. Tombstone locally (optimistic)
+        try database.tombstonePayeeLocation(id: location.id)
+
+        // 2. Generate the tombstone CRDT message
+        let message = try await messageGenerator.messageForDelete(location)
+
+        // 3. Store the message and update merkle
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the

@@ -219,4 +219,60 @@ struct PayeeLocationTests {
         #expect(BudgetStore.shouldRecordLocation(at: here, existing: [farLoc]) == true)
         #expect(BudgetStore.shouldRecordLocation(at: here, existing: [nearLoc, farLoc]) == false)
     }
+
+    @Test func tombstonePayeeLocationExcludesItFromFetches() async throws {
+        let path = makeDatabasePath()
+        try makeLegacyFixture(path)
+        let database = try BudgetDatabase(path: path)
+        try database.insertPayee(Payee(id: "p1", name: "P1", transferAccountId: nil))
+        try database.insertPayeeLocation(PayeeLocation(
+            id: "keep", payeeId: "p1", latitude: 0.001, longitude: 0, createdAt: 100))
+        try database.insertPayeeLocation(PayeeLocation(
+            id: "gone", payeeId: "p1", latitude: 0.0005, longitude: 0, createdAt: 200))
+
+        try database.tombstonePayeeLocation(id: "gone")
+
+        let locations = try await database.fetchPayeeLocations(payeeId: "p1")
+        #expect(locations.map(\.id) == ["keep"])
+        let nearby = try await database.fetchNearbyPayees(latitude: 0, longitude: 0, maxDistanceMeters: 500)
+        #expect(nearby.map(\.location.id) == ["keep"])
+    }
+
+    /// Deleting a location is a CRDT soft delete: a single tombstone message
+    /// in the upstream shape, so other clients converge.
+    @Test func deleteMessageMatchesUpstreamShape() async throws {
+        let generator = MessageGenerator(clock: HybridLogicalClock(node: "test-node"))
+        let location = PayeeLocation(
+            id: "loc-1", payeeId: "p1", latitude: -33.85, longitude: 151.21,
+            createdAt: 1_751_760_000_000)
+        let message = try await generator.messageForDelete(location)
+        #expect(message.dataset == "payee_locations")
+        #expect(message.row == "loc-1")
+        #expect(message.column == "tombstone")
+        #expect(message.value == "N:1")
+    }
+
+    @Test func recordPayeeLocationsSettingDefaultsToOn() {
+        UserDefaults.standard.removeObject(forKey: "recordPayeeLocations")
+        let store = BudgetStore.previewInstance()
+        #expect(store.recordPayeeLocations)
+    }
+
+    @Test func recordPayeeLocationsSettingPersistsWhenDisabled() {
+        UserDefaults.standard.removeObject(forKey: "recordPayeeLocations")
+        let store = BudgetStore.previewInstance()
+        store.recordPayeeLocations = false
+        #expect(UserDefaults.standard.object(forKey: "recordPayeeLocations") as? Bool == false)
+        UserDefaults.standard.removeObject(forKey: "recordPayeeLocations")
+    }
+
+    /// Existing form callers (and Shortcuts, which bypasses the form) must
+    /// keep recording by default — opting out is per-save and explicit.
+    @Test func transactionFormDefaultsToRecordingLocation() {
+        let form = BudgetStore.TransactionForm(
+            accountId: "a", type: .expense, amount: "1.00", payeeName: "P",
+            transferToAccountId: nil, categoryId: nil, notes: "",
+            date: Date(), cleared: true)
+        #expect(form.recordLocation)
+    }
 }

@@ -254,6 +254,12 @@ struct SettingsView: View {
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
 
+                    // Meaningless against servers that predate payee
+                    // locations (< 26.4.0), so hidden there.
+                    if budgetStore.payeeLocationWritesEnabled {
+                        Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+                    }
+
                     if budgetStore.currentBudgetId != nil {
                         Picker("Default Account", selection: $budgetStore.defaultAccountId) {
                             Text("None").tag(nil as String?)

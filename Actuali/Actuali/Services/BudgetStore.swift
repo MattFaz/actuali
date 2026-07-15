@@ -179,6 +179,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether transaction saves record the payee's location (GH #24).
+    /// Persisted to UserDefaults, defaults to on. Off silences every
+    /// recording path, including Shortcuts automations.
+    @Published var recordPayeeLocations: Bool = true {
+        didSet {
+            UserDefaults.standard.set(recordPayeeLocations, forKey: "recordPayeeLocations")
+        }
+    }
+
     /// Count the Budget tab badge displays: the current month's overspent
     /// categories, or 0 when the badge is turned off in Settings.
     var overspentBadgeCount: Int {
@@ -227,6 +236,20 @@ final class BudgetStore: ObservableObject {
         } catch {
             logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
             return []
+        }
+    }
+
+    /// Tombstone one recorded payee location (swipe-delete on a nearby
+    /// suggestion, GH #24). Returns whether the delete stuck; failures are
+    /// logged and reported as false so the row can stay visible.
+    func deletePayeeLocation(_ location: PayeeLocation) async -> Bool {
+        guard payeeLocationWritesEnabled, let syncClient else { return false }
+        do {
+            try await syncClient.deletePayeeLocation(location)
+            return true
+        } catch {
+            logger.error("deletePayeeLocation failed: \(error.localizedDescription, privacy: .public)")
+            return false
         }
     }
 
@@ -345,6 +368,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true
         showOverspentBadge = UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true
+        recordPayeeLocations = UserDefaults.standard
+            .object(forKey: "recordPayeeLocations") as? Bool ?? true
 
         let token = loadAndMigrateAuthToken()
 
@@ -1092,6 +1117,9 @@ final class BudgetStore: ObservableObject {
         var date: Date
         var cleared: Bool
         var splits: [SplitLineForm] = []
+        /// Per-save opt-out for payee location recording (GH #24). Defaults
+        /// on so Shortcuts and existing callers keep recording.
+        var recordLocation: Bool = true
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
@@ -1292,7 +1320,7 @@ final class BudgetStore: ObservableObject {
             }
             try await syncClient.createSplit(parent: parent, children: children)
             await refreshDataOnly()
-            if let payeeId {
+            if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
             }
 
@@ -1348,7 +1376,7 @@ final class BudgetStore: ObservableObject {
                     importedPayee: payeeName
                 )
                 try await createTransaction(transaction)
-                if let payeeId {
+                if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
             }
@@ -1481,7 +1509,7 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
-        if let payeeId {
+        if form.recordLocation, let payeeId {
             recordPayeeLocationIfAppropriate(payeeId: payeeId)
         }
     }
@@ -1514,7 +1542,7 @@ final class BudgetStore: ObservableObject {
     /// and failures collapse to "do nothing" — recording a location must
     /// never affect the save that triggered it.
     func recordPayeeLocationIfAppropriate(payeeId: String) {
-        guard payeeLocationWritesEnabled else { return }
+        guard payeeLocationWritesEnabled, recordPayeeLocations else { return }
         Task { [weak self] in
             guard let self else { return }
             let provider = Self.locationProvider

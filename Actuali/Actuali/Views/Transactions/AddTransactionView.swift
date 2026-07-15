@@ -23,6 +23,7 @@ struct AddTransactionView: View {
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
     @State private var nearbyPayees: [NearbyPayee] = []
+    @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
 
     @FocusState private var payeeFocused: Bool
@@ -141,6 +142,17 @@ struct AddTransactionView: View {
             }
             nearbyPayees = await budgetStore.fetchNearbyPayees(
                 latitude: position.latitude, longitude: position.longitude)
+        }
+    }
+
+    /// Swipe-delete on a nearby suggestion tombstones that one location
+    /// record, then reloads: the payee legitimately reappears if it has
+    /// another recorded location within range.
+    private func deleteNearbySuggestion(_ nearby: NearbyPayee) {
+        Task { @MainActor in
+            guard await budgetStore.deletePayeeLocation(nearby.location) else { return }
+            nearbyPayees.removeAll { $0.id == nearby.id }
+            loadNearbyPayees()
         }
     }
 
@@ -280,6 +292,13 @@ struct AddTransactionView: View {
                                             .foregroundStyle(.secondary)
                                     }
                                 }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        deleteNearbySuggestion(nearby)
+                                    } label: {
+                                        Label("Delete", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
 
@@ -329,6 +348,14 @@ struct AddTransactionView: View {
 
                 Section {
                     Toggle("Cleared", isOn: $cleared)
+                    // Only the paths that record locations (adds and split
+                    // edits) get the per-save opt-out; standard edits never
+                    // record, so the toggle would be a no-op there.
+                    if (!isEditing || isEditingSplitParent) && !isTransfer
+                        && budgetStore.payeeLocationWritesEnabled
+                        && budgetStore.recordPayeeLocations {
+                        Toggle("Save Location", isOn: $saveLocation)
+                    }
                 }
 
                 if let error = errorMessage {
@@ -466,7 +493,8 @@ struct AddTransactionView: View {
             notes: notes,
             date: date,
             cleared: cleared,
-            splits: isTransfer ? [] : splitLines
+            splits: isTransfer ? [] : splitLines,
+            recordLocation: saveLocation
         )
 
         do {

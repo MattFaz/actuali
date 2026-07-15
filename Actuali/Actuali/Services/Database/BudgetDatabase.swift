@@ -1870,6 +1870,15 @@ class BudgetDatabase {
         }
     }
 
+    /// Soft-delete one recorded location (CRDT tombstone, matching upstream).
+    func tombstonePayeeLocation(id: String) throws {
+        try dbQueue.write { db in
+            try db.execute(
+                sql: "UPDATE payee_locations SET tombstone = 1 WHERE id = ?",
+                arguments: [id])
+        }
+    }
+
     /// Non-tombstoned locations for a payee, newest first (upstream
     /// getPayeeLocations ordering).
     func fetchPayeeLocations(payeeId: String) async throws -> [PayeeLocation] {
