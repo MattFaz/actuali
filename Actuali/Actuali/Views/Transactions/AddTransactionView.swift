@@ -5,6 +5,7 @@ import SwiftUI
 struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
     @Binding var selectedTab: Int?
 
     private let editing: Transaction?
@@ -351,8 +352,12 @@ struct AddTransactionView: View {
                 }
             }
             .navigationTitle(isEditing ? "Edit Transaction" : "Add Transaction")
+            .scrollDismissesKeyboard(.interactively)
             .toolbar {
-                if isEditing {
+                // Any presented flow (edit, account-detail "+", notification
+                // prefill) gets Cancel; the tab-hosted add flow has nothing
+                // to dismiss to, so it shows none.
+                if isEditing || isPresented {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("Cancel") { dismiss() }
                     }
@@ -563,6 +568,19 @@ struct AmountInputField: UIViewRepresentable {
         field.text = text
         field.font = .preferredFont(forTextStyle: .body)
         field.adjustsFontForContentSizeCategory = true
+        // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
+        // and the decimal pad has no return key — without this accessory bar
+        // there is no way to dismiss the keyboard from this field.
+        let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
+        toolbar.items = [
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(
+                title: "Done", style: .done,
+                target: field, action: #selector(UIResponder.resignFirstResponder)
+            ),
+        ]
+        toolbar.sizeToFit()
+        field.inputAccessoryView = toolbar
         context.coordinator.sync(fromDisplay: text)
         return field
     }
