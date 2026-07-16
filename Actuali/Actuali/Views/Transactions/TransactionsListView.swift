@@ -46,8 +46,13 @@ struct TransactionsListView: View {
                         Button {
                             editingTransaction = transaction
                         } label: {
-                            TransactionRow(transaction: transaction)
-                                .contentShape(Rectangle())
+                            TransactionRow(transaction: transaction, onToggleCleared: {
+                                Task {
+                                    await budgetStore.toggleCleared(transaction)
+                                    await reload()
+                                }
+                            })
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -115,6 +120,12 @@ struct TransactionRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let transaction: Transaction
     var showAccount: Bool = true
+    /// Tap action for the cleared-status dot. Nil leaves the dot inert
+    /// (split-child rows, contexts without a reload path). Reconciled rows
+    /// confirm before invoking, since the store unlocks them instead.
+    var onToggleCleared: (() -> Void)? = nil
+
+    @State private var confirmingUnlock = false
 
     var accountName: String {
         budgetStore.accounts.first { $0.id == transaction.accountId }?.name ?? "Unknown Account"
@@ -135,7 +146,35 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
+            if let onToggleCleared {
+                Button {
+                    if transaction.reconciled {
+                        confirmingUnlock = true
+                    } else {
+                        onToggleCleared()
+                    }
+                } label: {
+                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
+                        // Grow the tap target beyond the 14 pt glyph without
+                        // changing the row's layout.
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityHint("Toggles cleared status")
+                .confirmationDialog(
+                    "This transaction is reconciled. Unlock it to make changes?",
+                    isPresented: $confirmingUnlock,
+                    titleVisibility: .visible
+                ) {
+                    Button("Unlock") { onToggleCleared() }
+                }
+            } else {
+                // Same footprint as the tappable variant so mixed lists
+                // (split children under parents) keep their columns aligned.
+                ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
+                    .frame(width: 28, height: 28)
+            }
             VStack(alignment: .leading, spacing: 2) {
                 // Split parents may resolve no payee (mixed child payees) —
                 // label them "Split" like the desktop app, not "Unknown".

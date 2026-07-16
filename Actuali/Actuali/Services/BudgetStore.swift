@@ -1101,6 +1101,103 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    // MARK: - Reconciliation
+
+    /// Toggle a transaction's cleared status from the list's status dot.
+    /// A reconciled (locked) transaction unlocks instead — callers confirm
+    /// that first — and keeps its cleared flag, matching Actual's desktop
+    /// behavior. Failures surface through the published `error` string.
+    func toggleCleared(_ transaction: Transaction) async {
+        do {
+            var updated = transaction
+            if transaction.reconciled {
+                updated.reconciled = false
+            } else {
+                updated.cleared.toggle()
+            }
+            try await updateTransaction(updated, original: transaction)
+            if updated.isParent {
+                try await cascadeSharedFieldsToChildren(
+                    of: updated, originalPayeeId: transaction.payeeId
+                )
+            }
+        } catch {
+            self.error = "Failed to update cleared status: \(error.localizedDescription)"
+        }
+    }
+
+    /// Cleared balance for one account — the figure reconciliation compares
+    /// against the bank. Nil when no budget is open or the read fails.
+    func clearedBalance(accountId: String) async -> Int? {
+        guard let database else { return nil }
+        do {
+            return try await database.clearedBalance(accountId: accountId)
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
+
+    /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
+    /// in the account (reconciled = true), like upstream's lockTransactions.
+    /// Returns the number of rows locked; 0 with `error` set on failure.
+    @discardableResult
+    func lockClearedTransactions(accountId: String) async -> Int {
+        do {
+            guard let database, let syncClient else {
+                throw BudgetStoreError.syncNotConfigured
+            }
+            let transactions = try await database.fetchClearedUnreconciledTransactions(
+                accountId: accountId
+            )
+            let locked = transactions.map { transaction in
+                var locked = transaction
+                locked.reconciled = true
+                return locked
+            }
+            try await syncClient.updateTransactions(locked, changedFields: ["reconciled"])
+            await refreshDataOnly()
+            return locked.count
+        } catch {
+            self.error = "Failed to lock transactions: \(error.localizedDescription)"
+            return 0
+        }
+    }
+
+    /// Create the balance-adjustment transaction reconciliation offers when
+    /// the cleared balance doesn't match the bank: a cleared, uncategorized
+    /// entry for the difference, same shape as upstream's. Returns false
+    /// with `error` set on failure.
+    @discardableResult
+    func createReconciliationAdjustment(accountId: String, amountCents: Int) async -> Bool {
+        do {
+            let adjustment = Transaction(
+                id: UUID().uuidString,
+                accountId: accountId,
+                date: Transaction.yyyymmdd(from: Date()),
+                amount: amountCents,
+                payeeId: nil,
+                payeeName: nil,
+                categoryId: nil,
+                categoryName: nil,
+                notes: "Reconciliation balance adjustment",
+                cleared: true,
+                reconciled: false,
+                transferId: nil,
+                isParent: false,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: Date().timeIntervalSince1970 * 1000,
+                importedPayee: nil
+            )
+            try await createTransaction(adjustment)
+            return true
+        } catch {
+            self.error = "Failed to create adjustment: \(error.localizedDescription)"
+            return false
+        }
+    }
+
     // MARK: - Transaction Form
 
     /// Input gathered by the add/edit transaction form (`AddTransactionView`).

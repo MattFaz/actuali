@@ -59,8 +59,13 @@ struct CategoryTransactionsView: View {
                                     Button {
                                         editingTransaction = transaction
                                     } label: {
-                                        TransactionRow(transaction: transaction)
-                                            .contentShape(Rectangle())
+                                        TransactionRow(transaction: transaction, onToggleCleared: {
+                                            Task {
+                                                await budgetStore.toggleCleared(transaction)
+                                                await reload()
+                                            }
+                                        })
+                                        .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain)
                                 } else {

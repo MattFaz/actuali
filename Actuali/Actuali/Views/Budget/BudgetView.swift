@@ -15,62 +15,83 @@ private let monthTitleFormatter: DateFormatter = {
     return formatter
 }()
 
+/// Shared metrics for the budget table's three numeric columns, so the
+/// summary captions, group totals and category pills line up vertically
+/// like the PWA's table.
+enum BudgetColumn {
+    static let width: CGFloat = 70
+    static let spacing: CGFloat = 6
+
+    /// Cell text for the budget table: a plain grouped number without the
+    /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
+    /// every cell would drown the category names on a phone.
+    static func text(_ cents: Int) -> String {
+        (Double(cents) / 100.0).formatted(.number.precision(.fractionLength(2)))
+    }
+}
+
 struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
     @State private var transactionsDestination: CategoryTransactionsDestination?
+    /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
+    /// string because @AppStorage can't hold a Set directly.
+    @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
+
+    private var collapsedGroups: Set<String> {
+        Set(collapsedGroupsStorage.split(separator: ",").map(String.init))
+    }
+
+    private func toggleCollapsed(_ groupId: String) {
+        var groups = collapsedGroups
+        if !groups.insert(groupId).inserted {
+            groups.remove(groupId)
+        }
+        collapsedGroupsStorage = groups.sorted().joined(separator: ",")
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 if let budget = budgetStore.currentBudgetMonth {
                     List {
-                        // 2x2 grid: the reading order follows the money —
-                        // came in, allocated, went out, left over. Two rows
-                        // because four currency amounts don't fit across
-                        // narrow devices.
+                        // PWA-style summary bar: unallocated funds lead, and
+                        // the three captioned columns double as the column
+                        // headers for the table below.
                         Section {
-                            VStack(spacing: 12) {
-                                HStack(alignment: .top) {
+                            HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+                                // Envelope budgets lead with unallocated funds;
+                                // tracking budgets have no to-budget concept, so
+                                // lead with income received instead.
+                                if let toBudget = budget.toBudget {
+                                    SummaryStat(
+                                        label: "To Budget",
+                                        value: BudgetColumn.text(toBudget),
+                                        valueColor: toBudget >= 0 ? .green : .red
+                                    )
+                                } else {
                                     SummaryStat(
                                         label: "Income",
-                                        value: budgetStore.formatCurrency(budget.totalIncome)
-                                    )
-                                    Spacer()
-                                    SummaryStat(
-                                        label: "Budgeted",
-                                        value: budgetStore.formatCurrency(budget.totalBudgeted),
-                                        alignment: .trailing
+                                        value: BudgetColumn.text(budget.totalIncome)
                                     )
                                 }
-                                HStack(alignment: .top) {
-                                    SummaryStat(
-                                        label: "Spent",
-                                        value: budgetStore.formatCurrency(abs(budget.totalOutflow))
-                                    )
-                                    Spacer()
-                                    // Envelope budgets lead with unallocated funds;
-                                    // tracking budgets have no to-budget concept, so
-                                    // fall back to the total of category balances.
-                                    if let toBudget = budget.toBudget {
-                                        SummaryStat(
-                                            label: "To Budget",
-                                            value: budgetStore.formatCurrency(toBudget),
-                                            valueColor: toBudget >= 0 ? .green : .red,
-                                            alignment: .trailing
-                                        )
-                                    } else {
-                                        SummaryStat(
-                                            label: "Available",
-                                            value: budgetStore.formatCurrency(budget.totalAvailable),
-                                            valueColor: budget.totalAvailable >= 0 ? .green : .red,
-                                            alignment: .trailing
-                                        )
-                                    }
-                                }
+                                Spacer(minLength: 4)
+                                SummaryColumn(
+                                    label: "Budgeted",
+                                    value: BudgetColumn.text(budget.totalBudgeted)
+                                )
+                                SummaryColumn(
+                                    label: "Spent",
+                                    value: BudgetColumn.text(budget.totalOutflow)
+                                )
+                                SummaryColumn(
+                                    label: "Balance",
+                                    value: BudgetColumn.text(budget.totalAvailable),
+                                    valueColor: budget.totalAvailable >= 0 ? .green : .red
+                                )
                             }
-                            .padding(.vertical, 4)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         }
 
                         if budgetStore.uncategorizedCount > 0 {
@@ -88,22 +109,35 @@ struct BudgetView: View {
                             }
                         }
 
-                        ForEach(groupedCategories, id: \.0) { groupName, categories in
-                            Section(groupName) {
-                                ForEach(categories) { category in
-                                    CategoryBudgetRow(
-                                        category: category,
-                                        onEditBudget: { editingCategory = $0 },
-                                        // Name shows all time, Spent shows the
-                                        // displayed month (GH #56).
-                                        onShowTransactions: { category, month in
-                                            transactionsDestination = CategoryTransactionsDestination(
-                                                categoryId: category.categoryId,
-                                                categoryName: category.categoryName,
-                                                month: month
-                                            )
-                                        }
-                                    )
+                        ForEach(groupedCategories, id: \.id) { group in
+                            let isCollapsed = collapsedGroups.contains(group.id)
+                            // The group row lives inside the card (first row,
+                            // tinted) like the PWA's table, so its totals
+                            // share the exact column grid of the rows below.
+                            Section {
+                                BudgetGroupHeader(
+                                    name: group.name,
+                                    isCollapsed: isCollapsed,
+                                    onToggleCollapse: { toggleCollapsed(group.id) }
+                                )
+                                .listRowBackground(Color(.tertiarySystemFill))
+                                .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
+                                if !isCollapsed {
+                                    ForEach(group.categories) { category in
+                                        CategoryBudgetRow(
+                                            category: category,
+                                            onEditBudget: { editingCategory = $0 },
+                                            // Name shows all time, Spent shows the
+                                            // displayed month (GH #56).
+                                            onShowTransactions: { category, month in
+                                                transactionsDestination = CategoryTransactionsDestination(
+                                                    categoryId: category.categoryId,
+                                                    categoryName: category.categoryName,
+                                                    month: month
+                                                )
+                                            }
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -129,6 +163,11 @@ struct BudgetView: View {
                             }
                         }
                     }
+                    .listSectionSpacing(14)
+                    // Let short rows (group headers) sit below the stock
+                    // 44 pt minimum; tap targets stay fine because the whole
+                    // row is the button.
+                    .environment(\.defaultMinListRowHeight, 32)
                     .gesture(
                         DragGesture(minimumDistance: 30)
                             .onEnded { value in
@@ -205,17 +244,26 @@ struct BudgetView: View {
         }
     }
 
-    var groupedCategories: [(String, [CategoryBudget])] {
+    struct CategoryGroupSection {
+        let id: String
+        let name: String
+        let categories: [CategoryBudget]
+    }
+
+    var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
         let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
         return byGroup
-            .compactMap { _, items -> (Double, String, [CategoryBudget])? in
+            .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
                 let sorted = items.sorted { $0.categorySortOrder < $1.categorySortOrder }
-                return (first.groupSortOrder, first.groupName, sorted)
+                return (
+                    first.groupSortOrder,
+                    CategoryGroupSection(id: groupId, name: first.groupName, categories: sorted)
+                )
             }
             .sorted { $0.0 < $1.0 }
-            .map { ($0.1, $0.2) }
+            .map(\.1)
     }
 
     static func currentMonthString() -> String {
@@ -249,19 +297,46 @@ struct CategoryBudgetRow: View {
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            HStack {
+        VStack(alignment: .leading, spacing: 3) {
+            // One PWA-style table line: name, then the Budgeted/Spent/Balance
+            // pills in their fixed columns. Each element keeps its own tap
+            // action (our enhancement over the PWA's read-only cells).
+            HStack(spacing: BudgetColumn.spacing) {
                 Button {
                     onShowTransactions(category, nil)
                 } label: {
                     Text(category.categoryName)
-                        .font(.body)
+                        .font(.subheadline)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(category.categoryName)")
-                Spacer()
-                Text(budgetStore.formatCurrency(category.available))
-                    .foregroundColor(category.isOverspent ? .red : .green)
+                Spacer(minLength: 4)
+                Button {
+                    onEditBudget(category)
+                } label: {
+                    BudgetAmountPill(
+                        text: BudgetColumn.text(category.budgeted),
+                        dimmed: category.budgeted == 0
+                    )
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                Button {
+                    onShowTransactions(category, category.month)
+                } label: {
+                    BudgetAmountPill(
+                        text: BudgetColumn.text(category.spent),
+                        dimmed: category.spent == 0
+                    )
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                BudgetAmountPill(
+                    text: BudgetColumn.text(category.available),
+                    color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
+                )
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -269,58 +344,101 @@ struct CategoryBudgetRow: View {
                     isOverspent: category.isOverspent
                 )
             }
-            HStack {
-                Button {
-                    onEditBudget(category)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Budgeted: \(budgetStore.formatCurrency(category.budgeted))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "pencil")
-                            .font(.caption2)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
-                Spacer()
-                Button {
-                    onShowTransactions(category, category.month)
-                } label: {
-                    HStack(spacing: 4) {
-                        Text("Spent: \(budgetStore.formatCurrency(abs(category.spent)))")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                        Image(systemName: "list.bullet")
-                            .font(.caption2)
-                            .foregroundStyle(.tint)
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
-            }
         }
-        .padding(.vertical, 2)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
     }
 }
 
-/// One labeled amount in the summary card at the top of the Budget tab.
+/// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
     let label: String
     let value: String
     var valueColor: Color = .primary
-    var alignment: HorizontalAlignment = .leading
 
     var body: some View {
-        VStack(alignment: alignment) {
+        VStack(alignment: .leading) {
             Text(label)
                 .font(.caption)
                 .foregroundStyle(.secondary)
             Text(value)
                 .font(.headline)
                 .foregroundColor(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
         }
+    }
+}
+
+/// One captioned column in the summary bar, sized to line up with the
+/// category pills below it.
+struct SummaryColumn: View {
+    let label: String
+    let value: String
+    var valueColor: Color = .primary
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(value)
+                .font(.footnote.weight(.semibold))
+                .monospacedDigit()
+                .foregroundColor(valueColor)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .frame(width: BudgetColumn.width, alignment: .trailing)
+    }
+}
+
+/// One amount cell in the budget table, in the PWA's pill style.
+struct BudgetAmountPill: View {
+    let text: String
+    var color: Color = .primary
+    var dimmed = false
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .foregroundStyle(dimmed ? Color.secondary : color)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .frame(width: BudgetColumn.width, alignment: .trailing)
+            .background(
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color(.systemFill).opacity(0.6))
+            )
+    }
+}
+
+/// Group header row: collapse control and group name, like the PWA's group
+/// rows but without the totals.
+struct BudgetGroupHeader: View {
+    let name: String
+    let isCollapsed: Bool
+    let onToggleCollapse: () -> Void
+
+    var body: some View {
+        Button(action: onToggleCollapse) {
+            HStack(spacing: BudgetColumn.spacing) {
+                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                Text(name)
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                Spacer(minLength: 4)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("\(name), \(isCollapsed ? "collapsed" : "expanded")")
+        .accessibilityHint("Toggles the group's categories")
     }
 }
 
@@ -346,7 +464,7 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .padding(.vertical, 2)
+        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
     }
 }
 

@@ -285,6 +285,39 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Update many transactions that share one set of changed fields, in a
+    /// single pass (optimistic local-first). One merkle/clock save and one
+    /// sync for the whole batch — reconciliation locks every cleared row in
+    /// an account, and per-row round trips made that visibly slow. Mirrors
+    /// upstream's transactions-batch-update.
+    func updateTransactions(_ transactions: [Transaction], changedFields: Set<String>) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !transactions.isEmpty else { return }
+
+        logger.debug("updateTransactions() - \(transactions.count, privacy: .public) rows, fields: \(changedFields.count, privacy: .public)")
+
+        // 1. Update locally (optimistic) and generate CRDT messages
+        var messages: [CRDTMessage] = []
+        for transaction in transactions {
+            try database.updateTransaction(transaction)
+            guard !changedFields.isEmpty else { continue }
+            messages.append(contentsOf: try await messageGenerator.messagesForUpdate(
+                transaction, changedFields: changedFields
+            ))
+        }
+
+        // 2. Store messages and update merkle once for the batch
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Batch stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 3. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Create a payee (optimistic local-first)
     func createPayee(_ payee: Payee) async throws {
         guard let database else { throw SyncError.notConfigured }

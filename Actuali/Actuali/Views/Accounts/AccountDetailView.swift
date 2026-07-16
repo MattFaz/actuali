@@ -7,6 +7,7 @@ struct AccountDetailView: View {
     @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var showingAddTransaction = false
+    @State private var showingReconcile = false
     @State private var editingTransaction: Transaction?
 
     private var searchQuery: String? {
@@ -54,8 +55,13 @@ struct AccountDetailView: View {
                         Button {
                             editingTransaction = transaction
                         } label: {
-                            TransactionRow(transaction: transaction, showAccount: false)
-                                .contentShape(Rectangle())
+                            TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
+                                Task {
+                                    await budgetStore.toggleCleared(transaction)
+                                    await reload()
+                                }
+                            })
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -91,13 +97,27 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    showingReconcile = true
+                } label: {
+                    Image(systemName: "checkmark.seal")
+                }
+                .accessibilityLabel("Reconcile")
                 Button {
                     showingAddTransaction = true
                 } label: {
                     Image(systemName: "plus")
                 }
             }
+        }
+        .sheet(isPresented: $showingReconcile, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) {
+            ReconcileView(account: account)
+                .environmentObject(budgetStore)
         }
         .sheet(isPresented: $showingAddTransaction, onDismiss: {
             Task {

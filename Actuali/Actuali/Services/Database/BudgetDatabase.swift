@@ -647,6 +647,71 @@ class BudgetDatabase {
         }
     }
 
+    /// Cleared balance for one account: what the bank should agree with
+    /// during reconciliation. Same aggregate semantics as the fetchAccounts()
+    /// balance query (children count, parents excluded, orphaned children of
+    /// tombstoned parents excluded), narrowed to cleared rows.
+    func clearedBalance(accountId: String) async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(t.amount), 0)
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct = ?
+                  AND t.cleared = 1
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                """, arguments: [accountId]) ?? 0
+        }
+    }
+
+    /// Every live cleared-but-not-yet-reconciled row in an account — parents
+    /// and children included, because locking marks each stored row the way
+    /// upstream's ungrouped batch update does. No display joins: callers
+    /// write these rows back verbatim with only `reconciled` changed.
+    func fetchClearedUnreconciledTransactions(accountId: String) async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    t.id, t.isParent, t.acct, t.category, t.amount,
+                    t.description, t.notes, t.date, t.imported_description,
+                    t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+                    t.tombstone, t.parent_id
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct = ?
+                  AND t.cleared = 1
+                  AND (t.reconciled = 0 OR t.reconciled IS NULL)
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                ORDER BY t.date DESC, t.sort_order DESC
+                """, arguments: [accountId])
+
+            return rows.map { row in
+                Transaction(
+                    id: row["id"],
+                    accountId: row["acct"] ?? "",
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    payeeName: nil,
+                    categoryId: row["category"],
+                    categoryName: nil,
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1,
+                    transferId: row["transferred_id"],
+                    isParent: row["isParent"] == 1,
+                    parentId: row["parent_id"],
+                    tombstone: row["tombstone"] == 1,
+                    sortOrder: row["sort_order"],
+                    importedPayee: row["imported_description"]
+                )
+            }
+        }
+    }
+
     /// Joins + filter shared by the uncategorized list and count queries.
     /// Mirrors the WebUI's "uncategorized" pseudo-account filter
     /// (desktop-client accountFilter('uncategorized')): on-budget account,

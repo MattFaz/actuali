@@ -41,8 +41,18 @@ struct UncategorizedTransactionsView: View {
                             pickedCategoryId = nil
                             categorizing = transaction
                         } label: {
-                            TransactionRow(transaction: transaction)
-                                .contentShape(Rectangle())
+                            // Split children keep an inert dot: their cleared
+                            // state follows the parent's.
+                            TransactionRow(
+                                transaction: transaction,
+                                onToggleCleared: transaction.parentId == nil ? {
+                                    Task {
+                                        await budgetStore.toggleCleared(transaction)
+                                        await reload()
+                                    }
+                                } : nil
+                            )
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
