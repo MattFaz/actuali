@@ -202,8 +202,6 @@ class BudgetDatabase {
          "ALTER TABLE custom_reports ADD COLUMN show_trend_lines INTEGER DEFAULT 0"),
         (1780327681000, "tags", "hidden", [],
          "ALTER TABLE tags ADD COLUMN hidden BOOLEAN DEFAULT 0"),
-        (1780606215000, "accounts", "bank_sync_status", [],
-         "ALTER TABLE accounts ADD COLUMN bank_sync_status TEXT"),
         // Locally minted id mirroring upstream's schedules feature, which
         // predates every migration in this list: old snapshots can lack
         // transactions.schedule, but the transaction fetches now select it
@@ -212,6 +210,8 @@ class BudgetDatabase {
         // both apply in one open.
         (1780606214999, "transactions", "schedule", [],
          "ALTER TABLE transactions ADD COLUMN schedule TEXT"),
+        (1780606215000, "accounts", "bank_sync_status", [],
+         "ALTER TABLE accounts ADD COLUMN bank_sync_status TEXT"),
         // Upstream ships both indexes as one migration (1780606215001); split
         // here so each waits for its own columns.
         (1780606215001, "transactions", nil, ["acct", "tombstone"],
