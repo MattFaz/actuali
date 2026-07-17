@@ -25,8 +25,10 @@ struct RecurConfig {
         if let raw = json["patterns"] as? [[String: Any]] {
             var parsed: [Pattern] = []
             for p in raw {
-                guard let t = p["type"] as? String, let v = p["value"] as? Int,
-                      t == "day" || ["SU", "MO", "TU", "WE", "TH", "FR", "SA"].contains(t)
+                guard let t = p["type"] as? String, let v = p["value"] as? Int, v != 0,
+                      t == "day"
+                        ? abs(v) <= 31
+                        : (["SU", "MO", "TU", "WE", "TH", "FR", "SA"].contains(t) && abs(v) <= 5)
                 else { return nil }   // malformed pattern → whole config unsupported
                 parsed.append(Pattern(type: t, value: v))
             }
@@ -37,6 +39,9 @@ struct RecurConfig {
         endMode = json["endMode"] as? String ?? "never"
         endOccurrences = json["endOccurrences"] as? Int
         endDate = (json["endDate"] as? String).flatMap { DayDate(iso: $0) }
+        // A bounded endMode missing its bound must not silently degrade to "recur forever".
+        if endMode == "on_date", endDate == nil { return nil }
+        if endMode == "after_n_occurrences", (endOccurrences ?? 0) <= 0 { return nil }
     }
 }
 

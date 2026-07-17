@@ -71,6 +71,46 @@ struct ScheduleRecurrenceTests {
         ]
         #expect(RecurConfig(json: missingValue) == nil)
     }
+
+    @Test func configRejectsOutOfRangePatternValues() {
+        func config(patterns: [[String: Any]]) -> RecurConfig? {
+            RecurConfig(json: ["frequency": "monthly", "start": "2026-01-01", "patterns": patterns])
+        }
+        #expect(config(patterns: [["type": "TU", "value": 0]]) == nil)   // nth=0 weekday
+        #expect(config(patterns: [["type": "day", "value": 0]]) == nil)
+        #expect(config(patterns: [["type": "day", "value": 32]]) == nil)
+        #expect(config(patterns: [["type": "day", "value": -32]]) == nil)
+        #expect(config(patterns: [["type": "MO", "value": 6]]) == nil)
+        #expect(config(patterns: [["type": "MO", "value": -6]]) == nil)
+    }
+
+    @Test func configRejectsBoundedEndModeWithoutBound() {
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date",
+        ]) == nil)
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date", "endDate": "garbage",
+        ]) == nil)
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences",
+        ]) == nil)
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences", "endOccurrences": 0,
+        ]) == nil)
+    }
+
+    @Test func configAcceptsValidShapes() {
+        let full: [String: Any] = [
+            "frequency": "monthly", "start": "2026-01-01",
+            "patterns": [["type": "day", "value": -1], ["type": "FR", "value": 5], ["type": "day", "value": 31]],
+            "endMode": "after_n_occurrences", "endOccurrences": 3,
+        ]
+        #expect(RecurConfig(json: full) != nil)
+        let onDate: [String: Any] = [
+            "frequency": "weekly", "start": "2026-01-07", "endMode": "on_date", "endDate": "2026-06-01",
+        ]
+        #expect(RecurConfig(json: onDate) != nil)
+    }
 }
 
 struct DayDateTests {
