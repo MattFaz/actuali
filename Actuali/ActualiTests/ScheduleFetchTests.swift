@@ -289,6 +289,30 @@ struct ScheduleFetchTests {
         #expect(schedules.map(\.id) == ["s-ok"])
     }
 
+    /// A bad sync could leave two schedules_next_date rows for one schedule.
+    /// Returning both would make the poster double-post to the user's real
+    /// server, so exactly one Schedule comes back — deterministically the
+    /// `ORDER BY nd.id` winner, regardless of insertion order.
+    @Test func duplicateNextDateRowsYieldOneScheduleDeterministically() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db)   // creates nd row "nd-sched-1", date 20260801
+        // Second nd row for the same schedule, alphabetically FIRST ("nd-a" <
+        // "nd-sched-1"), so ORDER BY — not insertion order — must pick it.
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO schedules_next_date
+                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+                VALUES ('nd-a', 'sched-1', 20260901, 2000, 20260901, 2000)
+                """)
+        }
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.count == 1)
+        #expect(schedules.first?.nextDateRowId == "nd-a")
+        #expect(schedules.first?.nextDate.yyyymmdd == 20260901)
+    }
+
     /// A malformed amount value (neither number nor {num1,num2}) degrades to
     /// nil amount — the schedule is still returned, the poster decides.
     @Test func malformedAmountValueYieldsNilAmount() async throws {

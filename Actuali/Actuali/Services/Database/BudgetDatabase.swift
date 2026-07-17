@@ -1923,10 +1923,21 @@ class BudgetDatabase {
                 WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
                   AND (s.completed = 0 OR s.completed IS NULL)
                   AND s.posts_transaction = 1
+                ORDER BY s.id, nd.id
                 """)
+
+            // A duplicated schedules_next_date row (bad sync) would otherwise
+            // return the same schedule twice and the poster could double-post.
+            // First row wins, deterministically via ORDER BY nd.id above.
+            var seenScheduleIds = Set<String>()
 
             return try rows.compactMap { row -> Schedule? in
                 guard let id: String = row["id"] else { return nil }
+
+                guard seenScheduleIds.insert(id).inserted else {
+                    logger.notice("Skipping duplicate schedules_next_date row for schedule \(id, privacy: .public)")
+                    return nil
+                }
 
                 guard let nextDateRowId: String = row["nd_id"],
                       let baseNextDateTs: Int64 = row["base_next_date_ts"] else {
@@ -1992,7 +2003,7 @@ class BudgetDatabase {
                     baseNextDateTs: baseNextDateTs,
                     accountId: accountId,
                     payeeId: payeeId,
-                    amount: Self.parseAmountCondition(in: conditions),
+                    amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
                     dateCondition: dateCondition
                 )
             }
@@ -2036,7 +2047,9 @@ class BudgetDatabase {
         return nil
     }
 
-    private static func parseAmountCondition(in conditions: [[String: Any]]) -> ScheduledAmount? {
+    private static func parseAmountCondition(
+        in conditions: [[String: Any]], scheduleId: String
+    ) -> ScheduledAmount? {
         guard let cond = firstCondition(
             in: conditions, ops: ["is", "isapprox", "isbetween"], fields: ["amount"]
         ) else { return nil }
@@ -2047,6 +2060,9 @@ class BudgetDatabase {
            let num1 = range["num1"] as? NSNumber, let num2 = range["num2"] as? NSNumber {
             return .range(num1.intValue, num2.intValue)
         }
+        // Distinguish "amount condition present but malformed" from "no
+        // amount condition" — both yield nil, but only this one is a surprise.
+        logger.notice("Schedule \(scheduleId, privacy: .public): amount condition has unrecognized value shape, treating as no amount")
         return nil
     }
 
