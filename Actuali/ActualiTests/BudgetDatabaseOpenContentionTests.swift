@@ -11,9 +11,9 @@ import GRDB
 struct BudgetDatabaseOpenContentionTests {
 
     /// A file whose runnable migrations have all been applied by one
-    /// `BudgetDatabase` open. The `transactions` table deliberately lacks the
-    /// `schedule` column, so one schema-guarded migration stays unapplied
-    /// forever — by design that must not count as pending write work.
+    /// `BudgetDatabase` open. The `transactions` table deliberately starts
+    /// without the `schedule` column; the schema-guarded backfill migration
+    /// adds it during that open, so nothing stays pending afterwards.
     private func makeMigratedDatabaseFile() throws -> URL {
         let url = try makeSchemaOnlyFile()
         _ = try BudgetDatabase(path: url)
@@ -89,8 +89,7 @@ struct BudgetDatabaseOpenContentionTests {
     }
 
     /// The precheck mirrors the write path's guards: pending on a fresh file,
-    /// clear after one open — even though the guarded migration needing
-    /// `transactions.schedule` remains unapplied. Each check opens its own
+    /// clear after one open. Each check opens its own
     /// connection: GRDB caches schema lookups per connection, so a queue that
     /// predates the migration run would not see the new tables.
     @Test func pendingWorkClearsAfterFirstOpen() throws {

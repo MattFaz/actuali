@@ -204,9 +204,16 @@ class BudgetDatabase {
          "ALTER TABLE tags ADD COLUMN hidden BOOLEAN DEFAULT 0"),
         (1780606215000, "accounts", "bank_sync_status", [],
          "ALTER TABLE accounts ADD COLUMN bank_sync_status TEXT"),
+        // Locally minted id mirroring upstream's schedules feature, which
+        // predates every migration in this list: old snapshots can lack
+        // transactions.schedule, but the transaction fetches now select it
+        // (posted scheduled transactions link back to their schedule), so
+        // backfill the column here. Must precede the index migration below so
+        // both apply in one open.
+        (1780606214999, "transactions", "schedule", [],
+         "ALTER TABLE transactions ADD COLUMN schedule TEXT"),
         // Upstream ships both indexes as one migration (1780606215001); split
-        // here so each waits for its own columns — old snapshots can lack
-        // transactions.schedule.
+        // here so each waits for its own columns.
         (1780606215001, "transactions", nil, ["acct", "tombstone"],
          "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
         (1780606215002, "transactions", nil, ["schedule"],
@@ -473,6 +480,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     \(payeeNameSQL) as payee_name,
@@ -591,7 +599,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    schedule: row["schedule"]
                 )
                 transaction.splitPortions = splitPortions[id]
                 return transaction
@@ -607,6 +616,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
@@ -641,7 +651,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    schedule: row["schedule"]
                 )
             }
         }
@@ -676,6 +687,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id
                 FROM transactions t
@@ -706,7 +718,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    schedule: row["schedule"]
                 )
             }
         }
@@ -747,6 +760,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name
@@ -782,7 +796,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    schedule: row["schedule"]
                 )
             }
         }
@@ -810,6 +825,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
@@ -868,7 +884,8 @@ class BudgetDatabase {
                     parentId: row["parent_id"],
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"]
+                    importedPayee: row["imported_description"],
+                    schedule: row["schedule"]
                 )
             }
         }
@@ -1378,6 +1395,7 @@ class BudgetDatabase {
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
                     t.description, t.notes, t.date, t.imported_description,
+                    t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
@@ -1420,6 +1438,7 @@ class BudgetDatabase {
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
                     importedPayee: row["imported_description"],
+                    schedule: row["schedule"],
                     transferAcct: row["transfer_acct"]
                 )
             }
@@ -1789,8 +1808,8 @@ class BudgetDatabase {
         // children keep their entry order under the parent.
         let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, schedule)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1807,7 +1826,8 @@ class BudgetDatabase {
                 transaction.parentId,
                 transaction.tombstone ? 1 : 0,
                 sortOrder,
-                transaction.importedPayee
+                transaction.importedPayee,
+                transaction.schedule
             ])
     }
 
