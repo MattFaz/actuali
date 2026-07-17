@@ -229,7 +229,15 @@ final class BudgetStore: ObservableObject {
 
     private let serverClient = ActualServerClient()
     private let fileManager = BudgetFileManager.shared
-    private var database: BudgetDatabase?
+    private var database: BudgetDatabase? {
+        didSet {
+            // The cached poster holds the database strongly; drop it whenever
+            // the database identity changes so `database = nil` before a
+            // re-import (downloadBudget) actually closes the GRDB connection.
+            guard database !== oldValue else { return }
+            schedulePoster = nil
+        }
+    }
 
     /// Read-only accessor for collaborators (e.g. TransactionLogger) that need
     /// direct DB access for queries that don't fit the @Published cache. The
@@ -1756,10 +1764,11 @@ final class BudgetStore: ObservableObject {
     /// One poster held per database, NOT one per call: `syncOnForeground()`
     /// can run twice concurrently (the cold-launch loadTask calls it while
     /// the scenePhase .active handler fires its own Task), and the poster's
-    /// double-post reentrancy guard is per-instance. Rebuilt when the
-    /// database changes (budget switch).
+    /// double-post reentrancy guard is per-instance. Cleared by `database`'s
+    /// didSet whenever the database identity changes (budget switch, or the
+    /// defensive close before re-import), so it can never pin a stale GRDB
+    /// connection open.
     private var schedulePoster: SchedulePoster?
-    private var schedulePosterDatabase: BudgetDatabase?
     private var scheduleNoticeDismissTask: Task<Void, Never>?
 
     /// The toast copy for a completed posting pass.
@@ -1772,13 +1781,15 @@ final class BudgetStore: ObservableObject {
               let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return }
-        // No suspension between this check and the cache write, so two
-        // MainActor-interleaved calls still share one instance.
-        if schedulePoster == nil || schedulePosterDatabase !== database {
-            schedulePoster = SchedulePoster(database: database, actions: client)
-            schedulePosterDatabase = database
+        // Lazy-create; no suspension between this check and the cache write,
+        // so two MainActor-interleaved calls still share one instance.
+        let poster: SchedulePoster
+        if let cached = schedulePoster {
+            poster = cached
+        } else {
+            poster = SchedulePoster(database: database, actions: client)
+            schedulePoster = poster
         }
-        guard let poster = schedulePoster else { return }
         let count = await poster.runIfNeeded(budgetId: budgetId)
         guard count > 0 else { return }
         schedulePostNotice = Self.schedulePostNoticeText(count: count)

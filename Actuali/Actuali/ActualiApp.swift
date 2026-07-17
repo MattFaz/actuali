@@ -68,6 +68,7 @@ struct ActualiApp: App {
                 .overlay(alignment: .top) {
                     if let notice = budgetStore.schedulePostNotice {
                         ToastView(text: notice)
+                            .allowsHitTesting(false)
                     }
                 }
                 .animation(.easeInOut(duration: 0.25), value: budgetStore.schedulePostNotice)
