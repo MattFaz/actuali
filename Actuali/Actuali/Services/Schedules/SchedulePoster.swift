@@ -14,14 +14,25 @@ protocol SchedulePostingActions {
 /// Mirrors the posting half of loot-core `advanceSchedulesService`.
 ///
 /// Every write here lands on the user's real Actual server, so failure
-/// behavior is conservative throughout: a fetch error is a silent no-op, a
+/// behavior is conservative throughout: a fetch error is a logged no-op, a
 /// schedule-level error skips only that schedule, and the once-per-day gate
 /// is set only after a pass with zero schedule-level errors — a dirty pass
 /// retries on the next trigger the same day.
-struct SchedulePoster {
+///
+/// An actor so overlapping `runIfNeeded` calls (e.g. foreground flapping)
+/// can't interleave: the UserDefaults gate only moves at the END of a clean
+/// pass, so two concurrent passes would both clear it, and pass B's
+/// `hasTransaction` dedup check can run before pass A's `createTransaction`
+/// (a network round-trip) commits — double-posting to the user's real server.
+/// The synchronous, actor-isolated `isRunning` check-and-set below closes
+/// that window.
+actor SchedulePoster {
     let database: BudgetDatabase
     let actions: SchedulePostingActions
     let defaults: UserDefaults
+
+    /// In-flight guard; see the actor rationale above.
+    private var isRunning = false
 
     /// Hard stop for a single schedule's catch-up loop. A schedule can fall
     /// arbitrarily far behind (long-unopened budget); 200 occurrences is far
@@ -39,12 +50,25 @@ struct SchedulePoster {
 
     /// Post every due occurrence of every postable schedule, advancing next
     /// dates as it goes. At most one CLEAN pass per calendar day per budget;
-    /// only a pass with zero schedule-level errors sets the gate.
+    /// only a pass with zero schedule-level errors sets the gate. A call that
+    /// overlaps an in-flight pass returns 0 without running.
     /// - Returns: number of transactions posted.
     @discardableResult
     func runIfNeeded(budgetId: String, today: DayDate = .today()) async -> Int {
+        assert(!budgetId.isEmpty, "empty budgetId would collapse the once-per-day gate across budgets")
+        guard !isRunning else { return 0 }
+        isRunning = true
+        defer { isRunning = false }
+
         guard defaults.integer(forKey: gateKey(budgetId)) != today.yyyymmdd else { return 0 }
-        guard let schedules = try? database.fetchPostableSchedules() else { return 0 }
+        let schedules: [Schedule]
+        do {
+            schedules = try database.fetchPostableSchedules()
+        } catch {
+            // No gate write: the next trigger (same day included) retries.
+            logger.error("fetchPostableSchedules failed - skipping pass: \(error, privacy: .public)")
+            return 0
+        }
 
         var posted = 0
         var clean = true

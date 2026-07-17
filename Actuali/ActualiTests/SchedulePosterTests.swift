@@ -14,6 +14,9 @@ private final class RecordingActions: SchedulePostingActions {
     var advances: [(rowId: String, newNextDate: Int, baseTs: Int64)] = []
     /// Schedule ids whose createTransaction should throw (schedule-level error).
     var failingScheduleIds: Set<String> = []
+    /// Suspension before each create, simulating the network round-trip so
+    /// the concurrency test can force an overlap window.
+    var createDelayNanos: UInt64 = 0
 
     struct FakeError: Error {}
 
@@ -24,6 +27,9 @@ private final class RecordingActions: SchedulePostingActions {
     func createTransaction(_ transaction: Transaction) async throws {
         if let schedule = transaction.schedule, failingScheduleIds.contains(schedule) {
             throw FakeError()
+        }
+        if createDelayNanos > 0 {
+            try await Task.sleep(nanoseconds: createDelayNanos)
         }
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -157,11 +163,15 @@ struct SchedulePosterTests {
         try? FileManager.default.removeItem(at: url)
     }
 
-    private func makePoster(_ db: BudgetDatabase) -> (SchedulePoster, RecordingActions, UserDefaults) {
+    /// Also returns the random suite name so every test can
+    /// `defer { defaults.removePersistentDomain(forName: suite) }` and not
+    /// leave stray preference plists in the simulator container.
+    private func makePoster(_ db: BudgetDatabase) -> (SchedulePoster, RecordingActions, UserDefaults, String) {
         let actions = RecordingActions(database: db)
-        let defaults = UserDefaults(suiteName: UUID().uuidString)!
+        let suite = UUID().uuidString
+        let defaults = UserDefaults(suiteName: suite)!
         let poster = SchedulePoster(database: db, actions: actions, defaults: defaults)
-        return (poster, actions, defaults)
+        return (poster, actions, defaults, suite)
     }
 
     private static let monthlyDateJSON = """
@@ -216,7 +226,8 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260715)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -244,7 +255,8 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260515)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -258,7 +270,8 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260715)
         try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20260715)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -280,7 +293,8 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20260701)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -294,7 +308,8 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20260701)
         try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20260701)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -309,7 +324,8 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260815)
-        let (poster, actions, defaults) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -323,7 +339,8 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260715)
-        let (poster, actions, defaults) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let first = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(first == 1)
@@ -343,17 +360,45 @@ struct SchedulePosterTests {
         #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == tomorrow.yyyymmdd)
     }
 
+    // MARK: - Reentrancy
+
+    @Test func overlappingRunsPostExactlyOnce() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, nextDate: 20260715)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        // Suspend inside createTransaction so the second call arrives while
+        // the first pass is mid-flight — before its transaction commits, i.e.
+        // inside the window where the dedup guard can't see the post yet.
+        actions.createDelayNanos = 50_000_000
+
+        async let a = poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+        async let b = poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+        let (first, second) = await (a, b)
+
+        // The in-flight guard turns the overlapping call into a 0-post no-op.
+        #expect(first + second == 1)
+        #expect(actions.created.count == 1)
+        #expect(actions.advances.count == 1)
+    }
+
     // MARK: - Failure isolation
 
     @Test func fetchErrorReturnsZeroAndLeavesGateUnset() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, nextDate: 20260715)
-        let (poster, actions, defaults) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         // fetchPostableSchedules reads the accounts table (closed-account set)
-        // without a tableExists guard — dropping it makes the fetch throw for
-        // real, exercising the poster's try? swallow path.
+        // WITHOUT a tableExists guard — dropping it makes the fetch throw for
+        // real, exercising the poster's do/catch skip path. NOTE: this test
+        // relies on that missing guard; if fetchPostableSchedules ever gains a
+        // tableExists("accounts") check, it would return [] instead of
+        // throwing and this test would stop covering the error path — swap in
+        // another deterministic throw-inducer then.
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: "DROP TABLE accounts")
         }
@@ -388,7 +433,8 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try insertSchedule(db, id: "sched-a", nextDate: 20260715)
         try insertSchedule(db, id: "sched-b", nextDate: 20260715)
-        let (poster, actions, defaults) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
         actions.failingScheduleIds = ["sched-a"]
 
         let first = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
@@ -419,7 +465,8 @@ struct SchedulePosterTests {
              {"op":"is","field":"amount","value":-1500},
              {"op":"is","field":"date","value":{"frequency":"daily","start":"\(start.iso)","interval":1}}]
             """, nextDate: start.yyyymmdd)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -440,7 +487,8 @@ struct SchedulePosterTests {
              {"op":"isbetween","field":"amount","value":{"num1":-3,"num2":-4}},
              \(Self.monthlyDateJSON)]
             """, nextDate: 20260715)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
@@ -455,7 +503,8 @@ struct SchedulePosterTests {
             [{"op":"is","field":"acct","value":"acct-1"},
              \(Self.monthlyDateJSON)]
             """, nextDate: 20260715)
-        let (poster, actions, _) = makePoster(db)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
