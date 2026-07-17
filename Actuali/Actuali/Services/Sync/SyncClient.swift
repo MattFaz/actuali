@@ -439,6 +439,43 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Advance a schedule's next date after posting (optimistic local-first).
+    /// Mirrors loot-core setNextDate (non-reset branch): `local_next_date`
+    /// moves, and `local_next_date_ts` copies the CURRENT `base_next_date_ts`
+    /// so the local override stays valid (per the v_schedules CASE rule) until
+    /// another client resets the base. `base_next_date`/`base_next_date_ts`
+    /// are never touched.
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("advanceScheduleNextDate() - row: \(nextDateRowId, privacy: .private), newDate: \(newNextDate, privacy: .public)")
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        let fields: [(column: String, value: Any?)] = [
+            ("local_next_date", newNextDate),
+            ("local_next_date_ts", baseNextDateTs),
+        ]
+        let messages = try await messageGenerator.messages(dataset: "schedules_next_date", row: nextDateRowId, fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local advance and the identical advance
+        //    arriving from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Force immediate sync (pull-to-refresh)
     func syncNow() async {
         logger.info("syncNow() called - forcing immediate sync")
