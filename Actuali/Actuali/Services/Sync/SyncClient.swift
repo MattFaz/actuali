@@ -500,13 +500,18 @@ actor SyncClient {
 
     /// Automatic sync with rate limiting (for foreground events, after transaction creation, etc.)
     /// Skips sync if last successful sync was less than 1 second ago
-    func automaticSync() async {
+    /// - Returns: whether the data is freshly synced — true when this call's
+    ///   sync succeeded, and also on the rate-limited skip, which by
+    ///   construction only fires when a sync SUCCEEDED within the window
+    ///   (`shouldSkipAutomaticSync` reads `lastSuccessfulSyncTime`).
+    @discardableResult
+    func automaticSync() async -> Bool {
         if shouldSkipAutomaticSync() {
             logger.debug("automaticSync() skipped - rate limited (last sync < 1s ago)")
-            return
+            return true
         }
         logger.debug("automaticSync() proceeding with sync")
-        await performSync()
+        return await performSync()
     }
 
     // MARK: - Sync Logic
@@ -520,7 +525,9 @@ actor SyncClient {
         return elapsed < 1.0  // Skip if less than 1 second since last sync
     }
 
-    private func performSync() async {
+    /// - Returns: true iff the sync completed successfully.
+    @discardableResult
+    private func performSync() async -> Bool {
         logger.info("performSync() starting...")
         stateSubject.send(.syncing)
 
@@ -530,14 +537,17 @@ actor SyncClient {
             stateSubject.send(.idle)
             retryDelay = 5  // reset on success
             lastSuccessfulSyncTime = Date()
+            return true
         } catch SyncError.offline {
             logger.notice("performSync() failed - offline")
             stateSubject.send(.offline)
             scheduleRetry()
+            return false
         } catch {
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()
+            return false
         }
     }
 

@@ -274,6 +274,12 @@ struct SettingsView: View {
                     Text("Start Page takes effect the next time the app opens.")
                 }
 
+                Section {
+                    Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
+                } footer: {
+                    Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                }
+
                 if budgetStore.currentBudgetId != nil {
                     Section("Sync") {
                         HStack {
