@@ -743,3 +743,16 @@ actor SyncClient {
         try database.saveClock(clockRecord)
     }
 }
+
+// MARK: - SchedulePostingActions
+
+extension SyncClient: SchedulePostingActions {
+    /// Protocol witness — the default argument on
+    /// `createTransaction(_:applyRules:)` can't satisfy the requirement, so
+    /// forward explicitly. Scheduled posts go through the rules pass, same as
+    /// loot-core's post-transaction path. `advanceScheduleNextDate` already
+    /// matches the protocol signature directly.
+    func createTransaction(_ transaction: Transaction) async throws {
+        try await createTransaction(transaction, applyRules: true)
+    }
+}
