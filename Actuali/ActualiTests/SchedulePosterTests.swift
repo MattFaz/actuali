@@ -345,6 +345,44 @@ struct SchedulePosterTests {
 
     // MARK: - Failure isolation
 
+    @Test func fetchErrorReturnsZeroAndLeavesGateUnset() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, nextDate: 20260715)
+        let (poster, actions, defaults) = makePoster(db)
+
+        // fetchPostableSchedules reads the accounts table (closed-account set)
+        // without a tableExists guard — dropping it makes the fetch throw for
+        // real, exercising the poster's try? swallow path.
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "DROP TABLE accounts")
+        }
+
+        let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        #expect(posted == 0)
+        #expect(actions.created.isEmpty)
+        #expect(actions.advances.isEmpty)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 0)
+
+        // Gate untouched: same day, DB repaired, the pass runs and posts.
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                CREATE TABLE accounts (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    offbudget INTEGER DEFAULT 0,
+                    closed INTEGER DEFAULT 0,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try conn.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
+        }
+        let retried = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+        #expect(retried == 1)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20260715)
+    }
+
     @Test func scheduleErrorSkipsGateButOtherSchedulesStillProcess() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
