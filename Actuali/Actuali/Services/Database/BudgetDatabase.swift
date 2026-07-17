@@ -1923,6 +1923,7 @@ class BudgetDatabase {
                 WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
                   AND (s.completed = 0 OR s.completed IS NULL)
                   AND s.posts_transaction = 1
+                  AND (r.tombstone = 0 OR r.tombstone IS NULL)
                 ORDER BY s.id, nd.id
                 """)
 

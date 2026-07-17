@@ -138,6 +138,7 @@ struct ScheduleFetchTests {
         postsTransaction: Int = 1,
         completed: Int = 0,
         tombstone: Int = 0,
+        ruleTombstone: Int = 0,
         conditions: String? = nil,
         localNextDate: Int? = 20260801,
         localNextDateTs: Int64? = 1_000,
@@ -152,9 +153,9 @@ struct ScheduleFetchTests {
             """
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions)
-                VALUES (?, NULL, 'and', ?, '[]')
-                """, arguments: ["rule-\(id)", conditionsJSON])
+                INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+                VALUES (?, NULL, 'and', ?, '[]', ?)
+                """, arguments: ["rule-\(id)", conditionsJSON, ruleTombstone])
             try conn.execute(sql: """
                 INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -283,6 +284,19 @@ struct ScheduleFetchTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-nots", localNextDateTs: nil, baseNextDateTs: nil)
+        try insertSchedule(db, id: "s-ok")
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.map(\.id) == ["s-ok"])
+    }
+
+    /// loot-core's rules service only loads rules with tombstone = 0, so a
+    /// schedule whose rule is tombstoned is unpostable on web — iOS must not
+    /// post from its dead conditions either.
+    @Test func skipsScheduleWhoseRuleIsTombstoned() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, id: "s-deadrule", ruleTombstone: 1)
         try insertSchedule(db, id: "s-ok")
 
         let schedules = try db.fetchPostableSchedules()
