@@ -241,6 +241,70 @@ struct ScheduleFetchTests {
         #expect(schedules.first?.payeeId == "payee-target")
     }
 
+    /// LEFT JOIN semantics: a payee value with no payee_mapping row yields a
+    /// nil payee (loot-core's pm.targetId is NULL there) — still postable.
+    @Test func unmappedPayeeYieldsNilPayeeButStillPostable() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, conditions: """
+            [{"op":"is","field":"acct","value":"acct-1"},
+             {"op":"is","field":"description","value":"payee-unmapped"},
+             \(Self.monthlyDateJSON)]
+            """)
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.count == 1)
+        #expect(schedules.first?.payeeId == nil)
+    }
+
+    /// extractScheduleConds is two-pass: a `payee` condition beats an EARLIER
+    /// `description` one, and `account` beats an earlier `acct`. If array
+    /// order won here the closed acct would get picked and the row skipped.
+    @Test func payeeAndAccountFieldsWinOverEarlierAliases() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, conditions: """
+            [{"op":"is","field":"description","value":"payee-1"},
+             {"op":"is","field":"payee","value":"payee-merged"},
+             {"op":"is","field":"acct","value":"acct-closed"},
+             {"op":"is","field":"account","value":"acct-1"},
+             \(Self.monthlyDateJSON)]
+            """)
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.count == 1)
+        #expect(schedules.first?.accountId == "acct-1")
+        #expect(schedules.first?.payeeId == "payee-target")
+    }
+
+    /// The advance write needs base_next_date_ts; a NULL there is a skip,
+    /// without poisoning other schedules in the same fetch.
+    @Test func skipsNullBaseNextDateTsWithoutAffectingOthers() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, id: "s-nots", localNextDateTs: nil, baseNextDateTs: nil)
+        try insertSchedule(db, id: "s-ok")
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.map(\.id) == ["s-ok"])
+    }
+
+    /// A malformed amount value (neither number nor {num1,num2}) degrades to
+    /// nil amount — the schedule is still returned, the poster decides.
+    @Test func malformedAmountValueYieldsNilAmount() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, conditions: """
+            [{"op":"is","field":"acct","value":"acct-1"},
+             {"op":"is","field":"amount","value":"fifteen dollars"},
+             \(Self.monthlyDateJSON)]
+            """)
+
+        let schedules = try db.fetchPostableSchedules()
+        #expect(schedules.count == 1)
+        #expect(schedules.first?.amount == nil)
+    }
+
     // MARK: - postAmount (JS Math.round parity)
 
     @Test func postAmountMatchesJSRounding() {
