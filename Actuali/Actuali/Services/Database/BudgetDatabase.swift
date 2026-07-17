@@ -1893,6 +1893,178 @@ class BudgetDatabase {
         }
     }
 
+    // MARK: - Schedules
+
+    /// Fetch schedules eligible for auto-posting: alive, not completed, and
+    /// flagged `posts_transaction = 1`, with their rule conditions extracted
+    /// (port of loot-core `extractScheduleConds`). The poster writes to users'
+    /// real servers, so every doubt case is a logged skip — never a throw and
+    /// never a partially-understood schedule. Returns [] when the schedule
+    /// tables don't exist (older budget files).
+    func fetchPostableSchedules() throws -> [Schedule] {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules"),
+                  try db.tableExists("schedules_next_date"),
+                  try db.tableExists("rules")
+            else { return [] }
+
+            let closedAccounts = try Set(String.fetchAll(
+                db, sql: "SELECT id FROM accounts WHERE closed = 1"
+            ))
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT s.id, s.name, nd.id AS nd_id,
+                       nd.local_next_date, nd.local_next_date_ts,
+                       nd.base_next_date, nd.base_next_date_ts,
+                       r.conditions
+                FROM schedules s
+                JOIN schedules_next_date nd ON nd.schedule_id = s.id
+                JOIN rules r ON r.id = s.rule
+                WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
+                  AND (s.completed = 0 OR s.completed IS NULL)
+                  AND s.posts_transaction = 1
+                """)
+
+            return try rows.compactMap { row -> Schedule? in
+                guard let id: String = row["id"] else { return nil }
+
+                guard let nextDateRowId: String = row["nd_id"],
+                      let baseNextDateTs: Int64 = row["base_next_date_ts"] else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): incomplete schedules_next_date row")
+                    return nil
+                }
+
+                guard let conditions = Self.parseConditionsArray(row["conditions"]) else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): unparseable rule conditions")
+                    return nil
+                }
+
+                // Account: required, and must be open.
+                guard let accountId = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["account", "acct"]
+                )?["value"] as? String else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): no account condition")
+                    return nil
+                }
+                guard !closedAccounts.contains(accountId) else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): account is closed")
+                    return nil
+                }
+
+                // Date: required; unsupported recurrences mean we can't advance
+                // the schedule correctly after posting, so skip.
+                guard let dateCondition = Self.parseDateCondition(in: conditions) else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): missing or unsupported date condition")
+                    return nil
+                }
+
+                // Effective next date, per loot-core's v_schedules view:
+                // local_next_date when local_next_date_ts = base_next_date_ts,
+                // else base_next_date (NULL timestamps fall through to base,
+                // matching SQL NULL-comparison semantics).
+                let localTs: Int64? = row["local_next_date_ts"]
+                let effectiveRaw: Int? = (localTs != nil && localTs == baseNextDateTs)
+                    ? row["local_next_date"]
+                    : row["base_next_date"]
+                guard let effectiveRaw, let nextDate = DayDate(yyyymmdd: effectiveRaw) else {
+                    logger.notice("Skipping schedule \(id, privacy: .public): missing or invalid next date")
+                    return nil
+                }
+
+                // Payee: optional. loot-core's v_schedules resolves the raw
+                // condition value through payee_mapping (pm.targetId, LEFT
+                // JOIN), so an unmapped payee yields nil there too.
+                var payeeId: String?
+                if let rawPayee = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["payee", "description"]
+                )?["value"] as? String {
+                    payeeId = try String.fetchOne(
+                        db, sql: "SELECT targetId FROM payee_mapping WHERE id = ?",
+                        arguments: [rawPayee]
+                    )
+                }
+
+                return Schedule(
+                    id: id,
+                    name: row["name"],
+                    nextDate: nextDate,
+                    nextDateRowId: nextDateRowId,
+                    baseNextDateTs: baseNextDateTs,
+                    accountId: accountId,
+                    payeeId: payeeId,
+                    amount: Self.parseAmountCondition(in: conditions),
+                    dateCondition: dateCondition
+                )
+            }
+        }
+    }
+
+    /// Dedup guard for the poster: does an alive transaction linked to this
+    /// schedule already exist on/after `date` (YYYYMMDD int)?
+    func hasTransaction(scheduleId: String, onOrAfter date: Int) throws -> Bool {
+        try dbQueue.read { db in
+            try Bool.fetchOne(db, sql: """
+                SELECT EXISTS(
+                    SELECT 1 FROM transactions
+                    WHERE schedule = ? AND date >= ?
+                      AND (tombstone = 0 OR tombstone IS NULL)
+                )
+                """, arguments: [scheduleId, date]) ?? false
+        }
+    }
+
+    private static func parseConditionsArray(_ json: String?) -> [[String: Any]]? {
+        guard let json, let data = json.data(using: .utf8),
+              let any = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        else { return nil }
+        return any as? [[String: Any]]
+    }
+
+    /// loot-core `extractScheduleConds` lookup: fields are tried in order
+    /// (e.g. a `payee` condition wins over an earlier `description` one),
+    /// first array match wins within a field.
+    private static func firstCondition(
+        in conditions: [[String: Any]], ops: Set<String>, fields: [String]
+    ) -> [String: Any]? {
+        for field in fields {
+            if let match = conditions.first(where: {
+                ($0["op"] as? String).map(ops.contains) == true && $0["field"] as? String == field
+            }) {
+                return match
+            }
+        }
+        return nil
+    }
+
+    private static func parseAmountCondition(in conditions: [[String: Any]]) -> ScheduledAmount? {
+        guard let cond = firstCondition(
+            in: conditions, ops: ["is", "isapprox", "isbetween"], fields: ["amount"]
+        ) else { return nil }
+        if let number = cond["value"] as? NSNumber {
+            return .fixed(number.intValue)
+        }
+        if let range = cond["value"] as? [String: Any],
+           let num1 = range["num1"] as? NSNumber, let num2 = range["num2"] as? NSNumber {
+            return .range(num1.intValue, num2.intValue)
+        }
+        return nil
+    }
+
+    private static func parseDateCondition(in conditions: [[String: Any]]) -> ScheduleDateCondition? {
+        guard let cond = firstCondition(
+            in: conditions, ops: ["is", "isapprox"], fields: ["date"]
+        ) else { return nil }
+        // Fixed dates inside conditions JSON are "YYYY-MM-DD" strings
+        // (unlike the schedules_next_date columns, which are YYYYMMDD ints).
+        if let iso = cond["value"] as? String, let day = DayDate(iso: iso) {
+            return .fixed(day)
+        }
+        if let recur = cond["value"] as? [String: Any], let config = RecurConfig(json: recur) {
+            return .recurring(config)
+        }
+        return nil
+    }
+
     // MARK: - Preferences
 
     /// Fetch currency code from preferences table (stored by Actual Budget)
