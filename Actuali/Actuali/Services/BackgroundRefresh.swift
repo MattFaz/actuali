@@ -62,7 +62,13 @@ enum BackgroundRefresh {
             let synced = await store.syncInBackground()
             if synced {
                 let fresh = await store.detectNewTransactionsForNotification()
-                await NewTransactionNotifier.notify(about: fresh, currencyCode: store.currencyCode)
+                // The sync just refreshed the accounts cache, so names are
+                // current even on a cold background launch.
+                let accountNames = store.accounts.reduce(into: [String: String]()) {
+                    $0[$1.id] = $1.name
+                }
+                await NewTransactionNotifier.notify(about: fresh, currencyCode: store.currencyCode,
+                                                    accountNames: accountNames)
             }
             bgLog.info("Background sync finished (budgetConfigured: \(synced))")
             task.setTaskCompleted(success: synced)

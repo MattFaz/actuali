@@ -37,33 +37,51 @@ struct NewTransactionNotifierTests {
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }
 
-    @Test func multipleTransactionsSummarizeCountAndUncategorized() {
-        let batch = [
-            makeTransaction(id: "t1", categoryId: "food"),
-            makeTransaction(id: "t2"),
-            makeTransaction(id: "t3"),
-            makeTransaction(id: "t4"),
-            makeTransaction(id: "t5", categoryId: "fuel"),
-        ]
+    @Test func singleTransactionShowsAccountWhenKnown() {
+        let content = NewTransactionNotifier.makeContent(
+            for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
+            currencyCode: "USD", accountNames: ["acct1": "Checking"])
 
-        let content = NewTransactionNotifier.makeContent(for: batch, currencyCode: "USD")
-
-        #expect(content?.title == "5 new transactions")
-        #expect(content?.body.contains("3 need a category") == true)
-        #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String]
-                == ["t1", "t2", "t3", "t4", "t5"])
+        #expect(content?.body.contains("on Checking") == true)
     }
 
-    @Test func multipleAllCategorizedSaysSo() {
+    /// A batch shows one detail line per transaction — amount, payee,
+    /// account — with uncategorized ones flagged individually.
+    @Test func multipleTransactionsListDetailLines() {
         let batch = [
-            makeTransaction(id: "t1", categoryId: "food"),
-            makeTransaction(id: "t2", categoryId: "fuel"),
+            makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food", amount: -500),
+            makeTransaction(id: "t2", payeeName: "Shell", amount: -4200),
         ]
+
+        let content = NewTransactionNotifier.makeContent(
+            for: batch, currencyCode: "USD", accountNames: ["acct1": "Checking"])
+
+        #expect(content?.title == "2 new transactions")
+        let lines = content?.body.components(separatedBy: "\n")
+        #expect(lines?.count == 2)
+        #expect(lines?.first?.contains("5.00") == true)
+        #expect(lines?.first?.contains("Starbucks") == true)
+        #expect(lines?.first?.contains("on Checking") == true)
+        #expect(lines?.first?.localizedCaseInsensitiveContains("category") == false)
+        #expect(lines?.last?.contains("42.00") == true)
+        #expect(lines?.last?.contains("Shell") == true)
+        #expect(lines?.last?.localizedCaseInsensitiveContains("needs a category") == true)
+        #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String]
+                == ["t1", "t2"])
+    }
+
+    /// Detail lines are capped so a big sync doesn't produce a wall of text;
+    /// the overflow is summarized and tap-through still carries every id.
+    @Test func longBatchCapsDetailLinesWithOverflowCount() {
+        let batch = (1...6).map { makeTransaction(id: "t\($0)", categoryId: "food") }
 
         let content = NewTransactionNotifier.makeContent(for: batch, currencyCode: "USD")
 
-        #expect(content?.title == "2 new transactions")
-        #expect(content?.body.localizedCaseInsensitiveContains("categorized") == true)
+        #expect(content?.title == "6 new transactions")
+        let lines = content?.body.components(separatedBy: "\n") ?? []
+        #expect(lines.count == 5)
+        #expect(lines.last?.contains("2 more") == true)
+        #expect((content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String])?.count == 6)
     }
 
     @Test func contentCarriesRoutingMetadata() {

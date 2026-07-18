@@ -32,10 +32,12 @@ enum NewTransactionNotifier {
     /// so the refresh itself can keep data fresh for everyone.
     @MainActor
     static func notify(about transactions: [Transaction], currencyCode: String,
+                       accountNames: [String: String] = [:],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
                        center: NotificationPosting = UNUserNotificationCenter.current()) async {
         guard settings.isEnabled else { return }
-        guard let request = makeRequest(for: transactions, currencyCode: currencyCode) else { return }
+        guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
+                                        accountNames: accountNames) else { return }
 
         let granted: Bool
         do {
@@ -54,12 +56,19 @@ enum NewTransactionNotifier {
         }
     }
 
-    static func makeRequest(for transactions: [Transaction], currencyCode: String) -> UNNotificationRequest? {
-        guard let content = makeContent(for: transactions, currencyCode: currencyCode) else { return nil }
+    static func makeRequest(for transactions: [Transaction], currencyCode: String,
+                            accountNames: [String: String] = [:]) -> UNNotificationRequest? {
+        guard let content = makeContent(for: transactions, currencyCode: currencyCode,
+                                        accountNames: accountNames) else { return nil }
         return UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: nil)
     }
 
-    static func makeContent(for transactions: [Transaction], currencyCode: String) -> UNNotificationContent? {
+    /// Detail lines shown for a batch before overflowing into "…and N more".
+    /// Long-press/expanded notifications show about this many comfortably.
+    static let maxDetailLines = 4
+
+    static func makeContent(for transactions: [Transaction], currencyCode: String,
+                            accountNames: [String: String] = [:]) -> UNNotificationContent? {
         guard !transactions.isEmpty else { return nil }
 
         let content = UNMutableNotificationContent()
@@ -68,25 +77,36 @@ enum NewTransactionNotifier {
         content.userInfo = [transactionIdsKey: transactions.map(\.id)]
         // No sound — a quiet reminder, matching the Wallet-automation banners.
 
-        if transactions.count == 1, let transaction = transactions.first {
-            content.title = "New transaction"
-            var body = amountString(cents: transaction.amount, currencyCode: currencyCode)
-            if let payee = transaction.payeeName, !payee.isEmpty {
-                body += " at \(payee)"
-            }
-            if transaction.categoryId == nil {
-                body += " · Needs a category"
-            }
-            content.body = body
-        } else {
-            let uncategorized = transactions.filter { $0.categoryId == nil }.count
-            content.title = "\(transactions.count) new transactions"
-            content.body = uncategorized == 0
-                ? "All categorized"
-                : "\(uncategorized) need\(uncategorized == 1 ? "s" : "") a category"
+        content.title = transactions.count == 1
+            ? "New transaction"
+            : "\(transactions.count) new transactions"
+
+        var lines = transactions.prefix(maxDetailLines).map {
+            line(for: $0, currencyCode: currencyCode, accountNames: accountNames)
         }
+        if transactions.count > maxDetailLines {
+            lines.append("…and \(transactions.count - maxDetailLines) more")
+        }
+        content.body = lines.joined(separator: "\n")
 
         return content
+    }
+
+    /// One transaction's detail: "$12.50 at Starbucks on Checking", with an
+    /// uncategorized marker so each line says whether it still needs sorting.
+    private static func line(for transaction: Transaction, currencyCode: String,
+                             accountNames: [String: String]) -> String {
+        var line = amountString(cents: transaction.amount, currencyCode: currencyCode)
+        if let payee = transaction.payeeName, !payee.isEmpty {
+            line += " at \(payee)"
+        }
+        if let account = accountNames[transaction.accountId], !account.isEmpty {
+            line += " on \(account)"
+        }
+        if transaction.categoryId == nil {
+            line += " · Needs a category"
+        }
+        return line
     }
 
     private static func amountString(cents: Int, currencyCode: String) -> String {
