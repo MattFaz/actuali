@@ -443,6 +443,43 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Advance a schedule's next date after posting (optimistic local-first).
+    /// Mirrors loot-core setNextDate (non-reset branch): `local_next_date`
+    /// moves, and `local_next_date_ts` copies the CURRENT `base_next_date_ts`
+    /// so the local override stays valid (per the v_schedules CASE rule) until
+    /// another client resets the base. `base_next_date`/`base_next_date_ts`
+    /// are never touched.
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("advanceScheduleNextDate() - row: \(nextDateRowId, privacy: .private), newDate: \(newNextDate, privacy: .public)")
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        let fields: [(column: String, value: Any?)] = [
+            ("local_next_date", newNextDate),
+            ("local_next_date_ts", baseNextDateTs),
+        ]
+        let messages = try await messageGenerator.messages(dataset: "schedules_next_date", row: nextDateRowId, fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local advance and the identical advance
+        //    arriving from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Force immediate sync (pull-to-refresh)
     func syncNow() async {
         logger.info("syncNow() called - forcing immediate sync")
@@ -467,13 +504,18 @@ actor SyncClient {
 
     /// Automatic sync with rate limiting (for foreground events, after transaction creation, etc.)
     /// Skips sync if last successful sync was less than 1 second ago
-    func automaticSync() async {
+    /// - Returns: whether the data is freshly synced — true when this call's
+    ///   sync succeeded, and also on the rate-limited skip, which by
+    ///   construction only fires when a sync SUCCEEDED within the window
+    ///   (`shouldSkipAutomaticSync` reads `lastSuccessfulSyncTime`).
+    @discardableResult
+    func automaticSync() async -> Bool {
         if shouldSkipAutomaticSync() {
             logger.debug("automaticSync() skipped - rate limited (last sync < 1s ago)")
-            return
+            return true
         }
         logger.debug("automaticSync() proceeding with sync")
-        await performSync()
+        return await performSync()
     }
 
     // MARK: - Sync Logic
@@ -487,7 +529,9 @@ actor SyncClient {
         return elapsed < 1.0  // Skip if less than 1 second since last sync
     }
 
-    private func performSync() async {
+    /// - Returns: true iff the sync completed successfully.
+    @discardableResult
+    private func performSync() async -> Bool {
         logger.info("performSync() starting...")
         stateSubject.send(.syncing)
 
@@ -497,14 +541,17 @@ actor SyncClient {
             stateSubject.send(.idle)
             retryDelay = 5  // reset on success
             lastSuccessfulSyncTime = Date()
+            return true
         } catch SyncError.offline {
             logger.notice("performSync() failed - offline")
             stateSubject.send(.offline)
             scheduleRetry()
+            return false
         } catch {
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()
+            return false
         }
     }
 
@@ -708,5 +755,18 @@ actor SyncClient {
             merkle: merkle.root
         )
         try database.saveClock(clockRecord)
+    }
+}
+
+// MARK: - SchedulePostingActions
+
+extension SyncClient: SchedulePostingActions {
+    /// Protocol witness — the default argument on
+    /// `createTransaction(_:applyRules:)` can't satisfy the requirement, so
+    /// forward explicitly. Scheduled posts go through the rules pass, same as
+    /// loot-core's post-transaction path. `advanceScheduleNextDate` already
+    /// matches the protocol signature directly.
+    func createTransaction(_ transaction: Transaction) async throws {
+        try await createTransaction(transaction, applyRules: true)
     }
 }

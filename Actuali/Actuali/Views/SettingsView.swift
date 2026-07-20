@@ -26,6 +26,7 @@ struct SettingsView: View {
     ]
     @State private var password = ""
     @State private var showingResetSyncConfirm = false
+    @State private var showingWalletImport = false
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
     @State private var showingBudgetSelectPrompt = false
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
@@ -310,6 +311,12 @@ struct SettingsView: View {
                     Text("Start Page takes effect the next time the app opens.")
                 }
 
+                Section {
+                    Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
+                } footer: {
+                    Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                }
+
                 if budgetStore.currentBudgetId != nil {
                     Section("Sync") {
                         HStack {
@@ -393,10 +400,21 @@ struct SettingsView: View {
                     } label: {
                         Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
                     }
+                    if WalletImportView.isSupported {
+                        Button {
+                            showingWalletImport = true
+                        } label: {
+                            Label("Import Wallet Transactions", systemImage: "square.and.arrow.down")
+                        }
+                    }
                 } header: {
                     Text("Automations")
                 } footer: {
-                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    if WalletImportView.isSupported {
+                        Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    } else {
+                        Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    }
                 }
 
                 Section {
@@ -424,6 +442,10 @@ struct SettingsView: View {
             .task { await refreshNotificationPermissionState() }
             .sheet(item: $budgetToUnlock) { budget in
                 EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+            }
+            .sheet(isPresented: $showingWalletImport) {
+                WalletImportView()
+                    .environmentObject(budgetStore)
             }
             .overlay {
                 if budgetStore.isLoading {

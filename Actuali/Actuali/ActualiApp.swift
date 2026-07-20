@@ -74,6 +74,13 @@ struct ActualiApp: App {
                         BackgroundRefresh.schedule()
                     }
                 }
+                .overlay(alignment: .top) {
+                    if let notice = budgetStore.schedulePostNotice {
+                        ToastView(text: notice)
+                            .allowsHitTesting(false)
+                    }
+                }
+                .animation(.easeInOut(duration: 0.25), value: budgetStore.schedulePostNotice)
         }
     }
 }

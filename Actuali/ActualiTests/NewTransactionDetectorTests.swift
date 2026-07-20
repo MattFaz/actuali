@@ -29,6 +29,7 @@ struct NewTransactionDetectorTests {
                     notes TEXT,
                     date INTEGER,
                     imported_description TEXT,
+                    financial_id TEXT,
                     transferred_id TEXT,
                     sort_order REAL,
                     tombstone INTEGER DEFAULT 0,

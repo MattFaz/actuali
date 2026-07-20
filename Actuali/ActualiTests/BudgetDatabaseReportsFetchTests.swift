@@ -61,6 +61,7 @@ struct BudgetDatabaseReportsFetchTests {
                     notes TEXT,
                     date INTEGER,
                     imported_description TEXT,
+                    financial_id TEXT,
                     transferred_id TEXT,
                     cleared INTEGER DEFAULT 0,
                     reconciled INTEGER DEFAULT 0,

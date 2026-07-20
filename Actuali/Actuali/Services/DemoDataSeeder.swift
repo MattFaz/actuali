@@ -93,7 +93,8 @@ enum DemoDataSeeder {
                 tombstone INTEGER DEFAULT 0,
                 cleared INTEGER DEFAULT 0,
                 reconciled INTEGER DEFAULT 0,
-                parent_id TEXT
+                parent_id TEXT,
+                schedule TEXT
             )
             """)
 

@@ -8,6 +8,7 @@ struct AccountDetailView: View {
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
+    @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
 
     private var searchQuery: String? {
@@ -97,6 +98,15 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            if WalletImportView.isSupported {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        showingWalletImport = true
+                    } label: {
+                        Label("Import from Wallet", systemImage: "wallet.pass")
+                    }
+                }
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingReconcile = true
@@ -117,6 +127,14 @@ struct AccountDetailView: View {
             }
         }) {
             ReconcileView(account: account)
+                .environmentObject(budgetStore)
+        }
+        .sheet(isPresented: $showingWalletImport, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) {
+            WalletImportView(preselectedAccountId: account.id)
                 .environmentObject(budgetStore)
         }
         .sheet(isPresented: $showingAddTransaction, onDismiss: {
