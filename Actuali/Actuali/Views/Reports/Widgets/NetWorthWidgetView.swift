@@ -12,7 +12,7 @@ struct NetWorthWidgetView: View {
                 Text(displayName).font(.headline)
                 Spacer()
                 if let last = data.points.last {
-                    Text(budgetStore.formatCurrencyWholeUnits(last.balanceCents))
+                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents))
                         .font(.subheadline)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)
@@ -39,6 +39,9 @@ struct NetWorthWidgetView: View {
                     .foregroundStyle(.green)
                 }
                 .frame(height: 180)
+                // Keep the trend visible without exposing chart-axis amounts.
+                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .accessibilityHidden(budgetStore.hideBalances)
             } else {
                 Text("Not enough data")
                     .font(.subheadline)

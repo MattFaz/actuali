@@ -46,7 +46,7 @@ struct AccountsListView: View {
                                     Text("All Accounts")
                                         .font(.headline)
                                     Spacer()
-                                    Text(budgetStore.formatCurrency(totalBalance))
+                                    Text(budgetStore.displayBalance(totalBalance))
                                         .font(.headline)
                                         .foregroundColor(totalBalance > 0 ? .green : (totalBalance < 0 ? .red : .primary))
                                 }
@@ -77,6 +77,9 @@ struct AccountsListView: View {
             }
             .navigationTitle("Accounts")
             .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    BalanceVisibilityButton()
+                }
                 ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
                 }
@@ -122,7 +125,7 @@ struct AccountRow: View {
             Text(account.name)
                 .font(.body)
             Spacer()
-            Text(budgetStore.formatCurrency(account.balance))
+            Text(budgetStore.displayBalance(account.balance))
                 .foregroundColor(account.balance > 0 ? .green : (account.balance < 0 ? .red : .primary))
         }
     }

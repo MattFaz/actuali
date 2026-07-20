@@ -138,7 +138,7 @@ struct TransactionRow: View {
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
                 let name = portion.categoryName ?? "Uncategorized"
-                return "\(name) \(budgetStore.formatCurrency(abs(portion.amount)))"
+                return "\(name) \(budgetStore.displayBalance(abs(portion.amount)))"
             }.joined(separator: ", ")
         }
         return transaction.categoryName ?? (transaction.isParent ? "Split" : "Uncategorized")
@@ -207,7 +207,7 @@ struct TransactionRow: View {
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 2) {
-                Text(budgetStore.formatCurrency(transaction.amount))
+                Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
                 Text(transaction.dateFormatted)
                     .font(.caption)

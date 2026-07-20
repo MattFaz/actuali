@@ -10,7 +10,7 @@ struct FormulaWidgetView: View {
             Text(displayName).font(.headline)
             switch result {
             case .value(let units):
-                Text(budgetStore.formatCurrency(Int((units * 100).rounded())))
+                Text(budgetStore.displayBalance(Int((units * 100).rounded())))
                     .font(.system(size: 34, weight: .bold))
                     .monospacedDigit()
                     .minimumScaleFactor(0.5)

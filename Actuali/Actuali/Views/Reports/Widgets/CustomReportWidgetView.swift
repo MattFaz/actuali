@@ -39,6 +39,9 @@ struct CustomReportWidgetView: View {
                         : Color.accentColor)
                 }
                 .frame(height: 180)
+                // Financial chart axes otherwise reveal the underlying totals.
+                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .accessibilityHidden(budgetStore.hideBalances)
             }
 
         case .stacked(let stacked):
@@ -61,6 +64,9 @@ struct CustomReportWidgetView: View {
                 }
                 .chartLegend(.visible)
                 .frame(height: 200)
+                // Financial chart axes otherwise reveal the underlying totals.
+                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .accessibilityHidden(budgetStore.hideBalances)
             }
 
         case .table(let rows):
@@ -72,7 +78,7 @@ struct CustomReportWidgetView: View {
                         HStack {
                             Text(row.name).font(.subheadline)
                             Spacer()
-                            Text(budgetStore.formatCurrency(Int((row.totalUnits * 100).rounded())))
+                            Text(budgetStore.displayBalance(Int((row.totalUnits * 100).rounded())))
                                 .font(.subheadline)
                                 .monospacedDigit()
                         }

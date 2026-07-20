@@ -179,6 +179,38 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether monetary values are obscured wherever the app displays them:
+    /// account balances, the budget table, reports, and transaction lists.
+    /// Screens where the user is actively working with an amount (entering a
+    /// transaction, reconciling against the bank) intentionally stay visible.
+    ///
+    /// This is a device-level privacy preference, rather than budget data: a
+    /// person may want to hide amounts before handing their phone to someone,
+    /// regardless of which budget is currently open. It persists across
+    /// relaunches and defaults to showing balances.
+    @Published var hideBalances: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+        }
+    }
+
+    /// One consistent-width replacement keeps masked amounts visually stable
+    /// while avoiding a numeric value in the UI. Bullets read as the familiar
+    /// passcode-style "hidden" treatment while inheriting each label's font,
+    /// size, and color.
+    static let hiddenBalanceText = "\u{2022}\u{2022}\u{2022}\u{2022}"
+
+    /// Formats a standard currency amount unless the privacy mask is enabled.
+    func displayBalance(_ cents: Int) -> String {
+        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
+    }
+
+    /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
+    /// cents in their normal presentation.
+    func displayBalanceWholeUnits(_ cents: Int) -> String {
+        hideBalances ? Self.hiddenBalanceText : formatCurrencyWholeUnits(cents)
+    }
+
     /// Whether transaction saves record the payee's location (GH #24).
     /// Persisted to UserDefaults, defaults to on. Off silences every
     /// recording path, including Shortcuts automations.
@@ -368,6 +400,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true
         showOverspentBadge = UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true
+        hideBalances = UserDefaults.standard
+            .object(forKey: "hideBalances") as? Bool ?? false
         recordPayeeLocations = UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true
 
