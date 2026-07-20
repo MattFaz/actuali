@@ -26,6 +26,10 @@ struct Transaction: Identifiable, Hashable {
     var sortOrder: Double? // Timestamp in ms, determines order within same date
     var importedPayee: String? // Original payee text from import / Shortcut entry
     var schedule: String? = nil // Id of the schedule that posted this transaction, nil if entered manually
+    // Bank-import dedup key (Actual's imported_id, stored as financial_id).
+    // Set at creation time by the Wallet import; not read back by the fetch
+    // paths, so it is nil on fetched rows — dedup queries the column directly.
+    var financialId: String? = nil
     // Payee's transfer_acct: the account on the other side when the payee is a
     // transfer payee, nil otherwise. Only populated by the reports fetch, where
     // engines need it to exclude transfers the way the WebUI does. Not synced
@@ -96,7 +100,7 @@ extension Transaction: CRDTSyncable {
     static var datasetName: String { "transactions" }
 
     var syncableFields: [String: Any?] {
-        [
+        var fields: [String: Any?] = [
             "acct": accountId,
             "date": date,
             "description": payeeId,      // payeeId maps to "description" column
@@ -114,5 +118,12 @@ extension Transaction: CRDTSyncable {
             "imported_description": importedPayee,
             "schedule": schedule
         ]
+        // Only present on imported transactions — keeps inserts for ordinary
+        // transactions identical (messagesForInsert emits every listed field,
+        // nil included).
+        if let financialId {
+            fields["financial_id"] = financialId
+        }
+        return fields
     }
 }

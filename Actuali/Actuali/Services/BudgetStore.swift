@@ -1006,6 +1006,67 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    struct WalletImportResult: Equatable {
+        var imported: Int
+        var skippedDuplicates: Int
+    }
+
+    /// Import Wallet transactions picked via the FinanceKit transaction
+    /// picker into an account (GH #55, Tier 1). Candidates whose
+    /// `financial_id` already exists on the account are skipped, so
+    /// re-importing an overlapping selection is safe. Each import runs the
+    /// rules pass, same as manual entry.
+    func importWalletTransactions(
+        _ candidates: [WalletImportCandidate],
+        accountId: String
+    ) async throws -> WalletImportResult {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        var existing = try database.existingFinancialIds(accountId: accountId)
+        var imported = 0
+        var skipped = 0
+        for candidate in candidates {
+            guard !existing.contains(candidate.id) else {
+                skipped += 1
+                continue
+            }
+            existing.insert(candidate.id)
+            let payeeName = candidate.payeeName.isEmpty ? nil : candidate.payeeName
+            let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
+            let transaction = Transaction(
+                id: UUID().uuidString,
+                accountId: accountId,
+                date: Transaction.yyyymmdd(from: candidate.date),
+                amount: candidate.amountCents,
+                payeeId: payeeId,
+                payeeName: payeeName,
+                categoryId: nil,
+                categoryName: nil,
+                notes: nil,
+                cleared: candidate.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: false,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: nil,  // Set to Date.now() during insert
+                importedPayee: payeeName,
+                financialId: candidate.id
+            )
+            try await syncClient.createTransaction(transaction)
+            imported += 1
+        }
+        await refreshDataOnly()
+        return WalletImportResult(imported: imported, skippedDuplicates: skipped)
+    }
+
+    /// Dedup keys already on an account, for marking picker selections that
+    /// were imported before. Read-only convenience for `WalletImportView`.
+    func walletFinancialIds(accountId: String) -> Set<String> {
+        (try? database?.existingFinancialIds(accountId: accountId)) ?? []
+    }
+
     /// Create a paired transfer between two accounts. Writes both legs with linked
     /// `transferId`s and uses the existing transfer payee for each side.
     /// - Parameters:
