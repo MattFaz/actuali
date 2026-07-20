@@ -1836,8 +1836,8 @@ class BudgetDatabase {
         // children keep their entry order under the parent.
         let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, financial_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1854,8 +1854,22 @@ class BudgetDatabase {
                 transaction.parentId,
                 transaction.tombstone ? 1 : 0,
                 sortOrder,
-                transaction.importedPayee
+                transaction.importedPayee,
+                transaction.financialId
             ])
+    }
+
+    /// All bank-import dedup keys (`financial_id`) already present on an
+    /// account. Tombstoned rows are deliberately included: a user who deleted
+    /// an imported transaction shouldn't see it resurrected by a re-import.
+    func existingFinancialIds(accountId: String) throws -> Set<String> {
+        try dbQueue.read { db in
+            let ids = try String.fetchAll(db, sql: """
+                SELECT financial_id FROM transactions
+                WHERE acct = ? AND financial_id IS NOT NULL
+                """, arguments: [accountId])
+            return Set(ids)
+        }
     }
 
     // MARK: - Transaction Update
