@@ -65,6 +65,7 @@ struct ScheduleFieldTests {
                     reconciled INTEGER DEFAULT 0,
                     sort_order REAL,
                     parent_id TEXT,
+                    financial_id TEXT,
                     \(includeScheduleColumn ? "schedule TEXT," : "")
                     tombstone INTEGER DEFAULT 0
                 );
