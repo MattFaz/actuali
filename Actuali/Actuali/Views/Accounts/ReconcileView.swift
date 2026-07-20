@@ -34,6 +34,9 @@ struct ReconcileView: View {
                         Text("Cleared Balance")
                         Spacer()
                         if let clearedBalance {
+                            // Deliberately bypasses the hide-balances mask:
+                            // comparing exact amounts against the bank is the
+                            // whole point of reconciling.
                             Text(budgetStore.formatCurrency(clearedBalance))
                                 .fontWeight(.semibold)
                         } else {

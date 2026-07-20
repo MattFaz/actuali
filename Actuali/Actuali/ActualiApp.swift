@@ -14,6 +14,12 @@ struct ActualiApp: App {
     @StateObject private var budgetStore = BudgetStore.shared
     @Environment(\.scenePhase) private var scenePhase
 
+    init() {
+        // BGTaskScheduler requires all handlers registered before launch ends.
+        // (The notification delegate is set in AppDelegate.)
+        BackgroundRefresh.register()
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
@@ -63,6 +69,9 @@ struct ActualiApp: App {
                         Task {
                             await budgetStore.syncOnForeground()
                         }
+                    }
+                    if newPhase == .background {
+                        BackgroundRefresh.schedule()
                     }
                 }
                 .overlay(alignment: .top) {

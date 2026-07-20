@@ -14,6 +14,18 @@
 -->
 <plist version="1.0">
 <dict>
+	<!--
+	  Background refresh keys must match Info-Release.plist and
+	  BackgroundRefresh.taskIdentifier (guarded by BackgroundRefreshTests).
+	-->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.mfazz.ActualiOS.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

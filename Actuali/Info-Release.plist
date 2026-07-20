@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  RELEASE Info.plist base.
+
+  Wired in via INFOPLIST_FILE on the Release build configuration; Xcode merges
+  the auto-generated INFOPLIST_KEY_* values on top (GENERATE_INFOPLIST_FILE
+  stays YES). Exists only to carry keys that have no INFOPLIST_KEY_* build
+  setting. Unlike Info-Debug.plist it contains NO App Transport Security
+  relaxation.
+
+  Background refresh keys must match Info-Debug.plist and
+  BackgroundRefresh.taskIdentifier (guarded by BackgroundRefreshTests, which
+  run against the Debug plist only — keep the two files in sync by hand).
+-->
+<plist version="1.0">
+<dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.mfazz.ActualiOS.refresh</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+</dict>
+</plist>

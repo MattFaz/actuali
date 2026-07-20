@@ -43,6 +43,18 @@ struct ContentView: View {
                     )
                 }
             }
+            .sheet(item: $notificationRouter.destination) { destination in
+                switch destination {
+                case .editor(let transaction):
+                    AddTransactionView(editing: transaction)
+                        .environmentObject(budgetStore)
+                case .uncategorized:
+                    NavigationStack {
+                        UncategorizedTransactionsView()
+                    }
+                    .environmentObject(budgetStore)
+                }
+            }
     }
 
     /// The notification's account if it is still open, else the default

@@ -41,7 +41,7 @@ struct AccountDetailView: View {
                 HStack {
                     Text("Current Balance")
                     Spacer()
-                    Text(budgetStore.formatCurrency(account.balance))
+                    Text(budgetStore.displayBalance(account.balance))
                         .fontWeight(.semibold)
                 }
             }

@@ -179,6 +179,38 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether monetary values are obscured wherever the app displays them:
+    /// account balances, the budget table, reports, and transaction lists.
+    /// Screens where the user is actively working with an amount (entering a
+    /// transaction, reconciling against the bank) intentionally stay visible.
+    ///
+    /// This is a device-level privacy preference, rather than budget data: a
+    /// person may want to hide amounts before handing their phone to someone,
+    /// regardless of which budget is currently open. It persists across
+    /// relaunches and defaults to showing balances.
+    @Published var hideBalances: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+        }
+    }
+
+    /// One consistent-width replacement keeps masked amounts visually stable
+    /// while avoiding a numeric value in the UI. Bullets read as the familiar
+    /// passcode-style "hidden" treatment while inheriting each label's font,
+    /// size, and color.
+    static let hiddenBalanceText = "\u{2022}\u{2022}\u{2022}\u{2022}"
+
+    /// Formats a standard currency amount unless the privacy mask is enabled.
+    func displayBalance(_ cents: Int) -> String {
+        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
+    }
+
+    /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
+    /// cents in their normal presentation.
+    func displayBalanceWholeUnits(_ cents: Int) -> String {
+        hideBalances ? Self.hiddenBalanceText : formatCurrencyWholeUnits(cents)
+    }
+
     /// Whether transaction saves record the payee's location (GH #24).
     /// Persisted to UserDefaults, defaults to on. Off silences every
     /// recording path, including Shortcuts automations.
@@ -389,6 +421,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true
         showOverspentBadge = UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true
+        hideBalances = UserDefaults.standard
+            .object(forKey: "hideBalances") as? Bool ?? false
         recordPayeeLocations = UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true
         // bool(forKey:) defaults to false — the correct opt-in default.
@@ -1728,6 +1762,9 @@ final class BudgetStore: ObservableObject {
             lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
+            // Anything that just synced is on screen now — advance the
+            // notification watermark so background refresh won't re-announce it.
+            _ = await detectNewTransactionsForNotification()
         }
         await work.value
     }
@@ -1757,6 +1794,48 @@ final class BudgetStore: ObservableObject {
         // an occurrence another client already covered.
         if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
+        // Anything that just synced is on screen now — advance the
+        // notification watermark so background refresh won't re-announce it.
+        _ = await detectNewTransactionsForNotification()
+    }
+
+    /// Headless sync for background refresh. On a cold background launch the
+    /// scene never activates, so ensure the saved budget is loaded (same path
+    /// App Intents use) before syncing. Returns false when no budget is
+    /// configured; true means a loaded budget attempted a sync — the server
+    /// may still have been unreachable (SyncClient logs and retries later).
+    func syncInBackground() async -> Bool {
+        await ensureBudgetReady()
+        guard let client = syncClient else {
+            logger.debug("syncInBackground() skipped - no budget configured")
+            return false
+        }
+        await client.automaticSync()
+        lastSyncTime = Date()
+        await refreshDataOnly()
+        return true
+    }
+
+    /// Single transaction by id (cache first, then database) for notification
+    /// tap-through. Nil when it no longer exists.
+    func transaction(withId id: String) async -> Transaction? {
+        if let cached = transactions.first(where: { $0.id == id }) { return cached }
+        guard let database else { return nil }
+        return (try? await database.fetchTransaction(id: id)) ?? nil
+    }
+
+    /// Transactions that arrived via sync since the last check (advances the
+    /// notification watermark). Errors are logged, not thrown — a failed
+    /// detection must never take down the background refresh.
+    func detectNewTransactionsForNotification() async -> [Transaction] {
+        guard let database, let syncClient, let budgetId = currentBudgetId else { return [] }
+        do {
+            return try await NewTransactionDetector().detectNewTransactions(
+                in: database, budgetId: budgetId, localNode: syncClient.nodeId)
+        } catch {
+            logger.error("New-transaction detection failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
     }
 
     // MARK: - Scheduled Transaction Posting

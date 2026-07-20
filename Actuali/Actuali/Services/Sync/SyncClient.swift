@@ -71,6 +71,10 @@ actor SyncClient {
 
     // MARK: - Published State (for UI)
 
+    /// This device's HLC node id — the suffix stamped on every message this
+    /// client authors. NewTransactionDetector uses it to skip local writes.
+    nonisolated var nodeId: String { clock.node }
+
     nonisolated let stateSubject = CurrentValueSubject<SyncState, Never>(.idle)
     nonisolated var statePublisher: AnyPublisher<SyncState, Never> {
         stateSubject.eraseToAnyPublisher()

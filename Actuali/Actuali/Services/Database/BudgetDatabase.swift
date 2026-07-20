@@ -454,6 +454,63 @@ class BudgetDatabase {
 
     // MARK: - Transactions
 
+    /// SELECT + display-name joins + liveness filter shared by the
+    /// creation-detection and single-id transaction queries. The list query
+    /// (fetchTransactions) carries additional split-aware joins of its own.
+    private static let transactionSelect = """
+        SELECT
+            t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+            t.description, t.notes, t.date, t.imported_description,
+            t.schedule,
+            t.transferred_id, t.cleared, t.reconciled, t.sort_order,
+            t.tombstone, t.parent_id,
+            COALESCE(pa.name, p.name) as payee_name,
+            c.name as category_name
+        FROM transactions t
+        LEFT JOIN payee_mapping pm ON pm.id = t.description
+        LEFT JOIN payees p ON p.id = pm.targetId
+        -- Transfer payees carry no name; their display name is the
+        -- linked account's name (matches Actual's v_payees view).
+        LEFT JOIN accounts pa ON pa.id = p.transfer_acct
+            AND (pa.tombstone = 0 OR pa.tombstone IS NULL)
+        LEFT JOIN category_mapping cm ON cm.id = t.category
+        LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+        WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND (t.isChild = 0 OR t.isChild IS NULL)
+        """
+
+    private static func mapTransaction(_ row: Row) -> Transaction {
+        Transaction(
+            id: row["id"],
+            accountId: row["acct"] ?? "",
+            date: row["date"] ?? 0,
+            amount: row["amount"] ?? 0,
+            payeeId: row["description"],
+            payeeName: row["payee_name"],
+            categoryId: row["category"],
+            categoryName: row["category_name"],
+            notes: row["notes"],
+            cleared: row["cleared"] == 1,
+            reconciled: row["reconciled"] == 1,
+            transferId: row["transferred_id"],
+            isParent: row["isParent"] == 1,
+            parentId: row["parent_id"],
+            tombstone: row["tombstone"] == 1,
+            sortOrder: row["sort_order"],
+            importedPayee: row["imported_description"],
+            schedule: row["schedule"]
+        )
+    }
+
+    /// Single live transaction by id, with display names. Nil when missing or
+    /// tombstoned (notification tap-through falls back to the list).
+    func fetchTransaction(id: String) async throws -> Transaction? {
+        try await dbQueue.read { db in
+            try Row.fetchOne(db, sql: Self.transactionSelect + " AND t.id = ?", arguments: [id])
+                .map(Self.mapTransaction)
+        }
+    }
+
     /// Rows per page in the transaction lists. One page is the default for
     /// `fetchTransactions`, and TransactionPager treats a shorter page as
     /// the end of the result set.
@@ -581,28 +638,8 @@ class BudgetDatabase {
             }
 
             return rows.map { row in
-                let id: String = row["id"]
-                var transaction = Transaction(
-                    id: id,
-                    accountId: row["acct"] ?? "",
-                    date: row["date"] ?? 0,
-                    amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
-                    payeeName: row["payee_name"],
-                    categoryId: row["category"],
-                    categoryName: row["category_name"],
-                    notes: row["notes"],
-                    cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1,
-                    transferId: row["transferred_id"],
-                    isParent: row["isParent"] == 1,
-                    parentId: row["parent_id"],
-                    tombstone: row["tombstone"] == 1,
-                    sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"],
-                    schedule: row["schedule"]
-                )
-                transaction.splitPortions = splitPortions[id]
+                var transaction = Self.mapTransaction(row)
+                transaction.splitPortions = splitPortions[transaction.id]
                 return transaction
             }
         }
@@ -633,28 +670,38 @@ class BudgetDatabase {
                 ORDER BY t.sort_order DESC
                 """, arguments: [parentId])
 
-            return rows.map { row in
-                Transaction(
-                    id: row["id"],
-                    accountId: row["acct"] ?? "",
-                    date: row["date"] ?? 0,
-                    amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
-                    payeeName: row["payee_name"],
-                    categoryId: row["category"],
-                    categoryName: row["category_name"],
-                    notes: row["notes"],
-                    cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1,
-                    transferId: row["transferred_id"],
-                    isParent: row["isParent"] == 1,
-                    parentId: row["parent_id"],
-                    tombstone: row["tombstone"] == 1,
-                    sortOrder: row["sort_order"],
-                    importedPayee: row["imported_description"],
-                    schedule: row["schedule"]
-                )
-            }
+            return rows.map(Self.mapTransaction)
+        }
+    }
+
+    /// Highest messages_crdt rowid — the watermark for new-transaction
+    /// detection. 0 when the budget has no messages yet.
+    func fetchMaxMessageId() async throws -> Int64 {
+        try await dbQueue.read { db in
+            try Int64.fetchOne(db, sql: "SELECT MAX(id) FROM messages_crdt") ?? 0
+        }
+    }
+
+    /// Transactions whose first-ever CRDT message landed after `watermark`
+    /// and was authored by another device (HLC timestamps end in the 16-char
+    /// node id). First message > watermark means the row itself is new, not
+    /// an edit to an existing transaction; the creator's node id keeps this
+    /// device's own writes (manual adds, Wallet automation) out of the result.
+    func fetchTransactionsCreated(afterMessageId watermark: Int64,
+                                  excludingNode nodeId: String) async throws -> [Transaction] {
+        try await dbQueue.read { db in
+            let sql = Self.transactionSelect + """
+
+                  AND t.id IN (
+                      SELECT row FROM messages_crdt
+                      WHERE dataset = 'transactions'
+                      GROUP BY row
+                      HAVING MIN(id) > ? AND substr(MIN(timestamp), -16) <> ?
+                  )
+                ORDER BY t.date DESC, t.sort_order DESC
+                """
+            let rows = try Row.fetchAll(db, sql: sql, arguments: [watermark, nodeId])
+            return rows.map(Self.mapTransaction)
         }
     }
 

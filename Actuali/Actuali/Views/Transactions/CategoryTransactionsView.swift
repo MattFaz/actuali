@@ -97,7 +97,7 @@ struct CategoryTransactionsView: View {
                             Spacer()
                             // Sums the filtered rows so the total matches
                             // what's on screen while searching.
-                            Text("Total \(budgetStore.formatCurrency(filteredTransactions.reduce(0) { $0 + $1.amount }))")
+                            Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
                         }
                     }
                 }

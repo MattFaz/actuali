@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 
 struct CashFlowWidgetView: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     let displayName: String
     let data: CashFlowData
 
@@ -48,6 +49,10 @@ struct CashFlowWidgetView: View {
                     "Expense": Color.red
                 ])
                 .frame(height: 200)
+                // The bars retain their trend, but hiding the numeric axis
+                // prevents the chart from disclosing an exact amount.
+                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .accessibilityHidden(budgetStore.hideBalances)
             }
         }
         .padding()

@@ -1,4 +1,6 @@
 import SwiftUI
+import UIKit
+import UserNotifications
 
 private let actualBudgetWebsiteURL = URL(string: "https://actualbudget.org")!
 private let privacyPolicyURL = URL(string: "https://actuali.mfazz.com/privacy")!
@@ -26,6 +28,40 @@ struct SettingsView: View {
     @State private var showingResetSyncConfirm = false
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
     @State private var showingBudgetSelectPrompt = false
+    @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
+    @State private var notificationPermissionDenied = false
+
+    /// Persists the opt-in and requests permission on enable. Background
+    /// refresh runs regardless of this toggle (it keeps data fresh for
+    /// everyone); only notification posting is gated on it.
+    private var transactionNotificationsBinding: Binding<Bool> {
+        Binding(
+            get: { transactionNotificationsEnabled },
+            set: { enabled in
+                transactionNotificationsEnabled = enabled
+                TransactionNotificationSettings().isEnabled = enabled
+                if enabled {
+                    Task { await enableTransactionNotifications() }
+                } else {
+                    notificationPermissionDenied = false
+                }
+            }
+        )
+    }
+
+    private func enableTransactionNotifications() async {
+        let center = UNUserNotificationCenter.current()
+        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        notificationPermissionDenied = !granted
+    }
+
+    /// Permission can change in the Settings app while we're backgrounded;
+    /// re-check whenever the screen appears.
+    private func refreshNotificationPermissionState() async {
+        guard transactionNotificationsEnabled else { return }
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        notificationPermissionDenied = status == .denied
+    }
 
     private static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
@@ -338,6 +374,26 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    Toggle("New Transaction Alerts", isOn: transactionNotificationsBinding)
+
+                    if notificationPermissionDenied {
+                        Button("Open Settings to Allow Notifications") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                UIApplication.shared.open(url)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Notifications")
+                } footer: {
+                    if notificationPermissionDenied {
+                        Text("Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered.")
+                    } else {
+                        Text("Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh.")
+                    }
+                }
+
+                Section {
                     NavigationLink {
                         WalletAutomationView()
                     } label: {
@@ -371,6 +427,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .task { await refreshNotificationPermissionState() }
             .sheet(item: $budgetToUnlock) { budget in
                 EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
             }
