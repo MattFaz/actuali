@@ -25,6 +25,7 @@ struct Transaction: Identifiable, Hashable {
     var tombstone: Bool
     var sortOrder: Double? // Timestamp in ms, determines order within same date
     var importedPayee: String? // Original payee text from import / Shortcut entry
+    var schedule: String? = nil // Id of the schedule that posted this transaction, nil if entered manually
     // Bank-import dedup key (Actual's imported_id, stored as financial_id).
     // Set at creation time by the Wallet import; not read back by the fetch
     // paths, so it is nil on fetched rows — dedup queries the column directly.
@@ -114,7 +115,8 @@ extension Transaction: CRDTSyncable {
             "parent_id": parentId,
             "tombstone": tombstone ? 1 : 0,
             "sort_order": sortOrder ?? Date().timeIntervalSince1970 * 1000,
-            "imported_description": importedPayee
+            "imported_description": importedPayee,
+            "schedule": schedule
         ]
         // Only present on imported transactions — keeps inserts for ordinary
         // transactions identical (messagesForInsert emits every listed field,

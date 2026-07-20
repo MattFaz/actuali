@@ -220,6 +220,19 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether due scheduled transactions are posted automatically after a
+    /// successful sync on launch/foreground. Opt-in (defaults off) because
+    /// every post writes to the user's real Actual server.
+    @Published var postScheduledTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
+        }
+    }
+
+    /// Transient toast text ("Posted N scheduled transaction(s)"), cleared
+    /// automatically a few seconds after being set. Nil = no toast.
+    @Published var schedulePostNotice: String?
+
     /// Count the Budget tab badge displays: the current month's overspent
     /// categories, or 0 when the badge is turned off in Settings.
     var overspentBadgeCount: Int {
@@ -248,7 +261,15 @@ final class BudgetStore: ObservableObject {
 
     private let serverClient = ActualServerClient()
     private let fileManager = BudgetFileManager.shared
-    private var database: BudgetDatabase?
+    private var database: BudgetDatabase? {
+        didSet {
+            // The cached poster holds the database strongly; drop it whenever
+            // the database identity changes so `database = nil` before a
+            // re-import (downloadBudget) actually closes the GRDB connection.
+            guard database !== oldValue else { return }
+            schedulePoster = nil
+        }
+    }
 
     /// Read-only accessor for collaborators (e.g. TransactionLogger) that need
     /// direct DB access for queries that don't fit the @Published cache. The
@@ -404,6 +425,9 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "hideBalances") as? Bool ?? false
         recordPayeeLocations = UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true
+        // bool(forKey:) defaults to false — the correct opt-in default.
+        postScheduledTransactions = UserDefaults.standard
+            .bool(forKey: "postScheduledTransactions")
 
         let token = loadAndMigrateAuthToken()
 
@@ -1823,8 +1847,13 @@ final class BudgetStore: ObservableObject {
             return
         }
         logger.info("syncOnForeground() - app became active, syncing...")
-        await client.automaticSync()
+        let success = await client.automaticSync()
         lastSyncTime = Date()
+        // Post due schedules between the sync and the data refresh so any
+        // posted transactions appear in the same refresh. Only after a
+        // successful sync: posting against stale data risks double-posting
+        // an occurrence another client already covered.
+        if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
         // Anything that just synced is on screen now — advance the
         // notification watermark so background refresh won't re-announce it.
@@ -1867,6 +1896,48 @@ final class BudgetStore: ObservableObject {
         } catch {
             logger.error("New-transaction detection failed: \(error.localizedDescription, privacy: .public)")
             return []
+        }
+    }
+
+    // MARK: - Scheduled Transaction Posting
+
+    /// One poster held per database, NOT one per call: `syncOnForeground()`
+    /// can run twice concurrently (the cold-launch loadTask calls it while
+    /// the scenePhase .active handler fires its own Task), and the poster's
+    /// double-post reentrancy guard is per-instance. Cleared by `database`'s
+    /// didSet whenever the database identity changes (budget switch, or the
+    /// defensive close before re-import), so it can never pin a stale GRDB
+    /// connection open.
+    private var schedulePoster: SchedulePoster?
+    private var scheduleNoticeDismissTask: Task<Void, Never>?
+
+    /// The toast copy for a completed posting pass.
+    static func schedulePostNoticeText(count: Int) -> String {
+        "Posted \(count) scheduled transaction\(count == 1 ? "" : "s")"
+    }
+
+    private func postDueSchedulesIfNeeded() async {
+        guard postScheduledTransactions,
+              let client = syncClient,
+              let database,
+              let budgetId = currentBudgetId else { return }
+        // Lazy-create; no suspension between this check and the cache write,
+        // so two MainActor-interleaved calls still share one instance.
+        let poster: SchedulePoster
+        if let cached = schedulePoster {
+            poster = cached
+        } else {
+            poster = SchedulePoster(database: database, actions: client)
+            schedulePoster = poster
+        }
+        let count = await poster.runIfNeeded(budgetId: budgetId)
+        guard count > 0 else { return }
+        schedulePostNotice = Self.schedulePostNoticeText(count: count)
+        scheduleNoticeDismissTask?.cancel()
+        scheduleNoticeDismissTask = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(4))
+            guard !Task.isCancelled else { return }
+            self?.schedulePostNotice = nil
         }
     }
 
