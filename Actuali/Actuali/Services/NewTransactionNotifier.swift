@@ -12,8 +12,10 @@ protocol NotificationPosting {
 
 extension UNUserNotificationCenter: NotificationPosting {}
 
-/// Posts one local notification per background-refresh cycle summarizing
-/// transactions that arrived via sync (from NewTransactionDetector).
+/// Posts one local notification per sync cycle summarizing transactions that
+/// arrived from other devices (from NewTransactionDetector). Foreground and
+/// background syncs both post it; NotificationRouter's willPresent shows the
+/// banner even while the app is open.
 enum NewTransactionNotifier {
 
     /// Stable so a newer summary replaces the previous one in Notification
@@ -27,9 +29,9 @@ enum NewTransactionNotifier {
     /// userInfo key carrying the [String] of new transaction ids.
     static let transactionIdsKey = "transactionIds"
 
-    /// Background refresh calls this unconditionally after every sync; the
-    /// user's notification opt-in is enforced here, not at scheduling time,
-    /// so the refresh itself can keep data fresh for everyone.
+    /// Every sync path calls this unconditionally; the user's notification
+    /// opt-in is enforced here, not at scheduling time, so syncing itself
+    /// keeps data fresh for everyone.
     @MainActor
     static func notify(about transactions: [Transaction], currencyCode: String,
                        accountNames: [String: String] = [:],

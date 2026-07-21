@@ -31,6 +31,7 @@ struct SettingsView: View {
     @State private var showingBudgetSelectPrompt = false
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
+    @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -354,6 +355,21 @@ struct SettingsView: View {
                                 Text("Last Sync")
                                 Spacer()
                                 Text(lastSync, style: .relative)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        // Diagnostic: "Never" (or a stale time) with Background
+                        // App Refresh enabled usually means the app was
+                        // force-quit — iOS won't run the task until next launch.
+                        HStack {
+                            Text("Last Background Refresh")
+                            Spacer()
+                            if let lastBackgroundRefresh {
+                                Text(lastBackgroundRefresh, style: .relative)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Never")
                                     .foregroundStyle(.secondary)
                             }
                         }

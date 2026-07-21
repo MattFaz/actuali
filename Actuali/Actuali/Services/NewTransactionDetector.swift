@@ -1,7 +1,7 @@
 import Foundation
 
-/// Finds transactions that arrived via sync since the last check, so the
-/// background refresh can notify about them exactly once.
+/// Finds transactions that arrived via sync since the last check, so each
+/// sync path (foreground or background) can notify about them exactly once.
 ///
 /// The watermark is the highest messages_crdt rowid seen at the previous
 /// check, persisted per budget in UserDefaults (device-local state — it must

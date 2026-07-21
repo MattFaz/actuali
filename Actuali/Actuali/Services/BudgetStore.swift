@@ -1823,9 +1823,7 @@ final class BudgetStore: ObservableObject {
             lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
-            // Anything that just synced is on screen now — advance the
-            // notification watermark so background refresh won't re-announce it.
-            _ = await detectNewTransactionsForNotification()
+            await notifyAboutSyncedTransactions()
         }
         await work.value
     }
@@ -1855,9 +1853,7 @@ final class BudgetStore: ObservableObject {
         // an occurrence another client already covered.
         if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
-        // Anything that just synced is on screen now — advance the
-        // notification watermark so background refresh won't re-announce it.
-        _ = await detectNewTransactionsForNotification()
+        await notifyAboutSyncedTransactions()
     }
 
     /// Headless sync for background refresh. On a cold background launch the
@@ -1883,6 +1879,23 @@ final class BudgetStore: ObservableObject {
         if let cached = transactions.first(where: { $0.id == id }) { return cached }
         guard let database else { return nil }
         return (try? await database.fetchTransaction(id: id)) ?? nil
+    }
+
+    /// Detect transactions that arrived via the sync just completed and post
+    /// the summary notification for them. Shared by the foreground and
+    /// background sync paths so behavior is uniform: a foreground sync posts
+    /// the same notification a background refresh would (NotificationRouter's
+    /// willPresent shows it as a banner in-app) instead of silently consuming
+    /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
+    func notifyAboutSyncedTransactions() async {
+        let fresh = await detectNewTransactionsForNotification()
+        // The sync that just ran refreshed the accounts cache, so names are
+        // current even on a cold background launch.
+        let accountNames = accounts.reduce(into: [String: String]()) {
+            $0[$1.id] = $1.name
+        }
+        await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
+                                            accountNames: accountNames)
     }
 
     /// Transactions that arrived via sync since the last check (advances the

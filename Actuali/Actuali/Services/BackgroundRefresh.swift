@@ -56,19 +56,15 @@ enum BackgroundRefresh {
     static func handle(_ task: BGAppRefreshTask) {
         // Reschedule first so the chain survives regardless of the outcome.
         schedule()
+        // Recorded at fire time (not completion) — the row in Settings answers
+        // "is iOS waking the app at all?", which this line alone proves.
+        BackgroundRefreshStatus().lastRun = Date()
         bgLog.info("Background refresh fired, starting headless sync")
         let work = Task { @MainActor in
             let store = BudgetStore.shared
             let synced = await store.syncInBackground()
             if synced {
-                let fresh = await store.detectNewTransactionsForNotification()
-                // The sync just refreshed the accounts cache, so names are
-                // current even on a cold background launch.
-                let accountNames = store.accounts.reduce(into: [String: String]()) {
-                    $0[$1.id] = $1.name
-                }
-                await NewTransactionNotifier.notify(about: fresh, currencyCode: store.currencyCode,
-                                                    accountNames: accountNames)
+                await store.notifyAboutSyncedTransactions()
             }
             bgLog.info("Background sync finished (budgetConfigured: \(synced))")
             task.setTaskCompleted(success: synced)
