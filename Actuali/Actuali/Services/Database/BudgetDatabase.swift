@@ -1977,7 +1977,7 @@ class BudgetDatabase {
                 SELECT s.id, s.name, nd.id AS nd_id,
                        nd.local_next_date, nd.local_next_date_ts,
                        nd.base_next_date, nd.base_next_date_ts,
-                       r.conditions
+                       r.conditions, r.actions
                 FROM schedules s
                 JOIN schedules_next_date nd ON nd.schedule_id = s.id
                 JOIN rules r ON r.id = s.rule
@@ -2065,6 +2065,7 @@ class BudgetDatabase {
                     baseNextDateTs: baseNextDateTs,
                     accountId: accountId,
                     payeeId: payeeId,
+                    categoryId: Self.parseCategoryAction(row["actions"]),
                     amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
                     dateCondition: dateCondition
                 )
@@ -2107,6 +2108,16 @@ class BudgetDatabase {
             }
         }
         return nil
+    }
+
+    /// The linked rule's `set category` action, when present. loot-core
+    /// applies it through runRules at post time; the iOS RulesEngine can't
+    /// match the rule's recurring-date condition (see Rule.swift), so the
+    /// category is surfaced here for the poster to set directly. Malformed
+    /// actions yield nil — an uncategorized post, never a skipped schedule.
+    private static func parseCategoryAction(_ json: String?) -> String? {
+        guard let actions = parseConditionsArray(json) else { return nil }
+        return firstCondition(in: actions, ops: ["set"], fields: ["category"])?["value"] as? String
     }
 
     private static func parseAmountCondition(
