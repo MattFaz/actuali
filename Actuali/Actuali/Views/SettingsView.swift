@@ -21,8 +21,19 @@ struct SettingsView: View {
         ("¥", "JPY"),
         ("C$", "CAD"),
         ("A$", "AUD"),
+        ("NZ$", "NZD"),
         ("₹", "INR"),
-        ("Fr", "CHF")
+        ("Fr", "CHF"),
+        ("S$", "SGD"),
+        ("HK$", "HKD"),
+        ("CN¥", "CNY"),
+        ("kr", "SEK"),
+        ("kr", "NOK"),
+        ("kr", "DKK"),
+        ("zł", "PLN"),
+        ("R$", "BRL"),
+        ("MX$", "MXN"),
+        ("R", "ZAR")
     ]
     @State private var password = ""
     @State private var showingResetSyncConfirm = false
@@ -276,6 +287,11 @@ struct SettingsView: View {
                         }
                     }
 
+                    // Meaningless with no currency selected, so hidden there.
+                    if !budgetStore.currencyCode.isEmpty {
+                        Toggle("Symbol Only", isOn: $budgetStore.useNarrowCurrencySymbol)
+                    }
+
                     Picker("Appearance", selection: $budgetStore.appearanceMode) {
                         ForEach(AppearanceMode.allCases) { mode in
                             Text(mode.label).tag(mode)
@@ -309,7 +325,11 @@ struct SettingsView: View {
                 } header: {
                     Text("Preferences")
                 } footer: {
-                    Text("Start Page takes effect the next time the app opens.")
+                    if budgetStore.currencyCode.isEmpty {
+                        Text("Start Page takes effect the next time the app opens.")
+                    } else {
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Start Page takes effect the next time the app opens.")
+                    }
                 }
 
                 Section {

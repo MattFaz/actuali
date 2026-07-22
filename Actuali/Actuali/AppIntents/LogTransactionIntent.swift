@@ -107,7 +107,8 @@ struct LogTransactionIntent: AppIntent {
             await TransactionLogNotifier.notifySuccess(
                 payee: displayPayee,
                 amountCents: amountCents,
-                currencyCode: store.currencyCode
+                currencyCode: store.currencyCode,
+                narrowSymbol: store.useNarrowCurrencySymbol
             )
             return .result()
         } catch {
