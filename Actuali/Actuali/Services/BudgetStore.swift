@@ -163,6 +163,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// How the Budget tab lays out its summary and category rows
+    /// (actios-96wa). Persisted to UserDefaults; defaults to the clean
+    /// card look from the App Store screenshots.
+    @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
+        didSet {
+            UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+        }
+    }
+
     /// Whether Budget rows show a spent-vs-available progress bar.
     /// Persisted to UserDefaults, defaults to on.
     @Published var showBudgetProgressBars: Bool = true {
@@ -407,27 +416,42 @@ final class BudgetStore: ObservableObject {
     #endif
 
     private init() {
-        // Restore saved state
-        serverURL = UserDefaults.standard.string(forKey: "serverURL") ?? ""
+        // Restore saved state. Preferences restore through the Published
+        // backing storage (`_x = Published(initialValue:)`) rather than the
+        // properties themselves: didSet DOES fire for wrapper-backed
+        // properties even inside init, which would write every restored
+        // value straight back to UserDefaults — permanently persisting
+        // launch-argument (NSArgumentDomain) overrides like
+        // `-startTab budget` from test runs (actios-96wa).
+        _serverURL = Published(
+            initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
+        // customHeaders intentionally assigns through the property: its
+        // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
-        currentBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
-        currencyCode = UserDefaults.standard.string(forKey: "currencyCode") ?? "USD"
+        _currentBudgetId = Published(
+            initialValue: UserDefaults.standard.string(forKey: "currentBudgetId"))
+        _currencyCode = Published(
+            initialValue: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD")
         if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
-            appearanceMode = mode
+            _appearanceMode = Published(initialValue: mode)
         }
-        startTab = StartTab.persisted
-        showBudgetProgressBars = UserDefaults.standard
-            .object(forKey: "showBudgetProgressBars") as? Bool ?? true
-        showOverspentBadge = UserDefaults.standard
-            .object(forKey: "showOverspentBadge") as? Bool ?? true
-        hideBalances = UserDefaults.standard
-            .object(forKey: "hideBalances") as? Bool ?? false
-        recordPayeeLocations = UserDefaults.standard
-            .object(forKey: "recordPayeeLocations") as? Bool ?? true
+        _startTab = Published(initialValue: StartTab.persisted)
+        if let raw = UserDefaults.standard.string(forKey: "budgetDisplayStyle"),
+           let style = BudgetDisplayStyle(rawValue: raw) {
+            _budgetDisplayStyle = Published(initialValue: style)
+        }
+        _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showOverspentBadge = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showOverspentBadge") as? Bool ?? true)
+        _hideBalances = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideBalances") as? Bool ?? false)
+        _recordPayeeLocations = Published(initialValue: UserDefaults.standard
+            .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
-        postScheduledTransactions = UserDefaults.standard
-            .bool(forKey: "postScheduledTransactions")
+        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "postScheduledTransactions"))
 
         let token = loadAndMigrateAuthToken()
 
