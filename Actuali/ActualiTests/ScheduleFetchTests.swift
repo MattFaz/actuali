@@ -140,6 +140,7 @@ struct ScheduleFetchTests {
         tombstone: Int = 0,
         ruleTombstone: Int = 0,
         conditions: String? = nil,
+        actions: String = "[]",
         localNextDate: Int? = 20260801,
         localNextDateTs: Int64? = 1_000,
         baseNextDate: Int? = 20260801,
@@ -154,8 +155,8 @@ struct ScheduleFetchTests {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
                 INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-                VALUES (?, NULL, 'and', ?, '[]', ?)
-                """, arguments: ["rule-\(id)", conditionsJSON, ruleTombstone])
+                VALUES (?, NULL, 'and', ?, ?, ?)
+                """, arguments: ["rule-\(id)", conditionsJSON, actions, ruleTombstone])
             try conn.execute(sql: """
                 INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
                 VALUES (?, ?, ?, ?, ?, ?)
@@ -193,6 +194,55 @@ struct ScheduleFetchTests {
         #expect(config.frequency == .monthly)
         #expect(config.start.iso == "2026-01-15")
         #expect(config.interval == 1)
+    }
+
+    // The schedule's category lives as a `set category` action on the linked
+    // rule (added via the Rules UI upstream). The RulesEngine can't apply it
+    // at post time — the rule's recurring-date condition is unsupported on
+    // iOS — so the fetch must surface it for the poster to set directly.
+    @Test func categoryExtractedFromSetCategoryAction() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+            [{"op":"link-schedule","value":"sched-1"},
+             {"op":"set","field":"category","value":"cat-groceries"}]
+            """)
+
+        let s = try #require(try db.fetchPostableSchedules().first)
+        #expect(s.categoryId == "cat-groceries")
+    }
+
+    @Test func noCategoryActionYieldsNilCategory() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+            [{"op":"link-schedule","value":"sched-1"}]
+            """)
+
+        let s = try #require(try db.fetchPostableSchedules().first)
+        #expect(s.categoryId == nil)
+    }
+
+    // A broken actions blob must not cost the user the posting itself —
+    // worst case is an uncategorized transaction, same as today.
+    @Test func malformedActionsStillReturnsScheduleWithNilCategory() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: "not json")
+
+        let s = try #require(try db.fetchPostableSchedules().first)
+        #expect(s.categoryId == nil)
+    }
+
+    @Test func nonStringCategoryValueYieldsNilCategory() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+            [{"op":"set","field":"category","value":42}]
+            """)
+
+        let s = try #require(try db.fetchPostableSchedules().first)
+        #expect(s.categoryId == nil)
     }
 
     @Test func fixedDateConditionParses() async throws {

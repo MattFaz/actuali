@@ -45,6 +45,17 @@ struct NewTransactionNotifierTests {
         #expect(content?.body.contains("on Checking") == true)
     }
 
+    /// Symbol Only (GH #83) reaches notification bodies too. Locale-robust:
+    /// the narrow presentation never carries the ISO disambiguation prefix.
+    @Test func narrowSymbolDropsCurrencyPrefixFromLines() {
+        let content = NewTransactionNotifier.makeContent(
+            for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
+            currencyCode: "NZD", narrowSymbol: true)
+
+        #expect(content?.body.contains("NZ") == false)
+        #expect(content?.body.contains("$") == true)
+    }
+
     /// A batch shows one detail line per transaction — amount, payee,
     /// account — with uncategorized ones flagged individually.
     @Test func multipleTransactionsListDetailLines() {

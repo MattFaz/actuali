@@ -39,6 +39,10 @@ struct Schedule {
     let baseNextDateTs: Int64
     let accountId: String
     let payeeId: String?
+    /// From the linked rule's `set category` action, when present. Surfaced
+    /// here because the RulesEngine can't apply the rule at post time — its
+    /// recurring-date condition is unsupported on iOS (see Rule.swift).
+    let categoryId: String?
     /// nil when the rule has no amount condition. loot-core's
     /// `getScheduledAmount(null)` posts 0 in that case — we keep nil here and
     /// let the poster decide, rather than baking the 0 into the model.

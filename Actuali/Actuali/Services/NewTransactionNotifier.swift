@@ -34,11 +34,13 @@ enum NewTransactionNotifier {
     /// keeps data fresh for everyone.
     @MainActor
     static func notify(about transactions: [Transaction], currencyCode: String,
+                       narrowSymbol: Bool = false,
                        accountNames: [String: String] = [:],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
                        center: NotificationPosting = UNUserNotificationCenter.current()) async {
         guard settings.isEnabled else { return }
         guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
+                                        narrowSymbol: narrowSymbol,
                                         accountNames: accountNames) else { return }
 
         let granted: Bool
@@ -59,8 +61,10 @@ enum NewTransactionNotifier {
     }
 
     static func makeRequest(for transactions: [Transaction], currencyCode: String,
+                            narrowSymbol: Bool = false,
                             accountNames: [String: String] = [:]) -> UNNotificationRequest? {
         guard let content = makeContent(for: transactions, currencyCode: currencyCode,
+                                        narrowSymbol: narrowSymbol,
                                         accountNames: accountNames) else { return nil }
         return UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: nil)
     }
@@ -70,6 +74,7 @@ enum NewTransactionNotifier {
     static let maxDetailLines = 4
 
     static func makeContent(for transactions: [Transaction], currencyCode: String,
+                            narrowSymbol: Bool = false,
                             accountNames: [String: String] = [:]) -> UNNotificationContent? {
         guard !transactions.isEmpty else { return nil }
 
@@ -84,7 +89,8 @@ enum NewTransactionNotifier {
             : "\(transactions.count) new transactions"
 
         var lines = transactions.prefix(maxDetailLines).map {
-            line(for: $0, currencyCode: currencyCode, accountNames: accountNames)
+            line(for: $0, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                 accountNames: accountNames)
         }
         if transactions.count > maxDetailLines {
             lines.append("…and \(transactions.count - maxDetailLines) more")
@@ -97,8 +103,11 @@ enum NewTransactionNotifier {
     /// One transaction's detail: "$12.50 at Starbucks on Checking", with an
     /// uncategorized marker so each line says whether it still needs sorting.
     private static func line(for transaction: Transaction, currencyCode: String,
+                             narrowSymbol: Bool,
                              accountNames: [String: String]) -> String {
-        var line = amountString(cents: transaction.amount, currencyCode: currencyCode)
+        var line = CurrencyAmountFormat.string(cents: abs(transaction.amount),
+                                               currencyCode: currencyCode,
+                                               narrowSymbol: narrowSymbol)
         if let payee = transaction.payeeName, !payee.isEmpty {
             line += " at \(payee)"
         }
@@ -109,12 +118,5 @@ enum NewTransactionNotifier {
             line += " · Needs a category"
         }
         return line
-    }
-
-    private static func amountString(cents: Int, currencyCode: String) -> String {
-        let dollars = Double(abs(cents)) / 100.0
-        return currencyCode.isEmpty
-            ? dollars.formatted(.number.precision(.fractionLength(2)))
-            : dollars.formatted(.currency(code: currencyCode))
     }
 }

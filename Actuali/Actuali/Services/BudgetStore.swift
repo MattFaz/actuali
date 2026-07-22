@@ -147,6 +147,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Show just the narrow currency symbol ("$" instead of "NZ$"/"US$"),
+    /// for users who find the disambiguation prefix noisy (GH #83).
+    /// Persisted to UserDefaults, defaults to off (standard symbols).
+    @Published var useNarrowCurrencySymbol: Bool = false {
+        didSet {
+            UserDefaults.standard.set(useNarrowCurrencySymbol, forKey: "useNarrowCurrencySymbol")
+        }
+    }
+
     /// User-selected appearance (system / light / dark). Persisted to UserDefaults.
     @Published var appearanceMode: AppearanceMode = .system {
         didSet {
@@ -432,6 +441,8 @@ final class BudgetStore: ObservableObject {
             initialValue: UserDefaults.standard.string(forKey: "currentBudgetId"))
         _currencyCode = Published(
             initialValue: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD")
+        _useNarrowCurrencySymbol = Published(initialValue: UserDefaults.standard
+            .object(forKey: "useNarrowCurrencySymbol") as? Bool ?? false)
         if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
             _appearanceMode = Published(initialValue: mode)
@@ -1919,6 +1930,7 @@ final class BudgetStore: ObservableObject {
             $0[$1.id] = $1.name
         }
         await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
+                                            narrowSymbol: useNarrowCurrencySymbol,
                                             accountNames: accountNames)
     }
 
@@ -2029,21 +2041,15 @@ final class BudgetStore: ObservableObject {
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
-        let amount = Double(cents) / 100.0
-        guard !currencyCode.isEmpty else {
-            return amount.formatted(.number.precision(.fractionLength(2)))
-        }
-        return amount.formatted(.currency(code: currencyCode))
+        CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
+                                    narrowSymbol: useNarrowCurrencySymbol)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
-        let amount = Double(cents) / 100.0
-        guard !currencyCode.isEmpty else {
-            return amount.formatted(.number.precision(.fractionLength(0)))
-        }
-        return amount.formatted(.currency(code: currencyCode).precision(.fractionLength(0)))
+        CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
+                                    narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true)
     }
 
     // MARK: - Helpers

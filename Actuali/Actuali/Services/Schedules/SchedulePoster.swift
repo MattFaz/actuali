@@ -110,7 +110,7 @@ actor SchedulePoster {
                     amount: schedule.amount?.postAmount ?? 0,
                     payeeId: schedule.payeeId,
                     payeeName: nil,
-                    categoryId: nil,
+                    categoryId: schedule.categoryId,
                     categoryName: nil,
                     notes: nil,
                     cleared: false,

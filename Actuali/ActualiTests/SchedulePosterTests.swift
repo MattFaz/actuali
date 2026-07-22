@@ -184,6 +184,7 @@ struct SchedulePosterTests {
         _ db: BudgetDatabase,
         id: String = "sched-1",
         conditions: String? = nil,
+        actions: String = "[]",
         nextDate: Int
     ) throws {
         let conditionsJSON = conditions ?? """
@@ -195,8 +196,8 @@ struct SchedulePosterTests {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
                 INSERT INTO rules (id, stage, conditions_op, conditions, actions)
-                VALUES (?, NULL, 'and', ?, '[]')
-                """, arguments: ["rule-\(id)", conditionsJSON])
+                VALUES (?, NULL, 'and', ?, ?)
+                """, arguments: ["rule-\(id)", conditionsJSON, actions])
             try conn.execute(sql: """
                 INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
                 VALUES (?, ?, 0, 1, 0, ?)
@@ -249,6 +250,22 @@ struct SchedulePosterTests {
         #expect(advance.newNextDate == 20260815)
         #expect(advance.newNextDate > Self.today.yyyymmdd)
         #expect(advance.baseTs == 1000)
+    }
+
+    @Test func postedTransactionCarriesScheduleCategory() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, actions: """
+            [{"op":"link-schedule","value":"sched-1"},
+             {"op":"set","field":"category","value":"cat-rent"}]
+            """, nextDate: 20260715)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        let txn = try #require(actions.created.first)
+        #expect(txn.categoryId == "cat-rent")
     }
 
     @Test func threeMissedMonthsCatchUpWithAdvancesBetweenEach() async throws {

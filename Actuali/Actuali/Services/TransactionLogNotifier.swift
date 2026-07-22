@@ -19,7 +19,8 @@ enum TransactionLoggedMarker {
 @MainActor
 enum TransactionLogNotifier {
 
-    static func notifySuccess(payee: String, amountCents: Int, currencyCode: String) async {
+    static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
+                              narrowSymbol: Bool = false) async {
         let center = UNUserNotificationCenter.current()
 
         let granted: Bool
@@ -33,7 +34,8 @@ enum TransactionLogNotifier {
 
         let content = UNMutableNotificationContent()
         content.title = "Logged transaction"
-        content.body = composeSuccessBody(payee: payee, amountCents: amountCents, currencyCode: currencyCode)
+        content.body = composeSuccessBody(payee: payee, amountCents: amountCents,
+                                          currencyCode: currencyCode, narrowSymbol: narrowSymbol)
         // No sound — quiet success banner that auto-dismisses.
         content.userInfo = TransactionLoggedMarker.userInfo
 
@@ -100,11 +102,11 @@ enum TransactionLogNotifier {
         return prefix.isEmpty ? message : "\(prefix). \(message)"
     }
 
-    private static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String) -> String {
-        let dollars = Double(abs(amountCents)) / 100.0
-        let amountString = currencyCode.isEmpty
-            ? dollars.formatted(.number.precision(.fractionLength(2)))
-            : dollars.formatted(.currency(code: currencyCode))
+    private static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
+                                           narrowSymbol: Bool) -> String {
+        let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
+                                                       currencyCode: currencyCode,
+                                                       narrowSymbol: narrowSymbol)
         return payee.isEmpty ? amountString : "\(amountString) at \(payee)"
     }
 }
