@@ -18,6 +18,13 @@ struct ActualiApp: App {
         // BGTaskScheduler requires all handlers registered before launch ends.
         // (The notification delegate is set in AppDelegate.)
         BackgroundRefresh.register()
+        #if DEBUG
+        // Clean slate so BackgroundRefreshRowUITests always starts at "Never"
+        // regardless of what earlier runs left in UserDefaults.
+        if CommandLine.arguments.contains("-stampBackgroundRefreshOnBackground") {
+            BackgroundRefreshStatus().lastRun = nil
+        }
+        #endif
     }
 
     var body: some Scene {
@@ -72,6 +79,16 @@ struct ActualiApp: App {
                     }
                     if newPhase == .background {
                         BackgroundRefresh.schedule()
+                        #if DEBUG
+                        // Stands in for a real background-refresh fire, which
+                        // can't be triggered from a UI test: writes the same
+                        // timestamp handle() writes, while Settings is not
+                        // active — exactly the state the Settings row must
+                        // recover from on reactivation.
+                        if CommandLine.arguments.contains("-stampBackgroundRefreshOnBackground") {
+                            BackgroundRefreshStatus().lastRun = Date()
+                        }
+                        #endif
                     }
                 }
                 .overlay(alignment: .top) {

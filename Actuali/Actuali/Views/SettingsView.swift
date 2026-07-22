@@ -10,6 +10,7 @@ private let issueTrackerURL = URL(string: "https://github.com/MattFaz/actuali/is
 
 struct SettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.scenePhase) private var scenePhase
 
     /// Curated starter list of display currencies, matching common Actual
     /// deployments. Display-only — all budget math is currency-agnostic
@@ -475,7 +476,18 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
-            .task { await refreshNotificationPermissionState() }
+            .task {
+                lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
+                await refreshNotificationPermissionState()
+            }
+            // The background refresh task fires while the app is suspended —
+            // same process, so the @State snapshot taken at launch never
+            // re-reads on its own and would show "Never" indefinitely.
+            .onChange(of: scenePhase) { _, newPhase in
+                if newPhase == .active {
+                    lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
+                }
+            }
             .sheet(item: $budgetToUnlock) { budget in
                 EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
             }
