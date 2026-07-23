@@ -95,6 +95,10 @@ struct BudgetView: View {
 
                         ForEach(groupedCategories, id: \.id) { group in
                             let isCollapsed = collapsedGroups.contains(group.id)
+                            // Group totals for the header's numeric columns
+                            let groupBudgeted = group.categories.reduce(0) { $0 + $1.budgeted }
+                            let groupSpent = group.categories.reduce(0) { $0 + $1.spent }
+                            let groupAvailable = group.categories.reduce(0) { $0 + $1.available }
                             if budgetStore.budgetDisplayStyle == .clean {
                                 // Clean style: the group name sits above the
                                 // card as a section header, like the App
@@ -130,6 +134,9 @@ struct BudgetView: View {
                                     BudgetGroupHeader(
                                         name: group.name,
                                         isCollapsed: isCollapsed,
+                                        budgeted: groupBudgeted,
+                                        spent: groupSpent,
+                                        balance: groupAvailable,
                                         onToggleCollapse: { toggleCollapsed(group.id) }
                                     )
                                     .listRowBackground(Color(.tertiarySystemFill))
@@ -601,12 +608,25 @@ struct BudgetAmountPill: View {
     }
 }
 
-/// Group header row: collapse control and group name, like the PWA's group
-/// rows but without the totals.
+/// Group header row: collapse control and group name; optionally shows
+/// numeric totals (Budgeted / Spent / Balance) aligned to the table columns.
 struct BudgetGroupHeader: View {
+    @EnvironmentObject var budgetStore: BudgetStore
     let name: String
     let isCollapsed: Bool
+    let budgeted: Int?
+    let spent: Int?
+    let balance: Int?
     let onToggleCollapse: () -> Void
+
+    init(name: String, isCollapsed: Bool, budgeted: Int? = nil, spent: Int? = nil, balance: Int? = nil, onToggleCollapse: @escaping () -> Void) {
+        self.name = name
+        self.isCollapsed = isCollapsed
+        self.budgeted = budgeted
+        self.spent = spent
+        self.balance = balance
+        self.onToggleCollapse = onToggleCollapse
+    }
 
     var body: some View {
         Button(action: onToggleCollapse) {
@@ -619,6 +639,21 @@ struct BudgetGroupHeader: View {
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                 Spacer(minLength: 4)
+                // Show numeric pills if totals supplied (detailed/table style)
+                if let b = budgeted, let s = spent, let bal = balance {
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(b),
+                        dimmed: b == 0
+                    )
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(s),
+                        dimmed: s == 0
+                    )
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(bal),
+                        color: bal >= 0 ? .green : .red
+                    )
+                }
             }
             .contentShape(Rectangle())
         }
