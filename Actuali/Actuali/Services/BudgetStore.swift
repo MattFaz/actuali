@@ -403,6 +403,69 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    func categoriesForIntent() async -> [Category] {
+        if !categoryGroups.isEmpty {
+            return categoryGroups.flatMap(\.categories)
+        }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return []
+            }
+            let groups = try await db.fetchCategoryGroups()
+            return groups.flatMap(\.categories)
+        } catch {
+            logger.error("categoriesForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
+        let currentMonth = currentMonthString()
+        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
+            if let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
+                return found
+            }
+        }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return nil
+            }
+            let monthBudget = try await db.fetchBudgetMonth(month: currentMonth)
+            return monthBudget.categoryBudgets.first(where: { $0.categoryId == categoryId })
+        } catch {
+            logger.error("categoryBudgetForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    func payeesForIntent() async -> [Payee] {
+        if !payees.isEmpty { return payees }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return []
+            }
+            return try await db.fetchPayees()
+        } catch {
+            logger.error("payeesForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
 

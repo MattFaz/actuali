@@ -33,3 +33,25 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
         LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
     }
 }
+
+enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConvertible {
+    case accountNotFound
+    case categoryNotFound
+    case noBudgetLoaded
+
+    var errorDescription: String? {
+        switch self {
+        case .accountNotFound:
+            return "Account was not found. Select a valid account in your shortcut."
+        case .categoryNotFound:
+            return "Category was not found in the current budget month."
+        case .noBudgetLoaded:
+            return "Open Actuali and select a budget first."
+        }
+    }
+
+    var localizedStringResource: LocalizedStringResource {
+        LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
+    }
+}
+
