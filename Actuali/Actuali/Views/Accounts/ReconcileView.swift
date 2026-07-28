@@ -46,7 +46,7 @@ struct ReconcileView: View {
                     HStack {
                         Text("Bank Balance")
                         Spacer()
-                        TextField("0.00", text: $balanceText)
+                        AmountInputField(text: $balanceText)
                             .keyboardType(.numbersAndPunctuation)
                             .multilineTextAlignment(.trailing)
                             .fontWeight(.semibold)

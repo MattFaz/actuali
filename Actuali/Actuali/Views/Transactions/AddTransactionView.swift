@@ -587,11 +587,13 @@ private struct SplitLineRow: View {
 /// so 1, ., 0 produces 1.0.
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
+    var alignment: NSTextAlignment = .right
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.keyboardType = .decimalPad
         field.placeholder = "0.00"
+        field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
         field.font = .preferredFont(forTextStyle: .body)
