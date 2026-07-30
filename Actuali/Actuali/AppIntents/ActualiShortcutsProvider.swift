@@ -1,38 +1,46 @@
 import AppIntents
 
 struct ActualiShortcutsProvider: AppShortcutsProvider {
+    static var shortcutTileColor: ShortcutTileColor = .blue
+
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: LogTransactionIntent(),
             phrases: [
+                "Log \(\.$amount) in \(.applicationName)",
+                "Log \(\.$amount) at \(\.$payee) in \(.applicationName)",
+                "Log \(\.$amount) in \(\.$account) in \(.applicationName)",
                 "Log transaction in \(.applicationName)",
                 "Add transaction to \(.applicationName)",
                 "Log a transaction in \(.applicationName)",
             ],
             shortTitle: "Log Transaction",
-            systemImageName: "dollarsign.circle"
+            systemImageName: "plus.circle.fill"
         )
 
         AppShortcut(
             intent: GetAccountBalanceIntent(),
             phrases: [
+                "Check \(\.$account) balance in \(.applicationName)",
+                "Get \(\.$account) balance in \(.applicationName)",
                 "Check account balance in \(.applicationName)",
                 "Get account balance in \(.applicationName)",
                 "Check \(.applicationName) account balance",
             ],
             shortTitle: "Account Balance",
-            systemImageName: "building.columns"
+            systemImageName: "building.columns.fill"
         )
 
         AppShortcut(
             intent: GetCategoryBalanceIntent(),
             phrases: [
+                "How much is left in \(\.$category) in \(.applicationName)",
+                "Check \(\.$category) balance in \(.applicationName)",
+                "Get \(\.$category) balance in \(.applicationName)",
                 "Check category balance in \(.applicationName)",
-                "Get category balance in \(.applicationName)",
-                "How much is left in \(.applicationName)",
             ],
             shortTitle: "Category Balance",
-            systemImageName: "chart.pie"
+            systemImageName: "chart.pie.fill"
         )
 
         AppShortcut(
@@ -42,7 +50,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "List categories in \(.applicationName)",
             ],
             shortTitle: "List Categories",
-            systemImageName: "folder"
+            systemImageName: "folder.fill"
         )
 
         AppShortcut(
@@ -52,7 +60,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "List payees in \(.applicationName)",
             ],
             shortTitle: "List Payees",
-            systemImageName: "person.2"
+            systemImageName: "person.2.fill"
         )
 
         AppShortcut(
@@ -62,7 +70,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "List accounts in \(.applicationName)",
             ],
             shortTitle: "List Accounts",
-            systemImageName: "creditcard"
+            systemImageName: "creditcard.fill"
         )
     }
 }

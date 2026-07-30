@@ -63,14 +63,20 @@ struct LogTransactionIntent: AppIntent {
         // init()'s background load has wired syncClient; wait for it so the write
         // doesn't fail with "Sync not configured".
         await store.ensureBudgetReady()
+
+        guard store.currentBudgetId != nil else {
+            await reportFailure(.noBudgetLoaded)
+            throw LogTransactionError.noBudgetLoaded
+        }
+
         let resolvedAccountId: String
         if let account {
             resolvedAccountId = account.id
         } else if let defaultId = store.defaultAccountId {
             resolvedAccountId = defaultId
         } else {
-            await reportFailure(.noBudgetLoaded)
-            throw LogTransactionError.noBudgetLoaded
+            await reportFailure(.noAccountSelected)
+            throw LogTransactionError.noAccountSelected
         }
 
         // Verify the account still exists and is open. Use accountsForIntent()
