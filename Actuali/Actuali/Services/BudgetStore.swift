@@ -295,6 +295,51 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
+    /// Persisted per budget in UserDefaults.
+    var cardAccountMappings: [String: String] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "cardAccountMappings_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
+    /// or account name substring).
+    func resolveAccountId(hint: String) async -> String? {
+        let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        let activeAccounts = await accountsForIntent().filter { !$0.closed }
+        guard !activeAccounts.isEmpty else { return nil }
+
+        let mappings = cardAccountMappings
+        // 1. Exact or keyword match in cardAccountMappings
+        for (keyword, mappedId) in mappings {
+            let key = keyword.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if !key.isEmpty && (trimmed.contains(key) || key.contains(trimmed)) {
+                if activeAccounts.contains(where: { $0.id == mappedId }) {
+                    return mappedId
+                }
+            }
+        }
+
+        // 2. Name matching against active accounts
+        for account in activeAccounts {
+            let nameLower = account.name.lowercased()
+            if nameLower == trimmed || nameLower.contains(trimmed) || trimmed.contains(nameLower) {
+                return account.id
+            }
+        }
+
+        return nil
+    }
+
     // MARK: - Private
 
     private let serverClient = ActualServerClient()

@@ -356,6 +356,19 @@ struct SettingsView: View {
                                 Text(account.name).tag(account.id as String?)
                             }
                         }
+
+                        NavigationLink {
+                            CardAccountMappingsView()
+                        } label: {
+                            HStack {
+                                Text("Card & Account Mappings")
+                                Spacer()
+                                if !budgetStore.cardAccountMappings.isEmpty {
+                                    Text("\(budgetStore.cardAccountMappings.count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     }
                 } header: {
                     Text("Preferences")

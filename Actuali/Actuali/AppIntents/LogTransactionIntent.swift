@@ -12,6 +12,9 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: "Account")
     var account: AccountEntity?
 
+    @Parameter(title: "Card or Account Hint", default: "")
+    var cardHint: String
+
     // String, not Double: Wallet's amount coerces to 0 as a Number for some
     // cards, but the text form carries the real value (issue #41). Parsed
     // via AmountParser, which handles currency symbols and locale separators.
@@ -35,6 +38,7 @@ struct LogTransactionIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
+            \.$cardHint
             \.$notes
             \.$date
             \.$isIncome
@@ -72,6 +76,8 @@ struct LogTransactionIntent: AppIntent {
         let resolvedAccountId: String
         if let account {
             resolvedAccountId = account.id
+        } else if !cardHint.isEmpty, let matchedId = await store.resolveAccountId(hint: cardHint) {
+            resolvedAccountId = matchedId
         } else if let defaultId = store.defaultAccountId {
             resolvedAccountId = defaultId
         } else {
