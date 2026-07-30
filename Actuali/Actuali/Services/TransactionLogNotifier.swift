@@ -52,7 +52,9 @@ enum TransactionLogNotifier {
         }
     }
 
-    static func notifyFailure(message: String, payee: String?, amountCents: Int?, prefill: TransactionPrefill? = nil) async {
+    static func notifyFailure(message: String, payee: String?, amountCents: Int?,
+                               currencyCode: String = "", narrowSymbol: Bool = false,
+                               prefill: TransactionPrefill? = nil) async {
         let center = UNUserNotificationCenter.current()
 
         // Request permission lazily on first call. Quietly ignore denial — without
@@ -69,7 +71,8 @@ enum TransactionLogNotifier {
 
         let content = UNMutableNotificationContent()
         content.title = "Couldn't log transaction"
-        content.body = composeBody(message: message, payee: payee, amountCents: amountCents)
+        content.body = composeBody(message: message, payee: payee, amountCents: amountCents,
+                                   currencyCode: currencyCode, narrowSymbol: narrowSymbol)
         content.sound = .default
         if let prefill {
             content.body += " Tap to add it manually."
@@ -89,11 +92,14 @@ enum TransactionLogNotifier {
         }
     }
 
-    private static func composeBody(message: String, payee: String?, amountCents: Int?) -> String {
+    static func composeBody(message: String, payee: String?, amountCents: Int?,
+                            currencyCode: String = "", narrowSymbol: Bool = false) -> String {
         var parts: [String] = []
         if let amountCents {
-            let dollars = Double(abs(amountCents)) / 100.0
-            parts.append(String(format: "$%.2f", dollars))
+            let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
+                                                           currencyCode: currencyCode,
+                                                           narrowSymbol: narrowSymbol)
+            parts.append(amountString)
         }
         if let payee, !payee.isEmpty {
             parts.append("at \(payee)")
@@ -102,8 +108,8 @@ enum TransactionLogNotifier {
         return prefix.isEmpty ? message : "\(prefix). \(message)"
     }
 
-    private static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
-                                           narrowSymbol: Bool) -> String {
+    static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
+                                   narrowSymbol: Bool) -> String {
         let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol)

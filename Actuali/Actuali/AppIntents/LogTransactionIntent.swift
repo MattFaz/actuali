@@ -43,7 +43,7 @@ struct LogTransactionIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         // Validate amount. An empty string means the automation ran before
         // Wallet had the transaction details — surface that distinctly so
         // users know it isn't a configuration problem.
@@ -110,7 +110,16 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol
             )
-            return .result()
+
+            let amountString = CurrencyAmountFormat.string(
+                cents: abs(amountCents),
+                currencyCode: store.currencyCode,
+                narrowSymbol: store.useNarrowCurrencySymbol
+            )
+            let dialogText = displayPayee.isEmpty
+                ? "Logged \(amountString)"
+                : "Logged \(amountString) at \(displayPayee)"
+            return .result(dialog: IntentDialog(stringLiteral: dialogText))
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)
                 ?? .writeFailed(underlying: error.localizedDescription)
@@ -121,13 +130,17 @@ struct LogTransactionIntent: AppIntent {
 
     @MainActor
     private func reportFailure(_ error: LogTransactionError) async {
+        let store = BudgetStore.shared
+        await store.ensureBudgetReady()
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
         await TransactionLogNotifier.notifyFailure(
             message: error.errorDescription ?? "Unknown error",
             payee: payee,
             amountCents: amountCents ?? 0,
+            currencyCode: store.currencyCode,
+            narrowSymbol: store.useNarrowCurrencySymbol,
             prefill: TransactionPrefill(
-                accountId: account?.id ?? BudgetStore.shared.defaultAccountId,
+                accountId: account?.id ?? store.defaultAccountId,
                 payee: payee,
                 amountCents: amountCents,
                 date: date ?? Date()
