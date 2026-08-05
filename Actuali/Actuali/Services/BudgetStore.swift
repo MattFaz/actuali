@@ -212,6 +212,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget hides categories with no budget left this month.
+    /// Persisted to UserDefaults, defaults to off.
+    @Published var hideZeroBudgetCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
+        }
+    }
+
     /// One consistent-width replacement keeps masked amounts visually stable
     /// while avoiding a numeric value in the UI. Bullets read as the familiar
     /// passcode-style "hidden" treatment while inheriting each label's font,
@@ -458,6 +466,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideZeroBudgetCategories") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
