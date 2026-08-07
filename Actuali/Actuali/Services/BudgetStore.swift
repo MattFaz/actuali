@@ -1392,6 +1392,11 @@ final class BudgetStore: ObservableObject {
         var date: Date
         var cleared: Bool
         var splits: [SplitLineForm] = []
+        /// The edit form's "Remove Split": the user asked to collapse an
+        /// existing split parent into a single transaction. Only meaningful
+        /// when editing a parent; ignored otherwise (the view never sets it
+        /// for the add flow or plain transactions).
+        var collapseSplit: Bool = false
         /// Per-save opt-out for payee location recording (GH #24). Defaults
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
@@ -1518,15 +1523,21 @@ final class BudgetStore: ObservableObject {
 
         case .split(let amountCents, let lines):
             if let original {
-                // Editing an existing split parent: reconcile its children
-                // against the form's lines. Converting a non-split into a
-                // split stays refused — that would leave its history
-                // (transfer links, reconciliation) on a parent whose
-                // children were never reconciled.
-                guard original.isParent else {
-                    throw BudgetStoreError.cannotConvertToSplit
+                if original.isParent {
+                    // Editing an existing split parent: reconcile its children
+                    // against the form's lines.
+                    try await updateSplit(
+                        original: original, form: form,
+                        amountCents: amountCents, lines: lines,
+                        date: date, notes: notes
+                    )
+                    return
                 }
-                try await updateSplit(
+                // Editing a plain transaction into a split: the original row
+                // becomes the parent and the form's lines its children.
+                // Transfers and split children stay refused — see
+                // convertToSplit.
+                try await convertToSplit(
                     original: original, form: form,
                     amountCents: amountCents, lines: lines,
                     date: date, notes: notes
@@ -1604,6 +1615,16 @@ final class BudgetStore: ObservableObject {
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
 
             if let original {
+                // "Remove Split": collapse the parent into a single
+                // transaction — demote the parent and tombstone its
+                // children in the same save.
+                if original.isParent, form.collapseSplit {
+                    try await collapseSplit(
+                        original: original, form: form,
+                        amountCents: amountCents, date: date, notes: notes
+                    )
+                    return
+                }
                 // Split parents: the amount is the children's sum and the
                 // category lives on the children — never overwrite either
                 // from the form.
@@ -1778,6 +1799,157 @@ final class BudgetStore: ObservableObject {
         // children would be invisible in the list but still feed reports.
         let keptIds = Set(lines.compactMap(\.childId))
         for child in existingChildren where !keptIds.contains(child.id) {
+            var deleted = child
+            deleted.tombstone = true
+            try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+        }
+
+        await refreshDataOnly()
+        if form.recordLocation, let payeeId {
+            recordPayeeLocationIfAppropriate(payeeId: payeeId)
+        }
+    }
+
+    /// Convert an ordinary (non-split) transaction into a split: the
+    /// original row becomes the parent — no category of its own, amount set
+    /// to the children's sum, history (reconciled, sort order, imported
+    /// payee) preserved — and the form's lines become its children, slotting
+    /// in below the parent like new lines in `updateSplit`. Transfers are
+    /// refused because the paired row in the other account references this
+    /// one through `transferId`, and splitting would orphan that link;
+    /// split children are refused because there is no row of their own to
+    /// promote to parent.
+    private func convertToSplit(
+        original: Transaction,
+        form: TransactionForm,
+        amountCents: Int,
+        lines: [SplitPlanLine],
+        date: Int,
+        notes: String?
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard original.transferId == nil, original.parentId == nil else {
+            throw BudgetStoreError.cannotConvertToSplit
+        }
+
+        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
+        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+
+        let parent = Transaction(
+            id: original.id,
+            accountId: form.accountId,
+            date: date,
+            amount: amountCents,
+            payeeId: payeeId,
+            payeeName: payeeName,
+            categoryId: nil,  // split parents never carry a category
+            categoryName: nil,
+            notes: notes,
+            cleared: form.cleared,
+            reconciled: original.reconciled,
+            transferId: nil,
+            isParent: true,
+            parentId: nil,
+            tombstone: original.tombstone,
+            sortOrder: original.sortOrder,
+            importedPayee: original.importedPayee
+        )
+        let parentChanges = Self.changedFields(original: original, updated: parent)
+        if !parentChanges.isEmpty {
+            try await syncClient.updateTransaction(parent, changedFields: parentChanges)
+        }
+
+        // Children inherit the parent's payee unless the line names its own
+        // (Actual's makeChild semantics). Rules are skipped, matching
+        // createSplit/updateSplit — every field came from the form.
+        var nextSort = original.sortOrder ?? Date().timeIntervalSince1970 * 1000
+        for line in lines {
+            nextSort -= 1
+            let childPayeeId: String?
+            let childPayeeName: String?
+            if let lineName = line.payeeName, lineName != payeeName {
+                childPayeeId = try await resolvePayeeId(name: lineName, editing: nil)
+                childPayeeName = lineName
+            } else {
+                childPayeeId = payeeId
+                childPayeeName = payeeName
+            }
+            try await syncClient.createTransaction(Transaction(
+                id: UUID().uuidString,
+                accountId: form.accountId,
+                date: date,
+                amount: line.amountCents,
+                payeeId: childPayeeId,
+                payeeName: childPayeeName,
+                categoryId: line.categoryId,
+                categoryName: nil,
+                notes: line.notes,
+                cleared: form.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: false,
+                parentId: original.id,
+                tombstone: false,
+                sortOrder: nextSort,
+                importedPayee: nil
+            ), applyRules: false)
+        }
+
+        await refreshDataOnly()
+        if form.recordLocation, let payeeId {
+            recordPayeeLocationIfAppropriate(payeeId: payeeId)
+        }
+    }
+
+    /// Collapse a split parent back into a single transaction (the edit
+    /// form's "Remove Split"): the parent row keeps its id and history
+    /// (reconciled, sort order, imported payee), picks up the form's amount
+    /// and category, and is demoted (isParent = false). Every live child is
+    /// tombstoned in the same save — orphaned children would be invisible in
+    /// the list but still feed reports, so leaving them would double-count
+    /// the collapsed amount. Mirrors Actual's desktop "un-split".
+    private func collapseSplit(
+        original: Transaction,
+        form: TransactionForm,
+        amountCents: Int,
+        date: Int,
+        notes: String?
+    ) async throws {
+        guard let syncClient, let database else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard original.isParent else { return }
+
+        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
+        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+
+        let updated = Transaction(
+            id: original.id,
+            accountId: form.accountId,
+            date: date,
+            amount: amountCents,
+            payeeId: payeeId,
+            payeeName: payeeName,
+            categoryId: form.categoryId,
+            categoryName: nil,
+            notes: notes,
+            cleared: form.cleared,
+            reconciled: original.reconciled,
+            transferId: original.transferId,
+            isParent: false,
+            parentId: nil,
+            tombstone: original.tombstone,
+            sortOrder: original.sortOrder,
+            importedPayee: original.importedPayee
+        )
+        let changes = Self.changedFields(original: original, updated: updated)
+        if !changes.isEmpty {
+            try await syncClient.updateTransaction(updated, changedFields: changes)
+        }
+
+        for child in try await database.fetchChildTransactions(parentId: original.id) {
             var deleted = child
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])

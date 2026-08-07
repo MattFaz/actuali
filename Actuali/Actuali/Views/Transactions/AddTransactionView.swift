@@ -26,6 +26,11 @@ struct AddTransactionView: View {
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
+    /// True while the edit form's "Remove Split" is toggled on an existing
+    /// split parent: the lines are kept in memory (so tapping "Split into
+    /// multiple categories" undoes the toggle instantly) but the form shows
+    /// the category picker and saves as a single transaction.
+    @State private var unsplitRequested = false
 
     @FocusState private var payeeFocused: Bool
 
@@ -72,7 +77,16 @@ struct AddTransactionView: View {
     private var isEditing: Bool { editing != nil }
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
-    private var isSplitting: Bool { !splitLines.isEmpty }
+    private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
+
+    /// Whether the form can offer the split option: a plain transaction in
+    /// either flow, or an existing parent mid-"Remove Split" (as an undo).
+    /// Transfers are excluded — they pair two accounts through `transferId`
+    /// and splitting would orphan the partner leg (the store refuses it), so
+    /// the button stays hidden rather than failing on save.
+    private var canSplitIntoCategories: Bool {
+        editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
+    }
 
     /// Cents still unassigned across the split lines, nil while the total or
     /// any line doesn't parse yet.
@@ -303,7 +317,7 @@ struct AddTransactionView: View {
                             }
                         }
 
-                        if isEditingSplitParent && !isSplitting {
+                        if isEditingSplitParent && !isSplitting && !unsplitRequested {
                             // Placeholder while the children load into the
                             // editable split lines below.
                             HStack {
@@ -325,9 +339,9 @@ struct AddTransactionView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            if !isEditing {
+                            if canSplitIntoCategories {
                                 Button {
-                                    splitLines = [.init(), .init()]
+                                    startSplit()
                                 } label: {
                                     Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
                                 }
@@ -406,18 +420,25 @@ struct AddTransactionView: View {
                 // Load a split parent's children as editable lines. Inherited
                 // payees load as empty so a parent payee edit follows through
                 // to them, mirroring Actual's cascade rule.
-                if let editing, editing.isParent, splitLines.isEmpty {
-                    splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
-                        BudgetStore.SplitLineForm(
-                            childId: child.id,
-                            categoryId: child.categoryId,
-                            amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
-                            notes: child.notes ?? "",
-                            payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
-                        )
-                    }
-                }
+                await loadSplitChildren()
             }
+        }
+    }
+
+    /// Load a split parent's children as editable lines. Inherited payees
+    /// load as empty so a parent payee edit follows through to them,
+    /// mirroring Actual's cascade rule. Reused both on first appearance and
+    /// when the user undoes an unsplit after swiping the lines away.
+    private func loadSplitChildren() async {
+        guard let editing, editing.isParent, splitLines.isEmpty else { return }
+        splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
+            BudgetStore.SplitLineForm(
+                childId: child.id,
+                categoryId: child.categoryId,
+                amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
+                notes: child.notes ?? "",
+                payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
+            )
         }
     }
 
@@ -429,21 +450,46 @@ struct AddTransactionView: View {
                 SplitLineRow(line: $line)
             }
             .onDelete { offsets in
-                splitLines.remove(atOffsets: offsets)
+                if isEditingSplitParent {
+                    // Swiping away every line on an existing parent is the
+                    // same intent as "Remove Split": switch to
+                    // single-transaction mode and seed the collapse category
+                    // from a removed line (the parent carries none). The
+                    // lines are gone from memory, so undoing via the split
+                    // button reloads them from the database.
+                    let removed = offsets.compactMap { splitLines[$0] }
+                    splitLines.remove(atOffsets: offsets)
+                    if splitLines.isEmpty {
+                        unsplitRequested = true
+                        if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
+                            selectedCategoryId = category
+                        }
+                    }
+                } else {
+                    splitLines.remove(atOffsets: offsets)
+                }
             }
             Button {
                 splitLines.append(.init())
             } label: {
                 Label("Add Line", systemImage: "plus")
             }
-            // An existing split stays a split — un-splitting would have to
-            // collapse the children into the parent, which we don't support.
-            if !isEditingSplitParent {
-                Button(role: .destructive) {
+            // Tapping "Remove Split" on an existing parent switches the form
+            // to single-transaction mode: keep the lines in memory for an
+            // instant undo and seed the collapse category from the first
+            // line that has one (the parent itself carries none). In the add
+            // flow it just clears the lines, as before.
+            Button(role: .destructive) {
+                if isEditingSplitParent {
+                    unsplitRequested = true
+                    if let first = splitLines.first(where: { $0.categoryId != nil }) {
+                        selectedCategoryId = first.categoryId
+                    }
+                } else {
                     splitLines = []
-                } label: {
-                    Text("Remove Split")
                 }
+            } label: {
+                Text("Remove Split")
             }
         } header: {
             Text("Split")
@@ -452,6 +498,33 @@ struct AddTransactionView: View {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
                     .foregroundStyle(.red)
             }
+        }
+    }
+
+    /// Begin a split from the form. The add flow starts from two empty
+    /// lines; editing a plain transaction seeds the first line with the
+    /// transaction's current category and full amount so nothing is lost if
+    /// the user only fills the second line — mirroring Actual's desktop
+    /// behavior of moving the row's category onto the first sub-row. An
+    /// existing parent undoing "Remove Split" just re-enters split mode: the
+    /// children were kept in `splitLines`, so nothing needs reloading.
+    private func startSplit() {
+        unsplitRequested = false
+        guard !isEditingSplitParent else {
+            // Existing parent: if the lines were kept (Remove Split toggle)
+            // they reappear instantly; if they were swiped away, reload them.
+            if splitLines.isEmpty {
+                Task { await loadSplitChildren() }
+            }
+            return
+        }
+        if isEditing {
+            splitLines = [
+                .init(categoryId: selectedCategoryId, amount: amount),
+                .init()
+            ]
+        } else {
+            splitLines = [.init(), .init()]
         }
     }
 
@@ -498,7 +571,8 @@ struct AddTransactionView: View {
             notes: notes,
             date: date,
             cleared: cleared,
-            splits: isTransfer ? [] : splitLines,
+            splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
+            collapseSplit: unsplitRequested,
             recordLocation: saveLocation
         )
 
@@ -528,6 +602,7 @@ struct AddTransactionView: View {
         cleared = false
         errorMessage = nil
         splitLines = []
+        unsplitRequested = false
     }
 }
 
