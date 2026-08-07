@@ -12,29 +12,62 @@ struct SettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.scenePhase) private var scenePhase
 
-    /// Curated starter list of display currencies, matching common Actual
-    /// deployments. Display-only — all budget math is currency-agnostic
-    /// integer cents.
+    /// Every currency in Actual's loot-core currencies list, plus a few
+    /// user-requested extras Actual lacks (AMD, NOK, NZD, ZAR). Sorted by
+    /// code. Display-only — all budget math is currency-agnostic integer
+    /// cents, and rendering uses the system formatter for the ISO code.
     private static let currencyOptions: [(symbol: String, code: String)] = [
-        ("$", "USD"),
+        ("د.إ", "AED"),
+        ("֏", "AMD"),
+        ("Arg$", "ARS"),
+        ("A$", "AUD"),
+        ("R$", "BRL"),
+        ("Br", "BYN"),
+        ("C$", "CAD"),
+        ("Fr", "CHF"),
+        ("CLP$", "CLP"),
+        ("CN¥", "CNY"),
+        ("Col$", "COP"),
+        ("₡", "CRC"),
+        ("Kč", "CZK"),
+        ("kr", "DKK"),
+        ("RD$", "DOP"),
+        ("ج.م", "EGP"),
         ("€", "EUR"),
         ("£", "GBP"),
-        ("¥", "JPY"),
-        ("C$", "CAD"),
-        ("A$", "AUD"),
-        ("NZ$", "NZD"),
-        ("₹", "INR"),
-        ("Fr", "CHF"),
-        ("S$", "SGD"),
+        ("Q", "GTQ"),
         ("HK$", "HKD"),
-        ("CN¥", "CNY"),
-        ("kr", "SEK"),
-        ("kr", "NOK"),
-        ("kr", "DKK"),
-        ("zł", "PLN"),
-        ("R$", "BRL"),
+        ("Ft", "HUF"),
+        ("Rp", "IDR"),
+        ("₪", "ILS"),
+        ("₹", "INR"),
+        ("﷼", "IRR"),
+        ("J$", "JMD"),
+        ("¥", "JPY"),
+        ("₩", "KRW"),
+        ("Rs.", "LKR"),
+        ("L", "MDL"),
         ("MX$", "MXN"),
+        ("RM", "MYR"),
+        ("kr", "NOK"),
+        ("NZ$", "NZD"),
         ("₱", "PHP"),
+        ("Rs.", "PKR"),
+        ("zł", "PLN"),
+        ("ر.ق", "QAR"),
+        ("lei", "RON"),
+        ("дин", "RSD"),
+        ("₽", "RUB"),
+        ("ر.س", "SAR"),
+        ("kr", "SEK"),
+        ("S$", "SGD"),
+        ("฿", "THB"),
+        ("₺", "TRY"),
+        ("NT$", "TWD"),
+        ("₴", "UAH"),
+        ("$", "USD"),
+        ("$U", "UYU"),
+        ("UZS", "UZS"),
         ("R", "ZAR")
     ]
     @State private var password = ""
@@ -216,7 +249,7 @@ struct SettingsView: View {
                     Text("Server Connection")
                 } footer: {
                     if !budgetStore.isConnected {
-                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data.")
+                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
                     }
                 }
 

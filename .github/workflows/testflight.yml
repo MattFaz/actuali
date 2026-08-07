@@ -63,20 +63,23 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" ruby dev/scripts/install-appstore-profile.rb
 
+      # Manual signing for the archive too: automatic signing at archive time
+      # signs with a development certificate, and a fresh runner has no key for
+      # any existing one — so every run minted a new cert until the account hit
+      # its certificate limit and archiving started failing. The script edits
+      # the app target's Release config in this (ephemeral) checkout; the
+      # settings can't go on the xcodebuild command line because they'd also
+      # apply to SPM package targets, which reject explicit profiles.
+      - name: Switch Release signing to manual distribution
+        run: ruby dev/scripts/set-manual-signing.rb
+
       - name: Archive
-        env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
         run: |
           xcodebuild archive \
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "generic/platform=iOS" \
-            -archivePath "$RUNNER_TEMP/Actuali.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
-            -authenticationKeyID "$ASC_KEY_ID" \
-            -authenticationKeyIssuerID "$ASC_ISSUER_ID"
+            -archivePath "$RUNNER_TEMP/Actuali.xcarchive"
 
       - name: Upload to TestFlight
         env:
