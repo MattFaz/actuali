@@ -46,10 +46,14 @@ struct ReconcileView: View {
                     HStack {
                         Text("Bank Balance")
                         Spacer()
-                        AmountInputField(text: $balanceText)
-                            .keyboardType(.numbersAndPunctuation)
-                            .multilineTextAlignment(.trailing)
-                            .fontWeight(.semibold)
+                        // Credit-card and overdrawn accounts reconcile against
+                        // a negative bank balance, so the sign toggle is needed.
+                        AmountInputField(
+                            text: $balanceText,
+                            alignment: .right,
+                            allowsNegative: true,
+                            weight: .semibold
+                        )
                     }
                 } footer: {
                     Text("Enter the current balance of the bank account you want to reconcile with.")
