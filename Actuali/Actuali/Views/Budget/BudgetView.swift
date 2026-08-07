@@ -169,6 +169,11 @@ struct BudgetView: View {
                                 }
                             }
                         }
+                        Section {
+                            Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
+                        } footer: {
+                            Text("Hides categories with no budget left this month")
+                        }
                     }
                     // The clean style keeps the stock section rhythm; the
                     // detailed table packs its group cards tighter.
@@ -277,7 +282,8 @@ struct BudgetView: View {
 
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
+        let categories = budgetStore.visibleCategoryBudgets(budget.categoryBudgets)
+        let byGroup = Dictionary(grouping: categories, by: { $0.groupId })
         return byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }

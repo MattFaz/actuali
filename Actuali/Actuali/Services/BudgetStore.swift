@@ -217,6 +217,21 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget hides categories with no budget left this month.
+    /// Persisted to UserDefaults, defaults to off.
+    @Published var hideZeroBudgetCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
+        }
+    }
+
+    /// Categories the Budget list should show. With the hide toggle on, only
+    /// exactly-zero available drops out: overspent (negative) categories stay
+    /// visible so problems that need fixing are never masked.
+    func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
+        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+    }
+
     /// One consistent-width replacement keeps masked amounts visually stable
     /// while avoiding a numeric value in the UI. Bullets read as the familiar
     /// passcode-style "hidden" treatment while inheriting each label's font,
@@ -466,6 +481,8 @@ final class BudgetStore: ObservableObject {
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
+        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "hideZeroBudgetCategories"))
         _postScheduledTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "postScheduledTransactions"))
 
