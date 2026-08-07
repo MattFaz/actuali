@@ -28,6 +28,7 @@ struct SettingsView: View {
         ("S$", "SGD"),
         ("HK$", "HKD"),
         ("CN¥", "CNY"),
+        ("₱", "PHP"),
         ("kr", "SEK"),
         ("kr", "NOK"),
         ("kr", "DKK"),
