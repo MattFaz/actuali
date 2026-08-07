@@ -30,4 +30,48 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "expanding Essentials should restore its categories")
     }
+
+    @MainActor
+    func testToolbarMenuCollapsesAndExpandsAllGroups() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData"]
+        app.launch()
+
+        app.tabBars.buttons["Budget"].tap()
+
+        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                      "demo data should show the Essentials categories")
+
+        let menuButton = app.buttons["Expand or collapse all groups"]
+        XCTAssertTrue(menuButton.waitForExistence(timeout: 10),
+                      "the budget toolbar should offer the expand/collapse menu")
+        menuButton.tap()
+
+        let collapseAll = app.buttons["Collapse All Groups"]
+        XCTAssertTrue(collapseAll.waitForExistence(timeout: 10))
+        collapseAll.tap()
+
+        // Every group collapses, not just the first one.
+        XCTAssertTrue(app.buttons["Essentials, collapsed"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Lifestyle, collapsed"].waitForExistence(timeout: 10),
+                      "collapse all should also collapse the other groups")
+        XCTAssertFalse(groceries.exists,
+                       "collapse all should hide the category rows")
+
+        menuButton.tap()
+
+        let expandAll = app.buttons["Expand All Groups"]
+        XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
+        expandAll.tap()
+
+        XCTAssertTrue(app.buttons["Essentials, expanded"].waitForExistence(timeout: 10))
+        // Transport sits right below Essentials, so it stays on screen; the
+        // lower groups scroll out of the lazy list's accessibility tree once
+        // everything is expanded, so they can't be asserted here.
+        XCTAssertTrue(app.buttons["Transport, expanded"].waitForExistence(timeout: 10),
+                      "expand all should also expand the other groups")
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                      "expand all should restore the category rows")
+    }
 }

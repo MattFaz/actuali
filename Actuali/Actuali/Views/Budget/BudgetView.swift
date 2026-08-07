@@ -60,6 +60,18 @@ struct BudgetView: View {
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
+    // Expand/collapse all touch only the displayed budget's groups; ids
+    // remembered for other budget files stay put (GH #130).
+    private func collapseAllGroups() {
+        let groups = collapsedGroups.union(groupedCategories.map(\.id))
+        collapsedGroupsStorage = groups.sorted().joined(separator: ",")
+    }
+
+    private func expandAllGroups() {
+        let groups = collapsedGroups.subtracting(groupedCategories.map(\.id))
+        collapsedGroupsStorage = groups.sorted().joined(separator: ",")
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -224,6 +236,24 @@ struct BudgetView: View {
                     .accessibilityLabel("Previous month")
 
                     BudgetLayoutButton()
+
+                    // Whole-table expand/collapse (GH #130). A toolbar menu
+                    // rather than a long-press on the group headers: SwiftUI
+                    // context menus don't fire inside the clean style's
+                    // section headers.
+                    if budgetStore.currentBudgetMonth != nil {
+                        Menu {
+                            Button(action: expandAllGroups) {
+                                Label("Expand All Groups", systemImage: "chevron.down")
+                            }
+                            Button(action: collapseAllGroups) {
+                                Label("Collapse All Groups", systemImage: "chevron.right")
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up.chevron.down")
+                        }
+                        .accessibilityLabel("Expand or collapse all groups")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
