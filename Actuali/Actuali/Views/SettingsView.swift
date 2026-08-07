@@ -34,6 +34,7 @@ struct SettingsView: View {
         ("zł", "PLN"),
         ("R$", "BRL"),
         ("MX$", "MXN"),
+        ("₱", "PHP"),
         ("R", "ZAR")
     ]
     @State private var password = ""
