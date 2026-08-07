@@ -249,7 +249,7 @@ struct SettingsView: View {
                     Text("Server Connection")
                 } footer: {
                     if !budgetStore.isConnected {
-                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data.")
+                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
                     }
                 }
 
