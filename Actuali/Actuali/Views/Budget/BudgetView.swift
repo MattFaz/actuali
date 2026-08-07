@@ -282,9 +282,7 @@ struct BudgetView: View {
 
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        let categories = budgetStore.hideZeroBudgetCategories
-            ? budget.categoryBudgets.filter { $0.available != 0 }
-            : budget.categoryBudgets
+        let categories = budgetStore.visibleCategoryBudgets(budget.categoryBudgets)
         let byGroup = Dictionary(grouping: categories, by: { $0.groupId })
         return byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
