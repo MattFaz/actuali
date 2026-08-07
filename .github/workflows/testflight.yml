@@ -12,6 +12,9 @@ on:
       - "dev/exportOptions.plist"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 # Serialize uploads so two quick merges can't race each other.
 concurrency:
   group: testflight
