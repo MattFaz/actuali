@@ -54,6 +54,15 @@ jobs:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
         run: echo -n "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
 
+      # Export uses manual signing: automatic signing at export time insists on
+      # cloud-managed distribution certificates, which App Manager API keys
+      # aren't allowed to create ("Cloud signing permission error").
+      - name: Install App Store provisioning profile
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" ruby dev/scripts/install-appstore-profile.rb
+
       - name: Archive
         env:
           ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
@@ -78,7 +87,6 @@ jobs:
             -archivePath "$RUNNER_TEMP/Actuali.xcarchive" \
             -exportOptionsPlist dev/exportOptions.plist \
             -exportPath "$RUNNER_TEMP/export" \
-            -allowProvisioningUpdates \
             -authenticationKeyPath "$RUNNER_TEMP/AuthKey.p8" \
             -authenticationKeyID "$ASC_KEY_ID" \
             -authenticationKeyIssuerID "$ASC_ISSUER_ID"
