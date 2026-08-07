@@ -47,20 +47,14 @@ struct TransactionsListView: View {
                             editingTransaction = transaction
                         } label: {
                             TransactionRow(transaction: transaction, onToggleCleared: {
-                                Task {
-                                    await budgetStore.toggleCleared(transaction)
-                                    await reload()
-                                }
+                                Task { await budgetStore.toggleCleared(transaction) }
                             })
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task {
-                                    await budgetStore.deleteTransaction(transaction)
-                                    await reload()
-                                }
+                                Task { await budgetStore.deleteTransaction(transaction) }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -95,16 +89,19 @@ struct TransactionsListView: View {
             }
             await reload()
         }
+        .onChange(of: budgetStore.dataVersion) {
+            // The store republished its data — refresh the cached page. This
+            // is the single reload path for every mutation (row toggles,
+            // deletes, sheet edits, sync, scheduled posts), so those sites
+            // carry no reload calls of their own. Concurrent reloads are
+            // safe: the pager's generation counter keeps the newest.
+            Task { await reload() }
+        }
         .refreshable {
             await budgetStore.sync()
             await reload()
         }
-        .sheet(item: $editingTransaction, onDismiss: {
-            Task {
-                await budgetStore.refreshData()
-                await reload()
-            }
-        }) { transaction in
+        .sheet(item: $editingTransaction) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }

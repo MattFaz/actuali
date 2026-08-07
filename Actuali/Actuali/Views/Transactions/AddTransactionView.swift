@@ -585,30 +585,55 @@ private struct SplitLineRow: View {
 /// taps `.` (or `,` in comma-decimal locales), the field switches to standard
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
+///
+/// With `allowsNegative`, a ± button joins the keyboard toolbar; sign is
+/// otherwise handled outside the field (e.g. the expense/income toggle).
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
+    var alignment: NSTextAlignment = .natural
+    var allowsNegative = false
+    var weight: UIFont.Weight = .regular
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.keyboardType = .decimalPad
         field.placeholder = "0.00"
+        field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
-        field.font = .preferredFont(forTextStyle: .body)
+        if weight == .regular {
+            field.font = .preferredFont(forTextStyle: .body)
+        } else {
+            // Weighted variant of the body style so Dynamic Type still scales.
+            let descriptor = UIFontDescriptor
+                .preferredFontDescriptor(withTextStyle: .body)
+                .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
+            field.font = UIFont(descriptor: descriptor, size: 0)
+        }
         field.adjustsFontForContentSizeCategory = true
         // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
         // and the decimal pad has no return key — without this accessory bar
         // there is no way to dismiss the keyboard from this field.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
-        toolbar.items = [
-            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
-            UIBarButtonItem(
-                title: "Done", style: .done,
-                target: field, action: #selector(UIResponder.resignFirstResponder)
-            ),
-        ]
+        var items: [UIBarButtonItem] = []
+        if allowsNegative {
+            // The decimal pad has no minus key, so this button is the only
+            // touchscreen affordance for entering a negative amount.
+            items.append(UIBarButtonItem(
+                image: UIImage(systemName: "plus.forwardslash.minus"),
+                style: .plain,
+                target: context.coordinator, action: #selector(Coordinator.toggleSign)
+            ))
+        }
+        items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+        items.append(UIBarButtonItem(
+            title: "Done", style: .done,
+            target: field, action: #selector(UIResponder.resignFirstResponder)
+        ))
+        toolbar.items = items
         toolbar.sizeToFit()
         field.inputAccessoryView = toolbar
+        context.coordinator.textField = field
         context.coordinator.sync(fromDisplay: text)
         return field
     }
@@ -627,15 +652,18 @@ struct AmountInputField: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextFieldDelegate {
         var parent: AmountInputField
+        weak var textField: UITextField?
         private var integerDigits: String = ""
         private var hasDecimalPoint: Bool = false
         private var fractionDigits: String = ""
+        private var isNegative: Bool = false
 
         init(_ parent: AmountInputField) {
             self.parent = parent
         }
 
         func sync(fromDisplay value: String) {
+            isNegative = parent.allowsNegative && value.hasPrefix("-")
             if value.isEmpty {
                 integerDigits = ""
                 hasDecimalPoint = false
@@ -668,6 +696,7 @@ struct AmountInputField: UIViewRepresentable {
                 integerDigits = ""
                 hasDecimalPoint = false
                 fractionDigits = ""
+                isNegative = false
             }
 
             if string.isEmpty {
@@ -687,7 +716,20 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
+        @objc func toggleSign() {
+            guard parent.allowsNegative else { return }
+            isNegative.toggle()
+            if let textField {
+                applyDisplay(to: textField)
+            }
+        }
+
         private func handleCharacter(_ character: Character) {
+            // Hardware-keyboard minus; the on-screen path is the ± toolbar button.
+            if character == "-", parent.allowsNegative {
+                isNegative.toggle()
+                return
+            }
             if character == "." || character == "," {
                 hasDecimalPoint = true
                 return
@@ -711,21 +753,25 @@ struct AmountInputField: UIViewRepresentable {
                 }
             } else if !integerDigits.isEmpty {
                 integerDigits.removeLast()
+            } else {
+                isNegative = false
             }
         }
 
         private func computeDisplay() -> String {
+            let sign = isNegative ? "-" : ""
             if !hasDecimalPoint && integerDigits.isEmpty {
-                return ""
+                // A bare "-" so a sign toggled before any digits stays visible.
+                return sign
             }
             if hasDecimalPoint {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
-                return whole + "." + fractionDigits
+                return sign + whole + "." + fractionDigits
             }
             let cents = Int(integerDigits) ?? 0
             let dollars = cents / 100
             let pennies = cents % 100
-            return "\(dollars).\(String(format: "%02d", pennies))"
+            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
         }
 
         private func applyDisplay(to textField: UITextField) {

@@ -11,6 +11,10 @@ struct AccountDetailView: View {
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
 
+    private var currentBalance: Int {
+        budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
+    }
+
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
@@ -42,7 +46,7 @@ struct AccountDetailView: View {
                 HStack {
                     Text("Current Balance")
                     Spacer()
-                    Text(budgetStore.displayBalance(account.balance))
+                    Text(budgetStore.displayBalance(currentBalance))
                         .fontWeight(.semibold)
                 }
             }
@@ -57,20 +61,14 @@ struct AccountDetailView: View {
                             editingTransaction = transaction
                         } label: {
                             TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task {
-                                    await budgetStore.toggleCleared(transaction)
-                                    await reload()
-                                }
+                                Task { await budgetStore.toggleCleared(transaction) }
                             })
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task {
-                                    await budgetStore.deleteTransaction(transaction)
-                                    await reload()
-                                }
+                                Task { await budgetStore.deleteTransaction(transaction) }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -121,35 +119,19 @@ struct AccountDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingReconcile, onDismiss: {
-            Task {
-                await reload()
-            }
-        }) {
+        .sheet(isPresented: $showingReconcile) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)
         }
-        .sheet(isPresented: $showingWalletImport, onDismiss: {
-            Task {
-                await reload()
-            }
-        }) {
+        .sheet(isPresented: $showingWalletImport) {
             WalletImportView(preselectedAccountId: account.id)
                 .environmentObject(budgetStore)
         }
-        .sheet(isPresented: $showingAddTransaction, onDismiss: {
-            Task {
-                await reload()
-            }
-        }) {
+        .sheet(isPresented: $showingAddTransaction) {
             AddTransactionView(accountId: account.id)
                 .environmentObject(budgetStore)
         }
-        .sheet(item: $editingTransaction, onDismiss: {
-            Task {
-                await reload()
-            }
-        }) { transaction in
+        .sheet(item: $editingTransaction) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
@@ -160,6 +142,14 @@ struct AccountDetailView: View {
                 if Task.isCancelled { return }
             }
             await reload()
+        }
+        .onChange(of: budgetStore.dataVersion) {
+            // The store republished its data — refresh the cached page. This
+            // is the single reload path for every mutation (row toggles,
+            // deletes, sheet edits, sync, scheduled posts), so those sites
+            // carry no reload calls of their own. Concurrent reloads are
+            // safe: the pager's generation counter keeps the newest.
+            Task { await reload() }
         }
         .refreshable {
             await budgetStore.sync()
