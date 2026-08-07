@@ -1,0 +1,51 @@
+# Builds the app and runs unit tests on every PR that touches app code.
+# Branch protection requires the "Build and Test" check; ci-noop.yml provides
+# the same check name for PRs that don't touch app code.
+name: CI
+
+on:
+  pull_request:
+    paths:
+      - "Actuali/**"
+      - ".github/workflows/ci.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Rapid pushes to the same PR cancel the stale run.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Build and Test
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Select simulator
+        id: sim
+        run: |
+          SIM_ID=$(xcrun simctl list devices available --json \
+            | jq -r '[.devices[] | .[] | select(.name | startswith("iPhone"))][0].udid')
+          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+            echo "No available iPhone simulator on this runner" >&2
+            exit 1
+          fi
+          echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
+
+      # UI tests are skipped: too slow and flaky on shared runners. Simulator
+      # builds are ad-hoc signed, so no certificate is needed — but don't pass
+      # CODE_SIGNING_ALLOWED=NO: an unsigned test host can't reach the
+      # simulator keychain (errSecMissingEntitlement in EncryptionKeyManager
+      # tests).
+      - name: Build and run unit tests
+        run: |
+          xcodebuild test \
+            -project Actuali/Actuali.xcodeproj \
+            -scheme Actuali \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -skip-testing:ActualiUITests
