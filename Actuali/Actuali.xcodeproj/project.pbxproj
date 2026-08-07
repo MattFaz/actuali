@@ -111,6 +111,7 @@
 				A7550B822EE7B4F7007026DC /* Sources */,
 				A7550B832EE7B4F7007026DC /* Frameworks */,
 				A7550B842EE7B4F7007026DC /* Resources */,
+				A7550BC02EE7B600007026DC /* Stamp Build Number */,
 			);
 			buildRules = (
 			);
@@ -247,6 +248,29 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXResourcesBuildPhase section */
+
+/* Begin PBXShellScriptBuildPhase section */
+		A7550BC02EE7B600007026DC /* Stamp Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Auto-number builds: CFBundleVersion = 100 + git commit count, stamped into\n# the built product so archives number themselves and PRs never touch\n# CURRENT_PROJECT_VERSION (which remains the fallback when git is absent).\n# Archive from main so the count only moves forward.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
 		A7550B822EE7B4F7007026DC /* Sources */ = {
@@ -418,6 +442,7 @@
 				CURRENT_PROJECT_VERSION = 88;
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Info-Debug.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
@@ -456,6 +481,7 @@
 				CURRENT_PROJECT_VERSION = 88;
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_PREVIEWS = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = "Info-Release.plist";
 				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
