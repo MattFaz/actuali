@@ -27,7 +27,7 @@ jobs:
     steps:
       # Full history: the build number is stamped as 100 + commit count, so a
       # shallow clone would produce low, colliding build numbers.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
