@@ -11,6 +11,10 @@ struct AccountDetailView: View {
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
 
+    private var currentBalance: Int {
+        budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
+    }
+
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
@@ -42,7 +46,7 @@ struct AccountDetailView: View {
                 HStack {
                     Text("Current Balance")
                     Spacer()
-                    Text(budgetStore.displayBalance(account.balance))
+                    Text(budgetStore.displayBalance(currentBalance))
                         .fontWeight(.semibold)
                 }
             }
