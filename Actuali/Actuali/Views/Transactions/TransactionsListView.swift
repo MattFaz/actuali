@@ -95,6 +95,12 @@ struct TransactionsListView: View {
             }
             await reload()
         }
+        .onChange(of: budgetStore.dataVersion) {
+            // The store republished its data (edit on another tab, sync,
+            // scheduled post) — refresh the cached page. Concurrent reloads
+            // are safe: the pager's generation counter keeps the newest.
+            Task { await reload() }
+        }
         .refreshable {
             await budgetStore.sync()
             await reload()

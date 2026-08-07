@@ -131,6 +131,11 @@ final class BudgetStore: ObservableObject {
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var currentBudgetMonth: BudgetMonth?
+    /// Bumped every time the published data snapshot above is republished
+    /// (budget load, local mutation, sync). Views that cache their own
+    /// fetches (transaction pagers, report widgets) key reloads on this so
+    /// changes made elsewhere in the app reach them without a pull-down.
+    @Published private(set) var dataVersion = 0
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
 
@@ -808,6 +813,7 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            dataVersion += 1
 
             // Configure sync client
             let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
@@ -941,6 +947,7 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            dataVersion += 1
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
