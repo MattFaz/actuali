@@ -31,7 +31,8 @@ struct AccountDetailView: View {
         let accountId = account.id
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
-                accountId: accountId, limit: limit, offset: offset, search: search
+                accountId: accountId, limit: limit, offset: offset, search: search,
+                unclearedOnly: store.hideClearedTransactions
             )
         }
         pager = created
@@ -90,7 +91,11 @@ struct AccountDetailView: View {
 
             Section("Recent Transactions") {
                 if let pager, pager.transactions.isEmpty {
-                    Text(searchQuery == nil ? "No transactions" : "No matching transactions")
+                    Text(searchQuery != nil
+                        ? "No matching transactions"
+                        : budgetStore.hideClearedTransactions
+                            ? "No uncleared transactions"
+                            : "No transactions")
                         .foregroundStyle(.secondary)
                 } else if let pager {
                     ForEach(pager.transactions) { transaction in
@@ -142,6 +147,9 @@ struct AccountDetailView: View {
                     }
                 }
             }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
+            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingReconcile = true
@@ -186,6 +194,11 @@ struct AccountDetailView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.hideClearedTransactions) {
+            // The pager's fetch closure reads the flag, so a reload is all a
+            // toggle flip needs.
             Task { await reload() }
         }
         .refreshable {
