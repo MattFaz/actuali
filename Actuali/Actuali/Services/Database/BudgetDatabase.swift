@@ -724,6 +724,34 @@ class BudgetDatabase {
         }
     }
 
+    /// Cleared / uncleared / reconciled totals for one account in a single
+    /// consistent read (GH #134). Reconciled rows are a subset of cleared,
+    /// so cleared + uncleared equals the account balance while reconciled is
+    /// informational. Same aggregate semantics as the fetchAccounts() balance
+    /// query (children count, parents excluded, orphaned children of
+    /// tombstoned parents excluded).
+    func balanceBreakdown(accountId: String) async throws -> AccountBalanceBreakdown {
+        try await dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT
+                    COALESCE(SUM(CASE WHEN t.cleared = 1 THEN t.amount ELSE 0 END), 0) AS cleared,
+                    COALESCE(SUM(CASE WHEN t.cleared = 0 OR t.cleared IS NULL THEN t.amount ELSE 0 END), 0) AS uncleared,
+                    COALESCE(SUM(CASE WHEN t.reconciled = 1 THEN t.amount ELSE 0 END), 0) AS reconciled
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct = ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                """, arguments: [accountId])
+            return AccountBalanceBreakdown(
+                cleared: row?["cleared"] ?? 0,
+                uncleared: row?["uncleared"] ?? 0,
+                reconciled: row?["reconciled"] ?? 0
+            )
+        }
+    }
+
     /// Every live cleared-but-not-yet-reconciled row in an account — parents
     /// and children included, because locking marks each stored row the way
     /// upstream's ungrouped batch update does. No display joins: callers
