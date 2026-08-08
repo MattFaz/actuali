@@ -238,6 +238,11 @@ enum DemoDataSeeder {
         try insertCategoryGroup(db, id: incomeGroupId, name: "Income", isIncome: true, sortOrder: 0)
         let salaryId = UUID().uuidString
         try insertCategory(db, id: salaryId, name: "Salary", groupId: incomeGroupId, isIncome: true, sortOrder: 0)
+        // Actual books an on-budget account's opening balance to this income
+        // category at account creation; mirror that so the demo's starting
+        // balances don't sit in the uncategorized list.
+        let startingBalancesCategoryId = UUID().uuidString
+        try insertCategory(db, id: startingBalancesCategoryId, name: "Starting Balances", groupId: incomeGroupId, isIncome: true, sortOrder: 1)
 
         // Essentials
         let essentialsId = UUID().uuidString
@@ -318,6 +323,14 @@ enum DemoDataSeeder {
         try insertPayee(db, id: vanguardPayeeId, name: "Vanguard")
         try insertPayee(db, id: marketId, name: "Market Gain")
 
+        // Transfer payees — one per account, name-less with transfer_acct set,
+        // exactly as Actual creates them alongside each account. The add/edit
+        // transfer flows resolve each leg's payee through these; without them
+        // transfers can't be created in the demo.
+        for accountId in [chaseId, allyId, appleCardId, vanguardId] {
+            try insertPayee(db, id: UUID().uuidString, name: nil, transferAccountId: accountId)
+        }
+
         // --- Transactions ---
         // We generate ~6 full months of history plus the current month-to-date so
         // the Reports (net worth, cash flow, spending vs. average) have real trends.
@@ -337,10 +350,12 @@ enum DemoDataSeeder {
 
         var transactions: [(payee: String, category: String?, amount: Int, date: Int, account: String, cleared: Bool, startingBalance: Bool)] = []
 
-        // Starting balances ~`historyMonths` months ago, before the recurring flow.
+        // Starting balances ~`historyMonths` months ago, before the recurring
+        // flow. On-budget ones carry the Starting Balances income category
+        // (Actual's behavior); the off-budget brokerage takes none.
         let openDate = ymd(monthsAgo: historyMonths, day: 1)
-        transactions.append((startingBalanceId, nil, 1_050_000, openDate, allyId, true, true))
-        transactions.append((startingBalanceId, nil, 280_000, openDate, chaseId, true, true))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 1_050_000, openDate, allyId, true, true))
+        transactions.append((startingBalanceId, startingBalancesCategoryId, 280_000, openDate, chaseId, true, true))
         transactions.append((startingBalanceId, nil, 4_200_000, openDate, vanguardId, true, true))
 
         // Per-month spending template: (payee, category, account, day, base amount in cents).
@@ -543,10 +558,15 @@ enum DemoDataSeeder {
             """, arguments: [id, name, isIncome ? 1 : 0, groupId, sortOrder])
     }
 
-    private static func insertPayee(_ db: Database, id: String, name: String) throws {
+    private static func insertPayee(
+        _ db: Database,
+        id: String,
+        name: String?,
+        transferAccountId: String? = nil
+    ) throws {
         try db.execute(sql: """
-            INSERT INTO payees (id, name, tombstone) VALUES (?, ?, 0)
-            """, arguments: [id, name])
+            INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES (?, ?, ?, 0)
+            """, arguments: [id, name, transferAccountId])
         // Required for the transactions JOIN to resolve payee name
         try db.execute(sql: """
             INSERT INTO payee_mapping (id, targetId) VALUES (?, ?)
