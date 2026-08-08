@@ -465,7 +465,8 @@ class BudgetDatabase {
             t.transferred_id, t.cleared, t.reconciled, t.sort_order,
             t.tombstone, t.parent_id,
             COALESCE(pa.name, p.name) as payee_name,
-            c.name as category_name
+            c.name as category_name,
+            p.transfer_acct as transfer_acct
         FROM transactions t
         LEFT JOIN payee_mapping pm ON pm.id = t.description
         LEFT JOIN payees p ON p.id = pm.targetId
@@ -498,7 +499,8 @@ class BudgetDatabase {
             tombstone: row["tombstone"] == 1,
             sortOrder: row["sort_order"],
             importedPayee: row["imported_description"],
-            schedule: row["schedule"]
+            schedule: row["schedule"],
+            transferAcct: row["transfer_acct"]
         )
     }
 
@@ -520,12 +522,15 @@ class BudgetDatabase {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page.
+    /// just the loaded page. `unclearedOnly` drops cleared rows (which
+    /// includes reconciled ones — locking requires cleared first) in SQL for
+    /// the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
-        search: String? = nil
+        search: String? = nil,
+        unclearedOnly: Bool = false
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
             // The list's display payee: own payee first (transfer payees show
@@ -541,7 +546,8 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     \(payeeNameSQL) as payee_name,
-                    c.name as category_name
+                    c.name as category_name,
+                    p.transfer_acct as transfer_acct
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
@@ -578,6 +584,10 @@ class BudgetDatabase {
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
+            }
+
+            if unclearedOnly {
+                sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
             }
 
             if let search {
@@ -657,7 +667,8 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
-                    c.name as category_name
+                    c.name as category_name,
+                    p.transfer_acct as transfer_acct
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
@@ -721,6 +732,34 @@ class BudgetDatabase {
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId]) ?? 0
+        }
+    }
+
+    /// Cleared / uncleared / reconciled totals for one account in a single
+    /// consistent read (GH #134). Reconciled rows are a subset of cleared,
+    /// so cleared + uncleared equals the account balance while reconciled is
+    /// informational. Same aggregate semantics as the fetchAccounts() balance
+    /// query (children count, parents excluded, orphaned children of
+    /// tombstoned parents excluded).
+    func balanceBreakdown(accountId: String) async throws -> AccountBalanceBreakdown {
+        try await dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT
+                    COALESCE(SUM(CASE WHEN t.cleared = 1 THEN t.amount ELSE 0 END), 0) AS cleared,
+                    COALESCE(SUM(CASE WHEN t.cleared = 0 OR t.cleared IS NULL THEN t.amount ELSE 0 END), 0) AS uncleared,
+                    COALESCE(SUM(CASE WHEN t.reconciled = 1 THEN t.amount ELSE 0 END), 0) AS reconciled
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct = ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                """, arguments: [accountId])
+            return AccountBalanceBreakdown(
+                cleared: row?["cleared"] ?? 0,
+                uncleared: row?["uncleared"] ?? 0,
+                reconciled: row?["reconciled"] ?? 0
+            )
         }
     }
 
@@ -810,7 +849,8 @@ class BudgetDatabase {
                     t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name
+                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
+                    p.transfer_acct as transfer_acct
                 \(Self.uncategorizedJoins)
                 -- Transfer payees carry no name; their display name is the
                 -- linked account's name (matches Actual's v_payees view).
@@ -844,7 +884,8 @@ class BudgetDatabase {
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
                     importedPayee: row["imported_description"],
-                    schedule: row["schedule"]
+                    schedule: row["schedule"],
+                    transferAcct: row["transfer_acct"]
                 )
             }
         }

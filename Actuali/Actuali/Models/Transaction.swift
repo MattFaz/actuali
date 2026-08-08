@@ -31,9 +31,10 @@ struct Transaction: Identifiable, Hashable {
     // paths, so it is nil on fetched rows — dedup queries the column directly.
     var financialId: String? = nil
     // Payee's transfer_acct: the account on the other side when the payee is a
-    // transfer payee, nil otherwise. Only populated by the reports fetch, where
-    // engines need it to exclude transfers the way the WebUI does. Not synced
-    // (it lives on the payee, not the transaction).
+    // transfer payee, nil otherwise. Populated by the display and reports
+    // fetches so rows can render transfers as transfers and engines can
+    // exclude them the way the WebUI does. Not synced (it lives on the payee,
+    // not the transaction).
     var transferAcct: String? = nil
     // One entry per live child of a split parent, in entry order. Only
     // populated by fetchTransactions for isParent rows, so the list row can
@@ -64,6 +65,19 @@ struct Transaction: Identifiable, Hashable {
 
     var isOutflow: Bool {
         amount < 0
+    }
+
+    /// Whether this transaction still needs a category, mirroring the WebUI's
+    /// "uncategorized" filter (see `BudgetDatabase.uncategorizedWhere`): split
+    /// parents carry no category of their own (the children do), off-budget
+    /// accounts aren't categorized at all, and transfers only take a category
+    /// when the other side is off-budget — money leaving the budget still
+    /// needs one (GH #123, #104).
+    func needsCategory(offBudgetAccountIds: Set<String>) -> Bool {
+        guard categoryId == nil, !isParent else { return false }
+        guard !offBudgetAccountIds.contains(accountId) else { return false }
+        if let transferAcct { return offBudgetAccountIds.contains(transferAcct) }
+        return transferId == nil
     }
 
     /// Convert a dollar amount to integer cents, rounding half away from zero
