@@ -46,7 +46,7 @@ struct MainTabView: View {
                 .badge(overspentCount)
                 .tag(1)
 
-            AddTransactionTabView(selectedTab: $selectedTab)
+            AddTransactionTabView()
                 .tabItem {
                     Label("Add", systemImage: "plus.circle.fill")
                 }
@@ -67,20 +67,17 @@ struct MainTabView: View {
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
             if pending { selectedTab = 0 }
         }
+        // A save in the tab-hosted add flow routes to the account's
+        // transaction list, which lives on the Accounts tab.
+        .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
+            if accountId != nil { selectedTab = 0 }
+        }
     }
 }
 
 struct AddTransactionTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-    @Binding var selectedTab: Int
     @State private var showingDefaultAccountAlert = false
-
-    private var optionalTabBinding: Binding<Int?> {
-        Binding<Int?>(
-            get: { selectedTab },
-            set: { if let newValue = $0 { selectedTab = newValue } }
-        )
-    }
 
     var body: some View {
         let configuredId = budgetStore.defaultAccountId
@@ -90,7 +87,7 @@ struct AddTransactionTabView: View {
         let fallbackAccount = budgetStore.accounts.first { !$0.closed }
 
         if let account = validDefaultAccount ?? fallbackAccount {
-            AddTransactionView(accountId: account.id, selectedTab: optionalTabBinding)
+            AddTransactionView(accountId: account.id)
                 .onAppear {
                     if configuredId != nil && validDefaultAccount == nil {
                         budgetStore.defaultAccountId = nil

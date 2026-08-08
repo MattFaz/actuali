@@ -18,7 +18,10 @@ struct TransactionsListView: View {
         if let pager { return pager }
         let store = budgetStore
         let created = TransactionPager { offset, limit, search in
-            await store.fetchTransactions(limit: limit, offset: offset, search: search)
+            await store.fetchTransactions(
+                limit: limit, offset: offset, search: search,
+                unclearedOnly: store.hideClearedTransactions
+            )
         }
         pager = created
         return created
@@ -31,14 +34,20 @@ struct TransactionsListView: View {
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
-                if searchQuery == nil {
+                if searchQuery != nil {
+                    ContentUnavailableView.search(text: searchText)
+                } else if budgetStore.hideClearedTransactions {
+                    ContentUnavailableView(
+                        "No Uncleared Transactions",
+                        systemImage: "checkmark.circle",
+                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
+                    )
+                } else {
                     ContentUnavailableView(
                         "No Transactions",
                         systemImage: "list.bullet.rectangle",
                         description: Text("Transactions will appear here once you load a budget")
                     )
-                } else {
-                    ContentUnavailableView.search(text: searchText)
                 }
             } else if let pager {
                 List {
@@ -81,6 +90,11 @@ struct TransactionsListView: View {
         }
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
+            }
+        }
         .task(id: searchText) {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
@@ -95,6 +109,11 @@ struct TransactionsListView: View {
             // deletes, sheet edits, sync, scheduled posts), so those sites
             // carry no reload calls of their own. Concurrent reloads are
             // safe: the pager's generation counter keeps the newest.
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.hideClearedTransactions) {
+            // The pager's fetch closure reads the flag, so a reload is all a
+            // toggle flip needs.
             Task { await reload() }
         }
         .refreshable {

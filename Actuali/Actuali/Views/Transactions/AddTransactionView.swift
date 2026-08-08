@@ -6,7 +6,6 @@ struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
-    @Binding var selectedTab: Int?
 
     private let editing: Transaction?
 
@@ -40,12 +39,10 @@ struct AddTransactionView: View {
         accountId: String,
         payee: String = "",
         amountCents: Int? = nil,
-        date: Date = Date(),
-        selectedTab: Binding<Int?> = .constant(nil)
+        date: Date = Date()
     ) {
         self.editing = nil
         _selectedAccountId = State(initialValue: accountId)
-        _selectedTab = selectedTab
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: .expense)
         _payeeName = State(initialValue: payee)
@@ -61,7 +58,6 @@ struct AddTransactionView: View {
     /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
-        _selectedTab = .constant(nil)
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -626,13 +622,17 @@ struct AddTransactionView: View {
 
         do {
             try await budgetStore.saveTransaction(form, editing: editing)
-            if isEditing {
+            if isEditing || isPresented {
+                // Presented flows (edit, account-detail "+", notification
+                // prefill) close; the account-detail host is already the
+                // saved transaction's list.
                 dismiss()
             } else {
+                // The tab-hosted flow has nothing to dismiss: reset for the
+                // next entry and route to the saved transaction's account
+                // list so every add flow lands on the relevant list.
                 resetForm()
-                if selectedTab != nil {
-                    selectedTab = 0  // Navigate back to Accounts after save
-                }
+                NotificationRouter.shared.pendingAccountNavigation = form.accountId
             }
         } catch {
             errorMessage = error.localizedDescription

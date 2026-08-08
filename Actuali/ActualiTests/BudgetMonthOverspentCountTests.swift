@@ -4,7 +4,7 @@ import Testing
 
 struct BudgetMonthOverspentCountTests {
 
-    private func makeCategory(id: String, available: Int) -> CategoryBudget {
+    private func makeCategory(id: String, available: Int, carryover: Int = 0) -> CategoryBudget {
         CategoryBudget(
             month: "2026-07",
             categoryId: id,
@@ -16,7 +16,7 @@ struct BudgetMonthOverspentCountTests {
             budgeted: 10000,
             spent: 10000 - available,
             available: available,
-            carryover: 0
+            carryover: carryover
         )
     }
 
@@ -41,5 +41,38 @@ struct BudgetMonthOverspentCountTests {
 
     @Test func exactlyZeroAvailableIsNotOverspent() {
         #expect(makeMonth(availables: [0]).overspentCount == 0)
+    }
+
+    // MARK: - overspentCategories (the badge's explanation, GH #138)
+
+    @Test func overspentCategoriesListsOnlyTheOnesInTheRed() {
+        let month = makeMonth(availables: [5000, -200, 0, -1])
+        #expect(month.overspentCategories.map(\.available) == [-200, -1])
+    }
+
+    @Test func overspentCategoriesOrdersWorstFirst() {
+        let month = makeMonth(availables: [-1, -5000, 300, -200])
+        #expect(month.overspentCategories.map(\.available) == [-5000, -200, -1])
+    }
+
+    @Test func overspentCategoriesIsEmptyWhenNothingIsOverspent() {
+        #expect(makeMonth(availables: [5000, 0]).overspentCategories.isEmpty)
+    }
+
+    // MARK: - rolledOverOverspending
+
+    @Test func negativeCarryoverIsRolledOverOverspending() {
+        let category = makeCategory(id: "c", available: -1500, carryover: -1000)
+        #expect(category.rolledOverOverspending == -1000)
+    }
+
+    @Test func positiveCarryoverIsNotRolledOverOverspending() {
+        let category = makeCategory(id: "c", available: -500, carryover: 2000)
+        #expect(category.rolledOverOverspending == 0)
+    }
+
+    @Test func zeroCarryoverHasNoRolledOverOverspending() {
+        let category = makeCategory(id: "c", available: -500)
+        #expect(category.rolledOverOverspending == 0)
     }
 }
