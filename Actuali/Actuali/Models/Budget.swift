@@ -20,15 +20,6 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets.count(where: \.isOverspent)
     }
 
-    /// The categories behind `overspentCount`, worst first, so the badge can
-    /// be explained instead of leaving the user to hunt through the table
-    /// (GH #138).
-    var overspentCategories: [CategoryBudget] {
-        categoryBudgets
-            .filter(\.isOverspent)
-            .sorted { $0.available < $1.available }
-    }
-
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
@@ -81,14 +72,6 @@ struct CategoryBudget: Identifiable, Hashable {
 
     var isOverspent: Bool {
         available < 0
-    }
-
-    /// Overspending carried in from earlier months (negative, or 0 when the
-    /// carryover is a credit). Actual's web UI doesn't surface this either,
-    /// so a category can sit in the red with no visible cause in the current
-    /// month — the trigger for GH #138.
-    var rolledOverOverspending: Int {
-        min(carryover, 0)
     }
 
     /// Fill for the row's progress bar, 0...1. Measured against what the

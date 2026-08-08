@@ -73,29 +73,4 @@ final class ReconciliationUITests: XCTestCase {
         XCTAssertTrue(reconciled.waitForExistence(timeout: 20),
                       "locking should mark cleared transactions as reconciled")
     }
-
-    @MainActor
-    func testTappingBalanceRevealsBreakdown() throws {
-        let app = openChaseChecking()
-
-        let balanceRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Current Balance'")
-        ).firstMatch
-        XCTAssertTrue(balanceRow.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.staticTexts["Reconciled"].exists,
-                       "breakdown starts collapsed")
-
-        balanceRow.tap()
-
-        // GH #134: the split appears in place, without a reconciliation.
-        XCTAssertTrue(app.staticTexts["Cleared"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Uncleared"].exists)
-        XCTAssertTrue(app.staticTexts["Reconciled"].exists)
-
-        balanceRow.tap()
-
-        let collapsed = NSPredicate(format: "exists == false")
-        expectation(for: collapsed, evaluatedWith: app.staticTexts["Reconciled"])
-        waitForExpectations(timeout: 10)
-    }
 }

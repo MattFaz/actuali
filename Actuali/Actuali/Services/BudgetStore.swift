@@ -14,7 +14,6 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidAmount
     case missingTransferDestination
     case payeeCreationFailed(String)
-    case transferPartnerMissing
     case cannotConvertToTransfer
     case cannotConvertToSplit
     case splitNeedsTwoLines
@@ -36,8 +35,6 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Select a destination account"
         case .payeeCreationFailed(let message):
             return "Failed to create payee: \(message)"
-        case .transferPartnerMissing:
-            return "The other side of this transfer no longer exists"
         case .cannotConvertToTransfer:
             return "Can't convert an existing transaction into a transfer"
         case .cannotConvertToSplit:
@@ -134,11 +131,6 @@ final class BudgetStore: ObservableObject {
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var currentBudgetMonth: BudgetMonth?
-    /// Bumped every time the published data snapshot above is republished
-    /// (budget load, local mutation, sync). Views that cache their own
-    /// fetches (transaction pagers, report widgets) key reloads on this so
-    /// changes made elsewhere in the app reach them without a pull-down.
-    @Published private(set) var dataVersion = 0
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
 
@@ -218,30 +210,6 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
         }
-    }
-
-    /// Whether Budget hides categories with no budget left this month.
-    /// Persisted to UserDefaults, defaults to off.
-    @Published var hideZeroBudgetCategories: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
-        }
-    }
-
-    /// Whether transaction lists show only uncleared transactions, so long
-    /// histories don't bury the items that still need attention (GH #133).
-    /// Persisted to UserDefaults, defaults to off.
-    @Published var hideClearedTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
-        }
-    }
-
-    /// Categories the Budget list should show. With the hide toggle on, only
-    /// exactly-zero available drops out: overspent (negative) categories stay
-    /// visible so problems that need fixing are never masked.
-    func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
     }
 
     /// One consistent-width replacement keeps masked amounts visually stable
@@ -493,10 +461,6 @@ final class BudgetStore: ObservableObject {
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
-        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "hideZeroBudgetCategories"))
-        _hideClearedTransactions = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "hideClearedTransactions"))
         _postScheduledTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "postScheduledTransactions"))
 
@@ -844,7 +808,6 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
-            dataVersion += 1
 
             // Configure sync client
             let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
@@ -978,7 +941,6 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
-            dataVersion += 1
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
@@ -1028,13 +990,11 @@ final class BudgetStore: ObservableObject {
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
-        search: String? = nil,
-        unclearedOnly: Bool = false
+        search: String? = nil
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
-                accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: unclearedOnly
+                accountId: accountId, limit: limit, offset: offset, search: search
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -1226,93 +1186,6 @@ final class BudgetStore: ObservableObject {
         payees.first { $0.transferAccountId == accountId && !$0.tombstone }
     }
 
-    /// Ids of the off-budget accounts, for the category rules shared by the
-    /// transaction rows, the sync notification and transfer saves.
-    var offBudgetAccountIds: Set<String> {
-        Set(accounts.filter(\.offBudget).map(\.id))
-    }
-
-    /// Re-save an existing transfer: both legs take the new accounts, amount,
-    /// date, notes and cleared state, with payees remapped to the (possibly
-    /// re-targeted) accounts' transfer payees. `original` is whichever leg the
-    /// user opened; its partner is fetched through `transferId`. A category
-    /// survives only on an on-budget leg whose partner account is off-budget
-    /// (Actual's rule — money leaving the budget still needs a category);
-    /// every other configuration clears it.
-    func updateTransfer(
-        original: Transaction,
-        fromAccountId: String,
-        toAccountId: String,
-        amountCents: Int,
-        date: Int,
-        notes: String?,
-        cleared: Bool,
-        categoryId: String?
-    ) async throws {
-        guard let syncClient, let database else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        guard fromAccountId != toAccountId else {
-            throw BudgetStoreError.transferAccountsMatch
-        }
-        guard amountCents > 0 else {
-            throw BudgetStoreError.transferAmountNotPositive
-        }
-        guard let partnerId = original.transferId,
-              let partner = try await database.fetchTransaction(id: partnerId) else {
-            throw BudgetStoreError.transferPartnerMissing
-        }
-        let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
-        let toTransferPayee = transferPayee(forAccountId: toAccountId)
-        guard let fromTransferPayee, let toTransferPayee else {
-            throw BudgetStoreError.transferPayeeMissing
-        }
-
-        let offBudgetIds = offBudgetAccountIds
-        // The edited leg takes the form's category, the partner keeps its own —
-        // then both are cleared unless that leg is the categorizable side.
-        func resolvedCategory(for leg: Transaction, accountId: String,
-                              otherAccountId: String) -> String? {
-            guard !offBudgetIds.contains(accountId),
-                  offBudgetIds.contains(otherAccountId) else { return nil }
-            return leg.id == original.id ? categoryId : leg.categoryId
-        }
-
-        // The opened row can be either leg; the negative one is the source.
-        let (sourceLeg, targetLeg) = original.amount < 0
-            ? (original, partner) : (partner, original)
-
-        var source = sourceLeg
-        source.accountId = fromAccountId
-        source.amount = -amountCents
-        source.payeeId = toTransferPayee.id
-        source.categoryId = resolvedCategory(for: sourceLeg, accountId: fromAccountId,
-                                             otherAccountId: toAccountId)
-        source.date = date
-        source.notes = notes
-        source.cleared = cleared
-
-        var target = targetLeg
-        target.accountId = toAccountId
-        target.amount = amountCents
-        target.payeeId = fromTransferPayee.id
-        target.categoryId = resolvedCategory(for: targetLeg, accountId: toAccountId,
-                                             otherAccountId: fromAccountId)
-        target.date = date
-        target.notes = notes
-        target.cleared = cleared
-
-        let sourceChanges = Self.changedFields(original: sourceLeg, updated: source)
-        if !sourceChanges.isEmpty {
-            try await syncClient.updateTransaction(source, changedFields: sourceChanges)
-        }
-        let targetChanges = Self.changedFields(original: targetLeg, updated: target)
-        if !targetChanges.isEmpty {
-            try await syncClient.updateTransaction(target, changedFields: targetChanges)
-        }
-        await refreshDataOnly()
-    }
-
     /// Update an existing transaction (optimistic local-first)
     func updateTransaction(_ updated: Transaction, original: Transaction) async throws {
         guard let syncClient else {
@@ -1419,15 +1292,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Cleared / uncleared / reconciled totals for the account-detail
-    /// balance breakdown (GH #134). Nil when no budget is open or the read
-    /// fails — the breakdown is silently omitted rather than surfacing an
-    /// error for a purely informational row.
-    func balanceBreakdown(accountId: String) async -> AccountBalanceBreakdown? {
-        guard let database else { return nil }
-        return try? await database.balanceBreakdown(accountId: accountId)
-    }
-
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
     /// in the account (reconciled = true), like upstream's lockTransactions.
     /// Returns the number of rows locked; 0 with `error` set on failure.
@@ -1504,11 +1368,6 @@ final class BudgetStore: ObservableObject {
         var date: Date
         var cleared: Bool
         var splits: [SplitLineForm] = []
-        /// The edit form's "Remove Split": the user asked to collapse an
-        /// existing split parent into a single transaction. Only meaningful
-        /// when editing a parent; ignored otherwise (the view never sets it
-        /// for the add flow or plain transactions).
-        var collapseSplit: Bool = false
         /// Per-save opt-out for payee location recording (GH #24). Defaults
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
@@ -1617,26 +1476,12 @@ final class BudgetStore: ObservableObject {
 
         switch try Self.plan(for: form) {
         case .transfer(let toAccountId, let amountCents):
-            if let original {
-                // Only an existing transfer can be re-saved as one. Converting
-                // a plain transaction would create a new transfer pair and
-                // orphan the original (the UI hides the Transfer option for
-                // those; this guards the path against state edge cases).
-                // Refuse rather than silently corrupt. See actios-7u6.
-                guard original.transferId != nil else {
-                    throw BudgetStoreError.cannotConvertToTransfer
-                }
-                try await updateTransfer(
-                    original: original,
-                    fromAccountId: form.accountId,
-                    toAccountId: toAccountId,
-                    amountCents: amountCents,
-                    date: date,
-                    notes: notes,
-                    cleared: form.cleared,
-                    categoryId: form.categoryId
-                )
-                return
+            // Editing into a transfer would create a new transfer pair and orphan
+            // the original transaction (the UI hides the Transfer option when
+            // editing; this guards the path against state edge cases). Refuse
+            // rather than silently corrupt. See actios-7u6.
+            guard original == nil else {
+                throw BudgetStoreError.cannotConvertToTransfer
             }
             try await createTransfer(
                 fromAccountId: form.accountId,
@@ -1649,21 +1494,15 @@ final class BudgetStore: ObservableObject {
 
         case .split(let amountCents, let lines):
             if let original {
-                if original.isParent {
-                    // Editing an existing split parent: reconcile its children
-                    // against the form's lines.
-                    try await updateSplit(
-                        original: original, form: form,
-                        amountCents: amountCents, lines: lines,
-                        date: date, notes: notes
-                    )
-                    return
+                // Editing an existing split parent: reconcile its children
+                // against the form's lines. Converting a non-split into a
+                // split stays refused — that would leave its history
+                // (transfer links, reconciliation) on a parent whose
+                // children were never reconciled.
+                guard original.isParent else {
+                    throw BudgetStoreError.cannotConvertToSplit
                 }
-                // Editing a plain transaction into a split: the original row
-                // becomes the parent and the form's lines its children.
-                // Transfers and split children stay refused — see
-                // convertToSplit.
-                try await convertToSplit(
+                try await updateSplit(
                     original: original, form: form,
                     amountCents: amountCents, lines: lines,
                     date: date, notes: notes
@@ -1741,16 +1580,6 @@ final class BudgetStore: ObservableObject {
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
 
             if let original {
-                // "Remove Split": collapse the parent into a single
-                // transaction — demote the parent and tombstone its
-                // children in the same save.
-                if original.isParent, form.collapseSplit {
-                    try await collapseSplit(
-                        original: original, form: form,
-                        amountCents: amountCents, date: date, notes: notes
-                    )
-                    return
-                }
                 // Split parents: the amount is the children's sum and the
                 // category lives on the children — never overwrite either
                 // from the form.
@@ -1936,157 +1765,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Convert an ordinary (non-split) transaction into a split: the
-    /// original row becomes the parent — no category of its own, amount set
-    /// to the children's sum, history (reconciled, sort order, imported
-    /// payee) preserved — and the form's lines become its children, slotting
-    /// in below the parent like new lines in `updateSplit`. Transfers are
-    /// refused because the paired row in the other account references this
-    /// one through `transferId`, and splitting would orphan that link;
-    /// split children are refused because there is no row of their own to
-    /// promote to parent.
-    private func convertToSplit(
-        original: Transaction,
-        form: TransactionForm,
-        amountCents: Int,
-        lines: [SplitPlanLine],
-        date: Int,
-        notes: String?
-    ) async throws {
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        guard original.transferId == nil, original.parentId == nil else {
-            throw BudgetStoreError.cannotConvertToSplit
-        }
-
-        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
-        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
-
-        let parent = Transaction(
-            id: original.id,
-            accountId: form.accountId,
-            date: date,
-            amount: amountCents,
-            payeeId: payeeId,
-            payeeName: payeeName,
-            categoryId: nil,  // split parents never carry a category
-            categoryName: nil,
-            notes: notes,
-            cleared: form.cleared,
-            reconciled: original.reconciled,
-            transferId: nil,
-            isParent: true,
-            parentId: nil,
-            tombstone: original.tombstone,
-            sortOrder: original.sortOrder,
-            importedPayee: original.importedPayee
-        )
-        let parentChanges = Self.changedFields(original: original, updated: parent)
-        if !parentChanges.isEmpty {
-            try await syncClient.updateTransaction(parent, changedFields: parentChanges)
-        }
-
-        // Children inherit the parent's payee unless the line names its own
-        // (Actual's makeChild semantics). Rules are skipped, matching
-        // createSplit/updateSplit — every field came from the form.
-        var nextSort = original.sortOrder ?? Date().timeIntervalSince1970 * 1000
-        for line in lines {
-            nextSort -= 1
-            let childPayeeId: String?
-            let childPayeeName: String?
-            if let lineName = line.payeeName, lineName != payeeName {
-                childPayeeId = try await resolvePayeeId(name: lineName, editing: nil)
-                childPayeeName = lineName
-            } else {
-                childPayeeId = payeeId
-                childPayeeName = payeeName
-            }
-            try await syncClient.createTransaction(Transaction(
-                id: UUID().uuidString,
-                accountId: form.accountId,
-                date: date,
-                amount: line.amountCents,
-                payeeId: childPayeeId,
-                payeeName: childPayeeName,
-                categoryId: line.categoryId,
-                categoryName: nil,
-                notes: line.notes,
-                cleared: form.cleared,
-                reconciled: false,
-                transferId: nil,
-                isParent: false,
-                parentId: original.id,
-                tombstone: false,
-                sortOrder: nextSort,
-                importedPayee: nil
-            ), applyRules: false)
-        }
-
-        await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
-    }
-
-    /// Collapse a split parent back into a single transaction (the edit
-    /// form's "Remove Split"): the parent row keeps its id and history
-    /// (reconciled, sort order, imported payee), picks up the form's amount
-    /// and category, and is demoted (isParent = false). Every live child is
-    /// tombstoned in the same save — orphaned children would be invisible in
-    /// the list but still feed reports, so leaving them would double-count
-    /// the collapsed amount. Mirrors Actual's desktop "un-split".
-    private func collapseSplit(
-        original: Transaction,
-        form: TransactionForm,
-        amountCents: Int,
-        date: Int,
-        notes: String?
-    ) async throws {
-        guard let syncClient, let database else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        guard original.isParent else { return }
-
-        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
-        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
-
-        let updated = Transaction(
-            id: original.id,
-            accountId: form.accountId,
-            date: date,
-            amount: amountCents,
-            payeeId: payeeId,
-            payeeName: payeeName,
-            categoryId: form.categoryId,
-            categoryName: nil,
-            notes: notes,
-            cleared: form.cleared,
-            reconciled: original.reconciled,
-            transferId: original.transferId,
-            isParent: false,
-            parentId: nil,
-            tombstone: original.tombstone,
-            sortOrder: original.sortOrder,
-            importedPayee: original.importedPayee
-        )
-        let changes = Self.changedFields(original: original, updated: updated)
-        if !changes.isEmpty {
-            try await syncClient.updateTransaction(updated, changedFields: changes)
-        }
-
-        for child in try await database.fetchChildTransactions(parentId: original.id) {
-            var deleted = child
-            deleted.tombstone = true
-            try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
-        }
-
-        await refreshDataOnly()
-        if form.recordLocation, let payeeId {
-            recordPayeeLocationIfAppropriate(payeeId: payeeId)
-        }
-    }
-
     /// Payee id for a standard (non-transfer) save: an empty name clears the
     /// payee, a name unchanged from the transaction being edited keeps it,
     /// and anything else is matched case-insensitively or created.
@@ -2253,8 +1931,7 @@ final class BudgetStore: ObservableObject {
         }
         await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
                                             narrowSymbol: useNarrowCurrencySymbol,
-                                            accountNames: accountNames,
-                                            offBudgetAccountIds: offBudgetAccountIds)
+                                            accountNames: accountNames)
     }
 
     /// Transactions that arrived via sync since the last check (advances the

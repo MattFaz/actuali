@@ -6,14 +6,12 @@ import UserNotifications
 struct NewTransactionNotifierTests {
 
     private func makeTransaction(id: String, payeeName: String? = nil,
-                                 categoryId: String? = nil, amount: Int = -1250,
-                                 transferId: String? = nil,
-                                 transferAcct: String? = nil) -> Transaction {
+                                 categoryId: String? = nil, amount: Int = -1250) -> Transaction {
         Transaction(id: id, accountId: "acct1", date: 20260707, amount: amount,
                     payeeId: nil, payeeName: payeeName, categoryId: categoryId,
                     categoryName: nil, notes: nil, cleared: false, reconciled: false,
-                    transferId: transferId, isParent: false, parentId: nil, tombstone: false,
-                    sortOrder: nil, importedPayee: nil, transferAcct: transferAcct)
+                    transferId: nil, isParent: false, parentId: nil, tombstone: false,
+                    sortOrder: nil, importedPayee: nil)
     }
 
     @Test func noContentForEmptyBatch() {
@@ -35,38 +33,6 @@ struct NewTransactionNotifierTests {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks")],
             currencyCode: "USD")
-
-        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
-    }
-
-    /// A transfer between on-budget accounts can't take a category, so its
-    /// line must not nag for one (GH #104).
-    @Test func transferDoesNotAskForCategory() {
-        let content = NewTransactionNotifier.makeContent(
-            for: [makeTransaction(id: "t1", payeeName: "Savings",
-                                  transferId: "leg-2", transferAcct: "acct2")],
-            currencyCode: "USD")
-
-        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
-    }
-
-    /// Off-budget accounts aren't categorized at all (GH #123).
-    @Test func offBudgetTransactionDoesNotAskForCategory() {
-        let content = NewTransactionNotifier.makeContent(
-            for: [makeTransaction(id: "t1", payeeName: "Broker")],
-            currencyCode: "USD", offBudgetAccountIds: ["acct1"])
-
-        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
-    }
-
-    /// Money leaving the budget still needs a category: a transfer whose
-    /// other side is off-budget keeps the marker (matches the Budget tab's
-    /// uncategorized filter).
-    @Test func transferToOffBudgetAccountStillAsksForCategory() {
-        let content = NewTransactionNotifier.makeContent(
-            for: [makeTransaction(id: "t1", payeeName: "Brokerage",
-                                  transferId: "leg-2", transferAcct: "acct2")],
-            currencyCode: "USD", offBudgetAccountIds: ["acct2"])
 
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }

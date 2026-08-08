@@ -207,47 +207,6 @@ struct BudgetStoreReconciliationTests {
         #expect(try await database.clearedBalance(accountId: "acct-1") == -1000)
     }
 
-    // MARK: - Balance breakdown
-
-    @Test func balanceBreakdownSplitsClearedUnclearedAndReconciled() async throws {
-        let (database, url) = try makeDatabase()
-        defer { cleanup(url) }
-
-        try insertRow(url, id: "t1", amount: -1000, cleared: true)
-        try insertRow(url, id: "t2", amount: -500, cleared: false)
-        try insertRow(url, id: "t3", amount: 300, cleared: true, reconciled: true)
-        try insertRow(url, id: "t4", acct: "acct-2", amount: -9999, cleared: true) // other account
-        try insertRow(url, id: "t5", amount: -800, cleared: true, tombstone: true) // deleted
-
-        let breakdown = try await database.balanceBreakdown(accountId: "acct-1")
-        #expect(breakdown.cleared == -700) // reconciled rows stay cleared
-        #expect(breakdown.uncleared == -500)
-        #expect(breakdown.reconciled == 300)
-    }
-
-    @Test func balanceBreakdownCountsChildrenNotParents() async throws {
-        let (database, url) = try makeDatabase()
-        defer { cleanup(url) }
-
-        // Split: parent carries the total, children the portions. Counting
-        // both would double the split (same rule as the account balance).
-        try insertRow(url, id: "parent", amount: -1000, cleared: true, reconciled: true, isParent: true)
-        try insertRow(url, id: "child-a", amount: -600, cleared: true, reconciled: true, parentId: "parent")
-        try insertRow(url, id: "child-b", amount: -400, cleared: true, reconciled: true, parentId: "parent")
-
-        let breakdown = try await database.balanceBreakdown(accountId: "acct-1")
-        #expect(breakdown.cleared == -1000)
-        #expect(breakdown.reconciled == -1000)
-    }
-
-    @Test func balanceBreakdownIsZeroForEmptyAccount() async throws {
-        let (database, url) = try makeDatabase()
-        defer { cleanup(url) }
-
-        let breakdown = try await database.balanceBreakdown(accountId: "acct-1")
-        #expect(breakdown == AccountBalanceBreakdown(cleared: 0, uncleared: 0, reconciled: 0))
-    }
-
     // MARK: - Dot tap: toggleCleared
 
     @Test func toggleClearedFlipsTheFlagAndEmitsMessage() async throws {

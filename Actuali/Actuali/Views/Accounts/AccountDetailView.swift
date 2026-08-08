@@ -5,17 +5,11 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var pager: TransactionPager?
-    @State private var breakdown: AccountBalanceBreakdown?
-    @State private var showingBreakdown = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
-
-    private var currentBalance: Int {
-        budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
-    }
 
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
@@ -31,8 +25,7 @@ struct AccountDetailView: View {
         let accountId = account.id
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
-                accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: store.hideClearedTransactions
+                accountId: accountId, limit: limit, offset: offset, search: search
             )
         }
         pager = created
@@ -40,62 +33,23 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
-        breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await currentPager().loadFirstPage(search: searchQuery)
-    }
-
-    private func breakdownRow(_ title: String, amount: Int) -> some View {
-        HStack {
-            Text(title)
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(budgetStore.displayBalance(amount))
-                .foregroundStyle(.secondary)
-        }
-        .font(.subheadline)
     }
 
     var body: some View {
         List {
             Section {
-                // Tapping the balance reveals the cleared/uncleared/reconciled
-                // split (GH #134), so the reconciled figure can be checked
-                // against a bank statement without starting a reconciliation.
-                Button {
-                    withAnimation { showingBreakdown.toggle() }
-                } label: {
-                    HStack {
-                        Text("Current Balance")
-                        Spacer()
-                        Text(budgetStore.displayBalance(currentBalance))
-                            .fontWeight(.semibold)
-                        if breakdown != nil {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                        }
-                    }
-                    .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Current Balance, \(budgetStore.displayBalance(currentBalance))")
-                .accessibilityHint(showingBreakdown ? "Hides the balance breakdown" : "Shows cleared, uncleared, and reconciled balances")
-
-                if showingBreakdown, let breakdown {
-                    breakdownRow("Cleared", amount: breakdown.cleared)
-                    breakdownRow("Uncleared", amount: breakdown.uncleared)
-                    breakdownRow("Reconciled", amount: breakdown.reconciled)
+                HStack {
+                    Text("Current Balance")
+                    Spacer()
+                    Text(budgetStore.displayBalance(account.balance))
+                        .fontWeight(.semibold)
                 }
             }
 
             Section("Recent Transactions") {
                 if let pager, pager.transactions.isEmpty {
-                    Text(searchQuery != nil
-                        ? "No matching transactions"
-                        : budgetStore.hideClearedTransactions
-                            ? "No uncleared transactions"
-                            : "No transactions")
+                    Text(searchQuery == nil ? "No transactions" : "No matching transactions")
                         .foregroundStyle(.secondary)
                 } else if let pager {
                     ForEach(pager.transactions) { transaction in
@@ -103,14 +57,20 @@ struct AccountDetailView: View {
                             editingTransaction = transaction
                         } label: {
                             TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
+                                Task {
+                                    await budgetStore.toggleCleared(transaction)
+                                    await reload()
+                                }
                             })
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
+                                Task {
+                                    await budgetStore.deleteTransaction(transaction)
+                                    await reload()
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -147,9 +107,6 @@ struct AccountDetailView: View {
                     }
                 }
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
-            }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     showingReconcile = true
@@ -164,19 +121,35 @@ struct AccountDetailView: View {
                 }
             }
         }
-        .sheet(isPresented: $showingReconcile) {
+        .sheet(isPresented: $showingReconcile, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)
         }
-        .sheet(isPresented: $showingWalletImport) {
+        .sheet(isPresented: $showingWalletImport, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) {
             WalletImportView(preselectedAccountId: account.id)
                 .environmentObject(budgetStore)
         }
-        .sheet(isPresented: $showingAddTransaction) {
+        .sheet(isPresented: $showingAddTransaction, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) {
             AddTransactionView(accountId: account.id)
                 .environmentObject(budgetStore)
         }
-        .sheet(item: $editingTransaction) { transaction in
+        .sheet(item: $editingTransaction, onDismiss: {
+            Task {
+                await reload()
+            }
+        }) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
@@ -187,19 +160,6 @@ struct AccountDetailView: View {
                 if Task.isCancelled { return }
             }
             await reload()
-        }
-        .onChange(of: budgetStore.dataVersion) {
-            // The store republished its data — refresh the cached page. This
-            // is the single reload path for every mutation (row toggles,
-            // deletes, sheet edits, sync, scheduled posts), so those sites
-            // carry no reload calls of their own. Concurrent reloads are
-            // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
         }
         .refreshable {
             await budgetStore.sync()

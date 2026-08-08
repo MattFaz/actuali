@@ -6,6 +6,7 @@ struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
+    @Binding var selectedTab: Int?
 
     private let editing: Transaction?
 
@@ -25,11 +26,6 @@ struct AddTransactionView: View {
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
-    /// True while the edit form's "Remove Split" is toggled on an existing
-    /// split parent: the lines are kept in memory (so tapping "Split into
-    /// multiple categories" undoes the toggle instantly) but the form shows
-    /// the category picker and saves as a single transaction.
-    @State private var unsplitRequested = false
 
     @FocusState private var payeeFocused: Bool
 
@@ -39,10 +35,12 @@ struct AddTransactionView: View {
         accountId: String,
         payee: String = "",
         amountCents: Int? = nil,
-        date: Date = Date()
+        date: Date = Date(),
+        selectedTab: Binding<Int?> = .constant(nil)
     ) {
         self.editing = nil
         _selectedAccountId = State(initialValue: accountId)
+        _selectedTab = selectedTab
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: .expense)
         _payeeName = State(initialValue: payee)
@@ -53,33 +51,18 @@ struct AddTransactionView: View {
         _cleared = State(initialValue: false)
     }
 
-    /// Initializer for the "Edit" flow. Transfer legs load as transfers —
-    /// From/To derive from the leg's sign (the opened row can be either side)
-    /// with the partner account read off the transfer payee (GH #104).
+    /// Initializer for the "Edit" flow.
     init(editing: Transaction) {
         self.editing = editing
+        _selectedTab = .constant(nil)
+        _selectedAccountId = State(initialValue: editing.accountId)
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
         _amount = State(initialValue: String(format: "%.2f", dollars))
-        if editing.transferId != nil {
-            _txType = State(initialValue: .transfer)
-            if editing.amount < 0 {
-                _selectedAccountId = State(initialValue: editing.accountId)
-                _transferToAccountId = State(initialValue: editing.transferAcct)
-            } else {
-                // Partner unknown (transfer payee missing): fall back to the
-                // leg's own account as From and let the user pick To.
-                _selectedAccountId = State(initialValue: editing.transferAcct ?? editing.accountId)
-                _transferToAccountId = State(initialValue:
-                    editing.transferAcct == nil ? nil : editing.accountId)
-            }
-        } else {
-            _txType = State(initialValue: editing.amount < 0 ? .expense : .income)
-            _selectedAccountId = State(initialValue: editing.accountId)
-            _transferToAccountId = State(initialValue: nil)
-        }
+        _txType = State(initialValue: editing.amount < 0 ? .expense : .income)
         _payeeName = State(initialValue: editing.payeeName ?? "")
+        _transferToAccountId = State(initialValue: nil)
         _selectedCategoryId = State(initialValue: editing.categoryId)
         _notes = State(initialValue: editing.notes ?? "")
         _date = State(initialValue: Transaction.date(fromYYYYMMDD: editing.date))
@@ -89,32 +72,7 @@ struct AddTransactionView: View {
     private var isEditing: Bool { editing != nil }
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
-    private var isEditingTransfer: Bool { editing?.transferId != nil }
-
-    /// A transfer leg takes a category only when it sits in an on-budget
-    /// account and the other side is off-budget — money leaving the budget
-    /// still needs one (Actual's rule). Tracks the live picker selections so
-    /// re-targeting the accounts shows/hides the row immediately.
-    private var editedTransferLegIsCategorizable: Bool {
-        guard let editing, editing.transferId != nil else { return false }
-        let legAccountId = editing.amount < 0 ? selectedAccountId : transferToAccountId
-        let otherAccountId = editing.amount < 0 ? transferToAccountId : selectedAccountId
-        guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
-              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
-            return false
-        }
-        return !leg.offBudget && other.offBudget
-    }
-    private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
-
-    /// Whether the form can offer the split option: a plain transaction in
-    /// either flow, or an existing parent mid-"Remove Split" (as an undo).
-    /// Transfers are excluded — they pair two accounts through `transferId`
-    /// and splitting would orphan the partner leg (the store refuses it), so
-    /// the button stays hidden rather than failing on save.
-    private var canSplitIntoCategories: Bool {
-        editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
-    }
+    private var isSplitting: Bool { !splitLines.isEmpty }
 
     /// Cents still unassigned across the split lines, nil while the total or
     /// any line doesn't parse yet.
@@ -238,16 +196,14 @@ struct AddTransactionView: View {
                         Picker("Type", selection: $txType) {
                             Text("Expense").tag(TransactionType.expense)
                             Text("Income").tag(TransactionType.income)
-                            if !isEditing || isEditingTransfer {
+                            if !isEditing {
                                 Text("Transfer").tag(TransactionType.transfer)
                             }
                         }
                         .pickerStyle(.segmented)
                         // A split parent's sign is the children's; flipping
                         // it would have to flip every line, so it stays fixed.
-                        // A transfer stays a transfer: converting would orphan
-                        // the partner leg (the store refuses it).
-                        .disabled(isEditingSplitParent || isEditingTransfer)
+                        .disabled(isEditingSplitParent)
                     }
 
                     HStack {
@@ -274,20 +230,6 @@ struct AddTransactionView: View {
                             Text("Select account").tag(String?.none)
                             ForEach(transferEligibleAccounts) { account in
                                 Text(account.name).tag(String?.some(account.id))
-                            }
-                        }
-                        if editedTransferLegIsCategorizable {
-                            NavigationLink {
-                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                    userPickedCategory = true
-                                }
-                            } label: {
-                                HStack {
-                                    Text("Category")
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .foregroundStyle(.secondary)
-                                }
                             }
                         }
                     } else {
@@ -361,7 +303,7 @@ struct AddTransactionView: View {
                             }
                         }
 
-                        if isEditingSplitParent && !isSplitting && !unsplitRequested {
+                        if isEditingSplitParent && !isSplitting {
                             // Placeholder while the children load into the
                             // editable split lines below.
                             HStack {
@@ -383,9 +325,9 @@ struct AddTransactionView: View {
                                         .foregroundStyle(.secondary)
                                 }
                             }
-                            if canSplitIntoCategories {
+                            if !isEditing {
                                 Button {
-                                    startSplit()
+                                    splitLines = [.init(), .init()]
                                 } label: {
                                     Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
                                 }
@@ -464,25 +406,18 @@ struct AddTransactionView: View {
                 // Load a split parent's children as editable lines. Inherited
                 // payees load as empty so a parent payee edit follows through
                 // to them, mirroring Actual's cascade rule.
-                await loadSplitChildren()
+                if let editing, editing.isParent, splitLines.isEmpty {
+                    splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
+                        BudgetStore.SplitLineForm(
+                            childId: child.id,
+                            categoryId: child.categoryId,
+                            amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
+                            notes: child.notes ?? "",
+                            payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
+                        )
+                    }
+                }
             }
-        }
-    }
-
-    /// Load a split parent's children as editable lines. Inherited payees
-    /// load as empty so a parent payee edit follows through to them,
-    /// mirroring Actual's cascade rule. Reused both on first appearance and
-    /// when the user undoes an unsplit after swiping the lines away.
-    private func loadSplitChildren() async {
-        guard let editing, editing.isParent, splitLines.isEmpty else { return }
-        splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
-            BudgetStore.SplitLineForm(
-                childId: child.id,
-                categoryId: child.categoryId,
-                amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
-                notes: child.notes ?? "",
-                payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
-            )
         }
     }
 
@@ -494,46 +429,21 @@ struct AddTransactionView: View {
                 SplitLineRow(line: $line)
             }
             .onDelete { offsets in
-                if isEditingSplitParent {
-                    // Swiping away every line on an existing parent is the
-                    // same intent as "Remove Split": switch to
-                    // single-transaction mode and seed the collapse category
-                    // from a removed line (the parent carries none). The
-                    // lines are gone from memory, so undoing via the split
-                    // button reloads them from the database.
-                    let removed = offsets.compactMap { splitLines[$0] }
-                    splitLines.remove(atOffsets: offsets)
-                    if splitLines.isEmpty {
-                        unsplitRequested = true
-                        if let category = removed.first(where: { $0.categoryId != nil })?.categoryId {
-                            selectedCategoryId = category
-                        }
-                    }
-                } else {
-                    splitLines.remove(atOffsets: offsets)
-                }
+                splitLines.remove(atOffsets: offsets)
             }
             Button {
                 splitLines.append(.init())
             } label: {
                 Label("Add Line", systemImage: "plus")
             }
-            // Tapping "Remove Split" on an existing parent switches the form
-            // to single-transaction mode: keep the lines in memory for an
-            // instant undo and seed the collapse category from the first
-            // line that has one (the parent itself carries none). In the add
-            // flow it just clears the lines, as before.
-            Button(role: .destructive) {
-                if isEditingSplitParent {
-                    unsplitRequested = true
-                    if let first = splitLines.first(where: { $0.categoryId != nil }) {
-                        selectedCategoryId = first.categoryId
-                    }
-                } else {
+            // An existing split stays a split — un-splitting would have to
+            // collapse the children into the parent, which we don't support.
+            if !isEditingSplitParent {
+                Button(role: .destructive) {
                     splitLines = []
+                } label: {
+                    Text("Remove Split")
                 }
-            } label: {
-                Text("Remove Split")
             }
         } header: {
             Text("Split")
@@ -542,33 +452,6 @@ struct AddTransactionView: View {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
                     .foregroundStyle(.red)
             }
-        }
-    }
-
-    /// Begin a split from the form. The add flow starts from two empty
-    /// lines; editing a plain transaction seeds the first line with the
-    /// transaction's current category and full amount so nothing is lost if
-    /// the user only fills the second line — mirroring Actual's desktop
-    /// behavior of moving the row's category onto the first sub-row. An
-    /// existing parent undoing "Remove Split" just re-enters split mode: the
-    /// children were kept in `splitLines`, so nothing needs reloading.
-    private func startSplit() {
-        unsplitRequested = false
-        guard !isEditingSplitParent else {
-            // Existing parent: if the lines were kept (Remove Split toggle)
-            // they reappear instantly; if they were swiped away, reload them.
-            if splitLines.isEmpty {
-                Task { await loadSplitChildren() }
-            }
-            return
-        }
-        if isEditing {
-            splitLines = [
-                .init(categoryId: selectedCategoryId, amount: amount),
-                .init()
-            ]
-        } else {
-            splitLines = [.init(), .init()]
         }
     }
 
@@ -615,24 +498,19 @@ struct AddTransactionView: View {
             notes: notes,
             date: date,
             cleared: cleared,
-            splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
-            collapseSplit: unsplitRequested,
+            splits: isTransfer ? [] : splitLines,
             recordLocation: saveLocation
         )
 
         do {
             try await budgetStore.saveTransaction(form, editing: editing)
-            if isEditing || isPresented {
-                // Presented flows (edit, account-detail "+", notification
-                // prefill) close; the account-detail host is already the
-                // saved transaction's list.
+            if isEditing {
                 dismiss()
             } else {
-                // The tab-hosted flow has nothing to dismiss: reset for the
-                // next entry and route to the saved transaction's account
-                // list so every add flow lands on the relevant list.
                 resetForm()
-                NotificationRouter.shared.pendingAccountNavigation = form.accountId
+                if selectedTab != nil {
+                    selectedTab = 0  // Navigate back to Accounts after save
+                }
             }
         } catch {
             errorMessage = error.localizedDescription
@@ -650,7 +528,6 @@ struct AddTransactionView: View {
         cleared = false
         errorMessage = nil
         splitLines = []
-        unsplitRequested = false
     }
 }
 
@@ -709,50 +586,54 @@ private struct SplitLineRow: View {
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar; sign is
-/// otherwise handled outside the field (e.g. the expense/income toggle).
+/// The keyboard toolbar also has +, −, ×, ÷ buttons: typing "12.50", tapping
+/// +, then "6" shows "12.50 + 6.00" live, and collapses to a plain "18.50"
+/// as soon as the field loses focus (Done, tapping elsewhere, or Save) - so
+/// the bound text is always a plain decimal amount, never a dangling
+/// expression.
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
-    var alignment: NSTextAlignment = .natural
-    var allowsNegative = false
-    var weight: UIFont.Weight = .regular
 
     func makeUIView(context: Context) -> UITextField {
         let field = UITextField()
         field.keyboardType = .decimalPad
         field.placeholder = "0.00"
-        field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
-        if weight == .regular {
-            field.font = .preferredFont(forTextStyle: .body)
-        } else {
-            // Weighted variant of the body style so Dynamic Type still scales.
-            let descriptor = UIFontDescriptor
-                .preferredFontDescriptor(withTextStyle: .body)
-                .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
-            field.font = UIFont(descriptor: descriptor, size: 0)
-        }
+        field.font = .preferredFont(forTextStyle: .body)
         field.adjustsFontForContentSizeCategory = true
         // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
-        // and the decimal pad has no return key — without this accessory bar
-        // there is no way to dismiss the keyboard from this field.
+        // and the decimal pad has no return/operator keys — without this
+        // accessory bar there is no way to dismiss the keyboard or do quick
+        // math from this field.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
-        var items: [UIBarButtonItem] = []
-        if allowsNegative {
-            // The decimal pad has no minus key, so this button is the only
-            // touchscreen affordance for entering a negative amount.
-            items.append(UIBarButtonItem(
-                image: UIImage(systemName: "plus.forwardslash.minus"),
+        var items: [UIBarButtonItem] = [
+            UIBarButtonItem(
+                image: UIImage(systemName: "plus"),
                 style: .plain,
-                target: context.coordinator, action: #selector(Coordinator.toggleSign)
-            ))
-        }
-        items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-        items.append(UIBarButtonItem(
-            title: "Done", style: .done,
-            target: field, action: #selector(UIResponder.resignFirstResponder)
-        ))
+                target: context.coordinator, action: #selector(Coordinator.plusTapped)
+            ),
+            UIBarButtonItem(
+                image: UIImage(systemName: "minus"),
+                style: .plain,
+                target: context.coordinator, action: #selector(Coordinator.minusTapped)
+            ),
+            UIBarButtonItem(
+                image: UIImage(systemName: "multiply"),
+                style: .plain,
+                target: context.coordinator, action: #selector(Coordinator.timesTapped)
+            ),
+            UIBarButtonItem(
+                image: UIImage(systemName: "divide"),
+                style: .plain,
+                target: context.coordinator, action: #selector(Coordinator.divideTapped)
+            ),
+            UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil),
+            UIBarButtonItem(
+                title: "Done", style: .done,
+                target: field, action: #selector(UIResponder.resignFirstResponder)
+            ),
+        ]
         toolbar.items = items
         toolbar.sizeToFit()
         field.inputAccessoryView = toolbar
@@ -779,14 +660,20 @@ struct AmountInputField: UIViewRepresentable {
         private var integerDigits: String = ""
         private var hasDecimalPoint: Bool = false
         private var fractionDigits: String = ""
-        private var isNegative: Bool = false
+
+        /// Running total and pending operator for quick in-field math.
+        /// Left-to-right only, no operator precedence — this is a
+        /// quick-entry aid, not a full calculator.
+        private var accumulatedValue: Double?
+        private var pendingOperator: Character?
 
         init(_ parent: AmountInputField) {
             self.parent = parent
         }
 
         func sync(fromDisplay value: String) {
-            isNegative = parent.allowsNegative && value.hasPrefix("-")
+            accumulatedValue = nil
+            pendingOperator = nil
             if value.isEmpty {
                 integerDigits = ""
                 hasDecimalPoint = false
@@ -819,7 +706,8 @@ struct AmountInputField: UIViewRepresentable {
                 integerDigits = ""
                 hasDecimalPoint = false
                 fractionDigits = ""
-                isNegative = false
+                accumulatedValue = nil
+                pendingOperator = nil
             }
 
             if string.isEmpty {
@@ -839,20 +727,84 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
-        @objc func toggleSign() {
-            guard parent.allowsNegative else { return }
-            isNegative.toggle()
-            if let textField {
-                applyDisplay(to: textField)
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            // Losing focus (Done, tapping elsewhere, or Save) always leaves
+            // a plain evaluated amount behind, never a dangling expression.
+            finalizeExpression()
+            applyDisplay(to: textField)
+        }
+
+        @objc func plusTapped() { handleOperator("+") }
+        @objc func minusTapped() { handleOperator("-") }
+        @objc func timesTapped() { handleOperator("×") }
+        @objc func divideTapped() { handleOperator("÷") }
+
+        private func handleOperator(_ op: Character) {
+            guard let textField else { return }
+            let hasTypedOperand = !integerDigits.isEmpty || hasDecimalPoint
+
+            guard accumulatedValue != nil || hasTypedOperand else {
+                // Nothing entered yet - an operator alone means nothing.
+                return
+            }
+
+            if hasTypedOperand {
+                let operand = currentOperandValue()
+                if let acc = accumulatedValue, let pending = pendingOperator {
+                    accumulatedValue = apply(pending, acc, operand)
+                } else {
+                    accumulatedValue = operand
+                }
+                resetOperand()
+            }
+            // If nothing was typed since the last operator, this just swaps
+            // which operator will be applied next.
+            pendingOperator = op
+            applyDisplay(to: textField)
+        }
+
+        private func finalizeExpression() {
+            guard let pending = pendingOperator, let acc = accumulatedValue else { return }
+            let hasTypedOperand = !integerDigits.isEmpty || hasDecimalPoint
+            let operand = hasTypedOperand ? currentOperandValue() : 0
+            let result = apply(pending, acc, operand)
+            accumulatedValue = nil
+            pendingOperator = nil
+            setOperand(from: result)
+        }
+
+        private func apply(_ op: Character, _ lhs: Double, _ rhs: Double) -> Double {
+            switch op {
+            case "+": return lhs + rhs
+            case "-": return lhs - rhs
+            case "×": return lhs * rhs
+            case "÷": return rhs == 0 ? lhs : lhs / rhs
+            default: return lhs
             }
         }
 
+        private func currentOperandValue() -> Double {
+            Double(computeOperandDisplay()) ?? 0
+        }
+
+        private func resetOperand() {
+            integerDigits = ""
+            hasDecimalPoint = false
+            fractionDigits = ""
+        }
+
+        /// Loads a computed result back into the digit-entry state so it can
+        /// keep being edited (backspace, another operator, etc.) like any
+        /// typed amount.
+        private func setOperand(from value: Double) {
+            let rounded = max(0, (value * 100).rounded() / 100)
+            let cents = Int((rounded * 100).rounded())
+            integerDigits = String(cents / 100)
+            hasDecimalPoint = true
+            fractionDigits = String(format: "%02d", cents % 100)
+        }
+
         private func handleCharacter(_ character: Character) {
-            // Hardware-keyboard minus; the on-screen path is the ± toolbar button.
-            if character == "-", parent.allowsNegative {
-                isNegative.toggle()
-                return
-            }
             if character == "." || character == "," {
                 hasDecimalPoint = true
                 return
@@ -876,25 +828,46 @@ struct AmountInputField: UIViewRepresentable {
                 }
             } else if !integerDigits.isEmpty {
                 integerDigits.removeLast()
-            } else {
-                isNegative = false
+            } else if pendingOperator != nil {
+                // Nothing left in this operand - backspace undoes the
+                // pending operator and returns to editing the running
+                // total directly.
+                pendingOperator = nil
+                if let acc = accumulatedValue {
+                    setOperand(from: acc)
+                }
+                accumulatedValue = nil
             }
         }
 
-        private func computeDisplay() -> String {
-            let sign = isNegative ? "-" : ""
+        /// Plain "12.50"-style text for just the operand currently being
+        /// typed, independent of any running total before it.
+        private func computeOperandDisplay() -> String {
             if !hasDecimalPoint && integerDigits.isEmpty {
-                // A bare "-" so a sign toggled before any digits stays visible.
-                return sign
+                return ""
             }
             if hasDecimalPoint {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
-                return sign + whole + "." + fractionDigits
+                return whole + "." + fractionDigits
             }
             let cents = Int(integerDigits) ?? 0
             let dollars = cents / 100
             let pennies = cents % 100
-            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            return "\(dollars).\(String(format: "%02d", pennies))"
+        }
+
+        /// Full field text: the running total and pending operator (if any),
+        /// followed by the operand currently being typed.
+        private func computeDisplay() -> String {
+            let operandDisplay = computeOperandDisplay()
+            guard let pending = pendingOperator, let acc = accumulatedValue else {
+                return operandDisplay
+            }
+            let accText = String(format: "%.2f", acc)
+            if operandDisplay.isEmpty {
+                return "\(accText) \(pending) "
+            }
+            return "\(accText) \(pending) \(operandDisplay)"
         }
 
         private func applyDisplay(to textField: UITextField) {

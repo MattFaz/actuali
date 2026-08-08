@@ -36,14 +36,12 @@ enum NewTransactionNotifier {
     static func notify(about transactions: [Transaction], currencyCode: String,
                        narrowSymbol: Bool = false,
                        accountNames: [String: String] = [:],
-                       offBudgetAccountIds: Set<String> = [],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
                        center: NotificationPosting = UNUserNotificationCenter.current()) async {
         guard settings.isEnabled else { return }
         guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
-                                        accountNames: accountNames,
-                                        offBudgetAccountIds: offBudgetAccountIds) else { return }
+                                        accountNames: accountNames) else { return }
 
         let granted: Bool
         do {
@@ -64,12 +62,10 @@ enum NewTransactionNotifier {
 
     static func makeRequest(for transactions: [Transaction], currencyCode: String,
                             narrowSymbol: Bool = false,
-                            accountNames: [String: String] = [:],
-                            offBudgetAccountIds: Set<String> = []) -> UNNotificationRequest? {
+                            accountNames: [String: String] = [:]) -> UNNotificationRequest? {
         guard let content = makeContent(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
-                                        accountNames: accountNames,
-                                        offBudgetAccountIds: offBudgetAccountIds) else { return nil }
+                                        accountNames: accountNames) else { return nil }
         return UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: nil)
     }
 
@@ -79,8 +75,7 @@ enum NewTransactionNotifier {
 
     static func makeContent(for transactions: [Transaction], currencyCode: String,
                             narrowSymbol: Bool = false,
-                            accountNames: [String: String] = [:],
-                            offBudgetAccountIds: Set<String> = []) -> UNNotificationContent? {
+                            accountNames: [String: String] = [:]) -> UNNotificationContent? {
         guard !transactions.isEmpty else { return nil }
 
         let content = UNMutableNotificationContent()
@@ -95,7 +90,7 @@ enum NewTransactionNotifier {
 
         var lines = transactions.prefix(maxDetailLines).map {
             line(for: $0, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
-                 accountNames: accountNames, offBudgetAccountIds: offBudgetAccountIds)
+                 accountNames: accountNames)
         }
         if transactions.count > maxDetailLines {
             lines.append("…and \(transactions.count - maxDetailLines) more")
@@ -107,12 +102,9 @@ enum NewTransactionNotifier {
 
     /// One transaction's detail: "$12.50 at Starbucks on Checking", with an
     /// uncategorized marker so each line says whether it still needs sorting.
-    /// Transfers and off-budget transactions never take a category, so they
-    /// carry no marker (GH #104, #123).
     private static func line(for transaction: Transaction, currencyCode: String,
                              narrowSymbol: Bool,
-                             accountNames: [String: String],
-                             offBudgetAccountIds: Set<String>) -> String {
+                             accountNames: [String: String]) -> String {
         var line = CurrencyAmountFormat.string(cents: abs(transaction.amount),
                                                currencyCode: currencyCode,
                                                narrowSymbol: narrowSymbol)
@@ -122,7 +114,7 @@ enum NewTransactionNotifier {
         if let account = accountNames[transaction.accountId], !account.isEmpty {
             line += " on \(account)"
         }
-        if transaction.needsCategory(offBudgetAccountIds: offBudgetAccountIds) {
+        if transaction.categoryId == nil {
             line += " · Needs a category"
         }
         return line

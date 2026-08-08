@@ -18,10 +18,7 @@ struct TransactionsListView: View {
         if let pager { return pager }
         let store = budgetStore
         let created = TransactionPager { offset, limit, search in
-            await store.fetchTransactions(
-                limit: limit, offset: offset, search: search,
-                unclearedOnly: store.hideClearedTransactions
-            )
+            await store.fetchTransactions(limit: limit, offset: offset, search: search)
         }
         pager = created
         return created
@@ -34,20 +31,14 @@ struct TransactionsListView: View {
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
-                if searchQuery != nil {
-                    ContentUnavailableView.search(text: searchText)
-                } else if budgetStore.hideClearedTransactions {
-                    ContentUnavailableView(
-                        "No Uncleared Transactions",
-                        systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
-                    )
-                } else {
+                if searchQuery == nil {
                     ContentUnavailableView(
                         "No Transactions",
                         systemImage: "list.bullet.rectangle",
                         description: Text("Transactions will appear here once you load a budget")
                     )
+                } else {
+                    ContentUnavailableView.search(text: searchText)
                 }
             } else if let pager {
                 List {
@@ -56,14 +47,20 @@ struct TransactionsListView: View {
                             editingTransaction = transaction
                         } label: {
                             TransactionRow(transaction: transaction, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
+                                Task {
+                                    await budgetStore.toggleCleared(transaction)
+                                    await reload()
+                                }
                             })
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                             Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
+                                Task {
+                                    await budgetStore.deleteTransaction(transaction)
+                                    await reload()
+                                }
                             } label: {
                                 Label("Delete", systemImage: "trash")
                             }
@@ -90,11 +87,6 @@ struct TransactionsListView: View {
         }
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
-        .toolbar {
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
-            }
-        }
         .task(id: searchText) {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
@@ -103,24 +95,16 @@ struct TransactionsListView: View {
             }
             await reload()
         }
-        .onChange(of: budgetStore.dataVersion) {
-            // The store republished its data — refresh the cached page. This
-            // is the single reload path for every mutation (row toggles,
-            // deletes, sheet edits, sync, scheduled posts), so those sites
-            // carry no reload calls of their own. Concurrent reloads are
-            // safe: the pager's generation counter keeps the newest.
-            Task { await reload() }
-        }
-        .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
-            Task { await reload() }
-        }
         .refreshable {
             await budgetStore.sync()
             await reload()
         }
-        .sheet(item: $editingTransaction) { transaction in
+        .sheet(item: $editingTransaction, onDismiss: {
+            Task {
+                await budgetStore.refreshData()
+                await reload()
+            }
+        }) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
@@ -147,32 +131,15 @@ struct TransactionRow: View {
         budgetStore.accounts.first { $0.id == transaction.accountId }?.name ?? "Unknown Account"
     }
 
-    private var isInOffBudgetAccount: Bool {
-        budgetStore.offBudgetAccountIds.contains(transaction.accountId)
-    }
-
-    private var isTransfer: Bool {
-        transaction.transferId != nil || transaction.transferAcct != nil
-    }
-
-    /// Caption under the payee. Off-budget accounts aren't categorized at all
-    /// ("Off budget", GH #123); split parents show their children's breakdown
-    /// ("Food $6.00, Fun $4.00" — amounts unsigned because the row's total
-    /// already carries the sign); transfers that can't take a category show
-    /// "Transfer" instead of nagging "Uncategorized" (GH #104).
+    /// Caption under the payee. Split parents show their children's
+    /// breakdown ("Food $6.00, Fun $4.00"); amounts are unsigned because the
+    /// row's total already carries the sign.
     private var categoryLabel: String {
-        if isInOffBudgetAccount {
-            return "Off budget"
-        }
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
                 let name = portion.categoryName ?? "Uncategorized"
                 return "\(name) \(budgetStore.displayBalance(abs(portion.amount)))"
             }.joined(separator: ", ")
-        }
-        if transaction.categoryName == nil, isTransfer,
-           !transaction.needsCategory(offBudgetAccountIds: budgetStore.offBudgetAccountIds) {
-            return "Transfer"
         }
         return transaction.categoryName ?? (transaction.isParent ? "Split" : "Uncategorized")
     }
@@ -211,11 +178,7 @@ struct TransactionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 // Split parents may resolve no payee (mixed child payees) —
                 // label them "Split" like the desktop app, not "Unknown".
-                // Off-budget rows say "No payee": they're commonly payee-less
-                // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                Text(transaction.payeeName
-                     ?? (transaction.isParent ? "Split"
-                         : (isInOffBudgetAccount ? "No payee" : "Unknown")))
+                Text(transaction.payeeName ?? (transaction.isParent ? "Split" : "Unknown"))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {

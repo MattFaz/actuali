@@ -47,12 +47,10 @@ struct DashboardView: View {
                         widgetView(for: widget)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 6)
+                .padding(.vertical)
             }
-            // Keyed to dataVersion so widgets recompute when transactions
-            // change anywhere in the app (edits on other tabs, sync,
-            // scheduled posts) — not just on first appearance.
-            .task(id: budgetStore.dataVersion) { await loadTransactions() }
+            .task { await loadTransactions() }
         }
     }
 
