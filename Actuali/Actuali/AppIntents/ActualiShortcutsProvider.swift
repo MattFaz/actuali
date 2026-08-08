@@ -7,10 +7,8 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
         AppShortcut(
             intent: LogTransactionIntent(),
             phrases: [
-                "Log \(\.$amount) in \(.applicationName)",
-                "Log \(\.$amount) at \(\.$payee) in \(.applicationName)",
-                "Log \(\.$amount) in \(\.$account) in \(.applicationName)",
                 "Log transaction in \(.applicationName)",
+                "Log transaction to \(\.$account) in \(.applicationName)",
                 "Add transaction to \(.applicationName)",
                 "Log a transaction in \(.applicationName)",
             ],
