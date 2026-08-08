@@ -520,12 +520,15 @@ class BudgetDatabase {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page.
+    /// just the loaded page. `unclearedOnly` drops cleared rows (which
+    /// includes reconciled ones — locking requires cleared first) in SQL for
+    /// the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
-        search: String? = nil
+        search: String? = nil,
+        unclearedOnly: Bool = false
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
             // The list's display payee: own payee first (transfer payees show
@@ -578,6 +581,10 @@ class BudgetDatabase {
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
+            }
+
+            if unclearedOnly {
+                sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
             }
 
             if let search {
