@@ -310,34 +310,46 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
-    /// or account name substring).
+    /// or account name). Matching is deliberately conservative — a missed match falls back
+    /// to the default account or an error the user can act on, while a wrong match logs
+    /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
         let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
 
         let activeAccounts = await accountsForIntent().filter { !$0.closed }
         guard !activeAccounts.isEmpty else { return nil }
+        let activeIds = Set(activeAccounts.map(\.id))
 
-        let mappings = cardAccountMappings
-        // 1. Exact or keyword match in cardAccountMappings
-        for (keyword, mappedId) in mappings {
-            let key = keyword.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if !key.isEmpty && (trimmed.contains(key) || key.contains(trimmed)) {
-                if activeAccounts.contains(where: { $0.id == mappedId }) {
-                    return mappedId
-                }
-            }
+        // 1. Mapping keywords the hint contains. Longest key first so "1234" beats "12"
+        //    and multi-match resolution is deterministic (Dictionary order isn't). Only
+        //    hint-contains-key: the reverse direction would let a one-character hint
+        //    match any keyword.
+        let mappingsByLongestKey = cardAccountMappings
+            .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                    accountId: $0.value) }
+            .filter { !$0.key.isEmpty }
+            .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+        for mapping in mappingsByLongestKey
+        where trimmed.contains(mapping.key) && activeIds.contains(mapping.accountId) {
+            return mapping.accountId
         }
 
-        // 2. Name matching against active accounts
-        for account in activeAccounts {
-            let nameLower = account.name.lowercased()
-            if nameLower == trimmed || nameLower.contains(trimmed) || trimmed.contains(nameLower) {
-                return account.id
-            }
+        // 2. Exact account name match.
+        if let exact = activeAccounts.first(where: { $0.name.lowercased() == trimmed }) {
+            return exact.id
         }
 
-        return nil
+        // 3. Whole-word name match ("Checking Account" hint -> "Checking" account), but
+        //    only when it's unambiguous: substring matching would send "HSBC cashback"
+        //    to an account named "Cash".
+        let hintWords = Set(trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber }))
+        let wordMatches = activeAccounts.filter { account in
+            let nameWords = Set(account.name.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }))
+            guard !nameWords.isEmpty else { return false }
+            return nameWords.isSubset(of: hintWords) || hintWords.isSubset(of: nameWords)
+        }
+        return wordMatches.count == 1 ? wordMatches[0].id : nil
     }
 
     // MARK: - Private

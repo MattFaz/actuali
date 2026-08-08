@@ -41,6 +41,7 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
     case accountNotFound
     case categoryNotFound
     case noBudgetLoaded
+    case noAccountSelected
 
     var errorDescription: String? {
         switch self {
@@ -50,6 +51,8 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
             return "Category was not found in the current budget month."
         case .noBudgetLoaded:
             return "Open Actuali and select a budget first."
+        case .noAccountSelected:
+            return "Select an account in your shortcut or set a default account in Actuali settings."
         }
     }
 

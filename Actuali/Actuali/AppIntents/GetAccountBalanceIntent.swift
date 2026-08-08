@@ -21,13 +21,17 @@ struct GetAccountBalanceIntent: AppIntent {
         let store = BudgetStore.shared
         await store.ensureBudgetReady()
 
+        guard store.currentBudgetId != nil else {
+            throw GetBalanceError.noBudgetLoaded
+        }
+
         let resolvedAccountId: String
         if let account {
             resolvedAccountId = account.id
         } else if let defaultId = store.defaultAccountId {
             resolvedAccountId = defaultId
         } else {
-            throw GetBalanceError.noBudgetLoaded
+            throw GetBalanceError.noAccountSelected
         }
 
         let accounts = await store.accountsForIntent()

@@ -17,7 +17,7 @@ struct CardAccountMappingsView: View {
     var body: some View {
         List {
             Section {
-                Text("Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your Actual accounts. When logging via Shortcuts or SMS, transactions containing these keywords automatically route to the right account.")
+                Text("Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your accounts. When a shortcut logs a transaction with a card or account hint — such as the card name from an Apple Wallet automation — it routes to the matching account automatically.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -72,7 +72,7 @@ struct CardAccountMappingsView: View {
                     } header: {
                         Text("Mapping Details")
                     } footer: {
-                        Text("Enter the card digits or bank name as it appears in your SMS or bank text.")
+                        Text("Enter the digits or keyword exactly as your shortcut passes them in the Card or Account Hint field.")
                     }
                 }
                 .navigationTitle("Add Mapping")

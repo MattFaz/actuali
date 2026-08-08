@@ -53,8 +53,8 @@ enum TransactionLogNotifier {
     }
 
     static func notifyFailure(message: String, payee: String?, amountCents: Int?,
-                               currencyCode: String = "", narrowSymbol: Bool = false,
-                               prefill: TransactionPrefill? = nil) async {
+                              currencyCode: String, narrowSymbol: Bool = false,
+                              prefill: TransactionPrefill? = nil) async {
         let center = UNUserNotificationCenter.current()
 
         // Request permission lazily on first call. Quietly ignore denial — without
@@ -93,12 +93,14 @@ enum TransactionLogNotifier {
     }
 
     static func composeBody(message: String, payee: String?, amountCents: Int?,
-                            currencyCode: String = "", narrowSymbol: Bool = false) -> String {
+                            currencyCode: String, narrowSymbol: Bool = false,
+                            locale: Locale = .autoupdatingCurrent) -> String {
         var parts: [String] = []
         if let amountCents {
             let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
                                                            currencyCode: currencyCode,
-                                                           narrowSymbol: narrowSymbol)
+                                                           narrowSymbol: narrowSymbol,
+                                                           locale: locale)
             parts.append(amountString)
         }
         if let payee, !payee.isEmpty {
@@ -109,10 +111,12 @@ enum TransactionLogNotifier {
     }
 
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
-                                   narrowSymbol: Bool) -> String {
+                                   narrowSymbol: Bool,
+                                   locale: Locale = .autoupdatingCurrent) -> String {
         let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
                                                        currencyCode: currencyCode,
-                                                       narrowSymbol: narrowSymbol)
+                                                       narrowSymbol: narrowSymbol,
+                                                       locale: locale)
         return payee.isEmpty ? amountString : "\(amountString) at \(payee)"
     }
 }
