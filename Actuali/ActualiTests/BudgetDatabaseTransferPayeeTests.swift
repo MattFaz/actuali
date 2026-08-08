@@ -109,5 +109,10 @@ struct BudgetDatabaseTransferPayeeTests {
 
         #expect(spend?.payeeName == "Coffee Shop")
         #expect(transfer?.payeeName == "Savings")
+
+        // The payee's transfer_acct rides along so rows can render transfers
+        // as transfers and the edit form knows the other side (GH #104).
+        #expect(spend?.transferAcct == nil)
+        #expect(transfer?.transferAcct == "acct-savings")
     }
 }

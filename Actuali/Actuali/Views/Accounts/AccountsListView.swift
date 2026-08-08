@@ -91,9 +91,15 @@ struct AccountsListView: View {
             .navigationDestination(for: AllAccountsRoute.self) { _ in
                 TransactionsListView()
             }
-            .onAppear(perform: consumePendingAllAccountsNavigation)
+            .onAppear {
+                consumePendingAllAccountsNavigation()
+                consumePendingAccountNavigation()
+            }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
                 if pending { consumePendingAllAccountsNavigation() }
+            }
+            .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
+                if accountId != nil { consumePendingAccountNavigation() }
             }
             .refreshable {
                 await budgetStore.sync()
@@ -114,6 +120,18 @@ struct AccountsListView: View {
         guard notificationRouter.pendingAllAccountsNavigation else { return }
         path = NavigationPath([AllAccountsRoute()])
         notificationRouter.pendingAllAccountsNavigation = false
+    }
+
+    /// A save in the tab-hosted add flow lands here: jump the stack straight
+    /// to the saved transaction's account (replacing anything the user had
+    /// pushed) and clear the signal. onChange covers the usual case; onAppear
+    /// covers a save before this tab was ever created, when the signal is
+    /// already pending as the view first appears.
+    private func consumePendingAccountNavigation() {
+        guard let accountId = notificationRouter.pendingAccountNavigation else { return }
+        notificationRouter.pendingAccountNavigation = nil
+        guard let account = budgetStore.accounts.first(where: { $0.id == accountId }) else { return }
+        path = NavigationPath([account])
     }
 }
 

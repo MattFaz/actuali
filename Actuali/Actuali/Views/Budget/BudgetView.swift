@@ -60,6 +60,18 @@ struct BudgetView: View {
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
+    // Expand/collapse all touch only the displayed budget's groups; ids
+    // remembered for other budget files stay put (GH #130).
+    private func collapseAllGroups() {
+        let groups = collapsedGroups.union(groupedCategories.map(\.id))
+        collapsedGroupsStorage = groups.sorted().joined(separator: ",")
+    }
+
+    private func expandAllGroups() {
+        let groups = collapsedGroups.subtracting(groupedCategories.map(\.id))
+        collapsedGroupsStorage = groups.sorted().joined(separator: ",")
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -75,6 +87,25 @@ struct BudgetView: View {
                             } else {
                                 TableBudgetSummary(budget: budget)
                                     .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            }
+                        }
+
+                        // Explains the tab badge (GH #138): which categories
+                        // are overspent, including overspending rolled over
+                        // from earlier months. Shares the badge's Settings
+                        // toggle — off means no overspending callouts at all.
+                        if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
+                            Section {
+                                NavigationLink {
+                                    OverspentCategoriesView()
+                                } label: {
+                                    Label {
+                                        Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
+                                    } icon: {
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                }
                             }
                         }
 
@@ -176,6 +207,11 @@ struct BudgetView: View {
                                 }
                             }
                         }
+                        Section {
+                            Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
+                        } footer: {
+                            Text("Hides categories with no budget left this month")
+                        }
                     }
                     // The clean style keeps the stock section rhythm; the
                     // detailed table packs its group cards tighter.
@@ -227,6 +263,24 @@ struct BudgetView: View {
                     .accessibilityLabel("Previous month")
 
                     BudgetLayoutButton()
+
+                    // Whole-table expand/collapse (GH #130). A toolbar menu
+                    // rather than a long-press on the group headers: SwiftUI
+                    // context menus don't fire inside the clean style's
+                    // section headers.
+                    if budgetStore.currentBudgetMonth != nil {
+                        Menu {
+                            Button(action: expandAllGroups) {
+                                Label("Expand All Groups", systemImage: "chevron.down")
+                            }
+                            Button(action: collapseAllGroups) {
+                                Label("Collapse All Groups", systemImage: "chevron.right")
+                            }
+                        } label: {
+                            Image(systemName: "chevron.up.chevron.down")
+                        }
+                        .accessibilityLabel("Expand or collapse all groups")
+                    }
                 }
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
@@ -285,7 +339,8 @@ struct BudgetView: View {
 
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
+        let categories = budgetStore.visibleCategoryBudgets(budget.categoryBudgets)
+        let byGroup = Dictionary(grouping: categories, by: { $0.groupId })
         return byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
