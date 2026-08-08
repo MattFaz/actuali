@@ -5,6 +5,8 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var pager: TransactionPager?
+    @State private var breakdown: AccountBalanceBreakdown?
+    @State private var showingBreakdown = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -37,17 +39,52 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
+        breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func breakdownRow(_ title: String, amount: Int) -> some View {
+        HStack {
+            Text(title)
+                .foregroundStyle(.secondary)
+            Spacer()
+            Text(budgetStore.displayBalance(amount))
+                .foregroundStyle(.secondary)
+        }
+        .font(.subheadline)
     }
 
     var body: some View {
         List {
             Section {
-                HStack {
-                    Text("Current Balance")
-                    Spacer()
-                    Text(budgetStore.displayBalance(currentBalance))
-                        .fontWeight(.semibold)
+                // Tapping the balance reveals the cleared/uncleared/reconciled
+                // split (GH #134), so the reconciled figure can be checked
+                // against a bank statement without starting a reconciliation.
+                Button {
+                    withAnimation { showingBreakdown.toggle() }
+                } label: {
+                    HStack {
+                        Text("Current Balance")
+                        Spacer()
+                        Text(budgetStore.displayBalance(currentBalance))
+                            .fontWeight(.semibold)
+                        if breakdown != nil {
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Current Balance, \(budgetStore.displayBalance(currentBalance))")
+                .accessibilityHint(showingBreakdown ? "Hides the balance breakdown" : "Shows cleared, uncleared, and reconciled balances")
+
+                if showingBreakdown, let breakdown {
+                    breakdownRow("Cleared", amount: breakdown.cleared)
+                    breakdownRow("Uncleared", amount: breakdown.uncleared)
+                    breakdownRow("Reconciled", amount: breakdown.reconciled)
                 }
             }
 
