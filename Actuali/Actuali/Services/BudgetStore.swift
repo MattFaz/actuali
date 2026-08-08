@@ -1329,6 +1329,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Cleared / uncleared / reconciled totals for the account-detail
+    /// balance breakdown (GH #134). Nil when no budget is open or the read
+    /// fails — the breakdown is silently omitted rather than surfacing an
+    /// error for a purely informational row.
+    func balanceBreakdown(accountId: String) async -> AccountBalanceBreakdown? {
+        guard let database else { return nil }
+        return try? await database.balanceBreakdown(accountId: accountId)
+    }
+
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
     /// in the account (reconciled = true), like upstream's lockTransactions.
     /// Returns the number of rows locked; 0 with `error` set on failure.
