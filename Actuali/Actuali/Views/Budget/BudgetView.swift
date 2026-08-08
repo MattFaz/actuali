@@ -185,6 +185,7 @@ struct BudgetView: View {
                     // Let short rows (group headers) sit below the stock
                     // 44 pt minimum; tap targets stay fine because the whole
                     // row is the button.
+                    .contentMargins(.horizontal, 4, for: .scrollContent)
                     .environment(\.defaultMinListRowHeight, 32)
                     .gesture(
                         DragGesture(minimumDistance: 30)

@@ -47,7 +47,8 @@ struct DashboardView: View {
                         widgetView(for: widget)
                     }
                 }
-                .padding()
+                .padding(.horizontal, 6)
+                .padding(.vertical)
             }
             .task { await loadTransactions() }
         }
