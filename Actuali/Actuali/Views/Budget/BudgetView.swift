@@ -90,6 +90,25 @@ struct BudgetView: View {
                             }
                         }
 
+                        // Explains the tab badge (GH #138): which categories
+                        // are overspent, including overspending rolled over
+                        // from earlier months. Shares the badge's Settings
+                        // toggle — off means no overspending callouts at all.
+                        if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
+                            Section {
+                                NavigationLink {
+                                    OverspentCategoriesView()
+                                } label: {
+                                    Label {
+                                        Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
+                                    } icon: {
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .foregroundStyle(.red)
+                                    }
+                                }
+                            }
+                        }
+
                         if budgetStore.uncategorizedCount > 0 {
                             Section {
                                 NavigationLink {
