@@ -225,6 +225,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether transaction lists show only uncleared transactions, so long
+    /// histories don't bury the items that still need attention (GH #133).
+    /// Persisted to UserDefaults, defaults to off.
+    @Published var hideClearedTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
+        }
+    }
+
     /// Categories the Budget list should show. With the hide toggle on, only
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
@@ -483,6 +492,8 @@ final class BudgetStore: ObservableObject {
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
+        _hideClearedTransactions = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "hideClearedTransactions"))
         _postScheduledTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "postScheduledTransactions"))
 
@@ -1014,11 +1025,13 @@ final class BudgetStore: ObservableObject {
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
-        search: String? = nil
+        search: String? = nil,
+        unclearedOnly: Bool = false
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
-                accountId: accountId, limit: limit, offset: offset, search: search
+                accountId: accountId, limit: limit, offset: offset, search: search,
+                unclearedOnly: unclearedOnly
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -1314,6 +1327,15 @@ final class BudgetStore: ObservableObject {
             self.error = error.localizedDescription
             return nil
         }
+    }
+
+    /// Cleared / uncleared / reconciled totals for the account-detail
+    /// balance breakdown (GH #134). Nil when no budget is open or the read
+    /// fails — the breakdown is silently omitted rather than surfacing an
+    /// error for a purely informational row.
+    func balanceBreakdown(accountId: String) async -> AccountBalanceBreakdown? {
+        guard let database else { return nil }
+        return try? await database.balanceBreakdown(accountId: accountId)
     }
 
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction

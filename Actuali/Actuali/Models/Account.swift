@@ -11,6 +11,15 @@ struct Account: Identifiable, Hashable {
     var balance: Int // Stored in cents
 }
 
+/// Cleared / uncleared / reconciled totals for one account (GH #134).
+/// Reconciled rows are a subset of cleared, so cleared + uncleared is the
+/// account balance while reconciled is informational.
+struct AccountBalanceBreakdown: Equatable {
+    let cleared: Int // Stored in cents, like Account.balance
+    let uncleared: Int
+    let reconciled: Int
+}
+
 enum AccountType: String, CaseIterable {
     case checking
     case savings
