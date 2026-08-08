@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Actuali
 
+@MainActor
 struct TransactionLogNotifierTests {
 
     @Test func composeFailureBodyUsesConfiguredCurrencyCode() {
