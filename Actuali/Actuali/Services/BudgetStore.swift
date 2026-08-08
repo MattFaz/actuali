@@ -14,6 +14,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidAmount
     case missingTransferDestination
     case payeeCreationFailed(String)
+    case transferPartnerMissing
     case cannotConvertToTransfer
     case cannotConvertToSplit
     case splitNeedsTwoLines
@@ -35,6 +36,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Select a destination account"
         case .payeeCreationFailed(let message):
             return "Failed to create payee: \(message)"
+        case .transferPartnerMissing:
+            return "The other side of this transfer no longer exists"
         case .cannotConvertToTransfer:
             return "Can't convert an existing transaction into a transfer"
         case .cannotConvertToSplit:
@@ -1210,6 +1213,93 @@ final class BudgetStore: ObservableObject {
         payees.first { $0.transferAccountId == accountId && !$0.tombstone }
     }
 
+    /// Ids of the off-budget accounts, for the category rules shared by the
+    /// transaction rows, the sync notification and transfer saves.
+    var offBudgetAccountIds: Set<String> {
+        Set(accounts.filter(\.offBudget).map(\.id))
+    }
+
+    /// Re-save an existing transfer: both legs take the new accounts, amount,
+    /// date, notes and cleared state, with payees remapped to the (possibly
+    /// re-targeted) accounts' transfer payees. `original` is whichever leg the
+    /// user opened; its partner is fetched through `transferId`. A category
+    /// survives only on an on-budget leg whose partner account is off-budget
+    /// (Actual's rule — money leaving the budget still needs a category);
+    /// every other configuration clears it.
+    func updateTransfer(
+        original: Transaction,
+        fromAccountId: String,
+        toAccountId: String,
+        amountCents: Int,
+        date: Int,
+        notes: String?,
+        cleared: Bool,
+        categoryId: String?
+    ) async throws {
+        guard let syncClient, let database else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard fromAccountId != toAccountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        guard let partnerId = original.transferId,
+              let partner = try await database.fetchTransaction(id: partnerId) else {
+            throw BudgetStoreError.transferPartnerMissing
+        }
+        let fromTransferPayee = transferPayee(forAccountId: fromAccountId)
+        let toTransferPayee = transferPayee(forAccountId: toAccountId)
+        guard let fromTransferPayee, let toTransferPayee else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+
+        let offBudgetIds = offBudgetAccountIds
+        // The edited leg takes the form's category, the partner keeps its own —
+        // then both are cleared unless that leg is the categorizable side.
+        func resolvedCategory(for leg: Transaction, accountId: String,
+                              otherAccountId: String) -> String? {
+            guard !offBudgetIds.contains(accountId),
+                  offBudgetIds.contains(otherAccountId) else { return nil }
+            return leg.id == original.id ? categoryId : leg.categoryId
+        }
+
+        // The opened row can be either leg; the negative one is the source.
+        let (sourceLeg, targetLeg) = original.amount < 0
+            ? (original, partner) : (partner, original)
+
+        var source = sourceLeg
+        source.accountId = fromAccountId
+        source.amount = -amountCents
+        source.payeeId = toTransferPayee.id
+        source.categoryId = resolvedCategory(for: sourceLeg, accountId: fromAccountId,
+                                             otherAccountId: toAccountId)
+        source.date = date
+        source.notes = notes
+        source.cleared = cleared
+
+        var target = targetLeg
+        target.accountId = toAccountId
+        target.amount = amountCents
+        target.payeeId = fromTransferPayee.id
+        target.categoryId = resolvedCategory(for: targetLeg, accountId: toAccountId,
+                                             otherAccountId: fromAccountId)
+        target.date = date
+        target.notes = notes
+        target.cleared = cleared
+
+        let sourceChanges = Self.changedFields(original: sourceLeg, updated: source)
+        if !sourceChanges.isEmpty {
+            try await syncClient.updateTransaction(source, changedFields: sourceChanges)
+        }
+        let targetChanges = Self.changedFields(original: targetLeg, updated: target)
+        if !targetChanges.isEmpty {
+            try await syncClient.updateTransaction(target, changedFields: targetChanges)
+        }
+        await refreshDataOnly()
+    }
+
     /// Update an existing transaction (optimistic local-first)
     func updateTransaction(_ updated: Transaction, original: Transaction) async throws {
         guard let syncClient else {
@@ -1505,12 +1595,26 @@ final class BudgetStore: ObservableObject {
 
         switch try Self.plan(for: form) {
         case .transfer(let toAccountId, let amountCents):
-            // Editing into a transfer would create a new transfer pair and orphan
-            // the original transaction (the UI hides the Transfer option when
-            // editing; this guards the path against state edge cases). Refuse
-            // rather than silently corrupt. See actios-7u6.
-            guard original == nil else {
-                throw BudgetStoreError.cannotConvertToTransfer
+            if let original {
+                // Only an existing transfer can be re-saved as one. Converting
+                // a plain transaction would create a new transfer pair and
+                // orphan the original (the UI hides the Transfer option for
+                // those; this guards the path against state edge cases).
+                // Refuse rather than silently corrupt. See actios-7u6.
+                guard original.transferId != nil else {
+                    throw BudgetStoreError.cannotConvertToTransfer
+                }
+                try await updateTransfer(
+                    original: original,
+                    fromAccountId: form.accountId,
+                    toAccountId: toAccountId,
+                    amountCents: amountCents,
+                    date: date,
+                    notes: notes,
+                    cleared: form.cleared,
+                    categoryId: form.categoryId
+                )
+                return
             }
             try await createTransfer(
                 fromAccountId: form.accountId,
@@ -2127,7 +2231,8 @@ final class BudgetStore: ObservableObject {
         }
         await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
                                             narrowSymbol: useNarrowCurrencySymbol,
-                                            accountNames: accountNames)
+                                            accountNames: accountNames,
+                                            offBudgetAccountIds: offBudgetAccountIds)
     }
 
     /// Transactions that arrived via sync since the last check (advances the

@@ -465,7 +465,8 @@ class BudgetDatabase {
             t.transferred_id, t.cleared, t.reconciled, t.sort_order,
             t.tombstone, t.parent_id,
             COALESCE(pa.name, p.name) as payee_name,
-            c.name as category_name
+            c.name as category_name,
+            p.transfer_acct as transfer_acct
         FROM transactions t
         LEFT JOIN payee_mapping pm ON pm.id = t.description
         LEFT JOIN payees p ON p.id = pm.targetId
@@ -498,7 +499,8 @@ class BudgetDatabase {
             tombstone: row["tombstone"] == 1,
             sortOrder: row["sort_order"],
             importedPayee: row["imported_description"],
-            schedule: row["schedule"]
+            schedule: row["schedule"],
+            transferAcct: row["transfer_acct"]
         )
     }
 
@@ -541,7 +543,8 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     \(payeeNameSQL) as payee_name,
-                    c.name as category_name
+                    c.name as category_name,
+                    p.transfer_acct as transfer_acct
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
@@ -657,7 +660,8 @@ class BudgetDatabase {
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
                     COALESCE(pa.name, p.name) as payee_name,
-                    c.name as category_name
+                    c.name as category_name,
+                    p.transfer_acct as transfer_acct
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
@@ -810,7 +814,8 @@ class BudgetDatabase {
                     t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
-                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name
+                    COALESCE(pa.name, p.name, ppa.name, pp.name) as payee_name,
+                    p.transfer_acct as transfer_acct
                 \(Self.uncategorizedJoins)
                 -- Transfer payees carry no name; their display name is the
                 -- linked account's name (matches Actual's v_payees view).
@@ -844,7 +849,8 @@ class BudgetDatabase {
                     tombstone: row["tombstone"] == 1,
                     sortOrder: row["sort_order"],
                     importedPayee: row["imported_description"],
-                    schedule: row["schedule"]
+                    schedule: row["schedule"],
+                    transferAcct: row["transfer_acct"]
                 )
             }
         }

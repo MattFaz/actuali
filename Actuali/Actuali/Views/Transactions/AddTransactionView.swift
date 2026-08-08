@@ -56,18 +56,34 @@ struct AddTransactionView: View {
         _cleared = State(initialValue: false)
     }
 
-    /// Initializer for the "Edit" flow.
+    /// Initializer for the "Edit" flow. Transfer legs load as transfers —
+    /// From/To derive from the leg's sign (the opened row can be either side)
+    /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
         _selectedTab = .constant(nil)
-        _selectedAccountId = State(initialValue: editing.accountId)
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
         _amount = State(initialValue: String(format: "%.2f", dollars))
-        _txType = State(initialValue: editing.amount < 0 ? .expense : .income)
+        if editing.transferId != nil {
+            _txType = State(initialValue: .transfer)
+            if editing.amount < 0 {
+                _selectedAccountId = State(initialValue: editing.accountId)
+                _transferToAccountId = State(initialValue: editing.transferAcct)
+            } else {
+                // Partner unknown (transfer payee missing): fall back to the
+                // leg's own account as From and let the user pick To.
+                _selectedAccountId = State(initialValue: editing.transferAcct ?? editing.accountId)
+                _transferToAccountId = State(initialValue:
+                    editing.transferAcct == nil ? nil : editing.accountId)
+            }
+        } else {
+            _txType = State(initialValue: editing.amount < 0 ? .expense : .income)
+            _selectedAccountId = State(initialValue: editing.accountId)
+            _transferToAccountId = State(initialValue: nil)
+        }
         _payeeName = State(initialValue: editing.payeeName ?? "")
-        _transferToAccountId = State(initialValue: nil)
         _selectedCategoryId = State(initialValue: editing.categoryId)
         _notes = State(initialValue: editing.notes ?? "")
         _date = State(initialValue: Transaction.date(fromYYYYMMDD: editing.date))
@@ -77,6 +93,22 @@ struct AddTransactionView: View {
     private var isEditing: Bool { editing != nil }
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
+    private var isEditingTransfer: Bool { editing?.transferId != nil }
+
+    /// A transfer leg takes a category only when it sits in an on-budget
+    /// account and the other side is off-budget — money leaving the budget
+    /// still needs one (Actual's rule). Tracks the live picker selections so
+    /// re-targeting the accounts shows/hides the row immediately.
+    private var editedTransferLegIsCategorizable: Bool {
+        guard let editing, editing.transferId != nil else { return false }
+        let legAccountId = editing.amount < 0 ? selectedAccountId : transferToAccountId
+        let otherAccountId = editing.amount < 0 ? transferToAccountId : selectedAccountId
+        guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
+              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
+            return false
+        }
+        return !leg.offBudget && other.offBudget
+    }
     private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
 
     /// Whether the form can offer the split option: a plain transaction in
@@ -210,14 +242,16 @@ struct AddTransactionView: View {
                         Picker("Type", selection: $txType) {
                             Text("Expense").tag(TransactionType.expense)
                             Text("Income").tag(TransactionType.income)
-                            if !isEditing {
+                            if !isEditing || isEditingTransfer {
                                 Text("Transfer").tag(TransactionType.transfer)
                             }
                         }
                         .pickerStyle(.segmented)
                         // A split parent's sign is the children's; flipping
                         // it would have to flip every line, so it stays fixed.
-                        .disabled(isEditingSplitParent)
+                        // A transfer stays a transfer: converting would orphan
+                        // the partner leg (the store refuses it).
+                        .disabled(isEditingSplitParent || isEditingTransfer)
                     }
 
                     HStack {
@@ -244,6 +278,20 @@ struct AddTransactionView: View {
                             Text("Select account").tag(String?.none)
                             ForEach(transferEligibleAccounts) { account in
                                 Text(account.name).tag(String?.some(account.id))
+                            }
+                        }
+                        if editedTransferLegIsCategorizable {
+                            NavigationLink {
+                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                                    userPickedCategory = true
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Category")
+                                    Spacer()
+                                    Text(selectedCategoryName)
+                                        .foregroundStyle(.secondary)
+                                }
                             }
                         }
                     } else {

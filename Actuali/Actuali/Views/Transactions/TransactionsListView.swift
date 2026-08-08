@@ -128,15 +128,32 @@ struct TransactionRow: View {
         budgetStore.accounts.first { $0.id == transaction.accountId }?.name ?? "Unknown Account"
     }
 
-    /// Caption under the payee. Split parents show their children's
-    /// breakdown ("Food $6.00, Fun $4.00"); amounts are unsigned because the
-    /// row's total already carries the sign.
+    private var isInOffBudgetAccount: Bool {
+        budgetStore.offBudgetAccountIds.contains(transaction.accountId)
+    }
+
+    private var isTransfer: Bool {
+        transaction.transferId != nil || transaction.transferAcct != nil
+    }
+
+    /// Caption under the payee. Off-budget accounts aren't categorized at all
+    /// ("Off budget", GH #123); split parents show their children's breakdown
+    /// ("Food $6.00, Fun $4.00" — amounts unsigned because the row's total
+    /// already carries the sign); transfers that can't take a category show
+    /// "Transfer" instead of nagging "Uncategorized" (GH #104).
     private var categoryLabel: String {
+        if isInOffBudgetAccount {
+            return "Off budget"
+        }
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
                 let name = portion.categoryName ?? "Uncategorized"
                 return "\(name) \(budgetStore.displayBalance(abs(portion.amount)))"
             }.joined(separator: ", ")
+        }
+        if transaction.categoryName == nil, isTransfer,
+           !transaction.needsCategory(offBudgetAccountIds: budgetStore.offBudgetAccountIds) {
+            return "Transfer"
         }
         return transaction.categoryName ?? (transaction.isParent ? "Split" : "Uncategorized")
     }
@@ -175,7 +192,11 @@ struct TransactionRow: View {
             VStack(alignment: .leading, spacing: 2) {
                 // Split parents may resolve no payee (mixed child payees) —
                 // label them "Split" like the desktop app, not "Unknown".
-                Text(transaction.payeeName ?? (transaction.isParent ? "Split" : "Unknown"))
+                // Off-budget rows say "No payee": they're commonly payee-less
+                // (balance adjustments) and "Unknown" read as a bug (GH #123).
+                Text(transaction.payeeName
+                     ?? (transaction.isParent ? "Split"
+                         : (isInOffBudgetAccount ? "No payee" : "Unknown")))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
