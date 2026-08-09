@@ -135,6 +135,12 @@ struct AccountDetailView: View {
                 }
             }
         }
+        
+        .contentMargins(.horizontal, 6, for: .scrollContent)
+        .navigationTitle(account.name)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+
+    
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
