@@ -105,10 +105,10 @@ struct BudgetView: View {
                                     )
                             }
                         }
-                        // Match the inset-grouped List's 20 pt card margins
-                        // plus its 4 pt content margins so the summary lines
-                        // up with the sections below.
-                        .padding(.horizontal, 24)
+                        // The List below overrides its default margins with
+                        // 4 pt content margins; match them so the summary is
+                        // the same width as the sections.
+                        .padding(.horizontal, 4)
                         .padding(.top, 8)
                         .padding(.bottom, 4)
 
