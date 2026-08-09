@@ -161,7 +161,7 @@ struct BudgetView: View {
                                     BudgetGroupHeader(
                                         name: group.name,
                                         isCollapsed: isCollapsed,
-                                        totals: group.totals,
+                                        totals: budgetStore.showGroupTotals ? group.totals : nil,
                                         onToggleCollapse: { toggleCollapsed(group.id) }
                                     )
                                     .listRowBackground(Color(.tertiarySystemFill))
@@ -652,8 +652,14 @@ struct BudgetAmountPill: View {
     }
 }
 
-/// Group header row: collapse control and group name; optionally shows
-/// numeric totals (Budgeted / Spent / Balance) aligned to the table columns.
+/// Group header row: collapse control and group name; optionally shows the
+/// group's Spent and Balance totals in the table's rightmost two columns.
+///
+/// Budgeted is deliberately absent. Pills are laid out from the trailing
+/// edge, so omitting it hands its ~76 pt back to the group name — which
+/// needs the room, since group names run longer than category names — while
+/// Spent and Balance stay in their columns. The per-category Budgeted cells
+/// are still there in the rows below for anyone who wants them.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
@@ -676,10 +682,6 @@ struct BudgetGroupHeader: View {
                     .minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
                 if let totals {
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(totals.budgeted),
-                        dimmed: totals.budgeted == 0
-                    )
                     BudgetAmountPill(
                         text: budgetStore.displayBudgetCell(totals.spent),
                         dimmed: totals.spent == 0
@@ -707,7 +709,6 @@ struct BudgetGroupHeader: View {
         guard let totals else { return "\(name), \(state)" }
         return """
             \(name), \(state), \
-            budgeted \(budgetStore.displayBalance(totals.budgeted)), \
             spent \(budgetStore.displayBalance(totals.spent)), \
             balance \(budgetStore.displayBalance(totals.balance))
             """
