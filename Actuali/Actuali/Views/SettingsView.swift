@@ -193,7 +193,6 @@ struct SettingsView: View {
                                 }
                             }
                         }
-                        
                         .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
 
                         if budgetStore.supportsOpenIDLogin {
