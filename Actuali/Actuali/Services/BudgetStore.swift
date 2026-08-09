@@ -19,6 +19,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case cannotConvertToSplit
     case splitNeedsTwoLines
     case splitAmountMismatch
+    case insufficientFundsForTransfer
+    case invalidTransferAmount
+    case transferSourceAndDestinationMatch
 
     var errorDescription: String? {
         switch self {
@@ -46,6 +49,12 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "A split needs at least two lines"
         case .splitAmountMismatch:
             return "Split amounts must add up to the total"
+        case .insufficientFundsForTransfer:
+            return "Insufficient funds available for this transfer"
+        case .invalidTransferAmount:
+            return "Transfer amount must be greater than zero"
+        case .transferSourceAndDestinationMatch:
+            return "Source and destination categories must be different"
         }
     }
 }
@@ -2368,6 +2377,120 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
         await fetchBudgetMonth(month)
+    }
+
+    /// Transfer funds from one category to another by adjusting their budgeted amounts.
+    /// This covers overspending in the destination category by reducing the source category's budget.
+    /// - Parameters:
+    ///   - fromCategoryId: The source category to transfer FROM
+    ///   - toCategoryId: The destination category to transfer TO
+    ///   - month: The month of the transfer
+    ///   - amountCents: The amount to transfer in cents
+    func transferFunds(
+        fromCategoryId: String,
+        toCategoryId: String,
+        month: String,
+        amountCents: Int
+    ) async throws {
+        guard fromCategoryId != toCategoryId else {
+            throw BudgetStoreError.transferSourceAndDestinationMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.invalidTransferAmount
+        }
+        guard let budget = currentBudgetMonth, budget.month == month else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        // Find source and destination categories
+        guard let sourceCategory = budget.categoryBudgets.first(where: { $0.categoryId == fromCategoryId }),
+              let destCategory = budget.categoryBudgets.first(where: { $0.categoryId == toCategoryId }) else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        // Ensure we have enough to transfer
+        guard sourceCategory.available >= amountCents else {
+            throw BudgetStoreError.insufficientFundsForTransfer
+        }
+
+        // Update budgets: reduce source by amountCents, increase destination by amountCents
+        let newSourceBudget = sourceCategory.budgeted - amountCents
+        let newDestBudget = destCategory.budgeted + amountCents
+
+        // Apply both changes
+        try await setBudgetAmount(month: month, categoryId: fromCategoryId, amountCents: newSourceBudget)
+        try await setBudgetAmount(month: month, categoryId: toCategoryId, amountCents: newDestBudget)
+    }
+
+    /// Cover overspending in a category using its own "To Budget" funds.
+    /// This increases the category's budgeted amount to zero out the negative balance.
+    /// - Parameters:
+    ///   - categoryId: The category with overspending
+    ///   - month: The month of the overspending
+    ///   - amountCents: The amount to cover in cents
+    ///   - fromToBudget: If true, use To Budget funds; if false, expect a source category to be provided
+    func coverOverspendingFromToBudget(
+        categoryId: String,
+        month: String,
+        amountCents: Int
+    ) async throws {
+        guard amountCents > 0 else {
+            throw BudgetStoreError.invalidTransferAmount
+        }
+        guard let budget = currentBudgetMonth, budget.month == month else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard let category = budget.categoryBudgets.first(where: { $0.categoryId == categoryId }) else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard let tBudget = budget.toBudget, tBudget >= amountCents else {
+            throw BudgetStoreError.insufficientFundsForTransfer
+        }
+
+        // Increase this category's budget by amountCents
+        let newBudget = category.budgeted + amountCents
+        try await setBudgetAmount(month: month, categoryId: categoryId, amountCents: newBudget)
+    }
+
+    /// Cover overspending in a category by transferring funds from another category's positive balance.
+    /// This is a combination of transferFunds but specifically for covering negative balances.
+    /// - Parameters:
+    ///   - categoryId: The category with overspending
+    ///   - fromCategoryId: The source category with positive balance
+    ///   - month: The month of the transfer
+    ///   - amountCents: The amount to cover in cents
+    func coverOverspendingFromCategory(
+        categoryId: String,
+        fromCategoryId: String,
+        month: String,
+        amountCents: Int
+    ) async throws {
+        guard categoryId != fromCategoryId else {
+            throw BudgetStoreError.transferSourceAndDestinationMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.invalidTransferAmount
+        }
+        guard let budget = currentBudgetMonth, budget.month == month else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        guard let sourceCategory = budget.categoryBudgets.first(where: { $0.categoryId == fromCategoryId }),
+              let destCategory = budget.categoryBudgets.first(where: { $0.categoryId == categoryId }) else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        // Ensure source has enough to transfer
+        guard sourceCategory.available >= amountCents else {
+            throw BudgetStoreError.insufficientFundsForTransfer
+        }
+
+        // Reduce source, increase destination
+        let newSourceBudget = sourceCategory.budgeted - amountCents
+        let newDestBudget = destCategory.budgeted + amountCents
+
+        try await setBudgetAmount(month: month, categoryId: fromCategoryId, amountCents: newSourceBudget)
+        try await setBudgetAmount(month: month, categoryId: categoryId, amountCents: newDestBudget)
     }
 
     // MARK: - Currency Formatting

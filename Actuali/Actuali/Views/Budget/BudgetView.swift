@@ -44,6 +44,8 @@ struct BudgetView: View {
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
     @State private var transactionsDestination: CategoryTransactionsDestination?
+    @State private var coveringOverspendingCategory: CategoryBudget?
+    @State private var transferringFromCategory: CategoryBudget?
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
     /// string because @AppStorage can't hold a Set directly.
     @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
@@ -133,14 +135,16 @@ struct BudgetView: View {
 
                             if budgetStore.uncategorizedCount > 0 {
                                 Section {
-                                    NavigationLink {
-                                        UncategorizedTransactionsView()
-                                    } label: {
-                                        Label {
-                                            Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
-                                        } icon: {
-                                            Image(systemName: "questionmark.circle.fill")
-                                                .foregroundStyle(.orange)
+NavigationLink {
+    UncategorizedTransactionsView()
+} label: {
+    Label {
+        Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
+    } icon: {
+        Image(systemName: "questionmark.circle.fill")
+            .foregroundStyle(.orange)
+    }
+}
                                         }
                                     }
                                 }
@@ -216,10 +220,16 @@ struct BudgetView: View {
                                         )
                                     }
                                 } header: {
-                                    HStack {
-                                        Text(budget.incomeCategories.first?.groupName ?? "Income")
-                                        Spacer()
-                                        Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+HStack {
+    BudgetGroupHeader(
+        name: group.name,
+        isCollapsed: isCollapsed,
+        onToggleCollapse: { toggleCollapsed(group.id) }
+    )
+    Spacer()
+    Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+}
+.textCase(nil)
                                     }
                                 }
                             }
@@ -321,6 +331,12 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            .sheet(item: $coveringOverspendingCategory) { category in
+                BalanceTransferSheet(category: category, month: selectedMonth)
+            }
+            .sheet(item: $transferringFromCategory) { category in
+                TransferFundsSheet(category: category, month: selectedMonth)
+            }
             .navigationDestination(item: $transactionsDestination) { destination in
                 CategoryTransactionsView(destination: destination)
             }
@@ -405,6 +421,7 @@ struct CategoryBudgetRow: View {
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
+    var onTransferBalance: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -443,9 +460,19 @@ struct CategoryBudgetRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
-                BudgetAmountPill(
-                    text: budgetStore.displayBudgetCell(category.available),
-                    color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
+                Button {
+                    onTransferBalance(category)
+                } label: {
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(category.available),
+                        color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
+                    )
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(
+                    category.isOverspent
+                        ? "Cover overspending of \(budgetStore.displayBalance(abs(category.available))) in \(category.categoryName)"
+                        : "Transfer balance of \(budgetStore.displayBalance(category.available)) from \(category.categoryName)"
                 )
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
@@ -916,6 +943,296 @@ struct MonthPicker: View {
         components.month = monthNumber
         components.day = 1
         return Calendar.current.date(from: components)
+    }
+}
+
+/// Sheet for covering overspending by selecting funding source and amount.
+/// - Only for negative balance: allows covering from To Budget or another category
+struct BalanceTransferSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    
+    let category: CategoryBudget
+    let month: String
+    
+    @State private var selectedSourceType: TransferSourceType = .tobudget
+    @State private var selectedSourceCategory: CategoryBudget?
+    @State private var amountText: String = ""
+    @State private var errorMessage: String?
+    @State private var isProcessing = false
+    
+    enum TransferSourceType {
+        case tobudget
+        case category
+    }
+    
+    var availableSources: [CategoryBudget] {
+        guard let budget = budgetStore.currentBudgetMonth else { return [] }
+        // Can transfer from any category with positive balance (except current)
+        return budget.categoryBudgets.filter { $0.categoryId != category.categoryId && $0.available > 0 }
+    }
+    
+    var maxTransferAmount: Int {
+        if selectedSourceType == .tobudget {
+            return budgetStore.currentBudgetMonth?.toBudget ?? 0
+        } else if let source = selectedSourceCategory {
+            return source.available
+        }
+        return 0
+    }
+    
+    var coverAmount: Int {
+        abs(category.available)
+    }
+    
+    var amountCents: Int? {
+        let text = amountText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        // Remove common currency symbols and formatting
+        let sanitized = text
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "€", with: "")
+            .replacingOccurrences(of: "£", with: "")
+            .replacingOccurrences(of: "¥", with: "")
+            .replacingOccurrences(of: "₹", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        guard let dollars = Double(sanitized) else { return nil }
+        return Transaction.cents(fromDollars: dollars)
+    }
+    
+    var isValid: Bool {
+        guard let amount = amountCents, amount > 0, amount <= maxTransferAmount else { return false }
+        
+        if selectedSourceType == .category && selectedSourceCategory == nil {
+            return false
+        }
+        return true
+    }
+    
+    init(category: CategoryBudget, month: String) {
+        self.category = category
+        self.month = month
+        let initial = String(format: "%.2f", Double(abs(category.available)) / 100.0)
+        _amountText = State(initialValue: initial)
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("Source", selection: $selectedSourceType) {
+                        Text("To Budget").tag(TransferSourceType.tobudget)
+                        Text("Another Category").tag(TransferSourceType.category)
+                    }
+                    .onChange(of: selectedSourceType) { _, _ in
+                        selectedSourceCategory = nil
+                        errorMessage = nil
+                    }
+                    
+                    if selectedSourceType == .category {
+                        Picker("From Category", selection: $selectedSourceCategory) {
+                            Text("Select a category").tag(CategoryBudget?.none)
+                            ForEach(availableSources) { source in
+                                Text("\(source.categoryName) (\(budgetStore.displayBalance(source.available)))")
+                                    .tag(Optional(source))
+                            }
+                        }
+                        .onChange(of: selectedSourceCategory) { _, _ in
+                            errorMessage = nil
+                        }
+                    }
+                } header: {
+                    Text("Funding Source")
+                } footer: {
+                    if selectedSourceType == .tobudget {
+                        let available = budgetStore.currentBudgetMonth?.toBudget ?? 0
+                        Text("Available: \(budgetStore.displayBalance(available))")
+                    } else if let source = selectedSourceCategory {
+                        Text("Available: \(budgetStore.displayBalance(source.available))")
+                    }
+                }
+                
+                Section {
+                    AmountInputField(text: $amountText)
+                } header: {
+                    Text("Amount")
+                } footer: {
+                    Text("Max: \(budgetStore.displayBalance(maxTransferAmount))")
+                        .foregroundStyle(.secondary)
+                }
+                
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Cover Overspending")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Transfer") { performTransfer() }
+                        .disabled(!isValid || isProcessing)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isProcessing)
+    }
+    
+    private func performTransfer() {
+        guard let amount = amountCents else { return }
+        isProcessing = true
+        errorMessage = nil
+        
+        Task {
+            defer { isProcessing = false }
+            
+            do {
+                if selectedSourceType == .tobudget {
+                    try await budgetStore.coverOverspendingFromToBudget(
+                        categoryId: category.categoryId,
+                        month: month,
+                        amountCents: amount
+                    )
+                } else if let sourceCategory = selectedSourceCategory {
+                    try await budgetStore.coverOverspendingFromCategory(
+                        categoryId: category.categoryId,
+                        fromCategoryId: sourceCategory.categoryId,
+                        month: month,
+                        amountCents: amount
+                    )
+                }
+                
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+/// Sheet for transferring funds from a positive balance to another category.
+/// - Only for positive balance: allows selecting destination category and amount
+struct TransferFundsSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    
+    let category: CategoryBudget
+    let month: String
+    
+    @State private var selectedDestinationCategory: CategoryBudget?
+    @State private var amountText: String = ""
+    @State private var errorMessage: String?
+    @State private var isProcessing = false
+    
+    var availableDestinations: [CategoryBudget] {
+        guard let budget = budgetStore.currentBudgetMonth else { return [] }
+        // Can transfer to any category except current
+        return budget.categoryBudgets.filter { $0.categoryId != category.categoryId }
+    }
+    
+    var maxTransferAmount: Int {
+        category.available
+    }
+    
+    var amountCents: Int? {
+        let text = amountText.trimmingCharacters(in: .whitespaces)
+        guard !text.isEmpty else { return nil }
+        // Remove common currency symbols and formatting
+        let sanitized = text
+            .replacingOccurrences(of: "$", with: "")
+            .replacingOccurrences(of: "€", with: "")
+            .replacingOccurrences(of: "£", with: "")
+            .replacingOccurrences(of: "¥", with: "")
+            .replacingOccurrences(of: "₹", with: "")
+            .replacingOccurrences(of: ",", with: "")
+            .trimmingCharacters(in: .whitespaces)
+        guard let dollars = Double(sanitized) else { return nil }
+        return Transaction.cents(fromDollars: dollars)
+    }
+    
+    var isValid: Bool {
+        guard let amount = amountCents, amount > 0, amount <= maxTransferAmount else { return false }
+        guard selectedDestinationCategory != nil else { return false }
+        return true
+    }
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Picker("To Category", selection: $selectedDestinationCategory) {
+                        Text("Select a category").tag(CategoryBudget?.none)
+                        ForEach(availableDestinations) { destination in
+                            Text(destination.categoryName)
+                                .tag(Optional(destination))
+                        }
+                    }
+                    .onChange(of: selectedDestinationCategory) { _, _ in
+                        errorMessage = nil
+                    }
+                } header: {
+                    Text("Transfer To")
+                }
+                
+                Section {
+                    AmountInputField(text: $amountText)
+                } header: {
+                    Text("Amount")
+                } footer: {
+                    Text("Available: \(budgetStore.displayBalance(maxTransferAmount))")
+                        .foregroundStyle(.secondary)
+                }
+                
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Transfer Funds")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Transfer") { performTransfer() }
+                        .disabled(!isValid || isProcessing)
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .interactiveDismissDisabled(isProcessing)
+    }
+    
+    private func performTransfer() {
+        guard let amount = amountCents, let destination = selectedDestinationCategory else { return }
+        isProcessing = true
+        errorMessage = nil
+        
+        Task {
+            defer { isProcessing = false }
+            
+            do {
+                try await budgetStore.transferFunds(
+                    fromCategoryId: category.categoryId,
+                    toCategoryId: destination.categoryId,
+                    month: month,
+                    amountCents: amount
+                )
+                dismiss()
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
     }
 }
 
