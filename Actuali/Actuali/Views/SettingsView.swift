@@ -310,6 +310,8 @@ struct SettingsView: View {
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
 
+                    Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
+
                     // Meaningless against servers that predate payee
                     // locations (< 26.4.0), so hidden there.
                     if budgetStore.payeeLocationWritesEnabled {
@@ -328,9 +330,9 @@ struct SettingsView: View {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Start Page takes effect the next time the app opens.")
+                        Text("Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
 
