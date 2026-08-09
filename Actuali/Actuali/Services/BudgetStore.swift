@@ -197,6 +197,16 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the detailed style's group headers total their columns.
+    /// Persisted to UserDefaults, defaults to on. Groups with long names are
+    /// the reason this is optional: the totals cost the name real width, and
+    /// not every budget file makes the sums worth it.
+    @Published var showGroupTotals: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showGroupTotals, forKey: "showGroupTotals")
+        }
+    }
+
     /// Whether the Budget tab shows a badge with the overspent-category
     /// count (GH #68). Persisted to UserDefaults, defaults to on.
     @Published var showOverspentBadge: Bool = true {
@@ -486,6 +496,8 @@ final class BudgetStore: ObservableObject {
         }
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showGroupTotals = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _hideBalances = Published(initialValue: UserDefaults.standard

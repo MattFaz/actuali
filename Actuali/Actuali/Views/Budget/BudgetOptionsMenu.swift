@@ -39,6 +39,13 @@ struct BudgetOptionsMenu: View {
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
+                // Only the detailed style has columns for a group header to
+                // total, so the clean style doesn't offer the switch.
+                if budgetStore.budgetDisplayStyle == .detailed {
+                    Toggle(isOn: $budgetStore.showGroupTotals) {
+                        Label("Group Totals", systemImage: "sum")
+                    }
+                }
                 Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
                     Label("Hide Spent Categories", systemImage: "line.3.horizontal.decrease")
                 }

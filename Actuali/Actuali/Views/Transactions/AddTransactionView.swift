@@ -711,6 +711,14 @@ private struct SplitLineRow: View {
 ///
 /// With `allowsNegative`, a ± button joins the keyboard toolbar; sign is
 /// otherwise handled outside the field (e.g. the expense/income toggle).
+///
+/// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
+/// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
+/// when editing ends. Evaluation is strictly left-to-right with no operator
+/// precedence — this is an entry aid, not a calculator. The binding always
+/// holds the plain evaluated decimal, never the expression, so a save taken
+/// mid-expression (the Save button is an ordinary row and doesn't end
+/// editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
     var alignment: NSTextAlignment = .natural
@@ -735,8 +743,9 @@ struct AmountInputField: UIViewRepresentable {
         }
         field.adjustsFontForContentSizeCategory = true
         // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
-        // and the decimal pad has no return key — without this accessory bar
-        // there is no way to dismiss the keyboard from this field.
+        // and the decimal pad has neither a return key nor operators — without
+        // this accessory bar there is no way to dismiss the keyboard from this
+        // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
         if allowsNegative {
@@ -747,6 +756,15 @@ struct AmountInputField: UIViewRepresentable {
                 style: .plain,
                 target: context.coordinator, action: #selector(Coordinator.toggleSign)
             ))
+        }
+        for op in Coordinator.Operator.allCases {
+            let item = UIBarButtonItem(
+                image: UIImage(systemName: op.symbolName),
+                style: .plain,
+                target: context.coordinator, action: op.selector
+            )
+            item.accessibilityLabel = op.accessibilityLabel
+            items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         items.append(UIBarButtonItem(
@@ -763,7 +781,11 @@ struct AmountInputField: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextField, context: Context) {
         context.coordinator.parent = self
-        if uiView.text != text {
+        // Compare against what the coordinator last wrote out rather than the
+        // field's own text: mid-expression the field reads "12.50 + 6.00"
+        // while the binding holds "18.50", and that mismatch is expected.
+        // Only a change from outside the field should reset the state.
+        if text != context.coordinator.lastPublishedText {
             uiView.text = text
             context.coordinator.sync(fromDisplay: text)
         }
@@ -774,18 +796,76 @@ struct AmountInputField: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
+        /// The four toolbar operators. Left-to-right evaluation only.
+        enum Operator: Character, CaseIterable {
+            case add = "+", subtract = "−", multiply = "×", divide = "÷"
+
+            var symbolName: String {
+                switch self {
+                case .add: return "plus"
+                case .subtract: return "minus"
+                case .multiply: return "multiply"
+                case .divide: return "divide"
+                }
+            }
+
+            var accessibilityLabel: String {
+                switch self {
+                case .add: return "Add"
+                case .subtract: return "Subtract"
+                case .multiply: return "Multiply"
+                case .divide: return "Divide"
+                }
+            }
+
+            var selector: Selector {
+                switch self {
+                case .add: return #selector(Coordinator.addTapped)
+                case .subtract: return #selector(Coordinator.subtractTapped)
+                case .multiply: return #selector(Coordinator.multiplyTapped)
+                case .divide: return #selector(Coordinator.divideTapped)
+                }
+            }
+
+            func apply(_ lhs: Double, _ rhs: Double) -> Double {
+                switch self {
+                case .add: return lhs + rhs
+                case .subtract: return lhs - rhs
+                case .multiply: return lhs * rhs
+                // Dividing by zero has no sensible amount to show, so the
+                // operator is dropped and the running total stands.
+                case .divide: return rhs == 0 ? lhs : lhs / rhs
+                }
+            }
+        }
+
         var parent: AmountInputField
         weak var textField: UITextField?
+        /// The last value written to the binding, so `updateUIView` can tell
+        /// an outside change from the field's own echo.
+        private(set) var lastPublishedText: String?
         private var integerDigits: String = ""
         private var hasDecimalPoint: Bool = false
         private var fractionDigits: String = ""
         private var isNegative: Bool = false
+        /// Everything to the left of the pending operator, already evaluated.
+        private var accumulatedValue: Double?
+        private var pendingOperator: Operator?
 
         init(_ parent: AmountInputField) {
             self.parent = parent
         }
 
+        /// True once the current operand has any content of its own, so a
+        /// bare sign or a dangling operator doesn't count as typed input.
+        private var hasTypedOperand: Bool {
+            !integerDigits.isEmpty || hasDecimalPoint
+        }
+
         func sync(fromDisplay value: String) {
+            accumulatedValue = nil
+            pendingOperator = nil
+            lastPublishedText = value
             isNegative = parent.allowsNegative && value.hasPrefix("-")
             if value.isEmpty {
                 integerDigits = ""
@@ -820,6 +900,8 @@ struct AmountInputField: UIViewRepresentable {
                 hasDecimalPoint = false
                 fractionDigits = ""
                 isNegative = false
+                accumulatedValue = nil
+                pendingOperator = nil
             }
 
             if string.isEmpty {
@@ -839,12 +921,93 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
+        func textFieldDidEndEditing(_ textField: UITextField) {
+            // Done, tapping away or dismissing the keyboard always leaves a
+            // plain amount behind, never a half-finished expression.
+            finalizeExpression()
+            applyDisplay(to: textField)
+        }
+
         @objc func toggleSign() {
             guard parent.allowsNegative else { return }
             isNegative.toggle()
             if let textField {
                 applyDisplay(to: textField)
             }
+        }
+
+        @objc func addTapped() { pushOperator(.add) }
+        @objc func subtractTapped() { pushOperator(.subtract) }
+        @objc func multiplyTapped() { pushOperator(.multiply) }
+        @objc func divideTapped() { pushOperator(.divide) }
+
+        /// Folds the operand just typed into the running total and arms the
+        /// next operator. Tapping a second operator without typing anything
+        /// in between just swaps which one is armed.
+        private func pushOperator(_ op: Operator) {
+            guard accumulatedValue != nil || hasTypedOperand else { return }
+            if hasTypedOperand {
+                let operand = currentOperandValue()
+                if let acc = accumulatedValue, let pending = pendingOperator {
+                    accumulatedValue = pending.apply(acc, operand)
+                } else {
+                    accumulatedValue = operand
+                }
+                resetOperand()
+            }
+            pendingOperator = op
+            if let textField {
+                applyDisplay(to: textField)
+            }
+        }
+
+        /// Collapses the expression back down to a single editable operand.
+        private func finalizeExpression() {
+            guard let pending = pendingOperator, let acc = accumulatedValue else { return }
+            // A dangling operator ("12.50 ×" then Done) leaves the running
+            // total alone rather than multiplying it by an implied zero.
+            let result = hasTypedOperand ? pending.apply(acc, currentOperandValue()) : acc
+            accumulatedValue = nil
+            pendingOperator = nil
+            setOperand(to: result)
+        }
+
+        /// The value the expression carries so far, evaluated left to right.
+        private func resolvedValue() -> Double {
+            guard let pending = pendingOperator, let acc = accumulatedValue else {
+                return currentOperandValue()
+            }
+            return hasTypedOperand ? pending.apply(acc, currentOperandValue()) : acc
+        }
+
+        private func currentOperandValue() -> Double {
+            Double(computeOperandDisplay()) ?? 0
+        }
+
+        /// Rounds to cents and drops the sign where the field can't show one
+        /// — those callers get their sign from the expense/income toggle, so
+        /// the field carries a magnitude and 50 − 80 reads as 30.00.
+        private func normalized(_ value: Double) -> Double {
+            let signed = parent.allowsNegative ? value : abs(value)
+            return (signed * 100).rounded() / 100
+        }
+
+        private func resetOperand() {
+            integerDigits = ""
+            hasDecimalPoint = false
+            fractionDigits = ""
+            isNegative = false
+        }
+
+        /// Loads a computed result back into the digit state so it keeps
+        /// behaving like typed input (backspace, another operator, and so on).
+        private func setOperand(to value: Double) {
+            let rounded = normalized(value)
+            let cents = Int((abs(rounded) * 100).rounded())
+            isNegative = parent.allowsNegative && rounded < 0
+            integerDigits = String(cents / 100)
+            hasDecimalPoint = true
+            fractionDigits = String(format: "%02d", cents % 100)
         }
 
         private func handleCharacter(_ character: Character) {
@@ -876,12 +1039,22 @@ struct AmountInputField: UIViewRepresentable {
                 }
             } else if !integerDigits.isEmpty {
                 integerDigits.removeLast()
-            } else {
+            } else if isNegative {
                 isNegative = false
+            } else if pendingOperator != nil {
+                // Backspacing through an empty operand undoes the operator and
+                // hands the running total back as editable digits.
+                pendingOperator = nil
+                if let acc = accumulatedValue {
+                    setOperand(to: acc)
+                }
+                accumulatedValue = nil
             }
         }
 
-        private func computeDisplay() -> String {
+        /// Just the operand currently being typed, with no running total in
+        /// front of it.
+        private func computeOperandDisplay() -> String {
             let sign = isNegative ? "-" : ""
             if !hasDecimalPoint && integerDigits.isEmpty {
                 // A bare "-" so a sign toggled before any digits stays visible.
@@ -897,11 +1070,34 @@ struct AmountInputField: UIViewRepresentable {
             return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
         }
 
+        /// What the field shows: the running total and armed operator, if any,
+        /// followed by the operand being typed.
+        private func computeFieldText() -> String {
+            let operandText = computeOperandDisplay()
+            guard let pending = pendingOperator, let acc = accumulatedValue else {
+                return operandText
+            }
+            let accText = String(format: "%.2f", acc)
+            return operandText.isEmpty
+                ? "\(accText) \(pending.rawValue) "
+                : "\(accText) \(pending.rawValue) \(operandText)"
+        }
+
+        /// What the binding carries: always a plain decimal, so callers can
+        /// parse it at any moment — including mid-expression.
+        private func computeBoundText() -> String {
+            guard pendingOperator != nil, accumulatedValue != nil else {
+                return computeOperandDisplay()
+            }
+            return String(format: "%.2f", normalized(resolvedValue()))
+        }
+
         private func applyDisplay(to textField: UITextField) {
-            let display = computeDisplay()
-            textField.text = display
-            if parent.text != display {
-                parent.text = display
+            textField.text = computeFieldText()
+            let bound = computeBoundText()
+            lastPublishedText = bound
+            if parent.text != bound {
+                parent.text = bound
             }
             let end = textField.endOfDocument
             textField.selectedTextRange = textField.textRange(from: end, to: end)
