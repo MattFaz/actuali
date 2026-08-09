@@ -29,6 +29,11 @@ struct ReportsTabView: View {
                 }
             }
             .navigationTitle("Reports")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    BalanceVisibilityButton()
+                }
+            }
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
