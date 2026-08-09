@@ -512,6 +512,7 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            .contentMargins(.horizontal, 6, for: .scrollContent)
             .task {
                 lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
                 await refreshNotificationPermissionState()
