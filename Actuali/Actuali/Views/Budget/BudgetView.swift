@@ -110,7 +110,6 @@ struct BudgetView: View {
                         // the same width as the sections.
                         .padding(.horizontal, 4)
                         .padding(.top, 8)
-                        .padding(.bottom, 4)
 
                         List {
                             // Explains the tab badge (GH #138): which categories
@@ -231,6 +230,14 @@ struct BudgetView: View {
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
                         )
                         .contentMargins(.horizontal, 4, for: .scrollContent)
+                        // The gap under the pinned summary is this top margin
+                        // alone, sized to match the spacing between the group
+                        // sections so the summary reads as part of the table.
+                        .contentMargins(
+                            .top,
+                            budgetStore.budgetDisplayStyle == .clean ? 18 : 14,
+                            for: .scrollContent
+                        )
                         // Let short rows (group headers) sit below the stock
                         // 44 pt minimum; tap targets stay fine because the whole
                         // row is the button.
