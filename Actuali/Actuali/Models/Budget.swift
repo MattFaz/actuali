@@ -107,3 +107,20 @@ struct CategoryBudget: Identifiable, Hashable {
         budgeted != 0 || spent != 0
     }
 }
+
+/// Column sums for one category group, shown in the detailed style's group
+/// header the way the PWA's table totals its group rows. Always built from a
+/// group's full category list — "Hide Spent Categories" trims which rows are
+/// drawn, and a header total that quietly dropped those categories would
+/// disagree with the summary card at the top of the table.
+struct CategoryGroupTotals: Equatable {
+    let budgeted: Int
+    let spent: Int
+    let balance: Int
+
+    init(_ categories: [CategoryBudget]) {
+        budgeted = categories.reduce(0) { $0 + $1.budgeted }
+        spent = categories.reduce(0) { $0 + $1.spent }
+        balance = categories.reduce(0) { $0 + $1.available }
+    }
+}

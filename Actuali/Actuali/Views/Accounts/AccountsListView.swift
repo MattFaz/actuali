@@ -75,6 +75,7 @@ struct AccountsListView: View {
                     }
                 }
             }
+            .contentMargins(.horizontal, 6, for: .scrollContent)
             .navigationTitle("Accounts")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
