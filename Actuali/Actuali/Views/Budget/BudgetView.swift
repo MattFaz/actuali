@@ -110,6 +110,7 @@ struct BudgetView: View {
                         // the same width as the sections.
                         .padding(.horizontal, 4)
                         .padding(.top, 8)
+                        .padding(.bottom, 10)
 
                         List {
                             // Explains the tab badge (GH #138): which categories
