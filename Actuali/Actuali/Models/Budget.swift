@@ -20,6 +20,15 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets.count(where: \.isOverspent)
     }
 
+    /// The categories behind `overspentCount`, worst first, so the badge can
+    /// be explained instead of leaving the user to hunt through the table
+    /// (GH #138).
+    var overspentCategories: [CategoryBudget] {
+        categoryBudgets
+            .filter(\.isOverspent)
+            .sorted { $0.available < $1.available }
+    }
+
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
@@ -74,6 +83,14 @@ struct CategoryBudget: Identifiable, Hashable {
         available < 0
     }
 
+    /// Overspending carried in from earlier months (negative, or 0 when the
+    /// carryover is a credit). Actual's web UI doesn't surface this either,
+    /// so a category can sit in the red with no visible cause in the current
+    /// month — the trigger for GH #138.
+    var rolledOverOverspending: Int {
+        min(carryover, 0)
+    }
+
     /// Fill for the row's progress bar, 0...1. Measured against what the
     /// category actually had to spend this month (spent + remaining
     /// available), so the bar agrees with the displayed Available amount
@@ -88,5 +105,22 @@ struct CategoryBudget: Identifiable, Hashable {
     /// A bar with no budget and no activity carries no information.
     var showsProgressBar: Bool {
         budgeted != 0 || spent != 0
+    }
+}
+
+/// Column sums for one category group, shown in the detailed style's group
+/// header the way the PWA's table totals its group rows. Always built from a
+/// group's full category list — "Hide Spent Categories" trims which rows are
+/// drawn, and a header total that quietly dropped those categories would
+/// disagree with the summary card at the top of the table.
+struct CategoryGroupTotals: Equatable {
+    let budgeted: Int
+    let spent: Int
+    let balance: Int
+
+    init(_ categories: [CategoryBudget]) {
+        budgeted = categories.reduce(0) { $0 + $1.budgeted }
+        spent = categories.reduce(0) { $0 + $1.spent }
+        balance = categories.reduce(0) { $0 + $1.available }
     }
 }

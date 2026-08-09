@@ -27,7 +27,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testToolbarButtonTogglesLayoutLive() throws {
+    func testOptionsMenuTogglesLayoutLive() throws {
         let app = XCUIApplication()
         // Seed clean explicitly: argument-domain values are volatile (the
         // init write-back was removed in actios-96wa), so this can't leak
@@ -40,13 +40,16 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "starts in the clean layout")
 
-        app.buttons["Switch to detailed layout"].tap()
-        XCTAssertTrue(app.buttons["Switch to clean layout"].waitForExistence(timeout: 5),
-                      "button flips to offer the clean layout")
-        XCTAssertFalse(budgetedCaption(in: app).exists,
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
+                      "the budget toolbar should offer the options menu")
+        optionsMenu.tap()
+        app.buttons["Detailed"].tap()
+        XCTAssertFalse(budgetedCaption(in: app).waitForExistence(timeout: 5),
                        "detailed rows replace the captions")
 
-        app.buttons["Switch to clean layout"].tap()
+        optionsMenu.tap()
+        app.buttons["Clean"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 5),
                       "toggling back restores the clean rows")
     }
