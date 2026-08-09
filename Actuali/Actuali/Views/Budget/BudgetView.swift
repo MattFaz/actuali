@@ -105,9 +105,10 @@ struct BudgetView: View {
                                     )
                             }
                         }
-                        // Match the inset-grouped List's 20 pt card margins so
-                        // the summary lines up with the sections below.
-                        .padding(.horizontal, 20)
+                        // Match the inset-grouped List's 20 pt card margins
+                        // plus its 4 pt content margins so the summary lines
+                        // up with the sections below.
+                        .padding(.horizontal, 24)
                         .padding(.top, 8)
                         .padding(.bottom, 4)
 
@@ -183,6 +184,7 @@ struct BudgetView: View {
                                         BudgetGroupHeader(
                                             name: group.name,
                                             isCollapsed: isCollapsed,
+                                            totals: group.totals,
                                             onToggleCollapse: { toggleCollapsed(group.id) }
                                         )
                                         .listRowBackground(Color(.tertiarySystemFill))
@@ -222,17 +224,13 @@ struct BudgetView: View {
                                     }
                                 }
                             }
-                            Section {
-                                Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
-                            } footer: {
-                                Text("Hides categories with no budget left this month")
-                            }
                         }
                         // The clean style keeps the stock section rhythm; the
                         // detailed table packs its group cards tighter.
                         .listSectionSpacing(
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
                         )
+                        .contentMargins(.horizontal, 4, for: .scrollContent)
                         // Let short rows (group headers) sit below the stock
                         // 44 pt minimum; tap targets stay fine because the whole
                         // row is the button.
@@ -272,46 +270,34 @@ struct BudgetView: View {
             }
             .navigationTitle("Budget")
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
                     } label: {
                         Image(systemName: "chevron.left")
                     }
                     .accessibilityLabel("Previous month")
-
-                    BudgetLayoutButton()
-
-                    // Whole-table expand/collapse (GH #130). A toolbar menu
-                    // rather than a long-press on the group headers: SwiftUI
-                    // context menus don't fire inside the clean style's
-                    // section headers.
-                    if budgetStore.currentBudgetMonth != nil {
-                        Menu {
-                            Button(action: expandAllGroups) {
-                                Label("Expand All Groups", systemImage: "chevron.down")
-                            }
-                            Button(action: collapseAllGroups) {
-                                Label("Collapse All Groups", systemImage: "chevron.right")
-                            }
-                        } label: {
-                            Image(systemName: "chevron.up.chevron.down")
-                        }
-                        .accessibilityLabel("Expand or collapse all groups")
-                    }
                 }
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
                 }
                 ToolbarItemGroup(placement: .topBarTrailing) {
-                    BalanceVisibilityButton()
-
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                     } label: {
                         Image(systemName: "chevron.right")
                     }
                     .accessibilityLabel("Next month")
+
+                    // Every "how should this look" control lives here (GH
+                    // #157). Whole-table expand/collapse is a menu rather
+                    // than a long-press on the group headers: SwiftUI context
+                    // menus don't fire inside the clean style's section
+                    // headers (GH #130).
+                    BudgetOptionsMenu(
+                        expandAllGroups: budgetStore.currentBudgetMonth == nil ? nil : expandAllGroups,
+                        collapseAllGroups: budgetStore.currentBudgetMonth == nil ? nil : collapseAllGroups
+                    )
                 }
             }
             .onChange(of: selectedMonth) { _, newMonth in
@@ -352,20 +338,31 @@ struct BudgetView: View {
     struct CategoryGroupSection {
         let id: String
         let name: String
+        /// The rows to draw, after "Hide Spent Categories" filtering.
         let categories: [CategoryBudget]
+        /// Totals over the group's whole category list, hidden rows included.
+        let totals: CategoryGroupTotals
     }
 
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        let categories = budgetStore.visibleCategoryBudgets(budget.categoryBudgets)
-        let byGroup = Dictionary(grouping: categories, by: { $0.groupId })
+        let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
         return byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
-                let sorted = items.sorted { $0.categorySortOrder < $1.categorySortOrder }
+                let visible = budgetStore.visibleCategoryBudgets(items)
+                    .sorted { $0.categorySortOrder < $1.categorySortOrder }
+                // A group whose rows are all hidden drops out entirely rather
+                // than leaving a header stranded over an empty card.
+                guard !visible.isEmpty else { return nil }
                 return (
                     first.groupSortOrder,
-                    CategoryGroupSection(id: groupId, name: first.groupName, categories: sorted)
+                    CategoryGroupSection(
+                        id: groupId,
+                        name: first.groupName,
+                        categories: visible,
+                        totals: CategoryGroupTotals(items)
+                    )
                 )
             }
             .sorted { $0.0 < $1.0 }
@@ -682,11 +679,15 @@ struct BudgetAmountPill: View {
     }
 }
 
-/// Group header row: collapse control and group name, like the PWA's group
-/// rows but without the totals.
+/// Group header row: collapse control and group name; optionally shows
+/// numeric totals (Budgeted / Spent / Balance) aligned to the table columns.
 struct BudgetGroupHeader: View {
+    @EnvironmentObject var budgetStore: BudgetStore
     let name: String
     let isCollapsed: Bool
+    /// The detailed style totals its columns here; the clean style's header
+    /// is a plain section title above the card, so it leaves this nil.
+    var totals: CategoryGroupTotals?
     let onToggleCollapse: () -> Void
 
     var body: some View {
@@ -699,13 +700,44 @@ struct BudgetGroupHeader: View {
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.85)
                 Spacer(minLength: 4)
+                if let totals {
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(totals.budgeted),
+                        dimmed: totals.budgeted == 0
+                    )
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(totals.spent),
+                        dimmed: totals.spent == 0
+                    )
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(totals.balance),
+                        // Same three-way treatment as the category rows, so a
+                        // group that lands on zero doesn't read as healthy.
+                        color: totals.balance < 0 ? .red : (totals.balance == 0 ? .secondary : .green)
+                    )
+                }
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("\(name), \(isCollapsed ? "collapsed" : "expanded")")
+        .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Toggles the group's categories")
+    }
+
+    /// The pills are decoration to VoiceOver once the button carries its own
+    /// label, so the totals have to be spoken here or they're lost. Currency
+    /// formatting, not the table's symbol-less cells, reads better aloud.
+    private var accessibilityLabel: String {
+        let state = isCollapsed ? "collapsed" : "expanded"
+        guard let totals else { return "\(name), \(state)" }
+        return """
+            \(name), \(state), \
+            budgeted \(budgetStore.displayBalance(totals.budgeted)), \
+            spent \(budgetStore.displayBalance(totals.spent)), \
+            balance \(budgetStore.displayBalance(totals.balance))
+            """
     }
 }
 
