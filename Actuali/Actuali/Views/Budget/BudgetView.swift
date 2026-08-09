@@ -277,9 +277,7 @@ struct BudgetView: View {
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
                 }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    BalanceVisibilityButton()
-
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                     } label: {
