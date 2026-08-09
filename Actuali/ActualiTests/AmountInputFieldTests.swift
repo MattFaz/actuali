@@ -118,6 +118,147 @@ struct AmountInputFieldTests {
         #expect(box.value == "-1.20")
     }
 
+    // MARK: - Toolbar arithmetic
+
+    @Test func additionEvaluatesWhenEditingEnds() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.addTapped()
+        type("600", into: coordinator, textField)
+        #expect(textField.text == "12.50 + 6.00")
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(textField.text == "18.50")
+        #expect(box.value == "18.50")
+    }
+
+    /// The Save button is an ordinary form row, so it never ends editing —
+    /// the binding has to be parseable while the expression is still visible.
+    @Test func bindingHoldsEvaluatedValueMidExpression() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.addTapped()
+        #expect(box.value == "12.50")
+        type("600", into: coordinator, textField)
+        #expect(textField.text == "12.50 + 6.00")
+        #expect(box.value == "18.50")
+        #expect(Double(box.value) == 18.50)
+    }
+
+    @Test func evaluatesLeftToRightWithoutPrecedence() {
+        let (coordinator, textField, box) = makeField()
+        type("200", into: coordinator, textField)
+        coordinator.addTapped()
+        type("300", into: coordinator, textField)
+        coordinator.multiplyTapped()
+        #expect(box.value == "5.00")
+        type("400", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "20.00")
+    }
+
+    @Test func divisionSplitsAnAmount() {
+        let (coordinator, textField, box) = makeField()
+        type("4500", into: coordinator, textField)
+        coordinator.divideTapped()
+        type("300", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "15.00")
+    }
+
+    @Test func divisionByZeroLeavesRunningTotalIntact() {
+        let (coordinator, textField, box) = makeField()
+        type("1000", into: coordinator, textField)
+        coordinator.divideTapped()
+        type("000", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "10.00")
+    }
+
+    /// "12.50 ×" then Done must not multiply by an implied zero.
+    @Test func danglingOperatorCollapsesToRunningTotal() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.multiplyTapped()
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "12.50")
+    }
+
+    @Test func secondOperatorSwapsTheArmedOne() {
+        let (coordinator, textField, box) = makeField()
+        type("1000", into: coordinator, textField)
+        coordinator.addTapped()
+        coordinator.subtractTapped()
+        type("400", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "6.00")
+    }
+
+    @Test func operatorBeforeAnyInputIsIgnored() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.addTapped()
+        #expect(textField.text == "")
+        type("500", into: coordinator, textField)
+        #expect(box.value == "5.00")
+    }
+
+    @Test func backspaceThroughEmptyOperandUndoesTheOperator() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.addTapped()
+        #expect(textField.text == "12.50 + ")
+        backspace(coordinator, textField)
+        #expect(textField.text == "12.50")
+        #expect(box.value == "12.50")
+        backspace(coordinator, textField)
+        #expect(box.value == "12.5")
+    }
+
+    @Test func fullReplaceClearsAPendingExpression() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.addTapped()
+        type("600", into: coordinator, textField)
+        let length = (textField.text as NSString?)?.length ?? 0
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: length),
+            replacementString: "9"
+        )
+        #expect(textField.text == "0.09")
+        #expect(box.value == "0.09")
+    }
+
+    /// Reconcile can show a negative balance, so the true signed result stands.
+    @Test func negativeResultKeepsItsSignWhereAllowed() {
+        let (coordinator, textField, box) = makeField(allowsNegative: true)
+        type("500", into: coordinator, textField)
+        coordinator.subtractTapped()
+        type("2000", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "-15.00")
+    }
+
+    /// Elsewhere the sign comes from the expense/income toggle, so the field
+    /// carries the magnitude rather than silently zeroing the entry.
+    @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
+        let (coordinator, textField, box) = makeField()
+        type("500", into: coordinator, textField)
+        coordinator.subtractTapped()
+        type("2000", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "15.00")
+    }
+
+    @Test func resultStaysEditableAfterEvaluating() {
+        let (coordinator, textField, box) = makeField()
+        type("1250", into: coordinator, textField)
+        coordinator.addTapped()
+        type("600", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        backspace(coordinator, textField)
+        #expect(box.value == "18.5")
+    }
+
     @Test func minusIsIgnoredWhenNegativeNotAllowed() {
         let (coordinator, textField, box) = makeField(initial: "-1.20")
         type("-", into: coordinator, textField)
