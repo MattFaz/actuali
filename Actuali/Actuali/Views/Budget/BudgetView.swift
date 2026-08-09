@@ -76,155 +76,189 @@ struct BudgetView: View {
         NavigationStack {
             Group {
                 if let budget = budgetStore.currentBudgetMonth {
-                    List {
-                        // Summary card: the clean style reads as a 2x2 grid
-                        // of currency amounts; the detailed style's captioned
+                    VStack(spacing: 0) {
+                        // Summary card: the clean style reads as a 2x2 grid of
+                        // currency amounts; the detailed style's captioned
                         // columns double as the column headers for the table
-                        // below.
-                        Section {
+                        // below. It sits above the List (not inside it) so it
+                        // stays pinned while the table scrolls (GH #155).
+                        Group {
                             if budgetStore.budgetDisplayStyle == .clean {
                                 CleanBudgetSummary(budget: budget)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(
+                                        RoundedRectangle(cornerRadius: 24)
+                                            .fill(Color(.secondarySystemGroupedBackground))
+                                    )
                             } else {
                                 TableBudgetSummary(budget: budget)
-                                    .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                                    // Fine-tune the fixed-width columns against
+                                    // the amount pills in the rows below.
+                                    .padding(.leading, 4)
+                                    .padding(.trailing, 4)
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 10)
+                                    .background(
+                                        Capsule()
+                                            .fill(Color(.secondarySystemGroupedBackground))
+                                    )
                             }
                         }
+                        // The List below overrides its default margins with
+                        // 4 pt content margins; match them so the summary is
+                        // the same width as the sections.
+                        .padding(.horizontal, 4)
+                        .padding(.top, 8)
 
-                        // Explains the tab badge (GH #138): which categories
-                        // are overspent, including overspending rolled over
-                        // from earlier months. Shares the badge's Settings
-                        // toggle — off means no overspending callouts at all.
-                        if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
-                            Section {
-                                NavigationLink {
-                                    OverspentCategoriesView()
-                                } label: {
-                                    Label {
-                                        Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
-                                    } icon: {
-                                        Image(systemName: "exclamationmark.circle.fill")
-                                            .foregroundStyle(.red)
-                                    }
-                                }
-                            }
-                        }
-
-                        if budgetStore.uncategorizedCount > 0 {
-                            Section {
-                                NavigationLink {
-                                    UncategorizedTransactionsView()
-                                } label: {
-                                    Label {
-                                        Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
-                                    } icon: {
-                                        Image(systemName: "questionmark.circle.fill")
-                                            .foregroundStyle(.orange)
-                                    }
-                                }
-                            }
-                        }
-
-                        ForEach(groupedCategories, id: \.id) { group in
-                            let isCollapsed = collapsedGroups.contains(group.id)
-                            if budgetStore.budgetDisplayStyle == .clean {
-                                // Clean style: the group name sits above the
-                                // card as a section header, like the App
-                                // Store screenshots. The same collapse
-                                // control lives there so collapsing behaves
-                                // identically in both styles.
+                        List {
+                            // Explains the tab badge (GH #138): which categories
+                            // are overspent, including overspending rolled over
+                            // from earlier months. Shares the badge's Settings
+                            // toggle — off means no overspending callouts at all.
+                            if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
                                 Section {
-                                    if !isCollapsed {
-                                        ForEach(group.categories) { category in
-                                            CleanCategoryBudgetRow(
-                                                category: category,
-                                                onEditBudget: { editingCategory = $0 },
-                                                // Name shows all time, Spent shows
-                                                // the displayed month (GH #56).
-                                                onShowTransactions: showTransactions
-                                            )
+                                    NavigationLink {
+                                        OverspentCategoriesView()
+                                    } label: {
+                                        Label {
+                                            Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
+                                        } icon: {
+                                            Image(systemName: "exclamationmark.circle.fill")
+                                                .foregroundStyle(.red)
                                         }
+                                    }
+                                }
+                            }
+
+                            if budgetStore.uncategorizedCount > 0 {
+                                Section {
+                                    NavigationLink {
+                                        UncategorizedTransactionsView()
+                                    } label: {
+                                        Label {
+                                            Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
+                                        } icon: {
+                                            Image(systemName: "questionmark.circle.fill")
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
+                                }
+                            }
+
+                            ForEach(groupedCategories, id: \.id) { group in
+                                let isCollapsed = collapsedGroups.contains(group.id)
+                                if budgetStore.budgetDisplayStyle == .clean {
+                                    // Clean style: the group name sits above the
+                                    // card as a section header, like the App
+                                    // Store screenshots. The same collapse
+                                    // control lives there so collapsing behaves
+                                    // identically in both styles.
+                                    Section {
+                                        if !isCollapsed {
+                                            ForEach(group.categories) { category in
+                                                CleanCategoryBudgetRow(
+                                                    category: category,
+                                                    onEditBudget: { editingCategory = $0 },
+                                                    // Name shows all time, Spent shows
+                                                    // the displayed month (GH #56).
+                                                    onShowTransactions: showTransactions
+                                                )
+                                            }
+                                        }
+                                    } header: {
+                                        BudgetGroupHeader(
+                                            name: group.name,
+                                            isCollapsed: isCollapsed,
+                                            onToggleCollapse: { toggleCollapsed(group.id) }
+                                        )
+                                        .textCase(nil)
+                                    }
+                                } else {
+                                    // The group row lives inside the card (first
+                                    // row, tinted) like the PWA's table, so its
+                                    // totals share the exact column grid of the
+                                    // rows below.
+                                    Section {
+                                        BudgetGroupHeader(
+                                            name: group.name,
+                                            isCollapsed: isCollapsed,
+                                            totals: budgetStore.showGroupTotals ? group.totals : nil,
+                                            onToggleCollapse: { toggleCollapsed(group.id) }
+                                        )
+                                        .listRowBackground(Color(.tertiarySystemFill))
+                                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
+                                        if !isCollapsed {
+                                            ForEach(group.categories) { category in
+                                                CategoryBudgetRow(
+                                                    category: category,
+                                                    onEditBudget: { editingCategory = $0 },
+                                                    // Name shows all time, Spent shows
+                                                    // the displayed month (GH #56).
+                                                    onShowTransactions: showTransactions
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Income group last, matching the bottom of the web
+                            // UI's budget table.
+                            if !budget.incomeCategories.isEmpty {
+                                Section {
+                                    ForEach(budget.incomeCategories) { income in
+                                        IncomeCategoryRow(
+                                            income: income,
+                                            // Only tracking budgets budget income;
+                                            // envelope budgets just receive it.
+                                            showsBudgeted: budget.toBudget == nil
+                                        )
                                     }
                                 } header: {
-                                    BudgetGroupHeader(
-                                        name: group.name,
-                                        isCollapsed: isCollapsed,
-                                        onToggleCollapse: { toggleCollapsed(group.id) }
-                                    )
-                                    .textCase(nil)
-                                }
-                            } else {
-                                // The group row lives inside the card (first
-                                // row, tinted) like the PWA's table, so its
-                                // totals share the exact column grid of the
-                                // rows below.
-                                Section {
-                                    BudgetGroupHeader(
-                                        name: group.name,
-                                        isCollapsed: isCollapsed,
-                                        totals: budgetStore.showGroupTotals ? group.totals : nil,
-                                        onToggleCollapse: { toggleCollapsed(group.id) }
-                                    )
-                                    .listRowBackground(Color(.tertiarySystemFill))
-                                    .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
-                                    if !isCollapsed {
-                                        ForEach(group.categories) { category in
-                                            CategoryBudgetRow(
-                                                category: category,
-                                                onEditBudget: { editingCategory = $0 },
-                                                // Name shows all time, Spent shows
-                                                // the displayed month (GH #56).
-                                                onShowTransactions: showTransactions
-                                            )
-                                        }
+                                    HStack {
+                                        Text(budget.incomeCategories.first?.groupName ?? "Income")
+                                        Spacer()
+                                        Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
                                     }
                                 }
                             }
                         }
-
-                        // Income group last, matching the bottom of the web
-                        // UI's budget table.
-                        if !budget.incomeCategories.isEmpty {
-                            Section {
-                                ForEach(budget.incomeCategories) { income in
-                                    IncomeCategoryRow(
-                                        income: income,
-                                        // Only tracking budgets budget income;
-                                        // envelope budgets just receive it.
-                                        showsBudgeted: budget.toBudget == nil
-                                    )
+                        // The clean style keeps the stock section rhythm; the
+                        // detailed table packs its group cards tighter.
+                        .listSectionSpacing(
+                            budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
+                        )
+                        .contentMargins(.horizontal, 4, for: .scrollContent)
+                        // The gap under the pinned summary is this top margin
+                        // alone, sized to match the spacing between the group
+                        // sections so the summary reads as part of the table.
+                        .contentMargins(
+                            .top,
+                            budgetStore.budgetDisplayStyle == .clean ? 18 : 14,
+                            for: .scrollContent
+                        )
+                        // Let short rows (group headers) sit below the stock
+                        // 44 pt minimum; tap targets stay fine because the whole
+                        // row is the button.
+                        .environment(\.defaultMinListRowHeight, 32)
+                        .gesture(
+                            DragGesture(minimumDistance: 30)
+                                .onEnded { value in
+                                    let dx = value.translation.width
+                                    let dy = value.translation.height
+                                    guard abs(dx) > abs(dy) * 1.5, abs(dx) > 60 else { return }
+                                    if dx > 0 {
+                                        selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
+                                    } else {
+                                        selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
+                                    }
                                 }
-                            } header: {
-                                HStack {
-                                    Text(budget.incomeCategories.first?.groupName ?? "Income")
-                                    Spacer()
-                                    Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
-                                }
-                            }
-                        }
+                        )
                     }
-                    // The clean style keeps the stock section rhythm; the
-                    // detailed table packs its group cards tighter.
-                    .listSectionSpacing(
-                        budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
-                    )
-                    .contentMargins(.horizontal, 4, for: .scrollContent)
-                    // Let short rows (group headers) sit below the stock
-                    // 44 pt minimum; tap targets stay fine because the whole
-                    // row is the button.
-                    .environment(\.defaultMinListRowHeight, 32)
-                    .gesture(
-                        DragGesture(minimumDistance: 30)
-                            .onEnded { value in
-                                let dx = value.translation.width
-                                let dy = value.translation.height
-                                guard abs(dx) > abs(dy) * 1.5, abs(dx) > 60 else { return }
-                                if dx > 0 {
-                                    selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
-                                } else {
-                                    selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
-                                }
-                            }
-                    )
+                    // The pinned summary sits outside the List, so paint the
+                    // grouped background behind it to match.
+                    .background(Color(.systemGroupedBackground).ignoresSafeArea())
                 } else if !budgetStore.isLoading {
                     if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
                         ContentUnavailableView(
@@ -647,7 +681,7 @@ struct BudgetAmountPill: View {
             .frame(width: BudgetColumn.width, alignment: .trailing)
             .background(
                 RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.systemFill).opacity(0.6))
+                    .fill(Color(.systemFill).opacity(0.1))
             )
     }
 }
