@@ -691,18 +691,34 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
-    func logout() {
+func logout() {
         Task {
             await serverClient.setToken(nil)
         }
         try? Keychain.remove(for: "authToken")
         // Defensively remove any legacy UserDefaults copy
         UserDefaults.standard.removeObject(forKey: "authToken")
+
+        // Wipe every locally-synced budget's database and metadata from
+        // disk — disconnecting should leave nothing behind, not just the
+        // auth token (GH: disconnect should clear local data).
+        for local in fileManager.listLocalBudgets() {
+            try? fileManager.deleteBudget(local.id)
+        }
+
         isConnected = false
         remoteBudgets = []
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+
+        // Clear everything currently loaded in memory too, so nothing from
+        // the old budget lingers in the UI post-disconnect.
+        currentBudgetId = nil
+        currentBudgetMonth = nil
+        accounts = []
+        categoryGroups = []
+        payees = []
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
