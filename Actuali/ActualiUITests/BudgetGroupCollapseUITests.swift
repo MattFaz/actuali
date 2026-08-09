@@ -43,9 +43,9 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 
-        let menuButton = app.buttons["Expand or collapse all groups"]
+        let menuButton = app.buttons["Budget options"]
         XCTAssertTrue(menuButton.waitForExistence(timeout: 10),
-                      "the budget toolbar should offer the expand/collapse menu")
+                      "the budget toolbar should offer the options menu")
         menuButton.tap()
 
         let collapseAll = app.buttons["Collapse All Groups"]

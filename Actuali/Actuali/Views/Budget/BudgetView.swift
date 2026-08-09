@@ -200,11 +200,6 @@ struct BudgetView: View {
                                 }
                             }
                         }
-                        Section {
-                            Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
-                        } footer: {
-                            Text("Hides categories with no budget left this month")
-                        }
                     }
                     // The clean style keeps the stock section rhythm; the
                     // detailed table packs its group cards tighter.
@@ -246,44 +241,34 @@ struct BudgetView: View {
             }
             .navigationTitle("Budget")
             .toolbar {
-                ToolbarItemGroup(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
                     } label: {
                         Image(systemName: "chevron.left")
                     }
                     .accessibilityLabel("Previous month")
-
-                    BudgetLayoutButton()
-
-                    // Whole-table expand/collapse (GH #130). A toolbar menu
-                    // rather than a long-press on the group headers: SwiftUI
-                    // context menus don't fire inside the clean style's
-                    // section headers.
-                    if budgetStore.currentBudgetMonth != nil {
-                        Menu {
-                            Button(action: expandAllGroups) {
-                                Label("Expand All Groups", systemImage: "chevron.down")
-                            }
-                            Button(action: collapseAllGroups) {
-                                Label("Collapse All Groups", systemImage: "chevron.right")
-                            }
-                        } label: {
-                            Image(systemName: "chevron.up.chevron.down")
-                        }
-                        .accessibilityLabel("Expand or collapse all groups")
-                    }
                 }
                 ToolbarItem(placement: .principal) {
                     MonthPicker(selectedMonth: $selectedMonth)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
                     Button {
                         selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                     } label: {
                         Image(systemName: "chevron.right")
                     }
                     .accessibilityLabel("Next month")
+
+                    // Every "how should this look" control lives here (GH
+                    // #157). Whole-table expand/collapse is a menu rather
+                    // than a long-press on the group headers: SwiftUI context
+                    // menus don't fire inside the clean style's section
+                    // headers (GH #130).
+                    BudgetOptionsMenu(
+                        expandAllGroups: budgetStore.currentBudgetMonth == nil ? nil : expandAllGroups,
+                        collapseAllGroups: budgetStore.currentBudgetMonth == nil ? nil : collapseAllGroups
+                    )
                 }
             }
             .onChange(of: selectedMonth) { _, newMonth in
