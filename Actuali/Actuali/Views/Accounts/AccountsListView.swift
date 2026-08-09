@@ -77,9 +77,6 @@ struct AccountsListView: View {
             }
             .navigationTitle("Accounts")
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    BalanceVisibilityButton()
-                }
                 ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
                 }
