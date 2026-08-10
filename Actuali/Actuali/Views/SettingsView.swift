@@ -79,7 +79,6 @@ struct SettingsView: View {
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
-    @State private var lastRefreshRequest = BackgroundRefreshStatus().lastScheduleAttempt
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
 
     /// Persists the opt-in and requests permission on enable. Background
@@ -117,7 +116,6 @@ struct SettingsView: View {
     private func reloadBackgroundRefreshStatus() {
         let status = BackgroundRefreshStatus()
         lastBackgroundRefresh = status.lastRun
-        lastRefreshRequest = status.lastScheduleAttempt
         refreshRequestError = status.lastScheduleError
     }
 
@@ -448,24 +446,13 @@ struct SettingsView: View {
                             }
                         }
 
-                        // Companion diagnostic: proves the app asked iOS for a
-                        // wake. A recent request alongside a stale refresh
-                        // above points at the system or device settings, not
-                        // the app.
-                        HStack {
-                            Text("Last Refresh Request")
-                            Spacer()
-                            if let lastRefreshRequest {
-                                Text(lastRefreshRequest, style: .relative)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("Never")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
+                        // Distinguishes "the app never asked for a wake" from
+                        // "iOS never granted one": a stale row above with no
+                        // footnote here points at the system or device
+                        // settings, not the app. Hidden while submits succeed
+                        // (the common case — we resubmit on every activation).
                         if let refreshRequestError {
-                            Text("Last request failed: \(refreshRequestError)")
+                            Text("Refresh request failed: \(refreshRequestError)")
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
