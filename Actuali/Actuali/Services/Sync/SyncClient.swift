@@ -649,15 +649,21 @@ actor SyncClient {
             sinceTimestamp = since
         } else if let lastSynced = effectiveLastSynced {
             sinceTimestamp = lastSynced
+        } else if let baseline = downloadBaselineTimestamp, !baseline.isEmpty {
+            // No valid lastSynced (fresh download, or reset sync state). The
+            // downloaded snapshot's message high-water mark is the true sync
+            // floor: everything the server has after it is missing locally no
+            // matter how old. A fabricated recent window here (formerly 24h)
+            // silently skipped every message between an older file snapshot
+            // and yesterday, and the merkle adoption below then made the gap
+            // permanent (issue #99).
+            logger.notice("No valid lastSyncedTimestamp, using snapshot high-water mark")
+            sinceTimestamp = baseline
         } else {
-            // No valid lastSynced - use 24 hours ago to catch recent changes
-            // This handles both fresh downloads (merkle=0) and recovered from bad state
-            logger.notice("No valid lastSyncedTimestamp, using 24h window")
-            sinceTimestamp = HLCTimestamp(
-                millis: Int64(Date().addingTimeInterval(-86400).timeIntervalSince1970 * 1000),
-                counter: 0,
-                node: "0"
-            ).toString()
+            // No local messages at all — ask for the server's entire message
+            // log, which only spans back to the file's last upload/reset.
+            logger.notice("No valid lastSyncedTimestamp and empty message log, requesting full server log")
+            sinceTimestamp = HLCTimestamp.zero.toString()
         }
 
         logger.debug("Using sinceTimestamp: \(sinceTimestamp, privacy: .public)")
