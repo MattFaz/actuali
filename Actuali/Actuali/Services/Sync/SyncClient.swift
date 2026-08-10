@@ -443,6 +443,53 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Move budgeted funds between two categories in a month, or between a
+    /// category and "To Budget" (nil side), optimistic local-first. Mirrors
+    /// upstream transferCategory / coverOverspending / transferAvailable
+    /// (loot-core budget/actions.ts): the source cell's amount shrinks, the
+    /// destination cell's grows, and the To Budget figure — being derived —
+    /// needs no write at all. Both cells go out in one message batch so a
+    /// failure can't strand half the transfer.
+    func transferBudget(month: String, fromCategoryId: String?, toCategoryId: String?, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("transferBudget() - month: \(month, privacy: .public), from: \(fromCategoryId ?? "to-budget", privacy: .private), to: \(toCategoryId ?? "to-budget", privacy: .private), amount: \(amount, privacy: .private)")
+
+        // 1. Generate CRDT messages for both cells (before any DB write, so
+        //    an HLC failure leaves nothing stranded)
+        var messages: [CRDTMessage] = []
+        for (categoryId, delta) in [(fromCategoryId, -amount), (toCategoryId, amount)] {
+            guard let categoryId else { continue } // To Budget side is derived
+            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+                throw SyncError.budgetTableMissing
+            }
+            var fields: [(column: String, value: Any?)] = []
+            if !cell.exists {
+                fields.append(("month", cell.monthInt))
+                fields.append(("category", categoryId))
+            }
+            fields.append(("amount", cell.amount + delta))
+            messages += try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Advance a schedule's next date after posting (optimistic local-first).
     /// Mirrors loot-core setNextDate (non-reset branch): `local_next_date`
     /// moves, and `local_next_date_ts` copies the CURRENT `base_next_date_ts`

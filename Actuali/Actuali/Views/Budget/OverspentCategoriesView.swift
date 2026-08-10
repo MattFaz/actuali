@@ -6,6 +6,7 @@ import SwiftUI
 /// transaction list, or a sync) updates the list on the way back.
 struct OverspentCategoriesView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @State private var transferContext: BudgetTransferContext?
 
     var body: some View {
         Group {
@@ -15,10 +16,24 @@ struct OverspentCategoriesView: View {
                     Section {
                         ForEach(budget.overspentCategories) { category in
                             OverspentCategoryRow(category: category)
+                                // The fix, right where the problem is listed
+                                // (GH #128): swipe to cover the overspending
+                                // from To Budget or another category.
+                                .swipeActions(edge: .trailing) {
+                                    Button {
+                                        transferContext = BudgetTransferContext(category: category, budget: budget)
+                                    } label: {
+                                        Label("Cover", systemImage: "arrow.left.arrow.right")
+                                    }
+                                    .tint(.green)
+                                }
                         }
                     } footer: {
-                        Text("Categories with a negative balance in \(MonthPicker.title(for: budget.month)). Balances include overspending rolled over from earlier months, which this month's transactions alone won't explain.")
+                        Text("Categories with a negative balance in \(MonthPicker.title(for: budget.month)). Balances include overspending rolled over from earlier months, which this month's transactions alone won't explain. Swipe a category to cover its overspending.")
                     }
+                }
+                .sheet(item: $transferContext) { context in
+                    BudgetTransferSheet(context: context)
                 }
             } else {
                 ContentUnavailableView(
