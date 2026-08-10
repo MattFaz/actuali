@@ -32,8 +32,15 @@ final class BudgetTabBadgeUITests: XCTestCase {
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
         app.tabBars.buttons["Settings"].tap()
+        // The toggle sits below the fold as Settings has grown, and lazy
+        // lists don't expose off-screen rows — scroll until it's reachable.
         let toggle = app.switches["Overspent Badge"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
+        var scrollsLeft = 8
+        while !toggle.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(toggle.isHittable, "Overspent Badge toggle not found")
         tapSwitch(toggle)
         XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
                       "badge still shown with the setting off: \(budgetTab.debugDescription)")
