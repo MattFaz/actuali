@@ -320,7 +320,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Private
 
     private let serverClient = ActualServerClient()
-    private let fileManager = BudgetFileManager.shared
+    private var fileManager = BudgetFileManager.shared
     private var database: BudgetDatabase? {
         didSet {
             // The cached poster holds the database strongly; drop it whenever
@@ -463,6 +463,13 @@ final class BudgetStore: ObservableObject {
     /// database, simulating an init()-time load that failed (actios-tq4w).
     func simulateFailedInitialLoadForTesting() {
         loadTask = Task {}
+    }
+
+    /// Test-only: swap in a file manager rooted at a temp directory so
+    /// logout()'s full wipe can be exercised without touching the shared
+    /// Budgets directory (parallel suites create real budgets there).
+    func setFileManagerForTesting(_ manager: BudgetFileManager) {
+        fileManager = manager
     }
     #endif
 
@@ -691,18 +698,61 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
-    func logout() {
+    /// Clear the server session and, by default, wipe all local budget data.
+    /// - Parameter clearLocalData: pass `false` to keep budget files on disk
+    ///   (the demo entry point clears the session without destroying data;
+    ///   only an explicit Disconnect wipes it).
+    func logout(clearLocalData: Bool = true) {
         Task {
             await serverClient.setToken(nil)
         }
         try? Keychain.remove(for: "authToken")
         // Defensively remove any legacy UserDefaults copy
         UserDefaults.standard.removeObject(forKey: "authToken")
+
+        // Close the open database and sync client BEFORE touching files.
+        // A deleted-but-open database stays readable through its fd (the
+        // "vnode unlinked" hazard downloadBudget also guards against), and a
+        // live sync client would let the next foreground refresh republish
+        // the wiped budget's data from that orphaned connection.
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
+        if clearLocalData {
+            // Wipe every locally-synced budget's database and metadata from
+            // disk — disconnecting should leave nothing behind, not just the
+            // auth token (GH: disconnect should clear local data). Encrypted
+            // budgets' Keychain keys go too: they must not outlive the files
+            // they unlock.
+            for local in fileManager.listLocalBudgets() {
+                if let fileId = local.cloudFileId {
+                    try? EncryptionKeyManager.remove(fileId: fileId)
+                }
+                try? fileManager.deleteBudget(local.id)
+            }
+        }
+
         isConnected = false
         remoteBudgets = []
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+
+        // Clear everything currently loaded in memory too, so nothing from
+        // the old budget lingers in the UI post-disconnect. The dataVersion
+        // bump makes views that cache their own fetches drop them.
+        currentBudgetId = nil
+        currentBudgetMonth = nil
+        accounts = []
+        transactions = []
+        uncategorizedCount = 0
+        categoryGroups = []
+        payees = []
+        lastSyncTime = nil
+        syncState = .idle
+        dataVersion += 1
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -949,8 +999,10 @@ final class BudgetStore: ObservableObject {
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
     func loadDemoData() async {
-        // Log out any active session so sync doesn't try to fire against a real server
-        logout()
+        // Log out any active session so sync doesn't try to fire against a
+        // real server — but keep local budget files: trying the demo must
+        // never destroy a user's synced data.
+        logout(clearLocalData: false)
         do {
             try DemoDataSeeder.seed()
             currentBudgetId = DemoDataSeeder.budgetId
