@@ -72,6 +72,15 @@ final class BudgetTabBadgeUITests: XCTestCase {
         let field = app.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
         field.tap()
+        // A tap that lands while the sheet is still animating in focuses
+        // nothing (seen on CI runners) — re-tap until focus takes.
+        var focusTries = 10
+        while !field.hasKeyboardFocus && focusTries > 0 {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
+            if !field.hasKeyboardFocus { field.tap() }
+            focusTries -= 1
+        }
+        XCTAssertTrue(field.hasKeyboardFocus, "amount field never took keyboard focus")
         // Focus select-alls the current value asynchronously; don't rely on
         // that racing in our favor — backspace the old value away instead.
         field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
@@ -117,5 +126,13 @@ final class BudgetTabBadgeUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
+    }
+}
+
+extension XCUIElement {
+    /// XCUITest exposes keyboard focus only through the accessibility
+    /// attribute; there is no public iOS API for it.
+    var hasKeyboardFocus: Bool {
+        (value(forKey: "hasKeyboardFocus") as? Bool) ?? false
     }
 }
