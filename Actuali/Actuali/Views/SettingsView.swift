@@ -79,6 +79,8 @@ struct SettingsView: View {
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
+    @State private var lastRefreshRequest = BackgroundRefreshStatus().lastScheduleAttempt
+    @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -110,6 +112,13 @@ struct SettingsView: View {
         guard transactionNotificationsEnabled else { return }
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         notificationPermissionDenied = status == .denied
+    }
+
+    private func reloadBackgroundRefreshStatus() {
+        let status = BackgroundRefreshStatus()
+        lastBackgroundRefresh = status.lastRun
+        lastRefreshRequest = status.lastScheduleAttempt
+        refreshRequestError = status.lastScheduleError
     }
 
     private static var appVersion: String {
@@ -439,6 +448,29 @@ struct SettingsView: View {
                             }
                         }
 
+                        // Companion diagnostic: proves the app asked iOS for a
+                        // wake. A recent request alongside a stale refresh
+                        // above points at the system or device settings, not
+                        // the app.
+                        HStack {
+                            Text("Last Refresh Request")
+                            Spacer()
+                            if let lastRefreshRequest {
+                                Text(lastRefreshRequest, style: .relative)
+                                    .foregroundStyle(.secondary)
+                            } else {
+                                Text("Never")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+
+                        if let refreshRequestError {
+                            Text("Last request failed: \(refreshRequestError)")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+
                         Button("Sync Now") {
                             Task {
                                 await budgetStore.sync()
@@ -522,7 +554,7 @@ struct SettingsView: View {
             .navigationTitle("Settings")
             .contentMargins(.horizontal, 6, for: .scrollContent)
             .task {
-                lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
+                reloadBackgroundRefreshStatus()
                 await refreshNotificationPermissionState()
             }
             // The background refresh task fires while the app is suspended —
@@ -530,7 +562,7 @@ struct SettingsView: View {
             // re-reads on its own and would show "Never" indefinitely.
             .onChange(of: scenePhase) { _, newPhase in
                 if newPhase == .active {
-                    lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
+                    reloadBackgroundRefreshStatus()
                 }
             }
             .sheet(item: $budgetToUnlock) { budget in

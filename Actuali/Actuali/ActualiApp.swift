@@ -22,7 +22,10 @@ struct ActualiApp: App {
         // Clean slate so BackgroundRefreshRowUITests always starts at "Never"
         // regardless of what earlier runs left in UserDefaults.
         if CommandLine.arguments.contains("-stampBackgroundRefreshOnBackground") {
-            BackgroundRefreshStatus().lastRun = nil
+            let status = BackgroundRefreshStatus()
+            status.lastRun = nil
+            status.lastScheduleAttempt = nil
+            status.lastScheduleError = nil
         }
         #endif
     }
@@ -78,6 +81,11 @@ struct ActualiApp: App {
                 }
                 .onChange(of: scenePhase) { oldPhase, newPhase in
                     if newPhase == .active && oldPhase != .active {
+                        // Submitting here as well as on backgrounding covers a
+                        // first launch that never backgrounds cleanly and
+                        // retries a submit that failed last time; a duplicate
+                        // submit just replaces the pending request.
+                        BackgroundRefresh.schedule()
                         Task {
                             await budgetStore.syncOnForeground()
                         }

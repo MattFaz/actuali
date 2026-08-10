@@ -37,5 +37,10 @@ final class BackgroundRefreshRowUITests: XCTestCase {
         XCTAssertTrue(never.waitForNonExistence(timeout: 5),
                       "row still shows Never after a refresh fired while backgrounded")
         XCTAssertTrue(row.exists, "row disappeared after reactivation")
+
+        // Backgrounding also submits a wake request, so the companion
+        // diagnostic row must show a timestamp by now too.
+        XCTAssertTrue(app.staticTexts["Last Refresh Request"].exists,
+                      "Last Refresh Request row not found after reactivation")
     }
 }
