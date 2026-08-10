@@ -1,0 +1,117 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout
+  title="Siri & Shortcuts · Actuali"
+  description="Log transactions, check balances, and route purchases to the right account with Siri and the Shortcuts app."
+>
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Siri &amp; Shortcuts</h1>
+      <p class="text-neutral-500">
+        Actuali ships a set of Shortcuts actions so you can log transactions, check balances, and build your own
+        automations — by voice, from a widget, or entirely in the background.
+      </p>
+    </header>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Ask Siri</h2>
+      <p class="text-neutral-700">
+        These phrases work as soon as the app is installed — no setup needed. Siri fills in the account or category you
+        name, or asks if you leave it out.
+      </p>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>"Log transaction in <strong>Actuali</strong>"</li>
+        <li>"Check <em>Everyday</em> balance in <strong>Actuali</strong>"</li>
+        <li>"How much is left in <em>Groceries</em> in <strong>Actuali</strong>"</li>
+        <li>"List accounts in <strong>Actuali</strong>"</li>
+      </ul>
+      <p class="text-neutral-700">
+        Balance answers are spoken back with your budget's currency, and they work even when the app isn't running.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Actions in the Shortcuts app</h2>
+      <p class="text-neutral-700">
+        Search for <strong>Actuali</strong> when adding an action to any shortcut or automation:
+      </p>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Log Transaction</strong> — add a transaction with amount, payee, account, date, and notes. Used by the
+          <a href="/guides/wallet-automation" class="underline hover:text-neutral-900">Apple Wallet automation</a> to log
+          tap-to-pay purchases automatically.
+        </li>
+        <li><strong>Get Account Balance</strong> — the current balance of an account (or your default account).</li>
+        <li><strong>Get Category Balance</strong> — how much is left in a category this month.</li>
+        <li>
+          <strong>Get Accounts</strong>, <strong>Get Categories</strong>, <strong>Get Payees</strong> — return lists you
+          can feed into menus, filters, or other steps when building bigger shortcuts.
+        </li>
+      </ul>
+      <p class="text-neutral-700">
+        The balance actions also return their result as a value, so a shortcut can speak it, show it, or use it in a
+        calculation.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Route purchases to the right account</h2>
+      <p class="text-neutral-700">
+        If you log from more than one card, you don't need a separate automation account setting for each. The
+        <strong>Log Transaction</strong> action has an optional <strong>Card or Account Hint</strong> field: pass it the
+        card name from a Wallet automation (or any text that identifies the card), and Actuali picks the account for
+        you.
+      </p>
+      <ol class="list-decimal space-y-2 pl-6 text-neutral-700">
+        <li>
+          In Actuali, open <strong>Settings</strong> → <strong>Preferences</strong> →
+          <strong>Card &amp; Account Mappings</strong>.
+        </li>
+        <li>
+          Add a keyword for each card — the last 4 digits (<em>1234</em>) or the bank name (<em>HSBC</em>) — and choose
+          the account it should route to.
+        </li>
+        <li>
+          In your shortcut, set the <strong>Card or Account Hint</strong> field on Log Transaction to the card's name or
+          number (from a Wallet automation, use the <strong>Card</strong> variable).
+        </li>
+      </ol>
+      <p class="text-neutral-700">
+        Matching is deliberately cautious: a hint that doesn't clearly match one account falls back to the account set
+        in the shortcut, or your default account — a transaction is never silently routed on a guess.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Troubleshooting</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Siri doesn't recognise the phrases?</strong> Give iOS a minute after installing or updating the app —
+          the system registers App Shortcuts in the background. Saying the app name ("in Actuali") is required.
+        </li>
+        <li>
+          <strong>"Select an account" error?</strong> Choose an account in the shortcut's action, add a card mapping
+          that matches your hint, or set a Default Account in Actuali's Settings.
+        </li>
+        <li>
+          <strong>"Open Actuali and select a budget first"?</strong> The app needs to have loaded your budget once —
+          open it and pick your budget, then the actions work headless from then on.
+        </li>
+        <li>
+          <strong>Hint routes to the wrong account?</strong> Check your mappings for overlapping keywords — the longest
+          matching keyword wins. Keywords match whole words, so <em>Cash</em> won't match <em>cashback</em>.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Questions?</h2>
+      <p class="text-neutral-700">
+        See the <a href="/support" class="underline hover:text-neutral-900">support page</a> or email
+        <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900">actuali@mfazz.com</a>.
+      </p>
+    </section>
+  </article>
+</Layout>
