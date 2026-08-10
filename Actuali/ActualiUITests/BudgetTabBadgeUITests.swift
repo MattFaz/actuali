@@ -71,20 +71,16 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         let field = app.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
-        field.tap()
-        // A tap that lands while the sheet is still animating in focuses
-        // nothing (seen on CI runners) — re-tap until focus takes.
-        var focusTries = 10
-        while !field.hasKeyboardFocus && focusTries > 0 {
-            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-            if !field.hasKeyboardFocus { field.tap() }
-            focusTries -= 1
+        // The sheet autofocuses the field; the decimal pad appearing is the
+        // signal that it's ready. Enter the amount by tapping keypad keys —
+        // typeText's focus-dependent event synthesis flakes on CI runners.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not appear for the amount field")
+        let deleteKey = app.keys["Delete"]
+        for _ in 0..<10 { deleteKey.tap() }
+        for digit in centsKeystrokes {
+            app.keys[String(digit)].tap()
         }
-        XCTAssertTrue(field.hasKeyboardFocus, "amount field never took keyboard focus")
-        // Focus select-alls the current value asynchronously; don't rely on
-        // that racing in our favor — backspace the old value away instead.
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
-        field.typeText(centsKeystrokes)
 
         let saveButton = app.buttons["Save"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")
@@ -126,13 +122,5 @@ final class BudgetTabBadgeUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-    }
-}
-
-extension XCUIElement {
-    /// XCUITest exposes keyboard focus only through the accessibility
-    /// attribute; there is no public iOS API for it.
-    var hasKeyboardFocus: Bool {
-        (value(forKey: "hasKeyboardFocus") as? Bool) ?? false
     }
 }
