@@ -274,6 +274,17 @@ final class BudgetStore: ObservableObject {
         hideBalances ? Self.hiddenBalanceText : formatCurrencyWholeUnits(cents)
     }
 
+    /// The clean row's "Spent" caption, from the signed net activity
+    /// (negative = spending). Spending keeps the familiar positive amount,
+    /// but a net inflow keeps a leading "+" so a category that only received
+    /// deposits can't masquerade as spending (GH #102).
+    func displaySpentCaption(_ spentCents: Int) -> String {
+        guard !hideBalances else { return Self.hiddenBalanceText }
+        return spentCents > 0
+            ? "+\(formatCurrency(spentCents))"
+            : formatCurrency(-spentCents)
+    }
+
     /// Whether transaction saves record the payee's location (GH #24).
     /// Persisted to UserDefaults, defaults to on. Off silences every
     /// recording path, including Shortcuts automations.

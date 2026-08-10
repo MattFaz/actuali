@@ -560,9 +560,13 @@ struct CleanCategoryBudgetRow: View {
                     onShowTransactions(category, category.month)
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Spent: \(budgetStore.displayBalance(abs(category.spent)))")
+                        // Green + signed so a deposit-only category doesn't
+                        // read as spending (GH #102).
+                        Text("Spent: \(budgetStore.displaySpentCaption(category.spent))")
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(category.spent > 0
+                                ? AnyShapeStyle(Color.green)
+                                : AnyShapeStyle(.secondary))
                         Image(systemName: "list.bullet")
                             .font(.caption2)
                             .foregroundStyle(.tint)
