@@ -46,6 +46,80 @@ struct BackgroundRefreshTests {
 
         #expect(spy.submitted.isEmpty)
     }
+
+    /// The hint is only a floor — iOS schedules at its own discretion — so a
+    /// low floor gives the system more windows to pick from.
+    @Test func minimumIntervalIsOneHour() {
+        #expect(BackgroundRefresh.minimumInterval == 60 * 60)
+    }
+
+    @Test func scheduleRecordsAttemptTimeAndClearsPreviousError() {
+        let spy = SubmitSpy()
+        let defaults = makeIsolatedDefaults()
+        let status = BackgroundRefreshStatus(defaults: defaults)
+        status.lastScheduleError = "stale failure"
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        BackgroundRefresh.schedule(using: spy, now: now, defaults: defaults)
+
+        #expect(status.lastScheduleAttempt == now)
+        #expect(status.lastScheduleError == nil)
+    }
+
+    /// "We asked and iOS said no" must be distinguishable from "we never
+    /// asked" — that ambiguity is what makes Never-style bugs undebuggable.
+    @Test func scheduleRecordsErrorWhenSubmitFails() {
+        let spy = SubmitSpy()
+        spy.error = NSError(domain: "test", code: 1,
+                            userInfo: [NSLocalizedDescriptionKey: "refresh unavailable"])
+        let defaults = makeIsolatedDefaults()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        BackgroundRefresh.schedule(using: spy, now: now, defaults: defaults)
+
+        let status = BackgroundRefreshStatus(defaults: defaults)
+        #expect(status.lastScheduleAttempt == now)
+        #expect(status.lastScheduleError == "refresh unavailable")
+    }
+
+    @Test func handleReschedulesStampsWakeAndCompletesWithSyncResult() async {
+        let spy = SubmitSpy()
+        let defaults = makeIsolatedDefaults()
+        let task = TaskSpy()
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+
+        await BackgroundRefresh.handle(task, scheduler: spy, now: now,
+                                       defaults: defaults) { true }.value
+
+        #expect(spy.submitted.map(\.identifier) == [BackgroundRefresh.taskIdentifier])
+        #expect(BackgroundRefreshStatus(defaults: defaults).lastRun == now)
+        #expect(task.completions == [true])
+    }
+
+    @Test func handleExpirationCancelsSyncAndStillCompletes() async {
+        let task = TaskSpy()
+        let defaults = makeIsolatedDefaults()
+
+        let work = BackgroundRefresh.handle(task, scheduler: SubmitSpy(),
+                                            now: Date(timeIntervalSince1970: 0),
+                                            defaults: defaults) {
+            // The expiration handler must already be wired when sync starts;
+            // spin until its cancellation reaches us.
+            #expect(task.expirationHandler != nil)
+            while !Task.isCancelled { await Task.yield() }
+            return false
+        }
+        task.expirationHandler?()
+        await work.value
+
+        #expect(task.completions == [false])
+    }
+
+    private func makeIsolatedDefaults() -> UserDefaults {
+        let defaults = UserDefaults(suiteName: "BackgroundRefreshTests-\(UUID().uuidString)")!
+        defaults.removePersistentDomain(forName: defaults.description)
+        return defaults
+    }
 }
 
 private final class SubmitSpy: BackgroundTaskRequesting {
@@ -56,4 +130,11 @@ private final class SubmitSpy: BackgroundTaskRequesting {
         if let error { throw error }
         submitted.append(taskRequest)
     }
+}
+
+private final class TaskSpy: BackgroundRefreshTask {
+    var expirationHandler: (() -> Void)?
+    var completions: [Bool] = []
+
+    func setTaskCompleted(success: Bool) { completions.append(success) }
 }

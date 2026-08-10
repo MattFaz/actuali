@@ -37,5 +37,12 @@ final class BackgroundRefreshRowUITests: XCTestCase {
         XCTAssertTrue(never.waitForNonExistence(timeout: 5),
                       "row still shows Never after a refresh fired while backgrounded")
         XCTAssertTrue(row.exists, "row disappeared after reactivation")
+
+        // Backgrounding also submits a wake request, and on the simulator
+        // BGTaskScheduler always refuses it — exactly the condition the
+        // error footnote exists to surface.
+        let failure = app.staticTexts.matching(
+            NSPredicate(format: "label BEGINSWITH 'Refresh request failed'")).firstMatch
+        XCTAssertTrue(failure.exists, "refresh request error footnote not shown")
     }
 }
