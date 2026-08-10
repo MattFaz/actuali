@@ -366,6 +366,77 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Payees that have recorded locations, for the Payee Locations screen
+    /// (GH #147). Degrades to "nothing recorded" on any failure.
+    func fetchPayeesWithLocations() async -> [PayeeLocationSummary] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchPayeesWithLocations()
+        } catch {
+            logger.error("fetchPayeesWithLocations failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// The recorded locations for one payee, newest first.
+    func fetchPayeeLocations(payeeId: String) async -> [PayeeLocation] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchPayeeLocations(payeeId: payeeId)
+        } catch {
+            logger.error("fetchPayeeLocations failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// Tombstone several recorded payee locations ("Clear All Locations").
+    /// Same server-version gate as `deletePayeeLocation`; returns whether the
+    /// delete stuck so the rows can stay visible on failure.
+    func deletePayeeLocations(_ locations: [PayeeLocation]) async -> Bool {
+        guard payeeLocationWritesEnabled, let syncClient else { return false }
+        do {
+            try await syncClient.deletePayeeLocations(locations)
+            return true
+        } catch {
+            logger.error("deletePayeeLocations failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+#if DEBUG
+    /// Records two locations against a known demo payee so PayeeLocationsUITests
+    /// can exercise the clear paths. A UI test can't record a real coordinate —
+    /// Core Location isn't drivable from XCUITest — so the app stands one in,
+    /// the same trick -stampBackgroundRefreshOnBackground uses.
+    func seedDebugPayeeLocations(payeeName: String) async {
+        // Read the payee from the database, not the @Published cache: the demo
+        // load that populates the cache may still be settling.
+        guard let database,
+              let payees = try? await database.fetchPayees(),
+              let payee = payees.first(where: {
+                  !$0.tombstone && $0.name == payeeName
+              }) else {
+            logger.error("seedDebugPayeeLocations: payee \(payeeName, privacy: .public) not found")
+            return
+        }
+        // Sydney Opera House and Melbourne — far enough apart to be distinct rows.
+        let coordinates = [(-33.8568, 151.2153), (-37.8136, 144.9631)]
+        for (index, coordinate) in coordinates.enumerated() {
+            do {
+                try database.insertPayeeLocation(PayeeLocation(
+                    id: "debug-loc-\(index)",
+                    payeeId: payee.id,
+                    latitude: coordinate.0,
+                    longitude: coordinate.1,
+                    createdAt: 1_751_760_000_000 + Int64(index)
+                ))
+            } catch {
+                logger.error("seedDebugPayeeLocations insert failed: \(error, privacy: .public)")
+            }
+        }
+    }
+#endif
+
     /// Accounts for App Intents (the Log Transaction Shortcut).
     ///
     /// `LogTransactionIntent` runs with `openAppWhenRun = false`, so Shortcuts

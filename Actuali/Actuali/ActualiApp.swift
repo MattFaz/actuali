@@ -37,6 +37,11 @@ struct ActualiApp: App {
                     if CommandLine.arguments.contains("-loadDemoData") {
                         await budgetStore.loadDemoData()
                     }
+                    // Stands in for coordinates the Add Transaction form would
+                    // have recorded, so PayeeLocationsUITests can clear them.
+                    if CommandLine.arguments.contains("-seedPayeeLocations") {
+                        await budgetStore.seedDebugPayeeLocations(payeeName: "Whole Foods")
+                    }
                     // Posts the same failure notification LogTransactionIntent
                     // posts, so the notification-tap flow can be exercised
                     // end-to-end by ActualiUITests.

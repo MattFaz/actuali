@@ -2289,6 +2289,36 @@ class BudgetDatabase {
         }
     }
 
+    /// Every non-tombstoned payee that still has at least one non-tombstoned
+    /// location, name-ordered, with its live location count — the top level of
+    /// the Payee Locations screen. The NULL guards match
+    /// `fetchPayeeLocations`, so a count never overstates what the detail
+    /// screen can show.
+    func fetchPayeesWithLocations() async throws -> [PayeeLocationSummary] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT p.id, p.name, p.transfer_acct, COUNT(pl.id) AS location_count
+                FROM payees p
+                JOIN payee_locations pl ON pl.payee_id = p.id
+                WHERE p.tombstone IS NOT 1 AND pl.tombstone IS NOT 1
+                  AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL
+                  AND pl.created_at IS NOT NULL
+                GROUP BY p.id
+                ORDER BY p.name COLLATE NOCASE ASC, p.id ASC
+                """)
+            return rows.map { row in
+                PayeeLocationSummary(
+                    payee: Payee(
+                        id: row["id"],
+                        name: row["name"] ?? "Unknown",
+                        transferAccountId: row["transfer_acct"]
+                    ),
+                    locationCount: row["location_count"]
+                )
+            }
+        }
+    }
+
     /// Nearby payees: closest non-tombstoned location per non-tombstoned
     /// payee within `maxDistanceMeters`, ascending by distance, limit 10
     /// (upstream getNearbyPayees). Distance is computed in Swift because the

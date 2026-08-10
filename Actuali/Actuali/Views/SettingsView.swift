@@ -349,6 +349,14 @@ struct SettingsView: View {
                     // locations (< 26.4.0), so hidden there.
                     if budgetStore.payeeLocationWritesEnabled {
                         Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+
+                        // Clearing needs the same >= 26.4.0 server, so this
+                        // lives inside the gate too (GH #147).
+                        NavigationLink {
+                            PayeeLocationsView()
+                        } label: {
+                            Text("Payee Locations")
+                        }
                     }
 
                     if budgetStore.currentBudgetId != nil {

@@ -402,6 +402,37 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Tombstone several recorded payee locations at once ("Clear All
+    /// Locations"). One tombstone message per location, but a single sync —
+    /// looping `deletePayeeLocation` would kick off a sync per row.
+    func deletePayeeLocations(_ locations: [PayeeLocation]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !locations.isEmpty else { return }
+
+        logger.debug("deletePayeeLocations() - count: \(locations.count, privacy: .public)")
+
+        // 1. Tombstone locally (optimistic)
+        for location in locations {
+            try database.tombstonePayeeLocation(id: location.id)
+        }
+
+        // 2. Generate one tombstone CRDT message per location
+        var messages: [CRDTMessage] = []
+        for location in locations {
+            messages.append(try await messageGenerator.messageForDelete(location))
+        }
+
+        // 3. Store the messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the
