@@ -88,6 +88,7 @@ struct TransactionsListView: View {
                 }
             }
         }
+        .contentMargins(.horizontal, 6, for: .scrollContent)
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
