@@ -114,6 +114,15 @@ jobs:
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
+      # A connected hardware keyboard makes XCUITest typeText silently drop
+      # keystrokes (or throw focus errors) on headless runners; the tests
+      # drive budget amounts by typing, so force the software keyboard.
+      - name: Disable simulator hardware keyboard
+        run: |
+          defaults write com.apple.iphonesimulator DevicePreferences \
+            -dict-add "${{ steps.sim.outputs.id }}" \
+            "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
+
       # UI tests are slower and flakier on shared runners, so failed tests
       # retry up to 3 runs before the job fails.
       - name: Build and run UI tests
@@ -126,4 +135,16 @@ jobs:
             -only-testing:ActualiUITests \
             -retry-tests-on-failure \
             -test-iterations 3 \
+            -resultBundlePath TestResults/ActualiUITests.xcresult \
             | xcbeautify --quiet
+
+      # The tests attach screenshots at each checkpoint; keep them (and the
+      # full activity log) when a run fails on the runner but not locally.
+      - name: Upload result bundle
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-test-results
+          path: TestResults
+          if-no-files-found: ignore
+          retention-days: 7
