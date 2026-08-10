@@ -50,6 +50,8 @@ struct BudgetDatabaseBudgetCellTests {
         #expect(cell.rowId == "202607-cat-1")
         #expect(cell.monthInt == 202607)
         #expect(cell.exists == false)
+        // No row yet means nothing budgeted — transfers start from zero.
+        #expect(cell.amount == 0)
     }
 
     /// Upstream setBudget looks the row up by (month, category) and reuses its
@@ -67,6 +69,9 @@ struct BudgetDatabaseBudgetCellTests {
         let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
         #expect(cell.rowId == "legacy-id")
         #expect(cell.exists == true)
+        // The current budgeted amount rides along so transfer writes can
+        // compute source-minus / destination-plus without a second read.
+        #expect(cell.amount == 500)
     }
 
     @Test func trackingBudgetUsesReflectTable() throws {
