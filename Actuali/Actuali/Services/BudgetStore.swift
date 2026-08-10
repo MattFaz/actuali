@@ -11,6 +11,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case transferAccountsMatch
     case transferAmountNotPositive
     case transferPayeeMissing
+    case transferCategoriesMatch
     case invalidAmount
     case missingTransferDestination
     case payeeCreationFailed(String)
@@ -30,6 +31,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Transfer amount must be positive"
         case .transferPayeeMissing:
             return "Transfer payee not found for selected accounts"
+        case .transferCategoriesMatch:
+            return "Money must move between two different categories"
         case .invalidAmount:
             return "Invalid amount"
         case .missingTransferDestination:
@@ -2490,6 +2493,30 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
+    }
+
+    /// Move budgeted funds between categories (GH #128), nil meaning the
+    /// month's "To Budget" pool on that side. Writes through the sync engine
+    /// (optimistic local-first), then refetches the month so both categories'
+    /// published Available figures recompute.
+    func transferBudget(month: String, fromCategoryId: String?, toCategoryId: String?, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        // Also rejects To Budget on both sides (nil == nil) — a no-op request.
+        guard fromCategoryId != toCategoryId else {
+            throw BudgetStoreError.transferCategoriesMatch
+        }
+        try await syncClient.transferBudget(
+            month: month,
+            fromCategoryId: fromCategoryId,
+            toCategoryId: toCategoryId,
+            amount: amountCents
+        )
         await fetchBudgetMonth(month)
     }
 

@@ -1355,6 +1355,10 @@ class BudgetDatabase {
         let rowId: String
         let monthInt: Int   // YYYYMM
         let exists: Bool
+        /// Current budgeted amount in cents (0 when the row doesn't exist),
+        /// read in the same transaction as the row lookup so transfer writes
+        /// compute source-minus / destination-plus from a consistent snapshot.
+        let amount: Int
     }
 
     /// Resolve the budget cell for a month ("2026-07") and category. Mirrors
@@ -1377,15 +1381,16 @@ class BudgetDatabase {
                 return nil
             }
 
-            let existingId = try String.fetchOne(db, sql: """
-                SELECT id FROM \(table) WHERE month = ? AND category = ?
+            let existing = try Row.fetchOne(db, sql: """
+                SELECT id, amount FROM \(table) WHERE month = ? AND category = ?
                 """, arguments: [monthInt, categoryId])
 
             return BudgetCellRef(
                 table: table,
-                rowId: existingId ?? "\(monthInt)-\(categoryId)",
+                rowId: existing?["id"] ?? "\(monthInt)-\(categoryId)",
                 monthInt: monthInt,
-                exists: existingId != nil
+                exists: existing != nil,
+                amount: existing?["amount"] ?? 0
             )
         }
     }
