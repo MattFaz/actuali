@@ -76,6 +76,10 @@ Actuali is a companion client, not a fork or replacement. It requires an Actual 
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## Credits
+
+The app icon was designed and contributed by [u/bdownz](https://www.reddit.com/user/bdownz/). Masters live in [`assets/icons/`](assets/icons/).
+
 ## License
 
 MIT — see [LICENSE](LICENSE). Portions ported from Actual Budget (MIT, copyright James Long).

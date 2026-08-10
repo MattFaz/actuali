@@ -43,6 +43,7 @@ struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
+    @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
     /// string because @AppStorage can't hold a Set directly.
@@ -110,6 +111,12 @@ struct BudgetView: View {
                         // the same width as the sections.
                         .padding(.horizontal, 4)
                         .padding(.top, 8)
+                        // A gutter that survives scrolling, unlike the List's
+                        // top content margin below. Without it the scrolled
+                        // rows clip flush against the capsule — a group header
+                        // sliced mid-glyph, its tinted background swallowing
+                        // the capsule's bottom corners (GH #165).
+                        .padding(.bottom, 8)
 
                         List {
                             // Explains the tab badge (GH #138): which categories
@@ -162,7 +169,8 @@ struct BudgetView: View {
                                                     onEditBudget: { editingCategory = $0 },
                                                     // Name shows all time, Spent shows
                                                     // the displayed month (GH #56).
-                                                    onShowTransactions: showTransactions
+                                                    onShowTransactions: showTransactions,
+                                                    onMoveMoney: moveMoney
                                                 )
                                             }
                                         }
@@ -195,7 +203,8 @@ struct BudgetView: View {
                                                     onEditBudget: { editingCategory = $0 },
                                                     // Name shows all time, Spent shows
                                                     // the displayed month (GH #56).
-                                                    onShowTransactions: showTransactions
+                                                    onShowTransactions: showTransactions,
+                                                    onMoveMoney: moveMoney
                                                 )
                                             }
                                         }
@@ -230,12 +239,15 @@ struct BudgetView: View {
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
                         )
                         .contentMargins(.horizontal, 4, for: .scrollContent)
-                        // The gap under the pinned summary is this top margin
-                        // alone, sized to match the spacing between the group
-                        // sections so the summary reads as part of the table.
+                        // The rest of the gap under the pinned summary — this
+                        // part scrolls away with the content, leaving the 8 pt
+                        // gutter above. Together they sit a notch wider than
+                        // the spacing between the group sections, so the
+                        // summary reads as its own bar rather than a first
+                        // group (GH #165).
                         .contentMargins(
                             .top,
-                            budgetStore.budgetDisplayStyle == .clean ? 18 : 14,
+                            budgetStore.budgetDisplayStyle == .clean ? 20 : 16,
                             for: .scrollContent
                         )
                         // Let short rows (group headers) sit below the stock
@@ -321,6 +333,9 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            .sheet(item: $transferContext) { context in
+                BudgetTransferSheet(context: context)
+            }
             .navigationDestination(item: $transactionsDestination) { destination in
                 CategoryTransactionsView(destination: destination)
             }
@@ -330,6 +345,14 @@ struct BudgetView: View {
                 }
             }
         }
+    }
+
+    /// Open the move-money sheet for a tapped balance (GH #128): cover
+    /// overspending when red, move the surplus when green. The month is
+    /// captured alongside so the picker lists its sibling categories.
+    private func moveMoney(_ category: CategoryBudget) {
+        guard let budget = budgetStore.currentBudgetMonth else { return }
+        transferContext = BudgetTransferContext(category: category, budget: budget)
     }
 
     /// Push the category's transactions: month narrows to one "yyyy-MM",
@@ -405,6 +428,8 @@ struct CategoryBudgetRow: View {
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
+    /// Open the move-money sheet for this category's balance (GH #128).
+    var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
@@ -443,10 +468,21 @@ struct CategoryBudgetRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
-                BudgetAmountPill(
-                    text: budgetStore.displayBudgetCell(category.available),
-                    color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
-                )
+                // A zero balance has nothing to move and nothing to cover, so
+                // it stays a plain cell.
+                Button {
+                    onMoveMoney(category)
+                } label: {
+                    BudgetAmountPill(
+                        text: budgetStore.displayBudgetCell(category.available),
+                        color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
+                    )
+                }
+                .buttonStyle(.borderless)
+                .disabled(category.available == 0)
+                .accessibilityLabel(category.isOverspent
+                    ? "Cover overspending for \(category.categoryName)"
+                    : "Move money from \(category.categoryName)")
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -469,6 +505,8 @@ struct CleanCategoryBudgetRow: View {
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
+    /// Open the move-money sheet for this category's balance (GH #128).
+    var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -482,8 +520,19 @@ struct CleanCategoryBudgetRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(category.categoryName)")
                 Spacer()
-                Text(budgetStore.displayBalance(category.available))
-                    .foregroundColor(category.isOverspent ? .red : .green)
+                // A zero balance has nothing to move and nothing to cover, so
+                // it stays a plain label.
+                Button {
+                    onMoveMoney(category)
+                } label: {
+                    Text(budgetStore.displayBalance(category.available))
+                        .foregroundColor(category.isOverspent ? .red : .green)
+                }
+                .buttonStyle(.borderless)
+                .disabled(category.available == 0)
+                .accessibilityLabel(category.isOverspent
+                    ? "Cover overspending for \(category.categoryName)"
+                    : "Move money from \(category.categoryName)")
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(

@@ -11,6 +11,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case transferAccountsMatch
     case transferAmountNotPositive
     case transferPayeeMissing
+    case transferCategoriesMatch
     case invalidAmount
     case missingTransferDestination
     case payeeCreationFailed(String)
@@ -30,6 +31,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Transfer amount must be positive"
         case .transferPayeeMissing:
             return "Transfer payee not found for selected accounts"
+        case .transferCategoriesMatch:
+            return "Money must move between two different categories"
         case .invalidAmount:
             return "Invalid amount"
         case .missingTransferDestination:
@@ -377,7 +380,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Private
 
     private let serverClient = ActualServerClient()
-    private let fileManager = BudgetFileManager.shared
+    private var fileManager = BudgetFileManager.shared
     private var database: BudgetDatabase? {
         didSet {
             // The cached poster holds the database strongly; drop it whenever
@@ -422,6 +425,77 @@ final class BudgetStore: ObservableObject {
             return false
         }
     }
+
+    /// Payees that have recorded locations, for the Payee Locations screen
+    /// (GH #147). Degrades to "nothing recorded" on any failure.
+    func fetchPayeesWithLocations() async -> [PayeeLocationSummary] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchPayeesWithLocations()
+        } catch {
+            logger.error("fetchPayeesWithLocations failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// The recorded locations for one payee, newest first.
+    func fetchPayeeLocations(payeeId: String) async -> [PayeeLocation] {
+        guard let database else { return [] }
+        do {
+            return try await database.fetchPayeeLocations(payeeId: payeeId)
+        } catch {
+            logger.error("fetchPayeeLocations failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    /// Tombstone several recorded payee locations ("Clear All Locations").
+    /// Same server-version gate as `deletePayeeLocation`; returns whether the
+    /// delete stuck so the rows can stay visible on failure.
+    func deletePayeeLocations(_ locations: [PayeeLocation]) async -> Bool {
+        guard payeeLocationWritesEnabled, let syncClient else { return false }
+        do {
+            try await syncClient.deletePayeeLocations(locations)
+            return true
+        } catch {
+            logger.error("deletePayeeLocations failed: \(error.localizedDescription, privacy: .public)")
+            return false
+        }
+    }
+
+#if DEBUG
+    /// Records two locations against a known demo payee so PayeeLocationsUITests
+    /// can exercise the clear paths. A UI test can't record a real coordinate —
+    /// Core Location isn't drivable from XCUITest — so the app stands one in,
+    /// the same trick -stampBackgroundRefreshOnBackground uses.
+    func seedDebugPayeeLocations(payeeName: String) async {
+        // Read the payee from the database, not the @Published cache: the demo
+        // load that populates the cache may still be settling.
+        guard let database,
+              let payees = try? await database.fetchPayees(),
+              let payee = payees.first(where: {
+                  !$0.tombstone && $0.name == payeeName
+              }) else {
+            logger.error("seedDebugPayeeLocations: payee \(payeeName, privacy: .public) not found")
+            return
+        }
+        // Sydney Opera House and Melbourne — far enough apart to be distinct rows.
+        let coordinates = [(-33.8568, 151.2153), (-37.8136, 144.9631)]
+        for (index, coordinate) in coordinates.enumerated() {
+            do {
+                try database.insertPayeeLocation(PayeeLocation(
+                    id: "debug-loc-\(index)",
+                    payeeId: payee.id,
+                    latitude: coordinate.0,
+                    longitude: coordinate.1,
+                    createdAt: 1_751_760_000_000 + Int64(index)
+                ))
+            } catch {
+                logger.error("seedDebugPayeeLocations insert failed: \(error, privacy: .public)")
+            }
+        }
+    }
+#endif
 
     /// Accounts for App Intents (the Log Transaction Shortcut).
     ///
@@ -583,6 +657,13 @@ final class BudgetStore: ObservableObject {
     /// database, simulating an init()-time load that failed (actios-tq4w).
     func simulateFailedInitialLoadForTesting() {
         loadTask = Task {}
+    }
+
+    /// Test-only: swap in a file manager rooted at a temp directory so
+    /// logout()'s full wipe can be exercised without touching the shared
+    /// Budgets directory (parallel suites create real budgets there).
+    func setFileManagerForTesting(_ manager: BudgetFileManager) {
+        fileManager = manager
     }
     #endif
 
@@ -811,18 +892,61 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
-    func logout() {
+    /// Clear the server session and, by default, wipe all local budget data.
+    /// - Parameter clearLocalData: pass `false` to keep budget files on disk
+    ///   (the demo entry point clears the session without destroying data;
+    ///   only an explicit Disconnect wipes it).
+    func logout(clearLocalData: Bool = true) {
         Task {
             await serverClient.setToken(nil)
         }
         try? Keychain.remove(for: "authToken")
         // Defensively remove any legacy UserDefaults copy
         UserDefaults.standard.removeObject(forKey: "authToken")
+
+        // Close the open database and sync client BEFORE touching files.
+        // A deleted-but-open database stays readable through its fd (the
+        // "vnode unlinked" hazard downloadBudget also guards against), and a
+        // live sync client would let the next foreground refresh republish
+        // the wiped budget's data from that orphaned connection.
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
+        if clearLocalData {
+            // Wipe every locally-synced budget's database and metadata from
+            // disk — disconnecting should leave nothing behind, not just the
+            // auth token (GH: disconnect should clear local data). Encrypted
+            // budgets' Keychain keys go too: they must not outlive the files
+            // they unlock.
+            for local in fileManager.listLocalBudgets() {
+                if let fileId = local.cloudFileId {
+                    try? EncryptionKeyManager.remove(fileId: fileId)
+                }
+                try? fileManager.deleteBudget(local.id)
+            }
+        }
+
         isConnected = false
         remoteBudgets = []
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+
+        // Clear everything currently loaded in memory too, so nothing from
+        // the old budget lingers in the UI post-disconnect. The dataVersion
+        // bump makes views that cache their own fetches drop them.
+        currentBudgetId = nil
+        currentBudgetMonth = nil
+        accounts = []
+        transactions = []
+        uncategorizedCount = 0
+        categoryGroups = []
+        payees = []
+        lastSyncTime = nil
+        syncState = .idle
+        dataVersion += 1
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1069,8 +1193,10 @@ final class BudgetStore: ObservableObject {
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
     func loadDemoData() async {
-        // Log out any active session so sync doesn't try to fire against a real server
-        logout()
+        // Log out any active session so sync doesn't try to fire against a
+        // real server — but keep local budget files: trying the demo must
+        // never destroy a user's synced data.
+        logout(clearLocalData: false)
         do {
             try DemoDataSeeder.seed()
             currentBudgetId = DemoDataSeeder.budgetId
@@ -2487,6 +2613,30 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
+        await fetchBudgetMonth(month)
+    }
+
+    /// Move budgeted funds between categories (GH #128), nil meaning the
+    /// month's "To Budget" pool on that side. Writes through the sync engine
+    /// (optimistic local-first), then refetches the month so both categories'
+    /// published Available figures recompute.
+    func transferBudget(month: String, fromCategoryId: String?, toCategoryId: String?, amountCents: Int) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        // Also rejects To Budget on both sides (nil == nil) — a no-op request.
+        guard fromCategoryId != toCategoryId else {
+            throw BudgetStoreError.transferCategoriesMatch
+        }
+        try await syncClient.transferBudget(
+            month: month,
+            fromCategoryId: fromCategoryId,
+            toCategoryId: toCategoryId,
+            amount: amountCents
+        )
         await fetchBudgetMonth(month)
     }
 

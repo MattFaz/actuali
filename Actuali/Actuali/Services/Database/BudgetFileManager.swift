@@ -39,13 +39,28 @@ class BudgetFileManager {
 
     private let fileManager = FileManager.default
 
-    private init() {}
+    /// Non-nil only in tests: roots budgetsDirectory somewhere disposable.
+    private let rootDirectoryOverride: URL?
+
+    private init() {
+        rootDirectoryOverride = nil
+    }
+
+    #if DEBUG
+    /// Test-only: a file manager rooted at a custom directory so destructive
+    /// operations (logout's full wipe) can run isolated from the shared
+    /// Budgets directory while suites execute in parallel.
+    init(rootDirectoryForTesting: URL) {
+        rootDirectoryOverride = rootDirectoryForTesting
+    }
+    #endif
 
     // MARK: - Directories
 
     var budgetsDirectory: URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let budgetsDir = appSupport.appendingPathComponent("Budgets", isDirectory: true)
+        let base = rootDirectoryOverride
+            ?? fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
+        let budgetsDir = base.appendingPathComponent("Budgets", isDirectory: true)
 
         if !fileManager.fileExists(atPath: budgetsDir.path) {
             try? fileManager.createDirectory(at: budgetsDir, withIntermediateDirectories: true)

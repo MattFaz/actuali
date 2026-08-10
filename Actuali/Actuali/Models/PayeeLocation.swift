@@ -26,6 +26,15 @@ extension PayeeLocation: CRDTSyncable {
     }
 }
 
+/// A payee paired with how many locations it currently has recorded — one row
+/// of the Payee Locations management list.
+struct PayeeLocationSummary: Identifiable, Hashable {
+    let payee: Payee
+    let locationCount: Int
+
+    var id: String { payee.id }
+}
+
 /// A payee paired with its closest recorded location relative to the query
 /// point (upstream `NearbyPayeeEntity`).
 struct NearbyPayee: Identifiable, Hashable {

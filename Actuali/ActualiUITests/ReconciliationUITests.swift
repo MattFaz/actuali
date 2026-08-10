@@ -55,6 +55,11 @@ final class ReconciliationUITests: XCTestCase {
             NSPredicate(format: "label == 'Reconciled'")
         ).count, 0, "demo data starts with nothing reconciled")
 
+        // Reconcile sits in the toolbar's overflow menu, so open that first.
+        let moreButton = app.navigationBars.buttons["More"]
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 10))
+        moreButton.tap()
+
         let reconcileButton = app.buttons["Reconcile"]
         XCTAssertTrue(reconcileButton.waitForExistence(timeout: 10))
         reconcileButton.tap()

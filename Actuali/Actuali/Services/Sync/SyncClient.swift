@@ -402,6 +402,37 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Tombstone several recorded payee locations at once ("Clear All
+    /// Locations"). One tombstone message per location, but a single sync —
+    /// looping `deletePayeeLocation` would kick off a sync per row.
+    func deletePayeeLocations(_ locations: [PayeeLocation]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !locations.isEmpty else { return }
+
+        logger.debug("deletePayeeLocations() - count: \(locations.count, privacy: .public)")
+
+        // 1. Tombstone locally (optimistic)
+        for location in locations {
+            try database.tombstonePayeeLocation(id: location.id)
+        }
+
+        // 2. Generate one tombstone CRDT message per location
+        var messages: [CRDTMessage] = []
+        for location in locations {
+            messages.append(try await messageGenerator.messageForDelete(location))
+        }
+
+        // 3. Store the messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the
@@ -424,6 +455,53 @@ actor SyncClient {
         }
         fields.append(("amount", amount))
         let messages = try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Sync (rate-limited)
+        await automaticSync()
+    }
+
+    /// Move budgeted funds between two categories in a month, or between a
+    /// category and "To Budget" (nil side), optimistic local-first. Mirrors
+    /// upstream transferCategory / coverOverspending / transferAvailable
+    /// (loot-core budget/actions.ts): the source cell's amount shrinks, the
+    /// destination cell's grows, and the To Budget figure — being derived —
+    /// needs no write at all. Both cells go out in one message batch so a
+    /// failure can't strand half the transfer.
+    func transferBudget(month: String, fromCategoryId: String?, toCategoryId: String?, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("transferBudget() - month: \(month, privacy: .public), from: \(fromCategoryId ?? "to-budget", privacy: .private), to: \(toCategoryId ?? "to-budget", privacy: .private), amount: \(amount, privacy: .private)")
+
+        // 1. Generate CRDT messages for both cells (before any DB write, so
+        //    an HLC failure leaves nothing stranded)
+        var messages: [CRDTMessage] = []
+        for (categoryId, delta) in [(fromCategoryId, -amount), (toCategoryId, amount)] {
+            guard let categoryId else { continue } // To Budget side is derived
+            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+                throw SyncError.budgetTableMissing
+            }
+            var fields: [(column: String, value: Any?)] = []
+            if !cell.exists {
+                fields.append(("month", cell.monthInt))
+                fields.append(("category", categoryId))
+            }
+            fields.append(("amount", cell.amount + delta))
+            messages += try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
+        }
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
         // 2. Apply locally (optimistic) through the same LWW upsert incoming

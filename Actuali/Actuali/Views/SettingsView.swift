@@ -72,6 +72,7 @@ struct SettingsView: View {
     ]
     @State private var password = ""
     @State private var showingResetSyncConfirm = false
+    @State private var showingDisconnectConfirm = false
     @State private var showingWalletImport = false
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
     @State private var showingBudgetSelectPrompt = false
@@ -241,8 +242,7 @@ struct SettingsView: View {
                         }
 
                         Button("Disconnect", role: .destructive) {
-                            budgetStore.logout()
-                            password = ""
+                            showingDisconnectConfirm = true
                         }
                     }
                 } header: {
@@ -349,6 +349,14 @@ struct SettingsView: View {
                     // locations (< 26.4.0), so hidden there.
                     if budgetStore.payeeLocationWritesEnabled {
                         Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+
+                        // Clearing needs the same >= 26.4.0 server, so this
+                        // lives inside the gate too (GH #147).
+                        NavigationLink {
+                            PayeeLocationsView()
+                        } label: {
+                            Text("Payee Locations")
+                        }
                     }
 
                     if budgetStore.currentBudgetId != nil {
@@ -549,6 +557,19 @@ struct SettingsView: View {
                 if budgetStore.isLoading {
                     ProgressView()
                 }
+            }
+            .confirmationDialog(
+                "Disconnect and remove data?",
+                isPresented: $showingDisconnectConfirm,
+                titleVisibility: .visible
+            ) {
+                Button("Disconnect & Remove Data", role: .destructive) {
+                    budgetStore.logout()
+                    password = ""
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
             }
             .confirmationDialog(
                 "Reset sync state?",

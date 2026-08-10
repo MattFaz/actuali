@@ -1355,6 +1355,10 @@ class BudgetDatabase {
         let rowId: String
         let monthInt: Int   // YYYYMM
         let exists: Bool
+        /// Current budgeted amount in cents (0 when the row doesn't exist),
+        /// read in the same transaction as the row lookup so transfer writes
+        /// compute source-minus / destination-plus from a consistent snapshot.
+        let amount: Int
     }
 
     /// Resolve the budget cell for a month ("2026-07") and category. Mirrors
@@ -1377,15 +1381,16 @@ class BudgetDatabase {
                 return nil
             }
 
-            let existingId = try String.fetchOne(db, sql: """
-                SELECT id FROM \(table) WHERE month = ? AND category = ?
+            let existing = try Row.fetchOne(db, sql: """
+                SELECT id, amount FROM \(table) WHERE month = ? AND category = ?
                 """, arguments: [monthInt, categoryId])
 
             return BudgetCellRef(
                 table: table,
-                rowId: existingId ?? "\(monthInt)-\(categoryId)",
+                rowId: existing?["id"] ?? "\(monthInt)-\(categoryId)",
                 monthInt: monthInt,
-                exists: existingId != nil
+                exists: existing != nil,
+                amount: existing?["amount"] ?? 0
             )
         }
     }
@@ -2284,6 +2289,36 @@ class BudgetDatabase {
                     latitude: row["latitude"],
                     longitude: row["longitude"],
                     createdAt: row["created_at"]
+                )
+            }
+        }
+    }
+
+    /// Every non-tombstoned payee that still has at least one non-tombstoned
+    /// location, name-ordered, with its live location count — the top level of
+    /// the Payee Locations screen. The NULL guards match
+    /// `fetchPayeeLocations`, so a count never overstates what the detail
+    /// screen can show.
+    func fetchPayeesWithLocations() async throws -> [PayeeLocationSummary] {
+        try await dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT p.id, p.name, p.transfer_acct, COUNT(pl.id) AS location_count
+                FROM payees p
+                JOIN payee_locations pl ON pl.payee_id = p.id
+                WHERE p.tombstone IS NOT 1 AND pl.tombstone IS NOT 1
+                  AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL
+                  AND pl.created_at IS NOT NULL
+                GROUP BY p.id
+                ORDER BY p.name COLLATE NOCASE ASC, p.id ASC
+                """)
+            return rows.map { row in
+                PayeeLocationSummary(
+                    payee: Payee(
+                        id: row["id"],
+                        name: row["name"] ?? "Unknown",
+                        transferAccountId: row["transfer_acct"]
+                    ),
+                    locationCount: row["location_count"]
                 )
             }
         }

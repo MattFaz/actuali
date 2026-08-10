@@ -135,6 +135,7 @@ struct AccountDetailView: View {
                 }
             }
         }
+        .contentMargins(.horizontal, 6, for: .scrollContent)
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
@@ -150,13 +151,14 @@ struct AccountDetailView: View {
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
             }
-            ToolbarItemGroup(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button {
                     showingReconcile = true
                 } label: {
-                    Image(systemName: "checkmark.seal")
+                    Label("Reconcile", systemImage: "checkmark.seal")
                 }
-                .accessibilityLabel("Reconcile")
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showingAddTransaction = true
                 } label: {
