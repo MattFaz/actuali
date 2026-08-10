@@ -110,7 +110,12 @@ struct BudgetView: View {
                         // the same width as the sections.
                         .padding(.horizontal, 4)
                         .padding(.top, 8)
-                        .padding(.bottom, 10)
+                        // A gutter that survives scrolling, unlike the List's
+                        // top content margin below. Without it the scrolled
+                        // rows clip flush against the capsule — a group header
+                        // sliced mid-glyph, its tinted background swallowing
+                        // the capsule's bottom corners (GH #165).
+                        .padding(.bottom, 8)
 
                         List {
                             // Explains the tab badge (GH #138): which categories
@@ -231,12 +236,15 @@ struct BudgetView: View {
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
                         )
                         .contentMargins(.horizontal, 4, for: .scrollContent)
-                        // The gap under the pinned summary is this top margin
-                        // alone, sized to match the spacing between the group
-                        // sections so the summary reads as part of the table.
+                        // The rest of the gap under the pinned summary — this
+                        // part scrolls away with the content, leaving the 8 pt
+                        // gutter above. Together they sit a notch wider than
+                        // the spacing between the group sections, so the
+                        // summary reads as its own bar rather than a first
+                        // group (GH #165).
                         .contentMargins(
                             .top,
-                            budgetStore.budgetDisplayStyle == .clean ? 18 : 14,
+                            budgetStore.budgetDisplayStyle == .clean ? 20 : 16,
                             for: .scrollContent
                         )
                         // Let short rows (group headers) sit below the stock
