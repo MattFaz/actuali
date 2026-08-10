@@ -6,6 +6,7 @@ import Foundation
 /// local notifications when the silent flow fails.
 enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceConvertible {
     case noBudgetLoaded
+    case noAccountSelected
     case accountUnavailable
     case invalidAmount(received: String)
     case noAmountReceived
@@ -15,6 +16,8 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
         switch self {
         case .noBudgetLoaded:
             return "Open Actuali and select a budget first."
+        case .noAccountSelected:
+            return "Select an account in your shortcut or set a default account in Actuali settings."
         case .accountUnavailable:
             return "Account is no longer available. Edit your shortcut to pick a different account."
         case .invalidAmount(let received):
@@ -33,3 +36,28 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
         LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
     }
 }
+
+enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConvertible {
+    case accountNotFound
+    case categoryNotFound
+    case noBudgetLoaded
+    case noAccountSelected
+
+    var errorDescription: String? {
+        switch self {
+        case .accountNotFound:
+            return "Account was not found. Select a valid account in your shortcut."
+        case .categoryNotFound:
+            return "Category was not found in the current budget month."
+        case .noBudgetLoaded:
+            return "Open Actuali and select a budget first."
+        case .noAccountSelected:
+            return "Select an account in your shortcut or set a default account in Actuali settings."
+        }
+    }
+
+    var localizedStringResource: LocalizedStringResource {
+        LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
+    }
+}
+

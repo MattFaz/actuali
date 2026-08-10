@@ -320,6 +320,63 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
+    /// Persisted per budget in UserDefaults.
+    var cardAccountMappings: [String: String] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "cardAccountMappings_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
+    /// or account name). Matching is deliberately conservative — a missed match falls back
+    /// to the default account or an error the user can act on, while a wrong match logs
+    /// money to the wrong account silently.
+    func resolveAccountId(hint: String) async -> String? {
+        let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return nil }
+
+        let activeAccounts = await accountsForIntent().filter { !$0.closed }
+        guard !activeAccounts.isEmpty else { return nil }
+        let activeIds = Set(activeAccounts.map(\.id))
+
+        // 1. Mapping keywords the hint contains. Longest key first so "1234" beats "12"
+        //    and multi-match resolution is deterministic (Dictionary order isn't). Only
+        //    hint-contains-key: the reverse direction would let a one-character hint
+        //    match any keyword.
+        let mappingsByLongestKey = cardAccountMappings
+            .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
+                    accountId: $0.value) }
+            .filter { !$0.key.isEmpty }
+            .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
+        for mapping in mappingsByLongestKey
+        where trimmed.contains(mapping.key) && activeIds.contains(mapping.accountId) {
+            return mapping.accountId
+        }
+
+        // 2. Exact account name match.
+        if let exact = activeAccounts.first(where: { $0.name.lowercased() == trimmed }) {
+            return exact.id
+        }
+
+        // 3. Whole-word name match ("Checking Account" hint -> "Checking" account), but
+        //    only when it's unambiguous: substring matching would send "HSBC cashback"
+        //    to an account named "Cash".
+        let hintWords = Set(trimmed.split(whereSeparator: { !$0.isLetter && !$0.isNumber }))
+        let wordMatches = activeAccounts.filter { account in
+            let nameWords = Set(account.name.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }))
+            guard !nameWords.isEmpty else { return false }
+            return nameWords.isSubset(of: hintWords) || hintWords.isSubset(of: nameWords)
+        }
+        return wordMatches.count == 1 ? wordMatches[0].id : nil
+    }
+
     // MARK: - Private
 
     private let serverClient = ActualServerClient()
@@ -495,6 +552,69 @@ final class BudgetStore: ObservableObject {
             return try await db.fetchAccounts()
         } catch {
             logger.error("accountsForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    func categoriesForIntent() async -> [Category] {
+        if !categoryGroups.isEmpty {
+            return categoryGroups.flatMap(\.categories)
+        }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return []
+            }
+            let groups = try await db.fetchCategoryGroups()
+            return groups.flatMap(\.categories)
+        } catch {
+            logger.error("categoriesForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+
+    func categoryBudgetForIntent(categoryId: String) async -> CategoryBudget? {
+        let currentMonth = currentMonthString()
+        if let currentBudgetMonth, currentBudgetMonth.month == currentMonth {
+            if let found = currentBudgetMonth.categoryBudgets.first(where: { $0.categoryId == categoryId }) {
+                return found
+            }
+        }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return nil
+            }
+            let monthBudget = try await db.fetchBudgetMonth(month: currentMonth)
+            return monthBudget.categoryBudgets.first(where: { $0.categoryId == categoryId })
+        } catch {
+            logger.error("categoryBudgetForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
+            return nil
+        }
+    }
+
+    func payeesForIntent() async -> [Payee] {
+        if !payees.isEmpty { return payees }
+        do {
+            let db: BudgetDatabase
+            if let database {
+                db = database
+            } else if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+                db = try BudgetDatabase(path: fileManager.databasePath(for: budgetId))
+            } else {
+                return []
+            }
+            return try await db.fetchPayees()
+        } catch {
+            logger.error("payeesForIntent DB fallback failed: \(error.localizedDescription, privacy: .public)")
             return []
         }
     }
