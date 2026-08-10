@@ -12,6 +12,9 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: "Account")
     var account: AccountEntity?
 
+    @Parameter(title: "Card or Account Hint", default: "")
+    var cardHint: String
+
     // String, not Double: Wallet's amount coerces to 0 as a Number for some
     // cards, but the text form carries the real value (issue #41). Parsed
     // via AmountParser, which handles currency symbols and locale separators.
@@ -35,6 +38,7 @@ struct LogTransactionIntent: AppIntent {
 
     static var parameterSummary: some ParameterSummary {
         Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
+            \.$cardHint
             \.$notes
             \.$date
             \.$isIncome
@@ -43,7 +47,7 @@ struct LogTransactionIntent: AppIntent {
     }
 
     @MainActor
-    func perform() async throws -> some IntentResult {
+    func perform() async throws -> some IntentResult & ProvidesDialog {
         // Validate amount. An empty string means the automation ran before
         // Wallet had the transaction details — surface that distinctly so
         // users know it isn't a configuration problem.
@@ -63,14 +67,22 @@ struct LogTransactionIntent: AppIntent {
         // init()'s background load has wired syncClient; wait for it so the write
         // doesn't fail with "Sync not configured".
         await store.ensureBudgetReady()
+
+        guard store.currentBudgetId != nil else {
+            await reportFailure(.noBudgetLoaded)
+            throw LogTransactionError.noBudgetLoaded
+        }
+
         let resolvedAccountId: String
         if let account {
             resolvedAccountId = account.id
+        } else if !cardHint.isEmpty, let matchedId = await store.resolveAccountId(hint: cardHint) {
+            resolvedAccountId = matchedId
         } else if let defaultId = store.defaultAccountId {
             resolvedAccountId = defaultId
         } else {
-            await reportFailure(.noBudgetLoaded)
-            throw LogTransactionError.noBudgetLoaded
+            await reportFailure(.noAccountSelected)
+            throw LogTransactionError.noAccountSelected
         }
 
         // Verify the account still exists and is open. Use accountsForIntent()
@@ -110,7 +122,16 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol
             )
-            return .result()
+
+            let amountString = CurrencyAmountFormat.string(
+                cents: abs(amountCents),
+                currencyCode: store.currencyCode,
+                narrowSymbol: store.useNarrowCurrencySymbol
+            )
+            let dialogText = displayPayee.isEmpty
+                ? "Logged \(amountString)"
+                : "Logged \(amountString) at \(displayPayee)"
+            return .result(dialog: IntentDialog(stringLiteral: dialogText))
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)
                 ?? .writeFailed(underlying: error.localizedDescription)
@@ -121,13 +142,17 @@ struct LogTransactionIntent: AppIntent {
 
     @MainActor
     private func reportFailure(_ error: LogTransactionError) async {
+        let store = BudgetStore.shared
+        await store.ensureBudgetReady()
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
         await TransactionLogNotifier.notifyFailure(
             message: error.errorDescription ?? "Unknown error",
             payee: payee,
             amountCents: amountCents ?? 0,
+            currencyCode: store.currencyCode,
+            narrowSymbol: store.useNarrowCurrencySymbol,
             prefill: TransactionPrefill(
-                accountId: account?.id ?? BudgetStore.shared.defaultAccountId,
+                accountId: account?.id ?? store.defaultAccountId,
                 payee: payee,
                 amountCents: amountCents,
                 date: date ?? Date()

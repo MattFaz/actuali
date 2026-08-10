@@ -54,6 +54,8 @@ struct ActualiApp: App {
                             message: "Repro: couldn't log transaction.",
                             payee: "Debug Payee",
                             amountCents: 1234,
+                            currencyCode: budgetStore.currencyCode,
+                            narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                             prefill: TransactionPrefill(
                                 accountId: nil,
                                 payee: "Debug Payee",
