@@ -55,6 +55,58 @@ import Layout from "../layouts/Layout.astro";
     </section>
 
     <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Trouble connecting?</h2>
+      <p class="text-neutral-700">
+        <strong>Start here:</strong> open your server address in Safari on the
+        same iPhone. Whatever Safari says is almost always the real problem — if
+        Safari can't load it, or warns you the connection isn't private, Actuali
+        won't be able to connect either.
+      </p>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>"Couldn't make a secure connection" / "TLS error"</strong> —
+          iPhones only connect to servers with a security certificate they
+          trust, and won't let an app skip that check. If your server uses a
+          certificate it generated itself, iOS blocks the connection. Most
+          self-hosting setups can issue a free trusted certificate
+          automatically — tools like Caddy, Nginx Proxy Manager and Cloudflare
+          Tunnel all do this for you. Once Safari loads your server without a
+          warning, Actuali will connect.
+        </li>
+        <li>
+          <strong>"Your server's security certificate has expired"</strong> —
+          certificates need renewing periodically. Renew it on the server and
+          try again.
+        </li>
+        <li>
+          <strong>"Couldn't reach your server"</strong> — if it works at home
+          but not out and about, your server is only reachable on your home
+          network. You'll need a VPN back home, or to make the server available
+          over the internet, to sync while away.
+        </li>
+        <li>
+          <strong>"Couldn't find a server at that address"</strong> — check the
+          address for typos, and include the port number if your server uses
+          one (for example <code>https://budget.example.com:5006</code>).
+        </li>
+        <li>
+          <strong>"Forbidden" or a 403 error when logging in</strong> — usually
+          something sitting in front of your server is blocking the app. If
+          you've restricted access to certain networks or addresses, your phone
+          may not be on the allowed list. If you use a login gateway such as
+          Cloudflare Access or Authelia, add its credentials under
+          <strong>Custom HTTP headers</strong> in Actuali's Settings.
+        </li>
+      </ul>
+      <p class="text-neutral-700">
+        Still stuck? Email
+        <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900"
+          >actuali@mfazz.com</a
+        > with the exact message the app shows and we'll help.
+      </p>
+    </section>
+
+    <section class="space-y-3">
       <h2 class="text-xl font-semibold">Open source</h2>
       <p class="text-neutral-700">
         Actuali is open source. Browse the code, report issues, or contribute on

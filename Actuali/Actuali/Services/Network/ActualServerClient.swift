@@ -23,11 +23,65 @@ enum ActualServerError: LocalizedError {
         case .unauthorized:
             return "Unauthorized - please log in again"
         case .networkError(let error):
-            return "Network error: \(error.localizedDescription)"
+            return Self.connectionFailureMessage(for: error)
         case .decodingError(let error):
             return "Failed to decode response: \(error.localizedDescription)"
         case .fileNotFound:
             return "Budget file not found"
+        }
+    }
+
+    /// Where the troubleshooting steps for each of these live.
+    private static let helpLink = "actuali.mfazz.com/support"
+
+    /// Turns a transport failure into something a non-technical user can act
+    /// on. Left to itself, CFNetwork surfaces strings like "TLS Error caused
+    /// the secure connection to fail" or a bare `NSURLErrorDomain error -1200`,
+    /// which tell the user nothing about what to change.
+    static func connectionFailureMessage(for error: Error) -> String {
+        guard let urlError = error as? URLError else {
+            return "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help."
+        }
+
+        switch urlError.code {
+        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
+            return """
+                Couldn't make a secure connection to your server — iOS doesn't trust its security \
+                certificate. This usually means the server is using its own self-signed certificate. \
+                See \(helpLink) for how to fix it.
+                """
+        case .serverCertificateHasBadDate, .serverCertificateNotYetValid:
+            return """
+                Your server's security certificate has expired, so iOS blocked the connection. \
+                Renewing the certificate on the server will fix this. See \(helpLink) for help.
+                """
+        case .appTransportSecurityRequiresSecureConnection:
+            return """
+                Actuali can only connect over a secure address. Check that your server URL starts \
+                with https:// — see \(helpLink) for help.
+                """
+        case .cannotFindHost, .dnsLookupFailed:
+            return """
+                Couldn't find a server at that address. Check the server URL for typos. \
+                See \(helpLink) for help.
+                """
+        case .cannotConnectToHost:
+            return """
+                Couldn't reach your server. If it's only available on your home network, connect to \
+                that network and try again. See \(helpLink) for help.
+                """
+        case .notConnectedToInternet:
+            return "Your device isn't connected to the internet."
+        case .timedOut:
+            return """
+                Your server took too long to respond. It may be offline, or blocked on this network. \
+                See \(helpLink) for help.
+                """
+        default:
+            return """
+                Couldn't connect to your server: \(urlError.localizedDescription) \
+                See \(helpLink) for help.
+                """
         }
     }
 }
@@ -141,7 +195,13 @@ actor ActualServerClient {
     /// always take precedence.
     private var customHeaders: [(name: String, value: String)] = []
 
-    init() {
+    /// - Parameter session: overridable so tests can drive the client through a
+    ///   stub transport; production callers take the default.
+    init(session: URLSession? = nil) {
+        if let session {
+            self.session = session
+            return
+        }
         let config = URLSessionConfiguration.default
         config.timeoutIntervalForRequest = 30
         config.timeoutIntervalForResource = 300
@@ -174,6 +234,19 @@ actor ActualServerClient {
             request.setValue(header.value, forHTTPHeaderField: header.name)
         }
         return request
+    }
+
+    /// Perform a request, translating transport failures into
+    /// `ActualServerError.networkError` so callers surface actionable guidance
+    /// instead of CFNetwork's raw description.
+    private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        do {
+            return try await session.data(for: request)
+        } catch let urlError as URLError where urlError.code != .cancelled {
+            // Cancellation is ordinary control flow (a superseded refresh, a
+            // screen the user left), so it propagates untouched.
+            throw ActualServerError.networkError(urlError)
+        }
     }
 
     /// Whether a response looks like an auth proxy's login page rather than the
@@ -216,7 +289,7 @@ actor ActualServerClient {
         let body = ["password": password]
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -261,7 +334,7 @@ actor ActualServerClient {
         var request = makeRequest(url)
         request.httpMethod = "GET"
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -365,7 +438,7 @@ actor ActualServerClient {
         }
         request.httpBody = try JSONEncoder().encode(body)
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -405,7 +478,7 @@ actor ActualServerClient {
         request.httpMethod = "GET"
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -445,7 +518,7 @@ actor ActualServerClient {
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -482,7 +555,7 @@ actor ActualServerClient {
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
@@ -517,7 +590,7 @@ actor ActualServerClient {
         request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
         request.httpBody = try JSONEncoder().encode(["token": token, "fileId": fileId])
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
@@ -551,7 +624,7 @@ actor ActualServerClient {
         request.setValue("application/actual-sync", forHTTPHeaderField: "Content-Type")
         request.httpBody = requestData
 
-        let (data, response) = try await session.data(for: request)
+        let (data, response) = try await send(request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
