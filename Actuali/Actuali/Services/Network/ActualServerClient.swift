@@ -31,6 +31,14 @@ enum ActualServerError: LocalizedError {
         }
     }
 
+    /// Whether the server couldn't be reached at all, as opposed to answering
+    /// with something unusable. Callers that fall back to a degraded mode on
+    /// failure use this to tell "old server" apart from "no server".
+    var isConnectionFailure: Bool {
+        if case .networkError = self { return true }
+        return false
+    }
+
     /// Where the troubleshooting steps for each of these live.
     private static let helpLink = "actuali.mfazz.com/support"
 
