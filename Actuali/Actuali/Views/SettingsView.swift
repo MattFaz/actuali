@@ -196,6 +196,10 @@ struct SettingsView: View {
                                 // Discover available auth methods, then log in with
                                 // password directly when that's the active method.
                                 await budgetStore.checkLoginMethods()
+                                // A probe that couldn't reach the server has
+                                // already explained why; don't repeat the same
+                                // failure as a login attempt.
+                                guard budgetStore.error == nil else { return }
                                 if budgetStore.passwordLoginActive && !password.isEmpty {
                                     await budgetStore.login(password: password)
                                 }

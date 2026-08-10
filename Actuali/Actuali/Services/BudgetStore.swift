@@ -379,7 +379,7 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Private
 
-    private let serverClient = ActualServerClient()
+    private var serverClient = ActualServerClient()
     private var fileManager = BudgetFileManager.shared
     private var database: BudgetDatabase? {
         didSet {
@@ -659,6 +659,12 @@ final class BudgetStore: ObservableObject {
         loadTask = Task {}
     }
 
+    /// Test-only: swap in a server client wired to a stub transport so the
+    /// login and probe paths can be exercised without a reachable server.
+    func setServerClientForTesting(_ client: ActualServerClient) {
+        serverClient = client
+    }
+
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -840,6 +846,12 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// The login methods a server is assumed to offer when the probe can't tell
+    /// us — password auth is the safe assumption and keeps the flow usable.
+    private static let passwordOnlyLoginMethods = [
+        LoginMethod(method: "password", displayName: "Password", active: 1)
+    ]
+
     /// Probe the configured server for its available login methods so the UI can
     /// offer password and/or OpenID sign-in. Best-effort: on failure we fall back
     /// to password-only so the existing flow keeps working.
@@ -850,10 +862,19 @@ final class BudgetStore: ObservableObject {
             // Surface the actionable hint proactively rather than waiting for the
             // login attempt to fail with the same cryptic-looking response.
             error = ActualServerError.authProxyBlocked.localizedDescription
-            availableLoginMethods = [LoginMethod(method: "password", displayName: "Password", active: 1)]
+            availableLoginMethods = Self.passwordOnlyLoginMethods
+        } catch let probeError as ActualServerError where probeError.isConnectionFailure {
+            // The server isn't reachable, so falling back to password login
+            // would fail identically. Say why now — otherwise tapping Connect
+            // with an empty password looks like it did nothing at all.
+            error = probeError.localizedDescription
+            availableLoginMethods = Self.passwordOnlyLoginMethods
         } catch {
+            // Reachable, but the probe was unusable: older servers without the
+            // endpoint, or a proxy stripping the route. Stay quiet and let the
+            // login attempt report anything that's actually wrong.
             logger.error("Failed to fetch login methods: \(error.localizedDescription, privacy: .public)")
-            availableLoginMethods = [LoginMethod(method: "password", displayName: "Password", active: 1)]
+            availableLoginMethods = Self.passwordOnlyLoginMethods
         }
         // Only relevant when OpenID is offered; cheap enough to always refresh.
         if supportsOpenIDLogin {
