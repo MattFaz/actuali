@@ -11,7 +11,9 @@ struct BudgetDatabaseToBudgetTests {
 
     private func makeDatabase(
         envelope: Bool = true,
-        withBufferTable: Bool = true
+        withBufferTable: Bool = true,
+        withBothBudgetTables: Bool = false,
+        budgetTypePref: String? = nil
     ) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -76,16 +78,30 @@ struct BudgetDatabaseToBudgetTests {
                     ('acct-1', 'Checking', 0, 1.0);
             """)
 
-            let table = envelope ? "zero_budgets" : "reflect_budgets"
-            try db.execute(sql: """
-                CREATE TABLE \(table) (
-                    id TEXT PRIMARY KEY,
-                    month INTEGER,
-                    category TEXT,
-                    amount INTEGER DEFAULT 0,
-                    carryover INTEGER DEFAULT 0
-                );
-            """)
+            let tables = withBothBudgetTables
+                ? ["zero_budgets", "reflect_budgets"]
+                : [envelope ? "zero_budgets" : "reflect_budgets"]
+            for table in tables {
+                try db.execute(sql: """
+                    CREATE TABLE \(table) (
+                        id TEXT PRIMARY KEY,
+                        month INTEGER,
+                        category TEXT,
+                        amount INTEGER DEFAULT 0,
+                        carryover INTEGER DEFAULT 0
+                    );
+                """)
+            }
+
+            if let budgetTypePref {
+                try db.execute(sql: """
+                    CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                """)
+                try db.execute(
+                    sql: "INSERT INTO preferences (id, value) VALUES ('budgetType', ?)",
+                    arguments: [budgetTypePref]
+                )
+            }
 
             if withBufferTable {
                 try db.execute(sql: """
@@ -255,6 +271,60 @@ struct BudgetDatabaseToBudgetTests {
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         #expect(june.toBudget == nil)
+    }
+
+    /// Issue #98: real Actual files contain BOTH budget tables, and only the
+    /// budgetType preference says which one is in use. A tracking budget's
+    /// amounts live in reflect_budgets and must be read from there — not from
+    /// the (empty) zero_budgets table that also exists in the file.
+    @Test func trackingBudgetWithBothTablesReadsReflectAmounts() async throws {
+        let (db, url) = try makeDatabase(
+            withBothBudgetTables: true,
+            budgetTypePref: "tracking"
+        )
+        defer { cleanup(url) }
+
+        try insertBudget(db, table: "reflect_budgets", month: 202606, category: "cat-groceries", amount: 30_000)
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+        let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(groceries.budgeted == 30_000)
+        #expect(june.toBudget == nil)
+    }
+
+    /// Same as above with the pre-rename preference value written by
+    /// Actual < 25.5 ("report" instead of "tracking").
+    @Test func trackingBudgetWithLegacyReportPrefReadsReflectAmounts() async throws {
+        let (db, url) = try makeDatabase(
+            withBothBudgetTables: true,
+            budgetTypePref: "report"
+        )
+        defer { cleanup(url) }
+
+        try insertBudget(db, table: "reflect_budgets", month: 202606, category: "cat-groceries", amount: 30_000)
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+        let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(groceries.budgeted == 30_000)
+        #expect(june.toBudget == nil)
+    }
+
+    /// An envelope file that also has the (empty) reflect_budgets table keeps
+    /// reading zero_budgets.
+    @Test func envelopeBudgetWithBothTablesReadsZeroAmounts() async throws {
+        let (db, url) = try makeDatabase(
+            withBothBudgetTables: true,
+            budgetTypePref: "envelope"
+        )
+        defer { cleanup(url) }
+
+        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
+        try insertBudget(db, month: 202606, category: "cat-groceries", amount: 30_000)
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+        let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(groceries.budgeted == 30_000)
+        #expect(june.toBudget == 70_000)
     }
 
     @Test func missingBufferTableIsTolerated() async throws {
