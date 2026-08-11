@@ -165,7 +165,10 @@ struct LogTransactionIntent: AppIntent {
                 accountId: account?.id ?? store.defaultAccountId,
                 payee: payee,
                 amountCents: amountCents,
-                date: date ?? Date()
+                date: date ?? Date(),
+                notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
+                isIncome: isIncome,
+                cleared: cleared
             )
         )
     }
