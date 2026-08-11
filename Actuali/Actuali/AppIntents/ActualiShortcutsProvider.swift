@@ -17,6 +17,17 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
         )
 
         AppShortcut(
+            intent: AddTransactionWithReviewIntent(),
+            phrases: [
+                "Add transaction with review in \(.applicationName)",
+                "Enter transaction in \(.applicationName)",
+                "Review a transaction in \(.applicationName)",
+            ],
+            shortTitle: "Add with Review",
+            systemImageName: "square.and.pencil"
+        )
+
+        AppShortcut(
             intent: GetAccountBalanceIntent(),
             phrases: [
                 "Check \(\.$account) balance in \(.applicationName)",

@@ -34,23 +34,31 @@ struct AddTransactionView: View {
     @FocusState private var payeeFocused: Bool
 
     /// Initializer for the "Add" flow. The optional prefill parameters carry
-    /// whatever a failed Wallet automation received (see TransactionPrefill).
+    /// whatever an automation passed along — a failed Wallet log or the Add
+    /// Transaction with Review intent (see TransactionPrefill).
     init(
         accountId: String,
         payee: String = "",
         amountCents: Int? = nil,
-        date: Date = Date()
+        date: Date = Date(),
+        notes: String = "",
+        categoryId: String? = nil,
+        isIncome: Bool = false,
+        cleared: Bool = false
     ) {
         self.editing = nil
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
-        _txType = State(initialValue: .expense)
+        _txType = State(initialValue: isIncome ? .income : .expense)
         _payeeName = State(initialValue: payee)
         _transferToAccountId = State(initialValue: nil)
-        _selectedCategoryId = State(initialValue: nil)
-        _notes = State(initialValue: "")
+        _selectedCategoryId = State(initialValue: categoryId)
+        _notes = State(initialValue: notes)
         _date = State(initialValue: date)
-        _cleared = State(initialValue: false)
+        _cleared = State(initialValue: cleared)
+        // A prefilled category is the automation's explicit choice — don't
+        // let the payee-history suggestion overwrite it.
+        _userPickedCategory = State(initialValue: categoryId != nil)
     }
 
     /// Initializer for the "Edit" flow. Transfer legs load as transfers —

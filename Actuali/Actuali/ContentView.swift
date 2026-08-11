@@ -33,7 +33,11 @@ struct ContentView: View {
                         accountId: accountId,
                         payee: prefill.payee,
                         amountCents: prefill.amountCents,
-                        date: prefill.date
+                        date: prefill.date,
+                        notes: prefill.notes,
+                        categoryId: prefill.categoryId,
+                        isIncome: prefill.isIncome,
+                        cleared: prefill.cleared
                     )
                 } else {
                     ContentUnavailableView(
