@@ -233,6 +233,16 @@ struct CustomReportMeta: Codable, Equatable {
     let name: String?
 }
 
+// MARK: - DashboardPage
+
+/// A live row in `dashboard_pages`. The web app treats each page as a
+/// separate dashboard (upstream migration 1765518577215); a null name
+/// renders as an empty string upstream.
+struct DashboardPage: Identifiable, Equatable {
+    let id: String
+    let name: String
+}
+
 // MARK: - DashboardWidget enum
 
 enum DashboardWidget: Equatable {
