@@ -19,8 +19,11 @@ enum TransactionLoggedMarker {
 @MainActor
 enum TransactionLogNotifier {
 
+    /// - Parameter synced: false when the row is written locally but hasn't
+    ///   reached the server yet, which the banner says outright — otherwise the
+    ///   transaction looks logged while the budget on the server is unchanged.
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
-                              narrowSymbol: Bool = false) async {
+                              narrowSymbol: Bool = false, synced: Bool = true) async {
         let center = UNUserNotificationCenter.current()
 
         let granted: Bool
@@ -33,9 +36,10 @@ enum TransactionLogNotifier {
         guard granted else { return }
 
         let content = UNMutableNotificationContent()
-        content.title = "Logged transaction"
+        content.title = synced ? "Logged transaction" : "Saved locally"
         content.body = composeSuccessBody(payee: payee, amountCents: amountCents,
-                                          currencyCode: currencyCode, narrowSymbol: narrowSymbol)
+                                          currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                                          synced: synced)
         // No sound — quiet success banner that auto-dismisses.
         content.userInfo = TransactionLoggedMarker.userInfo
 
@@ -111,12 +115,16 @@ enum TransactionLogNotifier {
     }
 
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
-                                   narrowSymbol: Bool,
+                                   narrowSymbol: Bool, synced: Bool = true,
                                    locale: Locale = .autoupdatingCurrent) -> String {
         let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,
                                                        locale: locale)
-        return payee.isEmpty ? amountString : "\(amountString) at \(payee)"
+        let prefix = payee.isEmpty ? amountString : "\(amountString) at \(payee)"
+        guard synced else {
+            return "\(prefix). Couldn't reach your server — it will sync when you open Actuali."
+        }
+        return prefix
     }
 }

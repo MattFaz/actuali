@@ -115,12 +115,21 @@ struct LogTransactionIntent: AppIntent {
                 cleared: cleared
             )
 
-            let displayPayee = written.payeeName ?? payee
+            // The row is safely on disk either way, but an unreachable server
+            // means it only exists here. Say so rather than reporting a plain
+            // success, and ask iOS for an early wake so the queued write has a
+            // chance to land before the app is next opened (issue #139).
+            if !written.synced {
+                BackgroundRefresh.schedule(earliestIn: BackgroundRefresh.pendingWriteFlushInterval)
+            }
+
+            let displayPayee = written.transaction.payeeName ?? payee
             await TransactionLogNotifier.notifySuccess(
                 payee: displayPayee,
                 amountCents: amountCents,
                 currencyCode: store.currencyCode,
-                narrowSymbol: store.useNarrowCurrencySymbol
+                narrowSymbol: store.useNarrowCurrencySymbol,
+                synced: written.synced
             )
 
             let amountString = CurrencyAmountFormat.string(
@@ -128,9 +137,10 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol
             )
+            let verb = written.synced ? "Logged" : "Saved locally:"
             let dialogText = displayPayee.isEmpty
-                ? "Logged \(amountString)"
-                : "Logged \(amountString) at \(displayPayee)"
+                ? "\(verb) \(amountString)"
+                : "\(verb) \(amountString) at \(displayPayee)"
             return .result(dialog: IntentDialog(stringLiteral: dialogText))
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)

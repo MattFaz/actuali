@@ -61,4 +61,19 @@ struct TransactionLogNotifierTests {
         )
         #expect(bodyGBP == "£5.00 at Tesco")
     }
+
+    /// A write that never reached the server must not read as a plain success —
+    /// the transaction exists only on the phone until the next sync (issue #139).
+    @Test func composeSuccessBodySaysWhenTheRowIsOnlyLocal() {
+        let body = TransactionLogNotifier.composeSuccessBody(
+            payee: "Starbucks",
+            amountCents: 1250,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            synced: false,
+            locale: enUS
+        )
+        #expect(body.hasPrefix("$12.50 at Starbucks."))
+        #expect(body.contains("sync when you open Actuali"))
+    }
 }

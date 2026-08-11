@@ -36,19 +36,26 @@ enum BackgroundRefresh {
     /// a floor, and a high floor caps how many run windows iOS can offer.
     static let minimumInterval: TimeInterval = 60 * 60
 
-    static func makeRequest(now: Date) -> BGAppRefreshTaskRequest {
+    /// Floor used when a headless write couldn't be pushed. Shorter than
+    /// `minimumInterval` so a queued Shortcut transaction gets a chance to
+    /// reach the server before the user next opens the app — still only a hint,
+    /// and iOS may ignore it entirely (issue #139).
+    static let pendingWriteFlushInterval: TimeInterval = 15 * 60
+
+    static func makeRequest(now: Date, earliestIn: TimeInterval = minimumInterval) -> BGAppRefreshTaskRequest {
         let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
-        request.earliestBeginDate = now.addingTimeInterval(minimumInterval)
+        request.earliestBeginDate = now.addingTimeInterval(earliestIn)
         return request
     }
 
     static func schedule(using scheduler: BackgroundTaskRequesting = BGTaskScheduler.shared,
                          now: Date = Date(),
+                         earliestIn: TimeInterval = minimumInterval,
                          defaults: UserDefaults = .standard) {
         let status = BackgroundRefreshStatus(defaults: defaults)
         status.lastScheduleAttempt = now
         do {
-            try scheduler.submit(makeRequest(now: now))
+            try scheduler.submit(makeRequest(now: now, earliestIn: earliestIn))
             status.lastScheduleError = nil
         } catch {
             // Expected on simulator and when Background App Refresh is off.

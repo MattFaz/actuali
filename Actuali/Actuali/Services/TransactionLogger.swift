@@ -21,6 +21,14 @@ final class TransactionLogger {
         }
     }
 
+    /// The written row plus whether it reached the server. `synced == false`
+    /// means it is queued locally for the next successful sync, which in the
+    /// headless intent path may not happen until the app is opened (issue #139).
+    struct Result {
+        let transaction: Transaction
+        let synced: Bool
+    }
+
     private let store: BudgetStore
 
     init(store: BudgetStore) {
@@ -34,7 +42,7 @@ final class TransactionLogger {
     ///   - notes: optional notes from the caller
     ///   - date: transaction date
     ///   - cleared: whether the transaction is marked cleared in Actual
-    /// - Returns: the written transaction
+    /// - Returns: the written transaction and whether it reached the server
     func logTransaction(
         accountId: String,
         amountCents: Int,
@@ -42,7 +50,7 @@ final class TransactionLogger {
         notes: String?,
         date: Date,
         cleared: Bool = true
-    ) async throws -> Transaction {
+    ) async throws -> Result {
         guard let database = store.databaseForLogger else {
             throw LoggerError.noBudgetLoaded
         }
@@ -85,7 +93,11 @@ final class TransactionLogger {
         // moment it returns — wait for the push here so a Siri/Shortcuts log
         // still reaches the server before that happens.
         await store.flushPendingSync()
-        logger.info("Logged transaction \(transaction.id, privacy: .public) for \(payee.name, privacy: .public)")
-        return transaction
+        // The push is detached, so it can't report its own outcome: ask the
+        // queue instead. Anything still pending here means the server wasn't
+        // reachable and the row lives only on this device (issue #139).
+        let synced = !(await store.hasPendingLocalWrites())
+        logger.info("Logged transaction \(transaction.id, privacy: .public) for \(payee.name, privacy: .public), synced: \(synced, privacy: .public)")
+        return Result(transaction: transaction, synced: synced)
     }
 }

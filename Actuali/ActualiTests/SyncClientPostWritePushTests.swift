@@ -151,8 +151,10 @@ struct SyncClientPostWritePushTests {
         await syncClient.syncNow()
         #expect(PostWriteCaptureTransport.capturedBodies.count == 1)
 
-        // Intent write, milliseconds later.
+        // Intent write, milliseconds later. The push is detached (issue #125),
+        // so wait for it the way TransactionLogger does.
         try await syncClient.createTransaction(transaction())
+        await syncClient.flushPendingSync()
 
         // The canned server never echoes the messages back, so its merkle stays
         // empty and fullSync recurses on the diff — hence "more than one" rather

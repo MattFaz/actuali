@@ -636,6 +636,14 @@ actor SyncClient {
         }
     }
 
+    /// Whether local writes are still waiting to reach the server. Call after
+    /// `flushPendingSync()` to find out whether the push actually landed —
+    /// pushes are detached, so a write path can't return that answer itself
+    /// (issue #139).
+    func hasPendingLocalWrites() -> Bool {
+        hasUnsyncedLocalMessages()
+    }
+
     private func startPushTask(rateLimited: Bool) {
         pushNeededAfterCurrent = false
         // Assigned synchronously on the actor, so the body can't observe a

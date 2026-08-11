@@ -2492,6 +2492,13 @@ final class BudgetStore: ObservableObject {
         await syncClient?.flushPendingSync()
     }
 
+    /// Whether local writes are still waiting to reach the server. Meaningful
+    /// straight after `flushPendingSync()`: true there means the push failed and
+    /// the rows live only on this device until the next successful sync.
+    func hasPendingLocalWrites() async -> Bool {
+        await syncClient?.hasPendingLocalWrites() ?? false
+    }
+
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
