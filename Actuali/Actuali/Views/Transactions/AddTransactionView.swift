@@ -415,6 +415,10 @@ struct AddTransactionView: View {
                 Section {
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(3...6)
+                    // Links in the note stay openable while the text is a
+                    // TextField (GH #190) — this form doubles as the only
+                    // full view of a transaction's note.
+                    NoteLinkRows(text: notes)
                 }
 
                 Section {
@@ -704,6 +708,8 @@ private struct SplitLineRow: View {
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.words)
             TextField("Notes (optional)", text: $line.notes)
+                .font(.subheadline)
+            NoteLinkRows(text: line.notes)
                 .font(.subheadline)
         }
         .sheet(isPresented: $showCategoryPicker) {

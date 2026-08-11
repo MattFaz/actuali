@@ -312,6 +312,12 @@ enum DemoDataSeeder {
             Target $650/mo. Household supplies count here; \
             takeaway goes to Dining Out.
             """)
+        // A second note carries a markdown link so tappable note links
+        // (GH #190) are demonstrable — and UI-testable — in the demo budget.
+        try insertNote(db, id: diningId, note: """
+            Cap $250/mo.
+            [Rewards portal](https://example.com/rewards)
+            """)
 
         // --- Payees ---
         let wholeFoodsId = UUID().uuidString

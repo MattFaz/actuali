@@ -29,6 +29,9 @@ struct CategoryNoteEditorView: View {
                         .frame(minHeight: 160)
                         .focused($editorFocused)
                         .accessibilityIdentifier("categoryNoteEditor")
+                    // Links stay openable mid-edit (GH #190); the editor text
+                    // itself has to remain plain to stay editable.
+                    NoteLinkRows(text: text)
                 } footer: {
                     if let saveError {
                         Text(saveError)
