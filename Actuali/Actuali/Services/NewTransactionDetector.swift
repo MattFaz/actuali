@@ -15,10 +15,24 @@ struct NewTransactionDetector {
         self.defaults = defaults
     }
 
+    private static func watermarkKey(budgetId: String) -> String {
+        "transactionNotificationWatermark.\(budgetId)"
+    }
+
+    /// Drop the watermark for a budget whose file was just downloaded. The new
+    /// snapshot's messages_crdt rowids come from whichever client uploaded it,
+    /// so a watermark left by a previous copy of the same budget points at
+    /// unrelated messages — high enough to pass the `watermark <= maxId` guard
+    /// below, low enough for the first catch-up sync to look like a pile of new
+    /// transactions. Forgetting it makes the next detection re-baseline.
+    static func forgetWatermark(budgetId: String, defaults: UserDefaults = .standard) {
+        defaults.removeObject(forKey: watermarkKey(budgetId: budgetId))
+    }
+
     func detectNewTransactions(in database: BudgetDatabase,
                                budgetId: String,
                                localNode: String) async throws -> [Transaction] {
-        let key = "transactionNotificationWatermark.\(budgetId)"
+        let key = Self.watermarkKey(budgetId: budgetId)
         let maxId = try await database.fetchMaxMessageId()
 
         guard let watermark = (defaults.object(forKey: key) as? NSNumber)?.int64Value,

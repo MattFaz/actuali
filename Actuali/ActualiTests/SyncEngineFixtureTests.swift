@@ -331,6 +331,63 @@ struct MerkleTreeFixtureTests {
         #expect(node.children.isEmpty)
         #expect(node.hash == 1983295247)
     }
+
+    // deriveMerkleFromMessageLog reads the trie's minute straight off the
+    // ISO-8601 prefix instead of parsing a Date, so it must agree with `parse`
+    // exactly — including across leap days, century boundaries and month ends,
+    // where hand-rolled calendar math goes wrong.
+    @Test(arguments: [
+        "1970-01-01T00:00:00.000Z-0000-0123456789ABCDEF",
+        "1970-01-01T00:00:59.999Z-FFFF-0123456789ABCDEF",
+        "1999-12-31T23:59:00.000Z-0000-0123456789ABCDEF",
+        "2000-02-29T12:34:56.789Z-0000-0123456789ABCDEF",  // leap day, century leap year
+        "2018-11-01T00:45:00.000Z-0000-0123456789ABCDEF",
+        "2024-02-29T23:59:59.999Z-0000-0123456789ABCDEF",
+        "2026-03-01T00:00:00.000Z-0000-0123456789ABCDEF",  // day after a non-leap February
+        "2026-07-22T10:00:00.000Z-0000-a1b2c3d4e5f60718",
+        "2026-12-31T23:59:59.999Z-0000-0123456789ABCDEF",
+        "2100-03-01T00:00:00.000Z-0000-0123456789ABCDEF",  // century non-leap year
+    ])
+    func minuteArithmeticMatchesDateParsing(_ string: String) throws {
+        let parsed = try #require(HLCTimestamp.parse(string))
+        #expect(HLCTimestamp.minutesSinceEpoch(of: string) == parsed.millis / 1000 / 60)
+    }
+
+    @Test func minuteArithmeticRejectsMalformedTimestamps() {
+        #expect(HLCTimestamp.minutesSinceEpoch(of: "") == nil)
+        #expect(HLCTimestamp.minutesSinceEpoch(of: "2026-07-22") == nil)
+        #expect(HLCTimestamp.minutesSinceEpoch(of: "not-a-timestamp-at-all") == nil)
+        #expect(HLCTimestamp.minutesSinceEpoch(of: "2026-13-22T10:00:00.000Z-0000-0") == nil)
+        #expect(HLCTimestamp.minutesSinceEpoch(of: "2026-07-22T99:00:00.000Z-0000-0") == nil)
+    }
+
+    // `building(from:)` folds one XOR per active minute instead of one insert
+    // per message, so a whole message log can be re-derived cheaply
+    // (BudgetDatabase.deriveMerkleFromMessageLog). It must produce the identical
+    // trie — including for several messages sharing a minute, where the folding
+    // relies on XOR being associative along one shared path.
+    @Test func bulkBuildMatchesPerMessageInsertion() {
+        let timestamps = [
+            "2018-11-01T00:47:12.000Z-0000-0123456789ABCDEF",
+            "2018-11-01T00:47:39.000Z-0001-0123456789ABCDEF",  // same minute
+            "2018-11-01T00:47:39.500Z-0000-FEDCBA9876543210",  // same minute
+            "2018-11-01T01:15:00.000Z-0000-0123456789ABCDEF",
+            "2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF",
+        ].map(ts)
+
+        var incremental = MerkleTree()
+        var buckets: [Int64: Int32] = [:]
+        for timestamp in timestamps {
+            incremental = incremental.inserting(timestamp)
+            // One bucket per minute, keyed by any millis inside it.
+            let minute = timestamp.millis / 60_000 * 60_000
+            buckets[minute, default: 0] ^= timestamp.hash()
+        }
+
+        let bulk = MerkleTree.building(from: buckets)
+        #expect(bulk.root == incremental.root)
+        #expect(bulk.diff(with: incremental) == nil)
+    }
 }
 
 // MARK: - SyncEncoder / protobuf

@@ -1755,6 +1755,33 @@ class BudgetDatabase {
         }
     }
 
+    /// Rebuild the sync merkle from `messages_crdt`.
+    ///
+    /// The trie is nothing but the XOR of every stored message's timestamp hash,
+    /// so the message log — not the tree cached in `messages_clock` — is its
+    /// source of truth. Re-deriving lets a persisted tree that drifted from the
+    /// log be repaired instead of quietly misreporting parity with the server
+    /// (see `SyncClient.fullSync`).
+    ///
+    /// A long-lived budget's log runs to hundreds of thousands of rows, so this
+    /// avoids `HLCTimestamp` entirely: it hashes each stored timestamp string
+    /// directly (`HLCTimestamp.hash()` murmurs `toString()`, which is exactly
+    /// the text the log holds) and reads the trie's minute off the ISO-8601
+    /// prefix arithmetically.
+    func deriveMerkleFromMessageLog() throws -> MerkleTree {
+        try dbQueue.read { db in
+            guard try db.tableExists("messages_crdt") else { return MerkleTree() }
+
+            var buckets: [Int64: Int32] = [:]
+            let cursor = try String.fetchCursor(db, sql: "SELECT timestamp FROM messages_crdt")
+            while let timestamp = try cursor.next() {
+                guard let minutes = HLCTimestamp.minutesSinceEpoch(of: timestamp) else { continue }
+                buckets[minutes * 60_000, default: 0] ^= Int32(bitPattern: MurmurHash3.hash(timestamp))
+            }
+            return MerkleTree.building(from: buckets).pruned()
+        }
+    }
+
     func getMessagesSince(_ since: String) throws -> [CRDTMessage] {
         try dbQueue.read { db in
             let rows = try Row.fetchAll(db, sql: """
