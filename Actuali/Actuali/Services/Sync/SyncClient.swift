@@ -78,6 +78,10 @@ actor SyncClient {
     /// deciding which local messages are genuine post-download writes that must be
     /// pushed — without it, the first local write is stranded (actios-4k4).
     private var downloadBaselineTimestamp: String?
+    /// Whether the merkle has been re-derived from `messages_crdt` this session.
+    /// See the top of `fullSync` for why that must happen before the first
+    /// comparison against the server's tree.
+    private var hasDerivedMerkleFromLog = false
 
     // MARK: - Published State (for UI)
 
@@ -134,8 +138,8 @@ actor SyncClient {
                     logger.notice("Recovered lastSyncedTimestamp from messages_crdt: \(recovered, privacy: .public)")
                 } else {
                     // Nothing trustworthy to recover from (empty budget).
-                    // Leave nil — fullSync's no-lastSynced path adopts the
-                    // server's state rather than fabricating a timestamp.
+                    // Leave nil — fullSync's no-lastSynced path syncs from the
+                    // snapshot's floor rather than fabricating a timestamp.
                     lastSyncedTimestamp = nil
                     logger.notice("No recoverable lastSyncedTimestamp - deferring to first sync")
                 }
@@ -618,15 +622,16 @@ actor SyncClient {
         await performSync()
     }
 
-    /// Recover from a stuck out-of-sync state by discarding the local Merkle
-    /// tree and last-synced marker, then running a sync. The fresh-download
-    /// branch in `fullSync` will adopt the server's Merkle tree, which
-    /// resolves persistent divergence at the cost of orphaning any local
-    /// writes since the last successful sync (callers should warn the user).
+    /// Recover from a stuck out-of-sync state by discarding the last-synced
+    /// marker, then running a sync: the next pass re-requests everything after
+    /// the local message log's high-water mark rather than after the last
+    /// successful sync. The Merkle tree is deliberately left alone — it is
+    /// re-derived from the message log on the next sync anyway, and blanking it
+    /// used to hand `fullSync` an excuse to adopt the server's tree and declare
+    /// parity it hadn't earned (#99, #121).
     func resetSyncState() async {
-        logger.notice("resetSyncState() - clearing local merkle and lastSyncedTimestamp")
+        logger.notice("resetSyncState() - clearing lastSyncedTimestamp")
         syncTask?.cancel()
-        merkle = MerkleTree()
         lastSyncedTimestamp = nil
         retryDelay = 5
         try? saveClock()
@@ -784,6 +789,39 @@ actor SyncClient {
 
         logger.debug("fullSync() attempt #\(attemptCount, privacy: .public), since: \(since ?? "nil", privacy: .public), lastSynced: \(self.lastSyncedTimestamp ?? "nil", privacy: .public)")
 
+        // The merkle must describe our own message log and nothing else: a
+        // mismatch with the server's tree is the ONLY signal that we're missing
+        // messages, so a tree claiming more than we hold makes the missing
+        // window unreachable. Two ways the persisted tree drifts from the log:
+        //
+        //  - an older build overwrote it with the server's tree whenever the
+        //    first sync had no lastSyncedTimestamp, recording parity for
+        //    messages sync had skipped (#99). The lie is self-consistent — both
+        //    sides then fold in the same new messages — so every later diff
+        //    matched and the gap survived re-syncs and app updates, leaving
+        //    balances stuck at stale, usually higher, amounts (#121).
+        //  - `receiveMessages` commits to messages_crdt but the tree is only
+        //    persisted at the end of a successful pass, so being killed in
+        //    between drops timestamps from the tree that the log kept.
+        //
+        // Re-deriving from the log before the first comparison of a session
+        // repairs both, and the diff recursion below then heals the data. One
+        // pass over the log per session, one trie walk per active minute.
+        if !hasDerivedMerkleFromLog {
+            hasDerivedMerkleFromLog = true
+            do {
+                let derived = try database.deriveMerkleFromMessageLog()
+                if derived.root.hash != merkle.root.hash {
+                    logger.notice("Merkle disagreed with the message log (persisted \(self.merkle.root.hash, privacy: .public), derived \(derived.root.hash, privacy: .public)) - re-deriving")
+                    merkle = derived
+                }
+            } catch {
+                // Keep the persisted tree: a sync with a possibly stale merkle
+                // still beats no sync at all.
+                logger.warning("Could not derive merkle from message log: \(error, privacy: .public)")
+            }
+        }
+
         // Determine sync starting point
         // Use provided 'since', then lastSyncedTimestamp (if non-empty), then fallback
         let effectiveLastSynced = lastSyncedTimestamp.flatMap { $0.isEmpty ? nil : $0 }
@@ -798,8 +836,7 @@ actor SyncClient {
             // floor: everything the server has after it is missing locally no
             // matter how old. A fabricated recent window here (formerly 24h)
             // silently skipped every message between an older file snapshot
-            // and yesterday, and the merkle adoption below then made the gap
-            // permanent (issue #99).
+            // and yesterday (issue #99).
             logger.notice("No valid lastSyncedTimestamp, using snapshot high-water mark")
             sinceTimestamp = baseline
         } else {
@@ -819,14 +856,13 @@ actor SyncClient {
         if since != nil || effectiveLastSynced != nil {
             localMessages = try database.getMessagesSince(sinceTimestamp)
         } else {
-            // Fresh download / no valid lastSynced. The local merkle is empty and we
-            // adopt the server's below, so merkle-diff recursion can't push local
-            // writes for us. Send everything newer than the download baseline (the
-            // server's high-water mark captured at load); those are genuine local
-            // writes made after download. Without this, a write made before the first
-            // sync completes is dropped when we adopt the server merkle and advance
-            // lastSynced past it (actios-4k4). The baseline keeps us from re-pushing
-            // the entire downloaded history.
+            // Fresh download / no valid lastSynced, so there's no last-synced
+            // window to send from. Send everything newer than the download
+            // baseline (the server's high-water mark captured at load); those
+            // are genuine local writes made after download, and a write made
+            // before the first sync completes would otherwise sit unsent until
+            // something else changed it (actios-4k4). The baseline keeps us from
+            // re-pushing the entire downloaded history.
             let baseline = downloadBaselineTimestamp ?? ""
             localMessages = try database.getMessagesSince(baseline)
             logger.debug("No valid lastSynced - sending \(localMessages.count, privacy: .public) local message(s) since download baseline")
@@ -863,38 +899,15 @@ actor SyncClient {
         logger.debug("Local merkle hash: \(self.merkle.root.hash, privacy: .public), remote: \(remoteMerkle.hash, privacy: .public)")
 
         if let diffTime = merkle.diff(with: remoteMerkleTree) {
-            // Not in sync - recurse from divergence point
+            // Not in sync - recurse from divergence point. This is the only way
+            // a missing window is ever recovered, so it runs no matter how the
+            // sync state got here: an older build short-circuited it whenever
+            // lastSyncedTimestamp was nil and adopted the server's tree
+            // instead, which recorded parity we hadn't earned and made the gap
+            // permanent (#99, #121). The merkle is derived from our own message
+            // log above, so the divergence point is real and each pass narrows
+            // it; `attemptCount` still bounds a pathological case.
             logger.debug("Merkle diff found at time: \(diffTime, privacy: .public), recursing...")
-
-            // Special case: if we don't have a valid lastSynced, don't recurse.
-            // This happens after downloading a budget or recovering from bad state.
-            // Instead, adopt the server's merkle and consider ourselves synced.
-            if effectiveLastSynced == nil {
-                logger.info("No valid lastSynced - adopting server's merkle tree")
-                merkle = remoteMerkleTree
-                // Advance lastSynced only to what we actually reconciled this pass:
-                // the download baseline plus the messages we sent and received. Using
-                // this instead of the raw clock high-water mark avoids skipping a
-                // local write that interleaved during the awaits above without being
-                // included in `localMessages` — such a write sorts above this mark
-                // (HLC timestamps order lexicographically) and is resent next sync
-                // (actios-4k4). Fall back to the clock only for a truly empty budget
-                // with nothing reconciled, so we still record that a sync happened.
-                let reconciled = ([downloadBaselineTimestamp]
-                    + localMessages.map { $0.timestamp.toString() }
-                    + remoteMessages.map { $0.timestamp.toString() })
-                    .compactMap { $0 }
-                    .filter { !$0.isEmpty }
-                    .max()
-                if let reconciled {
-                    lastSyncedTimestamp = reconciled
-                } else {
-                    lastSyncedTimestamp = (await clock.current).toString()
-                }
-                logger.debug("Set lastSyncedTimestamp to: \(self.lastSyncedTimestamp ?? "nil", privacy: .public)")
-                try saveClock()
-                return
-            }
 
             guard attemptCount < 10 else {
                 logger.error("Too many sync attempts, giving up")

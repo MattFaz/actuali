@@ -92,13 +92,30 @@ struct MerkleTree {
     /// Insert a timestamp and return a new tree (non-mutating version)
     /// Use this in actor contexts where mutating methods can't be called after await
     func inserting(_ timestamp: HLCTimestamp) -> MerkleTree {
-        let hash = timestamp.hash()
-        let key = minuteKey(from: timestamp.millis)
+        folding(hash: timestamp.hash(), intoMinuteOf: timestamp.millis)
+    }
 
+    /// Build a trie from minute buckets, where each entry maps a time to the XOR
+    /// of every message hash falling in that time's minute.
+    ///
+    /// Equivalent to `inserting(_:)` per message: every timestamp within a minute
+    /// walks the identical path, and XOR is associative, so folding a minute's
+    /// combined hash in one walk lands the same value in every node along it.
+    /// Rebuilding a whole message log costs one walk per active minute this way
+    /// instead of one per message.
+    static func building(from minuteBuckets: [Int64: Int32]) -> MerkleTree {
+        var tree = MerkleTree()
+        for (millis, hash) in minuteBuckets {
+            tree = tree.folding(hash: hash, intoMinuteOf: millis)
+        }
+        return tree
+    }
+
+    private func folding(hash: Int32, intoMinuteOf millis: Int64) -> MerkleTree {
         // XOR hash into root
         var newRoot = root
         newRoot.hash ^= hash
-        newRoot = insertKey(node: newRoot, key: key, hash: hash)
+        newRoot = insertKey(node: newRoot, key: minuteKey(from: millis), hash: hash)
 
         return MerkleTree(root: newRoot)
     }

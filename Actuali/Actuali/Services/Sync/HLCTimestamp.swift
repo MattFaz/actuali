@@ -67,6 +67,50 @@ struct HLCTimestamp: Comparable, Hashable, Codable, CustomStringConvertible {
         return HLCTimestamp(millis: millis, counter: counter, node: node)
     }
 
+    /// Minutes since the Unix epoch for a timestamp string, read straight off
+    /// its ISO-8601 prefix (`YYYY-MM-DDTHH:MM`, always UTC).
+    ///
+    /// `parse` builds an `ISO8601DateFormatter` per call, which dominates any
+    /// pass over a whole message log — and the Merkle trie only ever needs the
+    /// minute (`MerkleTree` keys on `millis / 1000 / 60`), never the full
+    /// timestamp. Returns nil if the prefix isn't well formed.
+    static func minutesSinceEpoch(of string: String) -> Int64? {
+        var iterator = string.utf8.makeIterator()
+        // Fixed-width fields, each followed by one separator ("-", "-", "T", ":").
+        func field(digits: Int, separator: Bool) -> Int? {
+            var value = 0
+            for _ in 0..<digits {
+                guard let byte = iterator.next(), byte >= 48, byte <= 57 else { return nil }
+                value = value * 10 + Int(byte - 48)
+            }
+            if separator, iterator.next() == nil { return nil }
+            return value
+        }
+        guard let year = field(digits: 4, separator: true),
+              let month = field(digits: 2, separator: true),
+              let day = field(digits: 2, separator: true),
+              let hour = field(digits: 2, separator: true),
+              let minute = field(digits: 2, separator: false),
+              (1...12).contains(month), (1...31).contains(day),
+              hour < 24, minute < 60
+        else { return nil }
+
+        return daysSinceEpoch(year: year, month: month, day: day) * 1440
+            + Int64(hour * 60 + minute)
+    }
+
+    /// Days from 1970-01-01 to a proleptic-Gregorian date (Howard Hinnant's
+    /// `days_from_civil`), shifting the year to start in March so the leap day
+    /// lands at the end of the cycle.
+    private static func daysSinceEpoch(year: Int, month: Int, day: Int) -> Int64 {
+        let shiftedYear = year - (month <= 2 ? 1 : 0)
+        let era = (shiftedYear >= 0 ? shiftedYear : shiftedYear - 399) / 400
+        let yearOfEra = shiftedYear - era * 400                                  // [0, 399]
+        let dayOfYear = (153 * (month + (month > 2 ? -3 : 9)) + 2) / 5 + day - 1 // [0, 365]
+        let dayOfEra = yearOfEra * 365 + yearOfEra / 4 - yearOfEra / 100 + dayOfYear
+        return Int64(era) * 146_097 + Int64(dayOfEra) - 719_468
+    }
+
     // MARK: - Comparable
 
     static func < (lhs: HLCTimestamp, rhs: HLCTimestamp) -> Bool {

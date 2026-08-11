@@ -8,6 +8,16 @@ import Testing
 /// and an unreachable server.
 private final class SyncOutcomeTransport: URLProtocol {
     nonisolated(unsafe) static var failWithOffline = false
+    /// Timestamps the client has pushed. A real server folds the messages it
+    /// receives into its own tree before answering, so answering with a merkle
+    /// over these is what lets the client see itself as in sync — a stub that
+    /// always claimed an empty tree would leave every sync out of sync.
+    nonisolated(unsafe) static var absorbed: Set<String> = []
+
+    static func reset(failWithOffline: Bool) {
+        self.failWithOffline = failWithOffline
+        absorbed = []
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -20,7 +30,10 @@ private final class SyncOutcomeTransport: URLProtocol {
         }
 
         var response = SyncResponse()
-        response.merkle = #"{"hash":0}"#
+        if let decoded = try? SyncRequest(serializedData: Self.readBody(request)) {
+            Self.absorbed.formUnion(decoded.messages.map(\.timestamp))
+        }
+        response.merkle = Self.merkleJSON()
         let data = (try? response.serializedData()) ?? Data()
         let httpResponse = HTTPURLResponse(
             url: request.url!,
@@ -34,6 +47,35 @@ private final class SyncOutcomeTransport: URLProtocol {
     }
 
     override func stopLoading() {}
+
+    /// URLSession hands POST bodies to URLProtocol as a stream, not httpBody.
+    private static func readBody(_ request: URLRequest) -> Data {
+        guard let stream = request.httpBodyStream else { return request.httpBody ?? Data() }
+        stream.open()
+        defer { stream.close() }
+        var body = Data()
+        let bufferSize = 16 * 1024
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: bufferSize)
+        defer { buffer.deallocate() }
+        while stream.hasBytesAvailable {
+            let read = stream.read(buffer, maxLength: bufferSize)
+            guard read > 0 else { break }
+            body.append(buffer, count: read)
+        }
+        return body
+    }
+
+    private static func merkleJSON() -> String {
+        var tree = MerkleTree()
+        for timestamp in absorbed.sorted() {
+            guard let parsed = HLCTimestamp.parse(timestamp) else { continue }
+            tree = tree.inserting(parsed)
+        }
+        guard let data = try? JSONEncoder().encode(tree.pruned().root),
+              let json = String(data: data, encoding: .utf8)
+        else { return #"{"hash":0}"# }
+        return json
+    }
 }
 
 /// Issue #139: the Shortcut used to report a plain success even when the row
@@ -98,7 +140,7 @@ struct TransactionLoggerSyncOutcomeTests {
     }
 
     private func makeStore(database: BudgetDatabase, serverReachable: Bool) async throws -> BudgetStore {
-        SyncOutcomeTransport.failWithOffline = !serverReachable
+        SyncOutcomeTransport.reset(failWithOffline: !serverReachable)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SyncOutcomeTransport.self]
         let serverClient = ActualServerClient(session: URLSession(configuration: config))

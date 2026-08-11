@@ -606,7 +606,7 @@ struct SettingsView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text("Discards the local sync marker and re-adopts the server's view of your budget. Any transactions or edits made since the last successful sync may need to be re-entered.")
+                Text("Discards the local sync marker and re-checks your budget against the server, pulling down anything missing. Local edits are re-sent rather than discarded, but a large budget can take a moment to reconcile.")
             }
             .confirmationDialog(
                 "Select a Budget",
