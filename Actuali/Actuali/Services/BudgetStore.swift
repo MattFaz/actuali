@@ -2484,6 +2484,14 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    /// Wait for the background push a local write kicked off (see
+    /// `SyncClient.scheduleAutomaticSync`). Only headless callers that can be
+    /// suspended right after writing need this — interactive flows must never
+    /// block on the network (issue #125).
+    func flushPendingSync() async {
+        await syncClient?.flushPendingSync()
+    }
+
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
