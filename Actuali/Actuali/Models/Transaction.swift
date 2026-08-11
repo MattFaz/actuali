@@ -30,6 +30,10 @@ struct Transaction: Identifiable, Hashable {
     // Set at creation time by the Wallet import; not read back by the fetch
     // paths, so it is nil on fetched rows — dedup queries the column directly.
     var financialId: String? = nil
+    // Marks the special "opening balance" transaction created alongside a
+    // new account (Actual's starting_balance_flag). Only ever set at
+    // creation, matching financialId's write-only shape below.
+    var startingBalanceFlag: Bool = false
     // Payee's transfer_acct: the account on the other side when the payee is a
     // transfer payee, nil otherwise. Populated by the display and reports
     // fetches so rows can render transfers as transfers and engines can
@@ -137,6 +141,9 @@ extension Transaction: CRDTSyncable {
         // nil included).
         if let financialId {
             fields["financial_id"] = financialId
+        }
+        if startingBalanceFlag {
+            fields["starting_balance_flag"] = 1
         }
         return fields
     }

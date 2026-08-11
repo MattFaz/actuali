@@ -366,6 +366,40 @@ actor SyncClient {
         // Note: Don't schedule sync here - let the transaction sync handle it
     }
 
+    /// Create a new account and, if given, its opening-balance transaction —
+    /// atomically, so a failure on either leaves nothing orphaned. Rules are
+    /// skipped, same as `createTransfer`/`createSplit`: the caller (account
+    /// creation) builds the transaction explicitly and it's never
+    /// user-editable rule input.
+    func createAccount(_ account: Account, startingBalanceTransaction: Transaction?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createAccount() - id: \(account.id, privacy: .private)")
+
+        // 1. Insert locally (optimistic)
+        try database.insertAccount(account, startingBalanceTransaction: startingBalanceTransaction)
+        logger.debug("Account inserted locally")
+
+        // 2. Generate CRDT messages for the account row
+        var messages = try await messageGenerator.messagesForInsert(account)
+
+        // 3. Generate CRDT messages for the opening-balance transaction, if any
+        if let startingBalanceTransaction {
+            messages += try await messageGenerator.messagesForInsert(startingBalanceTransaction)
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for new account")
+
+        // 4. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 5. Sync to push the new account to the server (rate-limited)
+        await automaticSync()
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.
