@@ -162,6 +162,16 @@ enum DemoDataSeeder {
             )
             """)
 
+        // Real Actual files key notes by the annotated row's own id (GH #131).
+        // The demo budget needs the table for the category note UI to appear at
+        // all — without it the section hides itself as unsupported.
+        try db.execute(sql: """
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                note TEXT
+            )
+            """)
+
         // Mirrors the dashboard table created by BudgetDatabase's migrations, so
         // the demo budget can ship a pre-built Reports dashboard.
         try db.execute(sql: """
@@ -285,6 +295,15 @@ enum DemoDataSeeder {
         let pharmacyId = UUID().uuidString
         try insertCategory(db, id: gymId, name: "Gym", groupId: healthId, isIncome: false, sortOrder: 0)
         try insertCategory(db, id: pharmacyId, name: "Pharmacy", groupId: healthId, isIncome: false, sortOrder: 1)
+
+        // --- Notes ---
+        // One category arrives annotated so the note on the category detail
+        // view (GH #131) is visible in the demo budget rather than only after
+        // the user writes one.
+        try insertNote(db, id: groceriesId, note: """
+            Target $650/mo. Household supplies count here; \
+            takeaway goes to Dining Out.
+            """)
 
         // --- Payees ---
         let wholeFoodsId = UUID().uuidString
@@ -556,6 +575,16 @@ enum DemoDataSeeder {
             INSERT INTO categories (id, name, is_income, cat_group, sort_order, tombstone, hidden)
             VALUES (?, ?, ?, ?, ?, 0, 0)
             """, arguments: [id, name, isIncome ? 1 : 0, groupId, sortOrder])
+    }
+
+    private static func insertNote(
+        _ db: Database,
+        id: String,
+        note: String
+    ) throws {
+        try db.execute(sql: """
+            INSERT INTO notes (id, note) VALUES (?, ?)
+            """, arguments: [id, note])
     }
 
     private static func insertPayee(
