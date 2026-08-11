@@ -7,13 +7,14 @@ import os
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "SyncClient")
 
-enum SyncError: LocalizedError {
+enum SyncError: LocalizedError, Equatable {
     case notConfigured
     case offline
     case outOfSync
     case encodingFailed
     case serverError(String)
     case budgetTableMissing
+    case notesTableMissing
 
     var errorDescription: String? {
         switch self {
@@ -29,6 +30,8 @@ enum SyncError: LocalizedError {
             return "Server error: \(message)"
         case .budgetTableMissing:
             return "This budget file has no budget table to write to."
+        case .notesTableMissing:
+            return "This budget file has no notes table to write to."
         }
     }
 }
@@ -525,6 +528,49 @@ actor SyncClient {
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
         // 4. Push to the server in the background
+        scheduleAutomaticSync()
+    }
+
+    /// Save the note attached to a row — a category, for now (GH #131) —
+    /// optimistic local-first. Mirrors upstream notes-save (loot-core
+    /// server/notes/app.ts): a single `note` cell on the `notes` table, keyed
+    /// by the annotated row's own id. No row is created up front: the CRDT
+    /// apply upserts, so a category that has never been annotated gets its row
+    /// from this write.
+    ///
+    /// Clearing a note saves an empty string rather than tombstoning the row,
+    /// again matching upstream — a tombstone would leave other clients showing
+    /// the stale note, since they read the note column, not the tombstone.
+    ///
+    /// Requires the `notes` table: without it `applyMessages` would skip the
+    /// local apply as unknown schema and the write would look like it worked
+    /// while changing nothing on screen.
+    func setNote(id: String, note: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard try database.notesTableExists() else { throw SyncError.notesTableMissing }
+
+        logger.debug("setNote() - row: \(id, privacy: .private), length: \(note.count, privacy: .public)")
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        let messages = try await messageGenerator.messages(
+            dataset: "notes", row: id, fields: [("note", note)])
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving from
+        //    another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Push in the background — the Save button awaits this write, and
+        //    an unreachable server must not hold the sheet open (issue #125).
         scheduleAutomaticSync()
     }
 

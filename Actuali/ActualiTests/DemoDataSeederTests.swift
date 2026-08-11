@@ -87,4 +87,32 @@ struct DemoDataSeederTests {
         }
         #expect(try await database.fetchUncategorizedCount() == 0)
     }
+
+    /// The demo budget must support notes and ship one, or the category note
+    /// section (GH #131) hides itself as unsupported and the feature is
+    /// invisible in demo mode — including in App Store screenshots.
+    @Test func seededBudgetShipsAnAnnotatedCategory() async throws {
+        let database = try seedAndOpen()
+        let groups = try await database.fetchCategoryGroups()
+
+        let groceries = try #require(
+            groups.flatMap(\.categories).first { $0.name == "Groceries" })
+        let note = try await database.fetchCategoryNote(categoryId: groceries.id)
+
+        #expect(note.supported)
+        #expect(note.text.contains("Target $650/mo"))
+    }
+
+    /// Every other category opens with an empty — not unsupported — note, so
+    /// the "Add Note" row is offered rather than hidden.
+    @Test func unannotatedCategoriesSupportNotes() async throws {
+        let database = try seedAndOpen()
+        let groups = try await database.fetchCategoryGroups()
+
+        let rent = try #require(groups.flatMap(\.categories).first { $0.name == "Rent" })
+        let note = try await database.fetchCategoryNote(categoryId: rent.id)
+
+        #expect(note.supported)
+        #expect(note.isEmpty)
+    }
 }

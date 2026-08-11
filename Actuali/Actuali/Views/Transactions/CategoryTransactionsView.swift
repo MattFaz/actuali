@@ -10,9 +10,10 @@ struct CategoryTransactionsDestination: Hashable {
 }
 
 /// Every transaction counting toward one category's spend, pushed from the
-/// Budget tab (GH #56). The row set mirrors the budget month's spent query
-/// (see BudgetDatabase.fetchCategoryTransactions), so a month-scoped list
-/// sums to the "Spent" figure the user tapped.
+/// Budget tab (GH #56), above it the category's note (GH #131). The row set
+/// mirrors the budget month's spent query (see
+/// BudgetDatabase.fetchCategoryTransactions), so a month-scoped list sums to
+/// the "Spent" figure the user tapped.
 struct CategoryTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let destination: CategoryTransactionsDestination
@@ -21,6 +22,10 @@ struct CategoryTransactionsView: View {
     @State private var searchText = ""
     @State private var loaded = false
     @State private var editingTransaction: Transaction?
+    /// Starts `.unsupported` so the section stays hidden until the read
+    /// confirms this file can store notes (GH #131).
+    @State private var note: CategoryNote = .unsupported
+    @State private var editingNote = false
 
     private var scopeTitle: String {
         destination.month.map { MonthPicker.title(for: $0) } ?? "All Time"
@@ -34,73 +39,119 @@ struct CategoryTransactionsView: View {
         return transactions.filter { matcher.matches($0) }
     }
 
-    var body: some View {
-        Group {
-            if transactions.isEmpty && loaded {
-                ContentUnavailableView(
-                    "No Transactions",
-                    systemImage: "list.bullet.rectangle",
-                    description: Text("Nothing in \(destination.categoryName) for \(scopeTitle.lowercased() == "all time" ? "any month" : scopeTitle)")
-                )
-            } else {
-                List {
-                    Section {
-                        if !transactions.isEmpty && filteredTransactions.isEmpty {
-                            Text("No matching transactions")
-                                .foregroundStyle(.secondary)
-                        }
-                        ForEach(filteredTransactions) { transaction in
-                            Group {
-                                // Split children only display at full
-                                // opacity, without tap/swipe: the edit form
-                                // has no split support, and deleting one leg
-                                // would break the parent's amount.
-                                if transaction.parentId == nil {
-                                    Button {
-                                        editingTransaction = transaction
-                                    } label: {
-                                        TransactionRow(transaction: transaction, onToggleCleared: {
-                                            Task {
-                                                await budgetStore.toggleCleared(transaction)
-                                                await reload()
-                                            }
-                                        })
-                                        .contentShape(Rectangle())
-                                    }
-                                    .buttonStyle(.plain)
-                                } else {
-                                    TransactionRow(transaction: transaction)
-                                }
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if transaction.parentId == nil {
-                                    Button(role: .destructive) {
-                                        Task {
-                                            await budgetStore.deleteTransaction(transaction)
-                                            await reload()
-                                        }
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                    Button {
-                                        editingTransaction = transaction
-                                    } label: {
-                                        Label("Edit", systemImage: "pencil")
-                                    }
-                                    .tint(.yellow)
-                                }
-                            }
-                        }
-                    } header: {
-                        HStack {
-                            Text(scopeTitle)
-                            Spacer()
-                            // Sums the filtered rows so the total matches
-                            // what's on screen while searching.
-                            Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
-                        }
+    /// The category's note. Hidden while searching — a search is about finding
+    /// transactions, not reading guidance — and on files with no `notes` table,
+    /// where an edit could never save.
+    private var noteSection: some View {
+        Section("Note") {
+            Button {
+                editingNote = true
+            } label: {
+                if note.isEmpty {
+                    // Tinted: an empty note row is an invitation to act, where
+                    // an existing note is content to read.
+                    Label("Add Note", systemImage: "note.text.badge.plus")
+                        .foregroundStyle(Color.accentColor)
+                } else {
+                    HStack(alignment: .top, spacing: 12) {
+                        Text(note.text)
+                            .multilineTextAlignment(.leading)
+                            // Multi-line notes are the point — let the row grow
+                            // instead of truncating the guidance to one line.
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "pencil")
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
+            }
+            // Plain: a tinted List button would render the note itself in the
+            // accent color, reading as a link rather than as the text it is.
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("categoryNoteRow")
+        }
+    }
+
+    /// Kept as a row inside the List rather than replacing the whole view, so a
+    /// category with no transactions yet still shows (and can add) its note.
+    private var emptyTransactionsRow: some View {
+        ContentUnavailableView(
+            "No Transactions",
+            systemImage: "list.bullet.rectangle",
+            description: Text("Nothing in \(destination.categoryName) for \(scopeTitle.lowercased() == "all time" ? "any month" : scopeTitle)")
+        )
+        .listRowSeparator(.hidden)
+        .listRowBackground(Color.clear)
+    }
+
+    private var transactionsSection: some View {
+        Section {
+            if !transactions.isEmpty && filteredTransactions.isEmpty {
+                Text("No matching transactions")
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(filteredTransactions) { transaction in
+                Group {
+                    // Split children only display at full opacity, without
+                    // tap/swipe: the edit form has no split support, and
+                    // deleting one leg would break the parent's amount.
+                    if transaction.parentId == nil {
+                        Button {
+                            editingTransaction = transaction
+                        } label: {
+                            TransactionRow(transaction: transaction, onToggleCleared: {
+                                Task {
+                                    await budgetStore.toggleCleared(transaction)
+                                    await reload()
+                                }
+                            })
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        TransactionRow(transaction: transaction)
+                    }
+                }
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    if transaction.parentId == nil {
+                        Button(role: .destructive) {
+                            Task {
+                                await budgetStore.deleteTransaction(transaction)
+                                await reload()
+                            }
+                        } label: {
+                            Label("Delete", systemImage: "trash")
+                        }
+                        Button {
+                            editingTransaction = transaction
+                        } label: {
+                            Label("Edit", systemImage: "pencil")
+                        }
+                        .tint(.yellow)
+                    }
+                }
+            }
+        } header: {
+            HStack {
+                Text(scopeTitle)
+                Spacer()
+                // Sums the filtered rows so the total matches what's on screen
+                // while searching.
+                Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
+            }
+        }
+    }
+
+    var body: some View {
+        List {
+            if note.supported && searchText.isEmpty {
+                noteSection
+            }
+            if transactions.isEmpty && loaded {
+                emptyTransactionsRow
+            } else {
+                transactionsSection
             }
         }
         .navigationTitle(destination.categoryName)
@@ -117,6 +168,16 @@ struct CategoryTransactionsView: View {
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
+        .sheet(isPresented: $editingNote, onDismiss: {
+            Task { await reloadNote() }
+        }) {
+            CategoryNoteEditorView(
+                categoryId: destination.categoryId,
+                categoryName: destination.categoryName,
+                note: note.text
+            )
+            .environmentObject(budgetStore)
+        }
     }
 
     private func reload() async {
@@ -124,7 +185,12 @@ struct CategoryTransactionsView: View {
             categoryId: destination.categoryId,
             month: destination.month
         )
+        await reloadNote()
         loaded = true
+    }
+
+    private func reloadNote() async {
+        note = await budgetStore.fetchCategoryNote(categoryId: destination.categoryId)
     }
 }
 

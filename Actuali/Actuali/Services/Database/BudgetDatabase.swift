@@ -1336,6 +1336,33 @@ class BudgetDatabase {
         }
     }
 
+    // MARK: - Notes
+
+    /// The note stored for a category (GH #131). Actual's `notes` table is
+    /// keyed by the annotated row's own id, so a category's note lives at
+    /// `notes.id = <categoryId>`.
+    ///
+    /// One read reports both whether the file has the table and what it holds,
+    /// so the caller can distinguish "this file can't store notes" from "this
+    /// category has none" without a second round trip or a cached capability
+    /// flag that could go stale when the open file changes.
+    func fetchCategoryNote(categoryId: String) async throws -> CategoryNote {
+        try await dbQueue.read { db in
+            guard try db.tableExists("notes") else { return .unsupported }
+            // A row can exist with a NULL note (another client cleared it that
+            // way); that reads as empty, same as no row at all.
+            let note = try String.fetchOne(
+                db, sql: "SELECT note FROM notes WHERE id = ?", arguments: [categoryId])
+            return CategoryNote(supported: true, text: note ?? "")
+        }
+    }
+
+    /// Whether this file has the `notes` table, for `SyncClient`'s write guard.
+    /// Sync (see the async/sync split above): the write path can't suspend.
+    func notesTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("notes") }
+    }
+
     /// Where a budget amount write for (month, category) must land: which
     /// budget table this file uses, and the row to update or create.
     struct BudgetCellRef: Equatable {
