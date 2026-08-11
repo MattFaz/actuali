@@ -80,6 +80,11 @@ final class TransactionLogger {
         try await store.createTransaction(transaction)
         // With when-in-use permission, background automations get no fix and silently skip.
         store.recordPayeeLocationIfAppropriate(payeeId: payee.id)
+        // Writes push in the background so the UI never waits on the network
+        // (issue #125), but an App Intent runs headless and can be frozen the
+        // moment it returns — wait for the push here so a Siri/Shortcuts log
+        // still reaches the server before that happens.
+        await store.flushPendingSync()
         logger.info("Logged transaction \(transaction.id, privacy: .public) for \(payee.name, privacy: .public)")
         return transaction
     }

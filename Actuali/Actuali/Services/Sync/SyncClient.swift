@@ -57,6 +57,13 @@ actor SyncClient {
     private var retryDelay: TimeInterval = 5
     private let maxRetryDelay: TimeInterval = 300  // 5 min cap
 
+    /// The detached push kicked off by the most recent local write (see
+    /// `scheduleAutomaticSync`). Nil when no push is in flight.
+    private var pushTask: Task<Void, Never>?
+    /// Set when a write lands while `pushTask` is running, so its messages get
+    /// a trailing push instead of waiting for the next sync event.
+    private var pushNeededAfterCurrent = false
+
     private var fileId: String?
     private var groupId: String?
     private var encryptKeyId: String?
@@ -196,8 +203,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Sync to push the transaction to the server (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background (never blocks the caller)
+        scheduleAutomaticSync()
     }
 
     /// Create both legs of a transfer atomically (optimistic local-first).
@@ -223,8 +230,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Transfer stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 3. Sync to push both legs to the server (rate-limited)
-        await automaticSync()
+        // 3. Push both legs to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Create a split parent and its children atomically (optimistic
@@ -251,8 +258,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Split stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 3. Sync to push all rows to the server (rate-limited)
-        await automaticSync()
+        // 3. Push all rows to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Update an existing transaction (optimistic local-first)
@@ -285,8 +292,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Update many transactions that share one set of changed fields, in a
@@ -318,8 +325,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Batch stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 3. Sync (rate-limited)
-        await automaticSync()
+        // 3. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Create a payee (optimistic local-first)
@@ -375,8 +382,8 @@ actor SyncClient {
         merkle = merkle.pruned()
         try saveClock()
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Tombstone a recorded payee location (optimistic local-first).
@@ -398,8 +405,8 @@ actor SyncClient {
         merkle = merkle.pruned()
         try saveClock()
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Tombstone several recorded payee locations at once ("Clear All
@@ -429,8 +436,8 @@ actor SyncClient {
         merkle = merkle.pruned()
         try saveClock()
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Set the budgeted amount for a category in a month (optimistic
@@ -470,8 +477,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Move budgeted funds between two categories in a month, or between a
@@ -517,8 +524,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Advance a schedule's next date after posting (optimistic local-first).
@@ -554,8 +561,8 @@ actor SyncClient {
         try saveClock()
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Sync (rate-limited)
-        await automaticSync()
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
     }
 
     /// Force immediate sync (pull-to-refresh)
@@ -594,6 +601,63 @@ actor SyncClient {
         }
         logger.debug("automaticSync() proceeding with sync")
         return await performSync()
+    }
+
+    /// Start `automaticSync()` in the background and return immediately.
+    ///
+    /// Every write path commits its rows and CRDT messages *before* calling
+    /// this, so pushing them is catch-up work the writer must not wait on.
+    /// Awaiting it here made adding a transaction hang for the whole
+    /// URLSession timeout (30s per request) whenever the server was
+    /// unreachable, because the UI awaits the write all the way down from the
+    /// save button (issue #125). Failures still reach `stateSubject` and the
+    /// retry ladder exactly as before.
+    ///
+    /// Writes that arrive while a push is in flight coalesce onto a single
+    /// trailing push: a burst (split save, Wallet import) doesn't stampede the
+    /// server, and messages written mid-push still go out.
+    private func scheduleAutomaticSync() {
+        guard pushTask == nil else {
+            logger.debug("scheduleAutomaticSync() - push in flight, coalescing onto a trailing sync")
+            pushNeededAfterCurrent = true
+            return
+        }
+        startPushTask(rateLimited: true)
+    }
+
+    /// Callers that may be suspended right after writing (App Intents run
+    /// headless and can be frozen as soon as they return their result) await
+    /// this so the deferred push still gets its chance. Drains trailing pushes
+    /// too — `finishPushTask` has already swapped `pushTask` by the time a
+    /// task's `value` returns.
+    func flushPendingSync() async {
+        while let pushTask {
+            await pushTask.value
+        }
+    }
+
+    private func startPushTask(rateLimited: Bool) {
+        pushNeededAfterCurrent = false
+        // Assigned synchronously on the actor, so the body can't observe a
+        // stale `pushTask` before this returns.
+        pushTask = Task {
+            if rateLimited {
+                await automaticSync()
+            } else {
+                // This push exists *because* new local messages landed during
+                // the previous one, so the 1s rate limiter must not swallow it.
+                await performSync()
+            }
+            finishPushTask()
+        }
+    }
+
+    private func finishPushTask() {
+        pushTask = nil
+        if pushNeededAfterCurrent {
+            logger.debug("finishPushTask() - running the coalesced trailing sync")
+            startPushTask(rateLimited: false)
+        }
     }
 
     // MARK: - Sync Logic
