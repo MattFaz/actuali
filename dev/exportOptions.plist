@@ -16,6 +16,8 @@
 	<dict>
 		<key>com.mfazz.ActualiOS</key>
 		<string>Actuali App Store</string>
+		<key>com.mfazz.ActualiOS.Widgets</key>
+		<string>Actuali Widgets App Store</string>
 	</dict>
 	<key>uploadSymbols</key>
 	<true/>

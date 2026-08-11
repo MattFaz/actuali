@@ -213,6 +213,7 @@ final class BudgetStore: ObservableObject {
     @Published var currencyCode: String = "USD" {
         didSet {
             UserDefaults.standard.set(currencyCode, forKey: "currencyCode")
+            publishWidgetSnapshot()
         }
     }
 
@@ -239,6 +240,7 @@ final class BudgetStore: ObservableObject {
     @Published var useNarrowCurrencySymbol: Bool = false {
         didSet {
             UserDefaults.standard.set(useNarrowCurrencySymbol, forKey: "useNarrowCurrencySymbol")
+            publishWidgetSnapshot()
         }
     }
 
@@ -329,6 +331,7 @@ final class BudgetStore: ObservableObject {
     @Published var hideBalances: Bool = false {
         didSet {
             UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+            publishWidgetSnapshot()
         }
     }
 
@@ -1147,6 +1150,7 @@ final class BudgetStore: ObservableObject {
         // not outlive the budget it described.
         isInitialSyncing = false
         dataVersion += 1
+        clearWidgetSnapshot()
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1332,6 +1336,7 @@ final class BudgetStore: ObservableObject {
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
+            publishWidgetSnapshot()
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -1482,6 +1487,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
 
             await loadSchedules()
+            publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
