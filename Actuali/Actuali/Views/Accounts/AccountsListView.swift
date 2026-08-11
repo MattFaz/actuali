@@ -107,6 +107,7 @@ struct AccountsListView: View {
                 }
             }
         }
+        .initialSyncBanner()
     }
 
     /// Tapping a success notification lands here: jump the stack straight to

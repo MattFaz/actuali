@@ -38,6 +38,7 @@ struct ReportsTabView: View {
                 await reload()
             }
         }
+        .initialSyncBanner()
     }
 
     private func reload() async {

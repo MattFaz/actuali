@@ -145,6 +145,13 @@ final class BudgetStore: ObservableObject {
     @Published var syncState: SyncState = .idle
     @Published var lastSyncTime: Date?
 
+    /// True from the moment a budget is opened until its first sync attempt
+    /// finishes. Everything on screen until then comes from the downloaded
+    /// server snapshot (or the local copy the last launch left behind), which
+    /// can trail the server by hours or days — the UI says so rather than
+    /// presenting those figures as final (GH #126).
+    @Published private(set) var isInitialSyncing = false
+
     /// Whether we may WRITE payee_locations CRDT messages (server >= 26.4.0,
     /// probed via `GET /info` after each budget load). Persisted per server
     /// URL so offline launches keep the last known answer.
@@ -736,6 +743,9 @@ final class BudgetStore: ObservableObject {
         // the same task, before the load, so the initial sync below is
         // authenticated.
         if let budgetId = currentBudgetId, fileManager.budgetExists(budgetId) {
+            // Set before the task so the very first render already knows the
+            // numbers it is about to draw are provisional (GH #126).
+            isInitialSyncing = true
             loadTask = Task {
                 if let token { await configureSavedSession(token: token) }
                 await loadLocalBudget(budgetId)
@@ -743,6 +753,7 @@ final class BudgetStore: ObservableObject {
                 // loadLocalBudget has wired syncClient, so the scenePhase
                 // foreground sync no-ops. Sync here once the client exists.
                 await syncOnForeground()
+                isInitialSyncing = false
             }
         } else if let token {
             Task { await configureSavedSession(token: token) }
@@ -978,6 +989,9 @@ final class BudgetStore: ObservableObject {
         payees = []
         lastSyncTime = nil
         syncState = .idle
+        // No budget left to catch up — an in-flight initial sync's banner must
+        // not outlive the budget it described.
+        isInitialSyncing = false
         dataVersion += 1
     }
 
@@ -1028,6 +1042,10 @@ final class BudgetStore: ObservableObject {
         syncClient = nil
         database = nil
 
+        // Whether the budget actually got opened, so the initial sync below
+        // runs only when there is something to catch up.
+        var opened = false
+
         do {
             var loadedKey: LoadedKey?
             if remoteBudget.isEncrypted {
@@ -1068,6 +1086,8 @@ final class BudgetStore: ObservableObject {
                 from: zipData, fileId: remoteBudget.id, groupId: remoteBudget.groupId
             )
             currentBudgetId = metadata.id
+            isInitialSyncing = true
+            opened = true
             await loadLocalBudget(metadata.id)
         } catch {
             self.error = error.localizedDescription
@@ -1075,6 +1095,21 @@ final class BudgetStore: ObservableObject {
 
         isLoading = false
         downloadingBudgetId = nil
+
+        // Outside the download spinner: the budget is on screen from here, it
+        // just isn't caught up yet.
+        if opened { await runInitialSync() }
+    }
+
+    /// The first sync after a budget is opened. A downloaded budget is a server
+    /// snapshot that can trail the server's message log by hours or days, so
+    /// catch it up immediately instead of leaving those figures on screen until
+    /// the next foreground or pull-to-refresh — which is how "outdated numbers"
+    /// survived a fresh setup (GH #126).
+    private func runInitialSync() async {
+        defer { isInitialSyncing = false }
+        guard syncClient != nil else { return }
+        await sync()
     }
 
     /// Validate an encryption password for a budget, persist the derived key, then download it.

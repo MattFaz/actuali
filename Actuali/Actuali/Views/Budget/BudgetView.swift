@@ -345,6 +345,7 @@ struct BudgetView: View {
                 }
             }
         }
+        .initialSyncBanner()
     }
 
     /// Open the move-money sheet for a tapped balance (GH #128): cover
