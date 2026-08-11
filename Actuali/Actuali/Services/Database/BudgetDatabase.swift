@@ -1073,20 +1073,8 @@ class BudgetDatabase {
             // Envelope (zero_budgets) clamps negative leftover to 0 unless
             // the carryover flag is set. Tracking (reflect_budgets) drops
             // any prior leftover entirely unless the flag is set.
-            let hasZeroBudgets = try db.tableExists("zero_budgets")
-            let hasReflectBudgets = try db.tableExists("reflect_budgets")
-            let isEnvelope: Bool
-            let budgetsTable: String?
-            if hasZeroBudgets {
-                isEnvelope = true
-                budgetsTable = "zero_budgets"
-            } else if hasReflectBudgets {
-                isEnvelope = false
-                budgetsTable = "reflect_budgets"
-            } else {
-                isEnvelope = true
-                budgetsTable = nil
-            }
+            let budgetsTable = try Self.budgetTable(db)
+            let isEnvelope = budgetsTable != "reflect_budgets"
 
             // Bulk-load all budget rows up to and including the target month.
             // months are YYYYMM ints in the budgets tables.
@@ -1372,14 +1360,7 @@ class BudgetDatabase {
         guard monthInt > 0 else { return nil }
 
         return try dbQueue.read { db in
-            let table: String
-            if try db.tableExists("zero_budgets") {
-                table = "zero_budgets"
-            } else if try db.tableExists("reflect_budgets") {
-                table = "reflect_budgets"
-            } else {
-                return nil
-            }
+            guard let table = try Self.budgetTable(db) else { return nil }
 
             let existing = try Row.fetchOne(db, sql: """
                 SELECT id, amount FROM \(table) WHERE month = ? AND category = ?
@@ -1393,6 +1374,32 @@ class BudgetDatabase {
                 amount: existing?["amount"] ?? 0
             )
         }
+    }
+
+    /// Which budget table this file uses, or nil when it has neither. Real
+    /// Actual files contain BOTH zero_budgets and reflect_budgets (loot-core's
+    /// migrations create them unconditionally), so table existence says
+    /// nothing — the budgetType preference is the only signal of which one is
+    /// live: 'tracking' ('report' before the Actual 25.5 rename migration)
+    /// means reflect_budgets; anything else, including no row at all, means
+    /// envelope, matching upstream's default. When only one table exists the
+    /// preference can't override it — writing into a missing table would fail.
+    private static func budgetTable(_ db: Database) throws -> String? {
+        let hasZero = try db.tableExists("zero_budgets")
+        let hasReflect = try db.tableExists("reflect_budgets")
+        guard hasZero, hasReflect else {
+            if hasZero { return "zero_budgets" }
+            if hasReflect { return "reflect_budgets" }
+            return nil
+        }
+
+        var isTracking = false
+        if try db.tableExists("preferences") {
+            let value = try String.fetchOne(
+                db, sql: "SELECT value FROM preferences WHERE id = 'budgetType'")
+            isTracking = value == "tracking" || value == "report"
+        }
+        return isTracking ? "reflect_budgets" : "zero_budgets"
     }
 
     private static func monthStringToInt(_ month: String) -> Int {

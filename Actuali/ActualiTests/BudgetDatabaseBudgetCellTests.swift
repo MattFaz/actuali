@@ -8,21 +8,26 @@ struct BudgetDatabaseBudgetCellTests {
     private enum BudgetTable {
         case zero
         case reflect
+        case both
         case none
     }
 
-    private func makeDatabase(table: BudgetTable) throws -> (BudgetDatabase, URL) {
+    private func makeDatabase(
+        table: BudgetTable,
+        budgetTypePref: String? = nil
+    ) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
-            let tableName: String?
+            let tableNames: [String]
             switch table {
-            case .zero: tableName = "zero_budgets"
-            case .reflect: tableName = "reflect_budgets"
-            case .none: tableName = nil
+            case .zero: tableNames = ["zero_budgets"]
+            case .reflect: tableNames = ["reflect_budgets"]
+            case .both: tableNames = ["zero_budgets", "reflect_budgets"]
+            case .none: tableNames = []
             }
-            if let tableName {
+            for tableName in tableNames {
                 try db.execute(sql: """
                     CREATE TABLE \(tableName) (
                         id TEXT PRIMARY KEY,
@@ -32,6 +37,13 @@ struct BudgetDatabaseBudgetCellTests {
                         carryover INTEGER DEFAULT 0
                     )
                     """)
+            }
+            if let budgetTypePref {
+                try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
+                try db.execute(
+                    sql: "INSERT INTO preferences (id, value) VALUES ('budgetType', ?)",
+                    arguments: [budgetTypePref]
+                )
             }
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
@@ -81,6 +93,56 @@ struct BudgetDatabaseBudgetCellTests {
         let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
         #expect(cell.table == "reflect_budgets")
         #expect(cell.rowId == "202607-cat-1")
+    }
+
+    /// Real Actual files always contain BOTH budget tables (loot-core's
+    /// migrations create them unconditionally); the budgetType preference is
+    /// the only thing that says which one the file actually uses. Issue #98:
+    /// picking by table existence always chose zero_budgets, so tracking
+    /// budgets read and wrote the wrong table.
+    @Test func bothTablesWithTrackingPrefUsesReflectTable() throws {
+        let (database, path) = try makeDatabase(table: .both, budgetTypePref: "tracking")
+        defer { cleanup(path) }
+
+        let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
+        #expect(cell.table == "reflect_budgets")
+    }
+
+    /// Files last written by Actual < 25.5 store the pre-rename value
+    /// ("report" instead of "tracking").
+    @Test func bothTablesWithLegacyReportPrefUsesReflectTable() throws {
+        let (database, path) = try makeDatabase(table: .both, budgetTypePref: "report")
+        defer { cleanup(path) }
+
+        let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
+        #expect(cell.table == "reflect_budgets")
+    }
+
+    @Test func bothTablesWithEnvelopePrefUsesZeroTable() throws {
+        let (database, path) = try makeDatabase(table: .both, budgetTypePref: "envelope")
+        defer { cleanup(path) }
+
+        let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
+        #expect(cell.table == "zero_budgets")
+    }
+
+    /// No budgetType preference row means envelope (upstream's default).
+    @Test func bothTablesWithoutPrefDefaultsToZeroTable() throws {
+        let (database, path) = try makeDatabase(table: .both)
+        defer { cleanup(path) }
+
+        let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
+        #expect(cell.table == "zero_budgets")
+    }
+
+    /// A tracking pref can't override a missing table — fall back to what
+    /// actually exists rather than writing into a table that isn't there.
+    @Test func trackingPrefWithOnlyZeroTableFallsBackToZeroTable() throws {
+        let (database, path) = try makeDatabase(table: .zero, budgetTypePref: "tracking")
+        defer { cleanup(path) }
+
+        let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
+        #expect(cell.table == "zero_budgets")
     }
 
     @Test func noBudgetTablesYieldsNil() throws {
