@@ -596,7 +596,7 @@ actor SyncClient {
     @discardableResult
     func automaticSync() async -> Bool {
         if shouldSkipAutomaticSync() {
-            logger.debug("automaticSync() skipped - rate limited (last sync < 1s ago)")
+            logger.debug("automaticSync() skipped - rate limited (last sync < 1s ago, nothing new locally)")
             return true
         }
         logger.debug("automaticSync() proceeding with sync")
@@ -636,6 +636,14 @@ actor SyncClient {
         }
     }
 
+    /// Whether local writes are still waiting to reach the server. Call after
+    /// `flushPendingSync()` to find out whether the push actually landed —
+    /// pushes are detached, so a write path can't return that answer itself
+    /// (issue #139).
+    func hasPendingLocalWrites() -> Bool {
+        hasUnsyncedLocalMessages()
+    }
+
     private func startPushTask(rateLimited: Bool) {
         pushNeededAfterCurrent = false
         // Assigned synchronously on the actor, so the body can't observe a
@@ -662,13 +670,38 @@ actor SyncClient {
 
     // MARK: - Sync Logic
 
-    /// Returns true if automatic sync should be skipped due to rate limiting
+    /// Returns true if automatic sync should be skipped due to rate limiting.
+    ///
+    /// The window only ever suppresses a redundant *pull* — several foreground
+    /// triggers landing at once. It must never suppress a *push*: a skipped
+    /// sync drops the local write until something else syncs, and in the
+    /// headless Shortcuts/App Intent path nothing else does before the process
+    /// is suspended. `LogTransactionIntent` awaits `ensureBudgetReady()`, which
+    /// ends in the launch `syncOnForeground()`, so the Wallet write always
+    /// landed inside the window and only reached the server the next time the
+    /// app was opened (issue #139).
     private func shouldSkipAutomaticSync() -> Bool {
         guard let lastSync = lastSuccessfulSyncTime else {
             return false  // No previous sync, allow it
         }
-        let elapsed = Date().timeIntervalSince(lastSync)
-        return elapsed < 1.0  // Skip if less than 1 second since last sync
+        guard Date().timeIntervalSince(lastSync) < 1.0 else {
+            return false  // Outside the window
+        }
+        return !hasUnsyncedLocalMessages()
+    }
+
+    /// True when messages_crdt holds a message the last successful sync didn't
+    /// cover. HLC timestamps are fixed-width and sort lexicographically, so the
+    /// high-water mark comparison is exact.
+    private func hasUnsyncedLocalMessages() -> Bool {
+        guard let database else { return false }
+        guard let maxTimestamp = try? database.getMaxMessageTimestamp(), !maxTimestamp.isEmpty else {
+            return false  // Nothing recorded locally, nothing to push
+        }
+        guard let lastSynced = lastSyncedTimestamp, !lastSynced.isEmpty else {
+            return true  // Never reconciled — assume there's something to send
+        }
+        return maxTimestamp > lastSynced
     }
 
     /// - Returns: true iff the sync completed successfully.

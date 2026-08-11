@@ -28,6 +28,22 @@ struct BackgroundRefreshTests {
         #expect(request.earliestBeginDate == now.addingTimeInterval(BackgroundRefresh.minimumInterval))
     }
 
+    /// A headless write that couldn't be pushed asks for an earlier wake than
+    /// the routine refresh, so the queued transaction has a chance to reach the
+    /// server before the user next opens the app (issue #139).
+    @Test func pendingWriteFlushAsksForAnEarlierWakeThanTheRoutineRefresh() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let spy = SubmitSpy()
+
+        BackgroundRefresh.schedule(using: spy, now: now,
+                                   earliestIn: BackgroundRefresh.pendingWriteFlushInterval,
+                                   defaults: makeIsolatedDefaults())
+
+        #expect(BackgroundRefresh.pendingWriteFlushInterval < BackgroundRefresh.minimumInterval)
+        #expect(spy.submitted.first?.earliestBeginDate
+                == now.addingTimeInterval(BackgroundRefresh.pendingWriteFlushInterval))
+    }
+
     @Test func scheduleSubmitsOneRequestWithTaskIdentifier() {
         let spy = SubmitSpy()
 
