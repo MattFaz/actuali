@@ -172,8 +172,8 @@ enum DemoDataSeeder {
             )
             """)
 
-        // Mirrors the dashboard table created by BudgetDatabase's migrations, so
-        // the demo budget can ship a pre-built Reports dashboard.
+        // Mirrors the dashboard tables created by BudgetDatabase's migrations, so
+        // the demo budget can ship pre-built Reports dashboards.
         try db.execute(sql: """
             CREATE TABLE dashboard (
                 id TEXT PRIMARY KEY,
@@ -185,6 +185,14 @@ enum DemoDataSeeder {
                 height INTEGER DEFAULT 2,
                 meta TEXT,
                 tombstone INTEGER NOT NULL DEFAULT 0
+            )
+            """)
+
+        try db.execute(sql: """
+            CREATE TABLE dashboard_pages (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
             )
             """)
 
@@ -490,31 +498,51 @@ enum DemoDataSeeder {
             INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD')
             """)
 
-        // --- Reports dashboard ---
+        // --- Reports dashboards ---
+        // Two pages so the demo exercises the dashboard switcher (GH #120);
+        // "Main" is inserted first so it's the default dashboard on open.
+        let mainPageId = UUID().uuidString
+        let trendsPageId = UUID().uuidString
+        try db.execute(sql: """
+            INSERT INTO dashboard_pages (id, name, tombstone)
+            VALUES (?, 'Main', 0), (?, 'Trends', 0)
+            """, arguments: [mainPageId, trendsPageId])
+
         // A curated set of widgets so the Reports tab is populated in the demo.
         // Sliding-window time frames slide their stored range forward to end at
         // the current month, so the net-worth/cash-flow trends always cover the
         // seeded data regardless of when the demo is loaded. Ordered by `y`.
-        try insertWidget(db, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
             {"content":"**Welcome to the demo** 👋\\n\\nThis is sample data stored only on this device \u{2014} nothing you do here can touch a server or a real budget. When you\u{2019}re ready, connect your own Actual Budget server in **Settings**."}
             """)
-        try insertWidget(db, type: "net-worth-card", y: 1, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "net-worth-card", y: 1, width: 12, height: 2, meta: """
             {"name":"Net Worth","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"interval":"Monthly"}
             """)
-        try insertWidget(db, type: "cash-flow-card", y: 2, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "cash-flow-card", y: 2, width: 12, height: 2, meta: """
             {"name":"Cash Flow","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"showBalance":false}
             """)
-        try insertWidget(db, type: "summary-card", y: 3, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "summary-card", y: 3, width: 12, height: 2, meta: """
             {"name":"Spent This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"lt","value":0}],"conditionsOp":"and"}
             """)
-        try insertWidget(db, type: "spending-card", y: 4, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 4, width: 12, height: 2, meta: """
             {"name":"This Month","mode":"single-month"}
             """)
-        try insertWidget(db, type: "spending-card", y: 5, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 5, width: 12, height: 2, meta: """
             {"name":"Budget Overview","mode":"budget"}
             """)
-        try insertWidget(db, type: "spending-card", y: 6, width: 12, height: 2, meta: """
+        try insertWidget(db, pageId: mainPageId, type: "spending-card", y: 6, width: 12, height: 2, meta: """
             {"name":"3-Month Average","mode":"average"}
+            """)
+
+        // The second dashboard: a small page that shows off switching.
+        try insertWidget(db, pageId: trendsPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
+            {"content":"**A second dashboard** 📊\\n\\nBudgets can have several report dashboards \u{2014} switch between them with the menu in the top corner. Create and arrange dashboards in the Actual Budget webapp."}
+            """)
+        try insertWidget(db, pageId: trendsPageId, type: "age-of-money-card", y: 1, width: 12, height: 2, meta: """
+            {"name":"Age of Money"}
+            """)
+        try insertWidget(db, pageId: trendsPageId, type: "summary-card", y: 2, width: 12, height: 2, meta: """
+            {"name":"Income This Month","content":"{\\"type\\":\\"sum\\"}","conditions":[{"field":"amount","op":"gt","value":0}],"conditionsOp":"and"}
             """)
 
         logger.info("Inserted \(transactions.count) demo transactions for month \(yyyymm)")
@@ -522,6 +550,7 @@ enum DemoDataSeeder {
 
     private static func insertWidget(
         _ db: Database,
+        pageId: String,
         type: String,
         y: Int,
         width: Int,
@@ -530,8 +559,8 @@ enum DemoDataSeeder {
     ) throws {
         try db.execute(sql: """
             INSERT INTO dashboard (id, type, dashboard_page_id, x, y, width, height, meta, tombstone)
-            VALUES (?, ?, NULL, 0, ?, ?, ?, ?, 0)
-            """, arguments: [UUID().uuidString, type, y, width, height, meta])
+            VALUES (?, ?, ?, 0, ?, ?, ?, ?, 0)
+            """, arguments: [UUID().uuidString, type, pageId, y, width, height, meta])
     }
 
     // MARK: - Insert helpers

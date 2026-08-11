@@ -17,24 +17,39 @@ struct DemoDataSeederTests {
         return try BudgetDatabase(path: dbPath)
     }
 
+    // Two pages so the demo exercises the dashboard switcher (GH #120);
+    // "Main" is first so it's the default dashboard on open.
+    @Test func seedsTwoDashboardPages() async throws {
+        let database = try seedAndOpen()
+        let pages = try await database.fetchDashboardPages()
+        #expect(pages.map(\.name) == ["Main", "Trends"])
+    }
+
     @Test func seededDashboardWidgetsAllParseToSupportedTypes() async throws {
         let database = try seedAndOpen()
-        let widgets = try await database.fetchWidgets(pageId: nil)
+        let pages = try await database.fetchDashboardPages()
+        let mainPage = try #require(pages.first { $0.name == "Main" })
+        let trendsPage = try #require(pages.first { $0.name == "Trends" })
 
-        #expect(widgets.count == 7)
-        for widget in widgets {
+        let mainWidgets = try await database.fetchWidgets(pageId: mainPage.id)
+        let trendsWidgets = try await database.fetchWidgets(pageId: trendsPage.id)
+
+        for widget in mainWidgets + trendsWidgets {
             if case .unsupported(_, let type) = widget {
                 Issue.record("Seeded widget did not parse to a supported type: \(type)")
             }
         }
 
-        // The exact curated set, in dashboard order (y ASC).
-        #expect(widgets.map(\.typeLabel) == ["Notes", "Net Worth", "Cash Flow", "Summary", "Spending", "Spending", "Spending"])
+        // The exact curated sets, in dashboard order (y ASC).
+        #expect(mainWidgets.map(\.typeLabel) == ["Notes", "Net Worth", "Cash Flow", "Summary", "Spending", "Spending", "Spending"])
+        #expect(trendsWidgets.map(\.typeLabel) == ["Notes", "Age of Money", "Summary"])
     }
 
     @Test func seededWidgetsProduceDataFromDemoTransactions() async throws {
         let database = try seedAndOpen()
-        let widgets = try await database.fetchWidgets(pageId: nil)
+        let pages = try await database.fetchDashboardPages()
+        let mainPage = try #require(pages.first { $0.name == "Main" })
+        let widgets = try await database.fetchWidgets(pageId: mainPage.id)
         let transactions = try await database.fetchTransactionsForReports()
         let today = Date()
 
