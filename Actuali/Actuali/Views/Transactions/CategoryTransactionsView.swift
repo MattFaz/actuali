@@ -44,32 +44,41 @@ struct CategoryTransactionsView: View {
     /// where an edit could never save.
     private var noteSection: some View {
         Section("Note") {
-            Button {
-                editingNote = true
-            } label: {
-                if note.isEmpty {
+            if note.isEmpty {
+                Button {
+                    editingNote = true
+                } label: {
                     // Tinted: an empty note row is an invitation to act, where
                     // an existing note is content to read.
                     Label("Add Note", systemImage: "note.text.badge.plus")
                         .foregroundStyle(Color.accentColor)
-                } else {
-                    HStack(alignment: .top, spacing: 12) {
-                        Text(note.text)
-                            .multilineTextAlignment(.leading)
-                            // Multi-line notes are the point — let the row grow
-                            // instead of truncating the guidance to one line.
-                            .fixedSize(horizontal: false, vertical: true)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        Image(systemName: "pencil")
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
                 }
+                // Plain: a tinted List button would tint the label twice over.
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("categoryNoteRow")
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    // Attributed so markdown links and bare URLs in the note
+                    // are tappable (GH #190). That's also why this row is a
+                    // tap gesture rather than the Button the empty state uses:
+                    // a Button label swallows link taps, where links inside a
+                    // gesture-carrying row take precedence over the gesture.
+                    Text(NoteLinkText.attributed(note.text))
+                        .multilineTextAlignment(.leading)
+                        // Multi-line notes are the point — let the row grow
+                        // instead of truncating the guidance to one line.
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "pencil")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { editingNote = true }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("categoryNoteRow")
             }
-            // Plain: a tinted List button would render the note itself in the
-            // accent color, reading as a link rather than as the text it is.
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("categoryNoteRow")
         }
     }
 
