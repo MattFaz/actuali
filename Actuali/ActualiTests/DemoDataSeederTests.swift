@@ -19,7 +19,7 @@ struct DemoDataSeederTests {
 
     @Test func seededDashboardWidgetsAllParseToSupportedTypes() async throws {
         let database = try seedAndOpen()
-        let widgets = try await database.fetchWidgets()
+        let widgets = try await database.fetchWidgets(pageId: nil)
 
         #expect(widgets.count == 7)
         for widget in widgets {
@@ -34,7 +34,7 @@ struct DemoDataSeederTests {
 
     @Test func seededWidgetsProduceDataFromDemoTransactions() async throws {
         let database = try seedAndOpen()
-        let widgets = try await database.fetchWidgets()
+        let widgets = try await database.fetchWidgets(pageId: nil)
         let transactions = try await database.fetchTransactionsForReports()
         let today = Date()
 

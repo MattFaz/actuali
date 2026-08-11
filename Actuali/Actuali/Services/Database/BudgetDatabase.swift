@@ -228,7 +228,8 @@ class BudgetDatabase {
         // "Main" page and moves widgets onto it, but that half generates no
         // CRDT messages and forks a fresh page id on every client that runs
         // it, so doing it here would add yet another divergent page. Pageless
-        // widgets still render via the fallback in fetchWidgets().
+        // widgets still render via the nil-page fallback (ReportsTabView's
+        // resolvePageId → fetchWidgets(pageId: nil)).
         (1765518577215, """
             CREATE TABLE IF NOT EXISTS dashboard_pages (
                 id TEXT PRIMARY KEY,
@@ -1592,34 +1593,46 @@ class BudgetDatabase {
         }
     }
 
-    func fetchWidgets() async throws -> [DashboardWidget] {
+    /// Live dashboard pages in table order — the same order the web app's
+    /// unordered AQL select (`q('dashboard_pages').select('*')`) yields and
+    /// its router indexes into for the default dashboard
+    /// (ReportsDashboardRouter → dashboardPages[0]).
+    func fetchDashboardPages() async throws -> [DashboardPage] {
         try await dbQueue.read { db in
-            // The web app treats pages as separate dashboards and opens the
-            // first live one (ReportsDashboardRouter → dashboardPages[0]), so
-            // widgets on other, deleted, or unknown pages must not render.
-            // Upstream's migration mints a fresh "Main" page id on every
-            // client that runs it, so a synced budget can carry full
-            // duplicate widget sets under orphaned page ids (GH: Reports
-            // showed every widget twice).
-            let firstLivePageId = try String.fetchOne(db, sql: """
-                SELECT id FROM dashboard_pages
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name FROM dashboard_pages
                 WHERE (tombstone = 0 OR tombstone IS NULL)
                 ORDER BY rowid ASC
-                LIMIT 1
                 """)
+            return rows.compactMap { row -> DashboardPage? in
+                guard let id = row["id"] as String? else { return nil }
+                return DashboardPage(id: id, name: (row["name"] as String?) ?? "")
+            }
+        }
+    }
 
+    /// Live widgets on one dashboard page, in reading order (y, then x).
+    /// The web app treats pages as separate dashboards (GH #120: rendering
+    /// only one merged view scrambled multi-dashboard budgets), so widgets
+    /// on other, deleted, or unknown pages must not render for a given page.
+    /// Upstream's migration mints a fresh "Main" page id on every client
+    /// that runs it, so a synced budget can carry full duplicate widget sets
+    /// under orphaned page ids (GH: Reports showed every widget twice).
+    ///
+    /// A nil `pageId` selects pageless widgets — budgets from servers that
+    /// predate multiple dashboards carry no page rows or ids.
+    func fetchWidgets(pageId: String?) async throws -> [DashboardWidget] {
+        try await dbQueue.read { db in
             let rows: [Row]
-            if let firstLivePageId {
+            if let pageId {
                 rows = try Row.fetchAll(db, sql: """
                     SELECT id, type, meta
                     FROM dashboard
                     WHERE (tombstone = 0 OR tombstone IS NULL)
                       AND dashboard_page_id = ?
                     ORDER BY y ASC, x ASC
-                    """, arguments: [firstLivePageId])
+                    """, arguments: [pageId])
             } else {
-                // Pre-pages budget (or every page deleted): widgets carry no
-                // page id.
                 rows = try Row.fetchAll(db, sql: """
                     SELECT id, type, meta
                     FROM dashboard
