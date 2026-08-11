@@ -25,7 +25,15 @@ struct AccountsListView: View {
         NavigationStack(path: $path) {
             Group {
                 if budgetStore.accounts.isEmpty && !budgetStore.isLoading {
-                    if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
+                    if budgetStore.currentBudgetId != nil {
+                        // A budget is loaded, it just has no accounts (yet) —
+                        // "go connect a server" would be wrong advice here (GH #122).
+                        ContentUnavailableView(
+                            "No Accounts",
+                            systemImage: "dollarsign.circle",
+                            description: Text("This budget doesn't have any accounts yet. Create one in Actual Budget, then sync.")
+                        )
+                    } else if budgetStore.isConnected {
                         ContentUnavailableView(
                             "Select a Budget",
                             systemImage: "dollarsign.circle",

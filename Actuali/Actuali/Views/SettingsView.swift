@@ -264,49 +264,67 @@ struct SettingsView: View {
                     }
                 }
 
-                if budgetStore.isConnected {
+                // Shown while connected OR while a budget is loaded without a
+                // session (demo, offline): the Default Account row below must
+                // stay reachable in both.
+                if budgetStore.isConnected || budgetStore.currentBudgetId != nil {
                     Section {
-                        Picker("Budget", selection: budgetPickerBinding) {
-                            // Placeholder until a budget is chosen — deliberately
-                            // not offered again afterwards, so "None" can't be
-                            // (re)selected.
-                            if budgetPickerBinding.wrappedValue == nil {
-                                Text("Select a Budget").tag(nil as String?)
-                            }
-                            // Render a placeholder tag for the current cloudFileId
-                            // when remoteBudgets hasn't loaded yet (or doesn't
-                            // include it), so SwiftUI can match the selection
-                            // and we don't get an "invalid selection" warning.
-                            if let currentId = budgetPickerBinding.wrappedValue,
-                               !budgetStore.remoteBudgets.contains(where: { $0.id == currentId }) {
-                                Text(budgetStore.remoteBudgets.isEmpty ? "Loading…" : "Unknown")
-                                    .tag(currentId as String?)
-                            }
-                            ForEach(budgetStore.remoteBudgets.filter { !$0.isEncrypted }) { budget in
-                                Text(budget.name).tag(budget.id as String?)
-                            }
-                        }
-                        .disabled(budgetStore.downloadingBudgetId != nil)
-
-                        ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
-                            Button {
-                                openBudget(budget)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                                    Text(budget.name)
-                                    Spacer()
-                                    if budgetStore.downloadingBudgetId == budget.id {
-                                        ProgressView()
-                                    }
+                        if budgetStore.isConnected {
+                            Picker("Budget", selection: budgetPickerBinding) {
+                                // Placeholder until a budget is chosen — deliberately
+                                // not offered again afterwards, so "None" can't be
+                                // (re)selected.
+                                if budgetPickerBinding.wrappedValue == nil {
+                                    Text("Select a Budget").tag(nil as String?)
+                                }
+                                // Render a placeholder tag for the current cloudFileId
+                                // when remoteBudgets hasn't loaded yet (or doesn't
+                                // include it), so SwiftUI can match the selection
+                                // and we don't get an "invalid selection" warning.
+                                if let currentId = budgetPickerBinding.wrappedValue,
+                                   !budgetStore.remoteBudgets.contains(where: { $0.id == currentId }) {
+                                    Text(budgetStore.remoteBudgets.isEmpty ? "Loading…" : "Unknown")
+                                        .tag(currentId as String?)
+                                }
+                                ForEach(budgetStore.remoteBudgets.filter { !$0.isEncrypted }) { budget in
+                                    Text(budget.name).tag(budget.id as String?)
                                 }
                             }
                             .disabled(budgetStore.downloadingBudgetId != nil)
+
+                            ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
+                                Button {
+                                    openBudget(budget)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                                        Text(budget.name)
+                                        Spacer()
+                                        if budgetStore.downloadingBudgetId == budget.id {
+                                            ProgressView()
+                                        }
+                                    }
+                                }
+                                .disabled(budgetStore.downloadingBudgetId != nil)
+                            }
+
+                            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                                Button("Refresh Budgets") {
+                                    Task { await budgetStore.fetchRemoteBudgets() }
+                                }
+                            }
                         }
 
-                        if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
-                            Button("Refresh Budgets") {
-                                Task { await budgetStore.fetchRemoteBudgets() }
+                        // Lives up here rather than under Preferences because
+                        // it's the natural next step after choosing a budget —
+                        // Shortcuts and Wallet automation can't post without
+                        // it (GH #122).
+                        if budgetStore.currentBudgetId != nil {
+                            Picker("Default Account", selection: $budgetStore.defaultAccountId) {
+                                Text("None").tag(nil as String?)
+                                ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
+                                    Text(account.name).tag(account.id as String?)
+                                }
                             }
                         }
                     } header: {
@@ -318,6 +336,8 @@ struct SettingsView: View {
                             } else {
                                 Text("Select a budget to load it onto this device. The app stays empty until one is chosen.")
                             }
+                        } else {
+                            Text("New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen.")
                         }
                     }
                 }
@@ -371,13 +391,6 @@ struct SettingsView: View {
                     }
 
                     if budgetStore.currentBudgetId != nil {
-                        Picker("Default Account", selection: $budgetStore.defaultAccountId) {
-                            Text("None").tag(nil as String?)
-                            ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
-                                Text(account.name).tag(account.id as String?)
-                            }
-                        }
-
                         NavigationLink {
                             CardAccountMappingsView()
                         } label: {
