@@ -261,7 +261,11 @@ struct AddTransactionView: View {
                     HStack {
                         Text(amountSignSymbol)
                             .foregroundStyle(amountSignColor)
-                        AmountInputField(text: $amount)
+                        // The amount is the first thing entered in a fresh
+                        // form, so the add flow opens with the keyboard ready.
+                        // Edits and prefilled amounts already have one and
+                        // start with the keyboard down.
+                        AmountInputField(text: $amount, autofocus: !isEditing && amount.isEmpty)
                     }
                 }
 
@@ -445,6 +449,7 @@ struct AddTransactionView: View {
                 }
             }
             .navigationTitle(isEditing ? "Edit Transaction" : "Add Transaction")
+            .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 // Any presented flow (edit, account-detail "+", notification
@@ -732,9 +737,28 @@ struct AmountInputField: UIViewRepresentable {
     var alignment: NSTextAlignment = .natural
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
+    /// Bring up the keyboard as soon as the field lands on screen. For
+    /// sheets whose whole purpose is entering an amount.
+    var autofocus = false
+
+    /// becomeFirstResponder is a no-op until the view joins a window, and
+    /// during a sheet presentation that happens well after makeUIView —
+    /// didMoveToWindow is the earliest reliable moment.
+    final class AutofocusTextField: UITextField {
+        var wantsAutofocus = false
+        private var hasAutofocused = false
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            guard wantsAutofocus, !hasAutofocused, window != nil else { return }
+            hasAutofocused = true
+            becomeFirstResponder()
+        }
+    }
 
     func makeUIView(context: Context) -> UITextField {
-        let field = UITextField()
+        let field = AutofocusTextField()
+        field.wantsAutofocus = autofocus
         field.keyboardType = .decimalPad
         field.placeholder = "0.00"
         field.textAlignment = alignment

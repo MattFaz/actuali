@@ -44,6 +44,28 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                       "tab bar not reachable after dismissing the keyboard")
     }
 
+    /// The add flow autofocuses the amount field — the first thing anyone
+    /// enters — so the keyboard must come up without a tap and keypad input
+    /// must land in that field.
+    @MainActor
+    func testAddTabAutofocusesAmountField() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not come up on its own for the amount field")
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.exists, "amount field not found")
+
+        app.keys["5"].tap()
+        XCTAssertEqual(amountField.value as? String, "0.05",
+                       "keypad input did not land in the amount field")
+    }
+
     @MainActor
     func testSheetPresentedAddFlowShowsCancel() throws {
         let app = XCUIApplication()
