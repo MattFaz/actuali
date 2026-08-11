@@ -175,6 +175,31 @@ struct BudgetStoreInitialSyncTests {
         #expect(store.isInitialSyncing == false)
     }
 
+    /// The initial sync's catch-up can span weeks of history, and the downloaded
+    /// file's messages_crdt rowids restart from whatever the uploading client
+    /// had. A watermark left behind by a previous copy of this budget therefore
+    /// points at unrelated messages — high enough to pass the detector's
+    /// `watermark <= maxId` guard, low enough to announce that whole catch-up as
+    /// new transactions. Opening the file has to drop it.
+    @Test func freshDownloadDoesNotKeepAPreviousCopysNotificationWatermark() async throws {
+        let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let root = try makeRootDirectory()
+        let budgetId = "test-initial-sync-\(UUID().uuidString)"
+        defer { cleanUp(root: root, budgetId: budgetId, savedBudgetId: savedBudgetId) }
+        let key = "transactionNotificationWatermark.\(budgetId)"
+        UserDefaults.standard.set(NSNumber(value: Int64(500)), forKey: key)
+        let store = try await makeStore(zip: try makeBudgetZip(budgetId: budgetId), root: root)
+
+        await store.downloadBudget(Self.remoteBudget)
+
+        #expect(store.error == nil)
+        // Either removed, or re-baselined against the new file by the detector
+        // that ran during the initial sync. What matters is that the stale value
+        // is gone.
+        let watermark = (UserDefaults.standard.object(forKey: key) as? NSNumber)?.int64Value
+        #expect(watermark != 500)
+    }
+
     // MARK: - Upstream schema
 
     /// The tables `loadLocalBudget` reads and `SyncClient.configure` needs,

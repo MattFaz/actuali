@@ -1088,6 +1088,12 @@ final class BudgetStore: ObservableObject {
             currentBudgetId = metadata.id
             isInitialSyncing = true
             opened = true
+            // The initial sync below can pull weeks of history, and this file's
+            // messages_crdt rowids come from whichever client uploaded it, so a
+            // watermark left by a previous copy of the same budget points at
+            // unrelated messages — high enough to pass the detector's guard, low
+            // enough to announce all that history as new transactions.
+            NewTransactionDetector.forgetWatermark(budgetId: metadata.id)
             await loadLocalBudget(metadata.id)
         } catch {
             self.error = error.localizedDescription
