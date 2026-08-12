@@ -44,6 +44,7 @@ struct BudgetStoreSchedulePostingTriggerTests {
 
                 CREATE TABLE transactions (
                     id TEXT PRIMARY KEY,
+                    starting_balance_flag INTEGER DEFAULT 0,
                     isParent INTEGER DEFAULT 0,
                     isChild INTEGER DEFAULT 0,
                     acct TEXT,

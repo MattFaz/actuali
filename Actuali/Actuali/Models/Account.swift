@@ -29,3 +29,24 @@ enum AccountType: String, CaseIterable {
     case debt
     case other
 }
+
+// MARK: - CRDTSyncable
+
+extension Account: CRDTSyncable {
+    static var datasetName: String { "accounts" }
+
+    /// Only the fields a manually-created (non-bank-linked) account sets.
+    /// Bank-sync columns (account_id, balance_current, mask, official_name,
+    /// subtype, bank) stay untouched — matching how the PWA leaves them null
+    /// for a local account, same as `financial_id` on Transaction.
+    var syncableFields: [String: Any?] {
+        [
+            "name": name,
+            "type": type.rawValue,
+            "offbudget": offBudget ? 1 : 0,
+            "closed": closed ? 1 : 0,
+            "tombstone": 0,
+            "sort_order": sortOrder
+        ]
+    }
+}

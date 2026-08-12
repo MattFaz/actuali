@@ -1935,6 +1935,50 @@ class BudgetDatabase {
         }
     }
 
+    /// Inserts a newly-created account, its transfer payee (plus the payee's
+    /// self-mapping row the transaction joins need), and its opening-balance
+    /// transaction (if any) in a single SQLite transaction, so a failure on
+    /// any row rolls back everything — mirrors `insertTransfer`'s
+    /// all-or-nothing shape.
+    func insertAccount(
+        _ account: Account,
+        transferPayee: Payee,
+        startingBalanceTransaction: Transaction?
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, ?, ?, ?, ?, 0, ?)
+                """, arguments: [
+                    account.id,
+                    account.name,
+                    account.type.rawValue,
+                    account.offBudget ? 1 : 0,
+                    account.closed ? 1 : 0,
+                    account.sortOrder
+                ])
+            try db.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct, tombstone)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.name,
+                    transferPayee.transferAccountId,
+                    transferPayee.tombstone ? 1 : 0
+                ])
+            try db.execute(sql: """
+                INSERT INTO payee_mapping (id, targetId)
+                VALUES (?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.id
+                ])
+            if let startingBalanceTransaction {
+                try Self.insertTransactionRow(db, startingBalanceTransaction)
+            }
+        }
+    }
+
     /// Inserts both legs of a transfer and their CRDT messages in a single
     /// SQLite transaction, so a failure on either leg rolls back everything
     /// and no orphaned half-transfer can persist.
@@ -1975,8 +2019,8 @@ class BudgetDatabase {
         // children keep their entry order under the parent.
         let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, schedule, financial_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, schedule, financial_id, starting_balance_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1995,7 +2039,8 @@ class BudgetDatabase {
                 sortOrder,
                 transaction.importedPayee,
                 transaction.schedule,
-                transaction.financialId
+                transaction.financialId,
+                transaction.startingBalanceFlag ? 1 : 0
             ])
     }
 

@@ -18,6 +18,7 @@ struct AccountsListView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @State private var path = NavigationPath()
+    @State private var showingAddAccount = false
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
@@ -40,6 +41,10 @@ struct AccountsListView: View {
 
     var offBudgetAccounts: [Account] {
         budgetStore.accounts.filter { $0.offBudget && !$0.closed }
+    }
+
+    var closedAccounts: [Account] {
+        budgetStore.accounts.filter { $0.closed }
     }
 
     var body: some View {
@@ -88,6 +93,16 @@ struct AccountsListView: View {
                                 }
                             }
                         }
+
+                        if !closedAccounts.isEmpty {
+                            Section("Closed Accounts") {
+                                ForEach(closedAccounts) { account in
+                                    NavigationLink(value: account) {
+                                        AccountRow(account: account)
+                                    }
+                                }
+                            }
+                        }
                     }
                     // Capped like the transactions this pushes to, so a
                     // narrow-iPad account list doesn't stretch a row's balance
@@ -130,6 +145,15 @@ struct AccountsListView: View {
                         if !offBudgetAccounts.isEmpty {
                             Section("Off Budget") {
                                 ForEach(offBudgetAccounts) { account in
+                                    AccountRow(account: account)
+                                        .tag(AccountSelection.account(account.id))
+                                }
+                            }
+                        }
+
+                        if !closedAccounts.isEmpty {
+                            Section("Closed Accounts") {
+                                ForEach(closedAccounts) { account in
                                     AccountRow(account: account)
                                         .tag(AccountSelection.account(account.id))
                                 }
@@ -216,8 +240,20 @@ struct AccountsListView: View {
             .navigationTitle("Accounts")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showingAddAccount = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add Account")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
                 }
+            }
+            .sheet(isPresented: $showingAddAccount) {
+                AddAccountView()
+                    .environmentObject(budgetStore)
             }
             .onAppear {
                 consumePendingAllAccountsNavigation()
