@@ -4,6 +4,8 @@ struct MainTabView: View {
     @State private var selectedTab = initialTab()
     @StateObject private var notificationRouter = NotificationRouter.shared
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.isWideLayout) private var isWideLayout
 
     private static func initialTab() -> Int {
         #if DEBUG
@@ -31,38 +33,18 @@ struct MainTabView: View {
     }
 
     var body: some View {
-        TabView(selection: $selectedTab) {
-            AccountsListView()
-                .tabItem {
-                    Label("Accounts", systemImage: "banknote")
-                }
-                .tag(0)
-
-            BudgetView()
-                .tabItem {
-                    Label("Budget", systemImage: "wallet.bifold")
-                        .accessibilityValue(overspentBadgeValue)
-                }
-                .badge(overspentCount)
-                .tag(1)
-
-            AddTransactionTabView()
-                .tabItem {
-                    Label("Add", systemImage: "plus.circle.fill")
-                }
-                .tag(2)
-
-            ReportsTabView()
-                .tabItem {
-                    Label("Reports", systemImage: "chart.bar.xaxis")
-                }
-                .tag(3)
-
-            SettingsView()
-                .tabItem {
-                    Label("Settings", systemImage: "gear")
-                }
-                .tag(4)
+        Group {
+            // A wide iPad window (never iPhone) offers the sidebar as an
+            // alternative to the floating tab bar. Gated on width, not just on
+            // regular size class: in an 11-inch portrait window the sidebar
+            // has no room to sit beside the content, so the toggle only ever
+            // swaps the tab bar for a drawer over the top of it. Narrower
+            // windows — and every phone — keep the plain tab bar.
+            if horizontalSizeClass == .regular, isWideLayout {
+                tabs.tabViewStyle(.sidebarAdaptable)
+            } else {
+                tabs
+            }
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
             if pending { selectedTab = 0 }
@@ -71,6 +53,49 @@ struct MainTabView: View {
         // transaction list, which lives on the Accounts tab.
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
             if accountId != nil { selectedTab = 0 }
+        }
+    }
+
+    /// The `Tab` value API rather than `tabItem`: `sidebarAdaptable` above only
+    /// takes effect for tabs declared this way. Renders identically to the
+    /// `tabItem` form in compact width.
+    private var tabs: some View {
+        TabView(selection: $selectedTab) {
+            Tab(value: 0) {
+                AccountsListView()
+            } label: {
+                Label("Accounts", systemImage: "banknote")
+            }
+
+            Tab(value: 1) {
+                BudgetView()
+            } label: {
+                Label("Budget", systemImage: "wallet.bifold")
+            }
+            .badge(overspentCount)
+            // On the tab, not its label: under the Tab API the tab's own
+            // modifiers are what reach the tab bar item. (Neither placement
+            // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
+            // fails on main for that reason, unrelated to this.)
+            .accessibilityValue(Text(overspentBadgeValue))
+
+            Tab(value: 2) {
+                AddTransactionTabView()
+            } label: {
+                Label("Add", systemImage: "plus.circle.fill")
+            }
+
+            Tab(value: 3) {
+                ReportsTabView()
+            } label: {
+                Label("Reports", systemImage: "chart.bar.xaxis")
+            }
+
+            Tab(value: 4) {
+                SettingsView()
+            } label: {
+                Label("Settings", systemImage: "gear")
+            }
         }
     }
 }
