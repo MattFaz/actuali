@@ -7,7 +7,7 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "ScheduleP
 /// record them. `SyncClient` is the production conformance.
 protocol SchedulePostingActions {
     func createTransaction(_ transaction: Transaction) async throws
-    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws
 }
 
 /// Posts due automatic schedules and advances their next dates.
@@ -127,8 +127,10 @@ actor SchedulePoster {
                 posted += 1
             }
 
-            // One-off schedules post at most once and never advance;
-            // completion is left to the web app (loot-core parity).
+            // One-off and unsupported-recurrence schedules post at most once
+            // and never advance; completion (or the advance the port can't
+            // compute) is left to the web app (loot-core parity — its advance
+            // throws on such shapes and the service swallows it after posting).
             guard case .recurring(let config) = schedule.dateCondition else { break }
 
             guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: current.adding(days: 1)),

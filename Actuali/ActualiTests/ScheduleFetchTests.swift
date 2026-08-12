@@ -330,14 +330,21 @@ struct ScheduleFetchTests {
 
     /// The advance write needs base_next_date_ts; a NULL there is a skip,
     /// without poisoning other schedules in the same fetch.
-    @Test func skipsNullBaseNextDateTsWithoutAffectingOthers() async throws {
+    /// v_schedules' `local_next_date_ts = base_next_date_ts` CASE is NULL for
+    /// NULL timestamps, so the web falls through to base_next_date and still
+    /// posts — a NULL ts row must not be skipped (GH #97 follow-up).
+    @Test func nullBaseNextDateTsPostsUsingBaseNextDate() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, id: "s-nots", localNextDateTs: nil, baseNextDateTs: nil)
+        try insertSchedule(db, id: "s-nots", localNextDate: 20260715, localNextDateTs: nil,
+                           baseNextDate: 20260801, baseNextDateTs: nil)
         try insertSchedule(db, id: "s-ok")
 
         let schedules = try db.fetchPostableSchedules()
-        #expect(schedules.map(\.id) == ["s-ok"])
+        #expect(schedules.map(\.id) == ["s-nots", "s-ok"])
+        let noTs = schedules.first { $0.id == "s-nots" }
+        #expect(noTs?.nextDate == DayDate(yyyymmdd: 20260801))
+        #expect(noTs?.baseNextDateTs == nil)
     }
 
     /// loot-core's rules service only loads rules with tombstone = 0, so a
@@ -461,7 +468,12 @@ struct ScheduleFetchTests {
         #expect(schedules.isEmpty)
     }
 
-    @Test func skipsUnparseableRecurrenceAndMissingDateCondition() async throws {
+    /// Upstream posting never consults the date condition — getStatus works
+    /// off the stored next_date, and only the ADVANCE needs the recurrence
+    /// (setNextDate throws on shapes it can't handle and the service swallows
+    /// it). So an unparseable or missing date condition must still yield a
+    /// postable schedule, marked so the poster posts once and never advances.
+    @Test func unparseableRecurrenceAndMissingDateConditionStillPostable() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-badfreq", conditions: """
@@ -472,9 +484,21 @@ struct ScheduleFetchTests {
             [{"op":"is","field":"acct","value":"acct-1"},
              {"op":"is","field":"description","value":"payee-1"}]
             """)
+        // Legacy picker state could store interval as a string; rSchedule
+        // throws on it upstream, so it must not silently post on interval 1.
+        try insertSchedule(db, id: "s-strinterval", conditions: """
+            [{"op":"is","field":"acct","value":"acct-1"},
+             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":"2"}}]
+            """)
 
         let schedules = try db.fetchPostableSchedules()
-        #expect(schedules.isEmpty)
+        #expect(schedules.map(\.id) == ["s-badfreq", "s-nodate", "s-strinterval"])
+        for schedule in schedules {
+            guard case .unsupported = schedule.dateCondition else {
+                Issue.record("\(schedule.id) should carry .unsupported, got \(schedule.dateCondition)")
+                continue
+            }
+        }
     }
 
     @Test func skipsInvalidEffectiveNextDate() async throws {
