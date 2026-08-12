@@ -1355,13 +1355,14 @@ final class BudgetStore: ObservableObject {
     // MARK: - Accounts
 
     /// Create a new local (manually-added) account, matching the PWA's own
-    /// "Create local account" flow: an accounts row plus an opening-balance
-    /// transaction from the shared "Starting Balance" payee (Actual has no
-    /// separate stored-balance field — every account's balance is always the
-    /// sum of its transactions, so this transaction IS the starting balance,
-    /// not a display shortcut). Always creates the transaction, even for a
-    /// zero balance, matching the PWA so "Starting Balance" is editable later
-    /// the same way for every account.
+    /// "Create local account" flow (loot-core `createAccount`): an accounts
+    /// row, the account's transfer payee (the empty-named payee carrying
+    /// `transfer_acct` that every transfer to or from this account resolves
+    /// through), and — only for a nonzero balance, like the PWA — an
+    /// opening-balance transaction from the shared "Starting Balance" payee
+    /// (Actual has no separate stored-balance field — every account's balance
+    /// is always the sum of its transactions, so this transaction IS the
+    /// starting balance, not a display shortcut).
     @discardableResult
     func createAccount(name: String, offBudget: Bool, startingBalanceCents: Int) async throws -> Account {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1387,34 +1388,51 @@ final class BudgetStore: ObservableObject {
             balance: startingBalanceCents
         )
 
+        let transferPayee = Payee(
+            id: UUID().uuidString,
+            name: "",
+            transferAccountId: account.id,
+            tombstone: false
+        )
+
         do {
-            let startingBalancePayee = try await findOrCreatePayee(name: "Starting Balance")
+            var startingBalanceTransaction: Transaction?
+            if startingBalanceCents != 0 {
+                let startingBalancePayee = try await findOrCreatePayee(name: "Starting Balance")
 
-            // Uncategorized, like the PWA: opening balances land as unassigned
-            // income the person allocates during budgeting, not a pre-picked
-            // category — matching how every other client represents it.
-            let startingBalanceTransaction = Transaction(
-                id: UUID().uuidString,
-                accountId: account.id,
-                date: Transaction.yyyymmdd(from: Date()),
-                amount: startingBalanceCents,
-                payeeId: startingBalancePayee.id,
-                payeeName: startingBalancePayee.name,
-                categoryId: nil,
-                categoryName: nil,
-                notes: nil,
-                cleared: true,
-                reconciled: false,
-                transferId: nil,
-                isParent: false,
-                parentId: nil,
-                tombstone: false,
-                sortOrder: nil,
-                importedPayee: nil,
-                startingBalanceFlag: true
+                // An on-budget opening balance is income the budget can
+                // allocate, so it takes the income category the PWA picks
+                // ("Starting Balances", else the first income category).
+                // Off-budget money never enters the budget, so no category.
+                let category = offBudget ? nil : startingBalanceCategory()
+
+                startingBalanceTransaction = Transaction(
+                    id: UUID().uuidString,
+                    accountId: account.id,
+                    date: Transaction.yyyymmdd(from: Date()),
+                    amount: startingBalanceCents,
+                    payeeId: startingBalancePayee.id,
+                    payeeName: startingBalancePayee.name,
+                    categoryId: category?.id,
+                    categoryName: category?.name,
+                    notes: nil,
+                    cleared: true,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: nil,
+                    tombstone: false,
+                    sortOrder: nil,
+                    importedPayee: nil,
+                    startingBalanceFlag: true
+                )
+            }
+
+            try await syncClient.createAccount(
+                account,
+                transferPayee: transferPayee,
+                startingBalanceTransaction: startingBalanceTransaction
             )
-
-            try await syncClient.createAccount(account, startingBalanceTransaction: startingBalanceTransaction)
         } catch let error as BudgetStoreError {
             throw error
         } catch {
@@ -1426,6 +1444,16 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
 
         return account
+    }
+
+    /// The category an on-budget opening balance lands in, mirroring the
+    /// PWA's `getStartingBalancePayee`: the income category named "Starting
+    /// Balances" when the budget has one, else any income category, else nil
+    /// (the transaction stays uncategorized, same as upstream).
+    private func startingBalanceCategory() -> Category? {
+        let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
+        return incomeCategories.first { $0.name.lowercased() == "starting balances" }
+            ?? incomeCategories.first
     }
 
     // MARK: - Transactions

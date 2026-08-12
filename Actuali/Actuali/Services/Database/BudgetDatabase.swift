@@ -1935,10 +1935,16 @@ class BudgetDatabase {
         }
     }
 
-    /// Inserts a newly-created account and its opening-balance transaction
-    /// (if any) in a single SQLite transaction, so a failure on either row
-    /// rolls back both — mirrors `insertTransfer`'s all-or-nothing shape.
-    func insertAccount(_ account: Account, startingBalanceTransaction: Transaction?) throws {
+    /// Inserts a newly-created account, its transfer payee (plus the payee's
+    /// self-mapping row the transaction joins need), and its opening-balance
+    /// transaction (if any) in a single SQLite transaction, so a failure on
+    /// any row rolls back everything — mirrors `insertTransfer`'s
+    /// all-or-nothing shape.
+    func insertAccount(
+        _ account: Account,
+        transferPayee: Payee,
+        startingBalanceTransaction: Transaction?
+    ) throws {
         try dbQueue.write { db in
             try db.execute(sql: """
                 INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
@@ -1950,6 +1956,22 @@ class BudgetDatabase {
                     account.offBudget ? 1 : 0,
                     account.closed ? 1 : 0,
                     account.sortOrder
+                ])
+            try db.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct, tombstone)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.name,
+                    transferPayee.transferAccountId,
+                    transferPayee.tombstone ? 1 : 0
+                ])
+            try db.execute(sql: """
+                INSERT INTO payee_mapping (id, targetId)
+                VALUES (?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.id
                 ])
             if let startingBalanceTransaction {
                 try Self.insertTransactionRow(db, startingBalanceTransaction)

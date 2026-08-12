@@ -30,8 +30,8 @@ struct AddAccountView: View {
 
 /// The account creation form: name, on/off-budget, and starting balance.
 /// Submitting creates a real Actual account (synced via the normal CRDT
-/// path, same as every other write in the app) plus a "Starting Balance"
-/// transaction for the opening amount — Actual has no separate stored
+/// path, same as every other write in the app) plus, for a nonzero amount,
+/// a "Starting Balance" transaction — Actual has no separate stored
 /// balance field, so the transaction *is* the balance, not a shortcut.
 struct CreateLocalAccountView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -98,6 +98,9 @@ struct CreateLocalAccountView: View {
     }
 
     private func create() async {
+        // A second tap can race the button's .disabled(isSaving) re-render
+        // and enqueue a second Task — bail so one tap means one account.
+        guard !isSaving else { return }
         guard !trimmedName.isEmpty else {
             errorMessage = "Enter an account name"
             return
