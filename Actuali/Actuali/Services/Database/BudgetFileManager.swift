@@ -277,13 +277,19 @@ class BudgetFileManager {
             encryptKeyId: extracted.metadata.encryptKeyId
         )
 
-        // Create budget directory
+        // Replace only the live files — deleting the whole directory here used to be harmless,
+        // but it would now silently destroy backups/ on every re-download. A fresh download does,
+        // however, supersede any revert baseline.
         let budgetDir = budgetDirectory(for: extracted.metadata.id)
-        try? fileManager.removeItem(at: budgetDir) // Remove existing if any
         try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+        try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
+        try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
 
-        // Extract database
         let dbPath = databasePath(for: extracted.metadata.id)
+        for suffix in ["-wal", "-shm"] {
+            try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
+        }
+        try? fileManager.removeItem(at: dbPath)
         try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
 
         // Write updated metadata

@@ -53,7 +53,7 @@ struct BudgetArchiveWriterTests {
         #expect(imported.groupId == "group-1")
 
         let importedQueue = try DatabaseQueue(path: manager.databasePath(for: "roundtrip").path)
-        let count = try importedQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM t") }
+        let count = try await importedQueue.read { try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM t") }
         #expect(count == 1)
     }
 

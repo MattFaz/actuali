@@ -56,15 +56,12 @@ actor BackupService {
     /// Pass the open database when the budget is loaded; nil opens a temporary queue on the file (backing up a non-open budget).
     func makeBackup(budgetId: String, database: BudgetDatabase?, now: Date = Date()) async throws {
         // 1. Making a backup ends "viewing a backup": whatever is current
-        //    becomes the new baseline. We remove the metadata companion too;
-        //    upstream leaves it stale on disk (backups.ts:112-114) because
-        //    only the db file acts as the flag — tidier to drop both.
+        //    becomes the new baseline. We remove the metadata companion too.
         try? fm.removeItem(at: fileManager.latestDatabasePath(for: budgetId))
         try? fm.removeItem(at: fileManager.latestMetadataPath(for: budgetId))
 
-        // 2. Ensure backups/ exists (backupsDirectory creates it) and sweep
-        //    any .tmp a crashed backup left behind — invisible to the lister,
-        //    but otherwise immortal.
+        // 2. Ensure backups folder exist (backupsDirectory creates it) and sweep
+        //    any .tmp a crashed backup left behind.
         let backupsDir = fileManager.backupsDirectory(for: budgetId)
         if let leftovers = try? fm.contentsOfDirectory(at: backupsDir, includingPropertiesForKeys: nil) {
             for url in leftovers where url.lastPathComponent.hasSuffix(".sqlite.tmp") {
@@ -95,9 +92,8 @@ actor BackupService {
             throw BackupError.snapshotFailed(error)
         }
 
-        // 4. Strip CRDT state from the snapshot — backups are standalone and
-        //    carry no sync history (backups.ts:135-138). Table-exists guards
-        //    defend against unusual server files.
+        // 4. Strip CRDT state from the snapshot as backups are standalone and
+        //    carry no sync history. Table guards defend against unusual server files.
         do {
             let snapshotQueue = try DatabaseQueue(path: tempDbURL.path)
             try await snapshotQueue.write { db in
@@ -112,9 +108,8 @@ actor BackupService {
             throw BackupError.snapshotFailed(error)
         }
 
-        // 5. Zip the cleaned snapshot with a VERBATIM byte-copy of
-        //    metadata.json — no Codable round-trip, so the archive never
-        //    drops metadata keys this app doesn't model (plan D5).
+        // 5. Zip the cleaned snapshot with a VERBATIM byte-copy of metadata.json.
+        // No Codable round-trip, so the archive never drops metadata keys this app doesn't model.
         let archiveURL = fileManager.backupPath(
             for: budgetId, name: BudgetFileManager.backupArchiveName(for: now)
         )
@@ -129,7 +124,7 @@ actor BackupService {
             throw BackupError.archiveCreationFailed(error)
         }
 
-        // 6. Prune to policy. (The .tmp cleanup is the defer above.)
+        // 6. Prune existing backups
         prune(budgetId: budgetId, today: now)
         logger.info("Backup created: \(archiveURL.lastPathComponent, privacy: .public)")
     }
@@ -194,6 +189,71 @@ actor BackupService {
     private func prune(budgetId: String, today: Date) {
         for id in Self.backupsToRemove(archiveList(budgetId: budgetId), today: today) {
             try? fm.removeItem(at: fileManager.backupPath(for: budgetId, name: id))
+        }
+    }
+    
+    // MARK: - Restore
+
+    /// Restore backupId over the live files, first snapshotting the current state so the user can revert.
+    /// Pure file operations: the caller (BudgetStore) MUST have closed the open database first and
+    /// must reopen/reload afterwards (a live DatabaseQueue on a file being swapped means corruption or stale).
+    func loadBackup(budgetId: String, backupId: String) throws {
+        let liveDb = fileManager.databasePath(for: budgetId)
+        let liveMetadata = fileManager.metadataPath(for: budgetId)
+        let latestDb = fileManager.latestDatabasePath(for: budgetId)
+        let latestMetadata = fileManager.latestMetadataPath(for: budgetId)
+
+        do {
+            // First restore of this viewing session: preserve current state as the revert baseline.
+            if !fm.fileExists(atPath: latestDb.path) {
+                try fm.copyItem(at: liveDb, to: latestDb)
+                try fm.copyItem(at: liveMetadata, to: latestMetadata)
+            }
+
+            if backupId == Backup.latest.id {
+                // Case A — revert: put the baseline back and consume it. The baseline metadata still
+                // carries the original groupId, so sync resumes automatically once the store reopens.
+                try replaceFile(at: liveDb, with: latestDb)
+                try replaceFile(at: liveMetadata, with: latestMetadata)
+                try fm.removeItem(at: latestDb)
+                try fm.removeItem(at: latestMetadata)
+            } else {
+                // Case B — a real archive.
+                let archiveURL = fileManager.backupPath(for: budgetId, name: backupId)
+                guard fm.fileExists(atPath: archiveURL.path) else {
+                    throw BackupError.backupNotFound(backupId)
+                }
+
+                let extracted = try fileManager.extractBudgetArchive(at: archiveURL)
+                defer { try? fm.removeItem(at: extracted.databaseURL) }
+
+                let liveMeta = (try? Data(contentsOf: liveMetadata))
+                    .flatMap { try? JSONDecoder().decode(BudgetMetadata.self, from: $0) }
+                let restored = extracted.metadata.restoredOver(liveMeta)
+
+                removeSQLiteSidecars(for: liveDb)
+                try fm.removeItem(at: liveDb)
+                try fm.moveItem(at: extracted.databaseURL, to: liveDb)
+                try JSONEncoder().encode(restored).write(to: liveMetadata)
+            }
+        } catch let error as BackupError {
+            throw error
+        } catch {
+            throw BackupError.restoreFailed(error)
+        }
+    }
+
+    private func replaceFile(at destination: URL, with source: URL) throws {
+        removeSQLiteSidecars(for: destination)
+        if fm.fileExists(atPath: destination.path) {
+            try fm.removeItem(at: destination)
+        }
+        try fm.copyItem(at: source, to: destination)
+    }
+
+    private func removeSQLiteSidecars(for dbURL: URL) {
+        for suffix in ["-wal", "-shm"] {
+            try? fm.removeItem(at: URL(fileURLWithPath: dbURL.path + suffix))
         }
     }
 }

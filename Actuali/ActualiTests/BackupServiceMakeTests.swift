@@ -65,9 +65,12 @@ struct BackupServiceMakeTests {
         defer { try? FileManager.default.removeItem(at: extracted.databaseURL) }
         let queue = try DatabaseQueue(path: extracted.databaseURL.path)
         try await queue.read { db in
-            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
-            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_clock") == 0)
-            #expect(try String.fetchOne(db, sql: "SELECT note FROM t WHERE id = 'row1'") == "original")
+            let crdtCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt")
+            let clockCount = try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_clock")
+            let note = try String.fetchOne(db, sql: "SELECT note FROM t WHERE id = 'row1'")
+            #expect(crdtCount == 0)
+            #expect(clockCount == 0)
+            #expect(note == "original")
         }
 
         // The live db is untouched.
