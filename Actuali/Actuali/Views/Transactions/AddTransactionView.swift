@@ -124,18 +124,15 @@ struct AddTransactionView: View {
         editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
     }
 
-    /// Cents still unassigned across the split lines, nil while the total or
-    /// any line doesn't parse yet.
+    /// Cents still unassigned across the split lines, nil while the total
+    /// doesn't parse yet. Blank lines count as zero so the remainder stays
+    /// visible while the user is still filling lines in.
     private var splitRemainingCents: Int? {
-        guard let dollars = Double(amount),
-              let total = Transaction.cents(fromDollars: dollars) else { return nil }
-        var assigned = 0
-        for line in splitLines {
-            guard let lineDollars = Double(line.amount),
-                  let cents = Transaction.cents(fromDollars: lineDollars) else { return nil }
-            assigned += cents
-        }
-        return total - assigned
+        SplitEntryMath.remainingCents(total: amount, lineAmounts: splitLines.map(\.amount))
+    }
+
+    private var hasBlankSplitLine: Bool {
+        splitLines.contains { $0.amount.isEmpty }
     }
 
     /// Open accounts ordered to match the webapp's AccountAutocomplete:
@@ -516,7 +513,7 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(line: $line)
+                SplitLineRow(line: $line, remainingCents: splitRemainingCents)
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -565,6 +562,11 @@ struct AddTransactionView: View {
         } footer: {
             if let remaining = splitRemainingCents, remaining != 0 {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                    .foregroundStyle(.red)
+            } else if splitRemainingCents == 0 && hasBlankSplitLine {
+                // Nothing left to assign but a line is still blank — say why
+                // Save stays disabled instead of leaving it a mystery.
+                Text("Fill in or remove the empty line")
                     .foregroundStyle(.red)
             }
         }
@@ -621,7 +623,9 @@ struct AddTransactionView: View {
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
         if isTransfer && transferToAccountId == nil { return true }
-        if isSplitting && !isTransfer && splitRemainingCents != 0 { return true }
+        // A blank line reads as zero for the remainder display, but the store
+        // rejects zero-amount children — keep save blocked until it's filled.
+        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -679,11 +683,38 @@ struct AddTransactionView: View {
     }
 }
 
+/// Math for the split entry section, kept off the view for testability.
+enum SplitEntryMath {
+    /// Cents still unassigned across the split lines. Blank lines count as
+    /// zero so the remainder stays visible mid-entry; nil while the total or
+    /// a non-blank line doesn't parse.
+    static func remainingCents(total: String, lineAmounts: [String]) -> Int? {
+        guard let dollars = Double(total),
+              let totalCents = Transaction.cents(fromDollars: dollars) else { return nil }
+        var assigned = 0
+        for amount in lineAmounts where !amount.isEmpty {
+            guard let lineDollars = Double(amount),
+                  let cents = Transaction.cents(fromDollars: lineDollars) else { return nil }
+            assigned += cents
+        }
+        return totalCents - assigned
+    }
+
+    /// Plain dot-decimal string for non-negative cents, the format
+    /// AmountInputField keeps in its binding.
+    static func amountString(fromCents cents: Int) -> String {
+        "\(cents / 100).\(String(format: "%02d", cents % 100))"
+    }
+}
+
 /// One editable split line: a category picked through a sheet and an amount.
 /// Borderless button so the amount field keeps its own tap target in the row.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
+    /// The section-wide unassigned remainder; a positive value on a line with
+    /// no amount yet offers one-tap fill instead of mental arithmetic.
+    var remainingCents: Int?
     @State private var showCategoryPicker = false
 
     private var categoryName: String {
@@ -709,6 +740,18 @@ private struct SplitLineRow: View {
                 Spacer()
                 AmountInputField(text: $line.amount)
                     .frame(width: 110)
+            }
+            if line.amount.isEmpty, let remaining = remainingCents, remaining > 0 {
+                HStack {
+                    Spacer()
+                    Button {
+                        line.amount = SplitEntryMath.amountString(fromCents: remaining)
+                    } label: {
+                        Text("Use remaining \(budgetStore.formatCurrency(remaining))")
+                            .font(.subheadline)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
             // Empty payee inherits the transaction's payee
             TextField("Payee (optional)", text: $line.payeeName)
