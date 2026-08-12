@@ -80,6 +80,49 @@ class BudgetFileManager {
     func metadataPath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("metadata.json")
     }
+    
+    // MARK: - Backup Paths
+    
+    /// Directory holding this budget's local backup archives, created on first use.
+    func backupsDirectory(for budgetId: String) -> URL {
+        let dir = budgetDirectory(for: budgetId).appendingPathComponent("backups", isDirectory: true)
+        if !fileManager.fileExists(atPath: dir.path) {
+            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+    
+    func backupPath(for budgetId: String, name: String) -> URL {
+        backupsDirectory(for: budgetId).appendingPathComponent(name)
+    }
+    
+    /// The baseline that will be reverted too if there is ever a failure in backing up.
+    func latestDatabasePath(for budgetId: String) -> URL {
+        budgetDirectory(for: budgetId).appendingPathComponent("db.latest.sqlite")
+    }
+    
+    func latestMetadataPath(for budgetId: String) -> URL {
+        budgetDirectory(for: budgetId).appendingPathComponent("metadata.latest.json")
+    }
+    
+    // MARK: - Backup Naming
+    
+    /// Archive names match upstream's yyyy-MM-dd_HH-mm-ss.zip.
+    /// The device timezone is deliberate: "today"  means the user's today.
+    static let backupNameFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return formatter
+    }()
+    
+    static func backupArchiveName(for date: Date) -> String {
+        backupNameFormatter.string(from: date) + ".zip"
+    }
+
+    static func backupTempName(now: Date) -> String {
+        "db.\(Int(now.timeIntervalSince1970 * 1000)).sqlite.tmp"
+    }
 
     // MARK: - Budget Management
 
@@ -176,5 +219,27 @@ class BudgetFileManager {
     func deleteBudget(_ budgetId: String) throws {
         let budgetDir = budgetDirectory(for: budgetId)
         try fileManager.removeItem(at: budgetDir)
+    }
+}
+
+extension BudgetMetadata {
+    /// The metadata to persist after restoring this (archived) metadata over a
+    /// live budget. Sync-group fields are nulled: upstream nulls them only
+    /// transiently before its re-upload registers a fresh server group
+    /// (backups.ts:220-224, cloud-storage.ts:347), but Actuali has no upload
+    /// path, so a restored fork must stay detached until the user re-downloads
+    /// (docs/backup-planning/implementation-plan.md §1, D1). Identity fields
+    /// come from the live metadata when present — the directory's live file is
+    /// the source of truth for which cloud file this is.
+    func restoredOver(_ live: BudgetMetadata?) -> BudgetMetadata {
+        BudgetMetadata(
+            id: id,
+            budgetName: budgetName,
+            cloudFileId: live?.cloudFileId ?? cloudFileId,
+            groupId: nil,
+            resetClock: resetClock,
+            lastUploaded: nil,
+            encryptKeyId: live?.encryptKeyId ?? encryptKeyId
+        )
     }
 }
