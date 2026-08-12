@@ -1,0 +1,93 @@
+name: Discord activity log
+
+# Posts a one-line embed to the #gh-log Discord channel for repo activity:
+# issues opened/closed/reopened, PRs opened/merged/closed/reopened, and
+# releases published. Merged PRs are reported as "merged" rather than
+# "closed".
+#
+# The webhook URL lives in the DISCORD_WEBHOOK_URL repo secret so it never
+# appears in the repo (anyone with the URL can post to the channel).
+#
+# Note: like all workflows triggered by repo events, this only runs from the
+# version of the file on the default branch, so it goes live once merged.
+
+on:
+  issues:
+    types: [opened, closed, reopened]
+  pull_request:
+    types: [opened, closed, reopened]
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Discord message
+        env:
+          WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          EVENT: ${{ github.event_name }}
+          ACTION: ${{ github.event.action }}
+          ACTOR: ${{ github.event.sender.login }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_URL: ${{ github.event.issue.html_url }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_MERGED: ${{ github.event.pull_request.merged }}
+          RELEASE_NAME: ${{ github.event.release.name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_URL: ${{ github.event.release.html_url }}
+        run: |
+          if [ -z "$WEBHOOK_URL" ]; then
+            echo "DISCORD_WEBHOOK_URL secret is not set; skipping." >&2
+            exit 1
+          fi
+
+          # Discord embed sidebar colors.
+          GREEN=3066993 RED=15158332 PURPLE=10181046 BLUE=3447003 GREY=9807270
+
+          case "$EVENT:$ACTION" in
+            issues:opened)
+              TITLE="🐛 Issue opened: #$ISSUE_NUMBER $ISSUE_TITLE"
+              URL="$ISSUE_URL" COLOR=$GREEN ;;
+            issues:closed)
+              TITLE="✅ Issue closed: #$ISSUE_NUMBER $ISSUE_TITLE"
+              URL="$ISSUE_URL" COLOR=$GREY ;;
+            issues:reopened)
+              TITLE="♻️ Issue reopened: #$ISSUE_NUMBER $ISSUE_TITLE"
+              URL="$ISSUE_URL" COLOR=$RED ;;
+            pull_request:opened)
+              TITLE="🔀 PR opened: #$PR_NUMBER $PR_TITLE"
+              URL="$PR_URL" COLOR=$BLUE ;;
+            pull_request:closed)
+              if [ "$PR_MERGED" = "true" ]; then
+                TITLE="🟣 PR merged: #$PR_NUMBER $PR_TITLE"
+                URL="$PR_URL" COLOR=$PURPLE
+              else
+                TITLE="❌ PR closed: #$PR_NUMBER $PR_TITLE"
+                URL="$PR_URL" COLOR=$RED
+              fi ;;
+            pull_request:reopened)
+              TITLE="♻️ PR reopened: #$PR_NUMBER $PR_TITLE"
+              URL="$PR_URL" COLOR=$BLUE ;;
+            release:published)
+              TITLE="🚀 Release published: ${RELEASE_NAME:-$RELEASE_TAG}"
+              URL="$RELEASE_URL" COLOR=$GREEN ;;
+            *)
+              echo "Unhandled event $EVENT:$ACTION; nothing to send."
+              exit 0 ;;
+          esac
+
+          # Build the payload with jq so titles containing quotes or
+          # backslashes can't break the JSON.
+          jq -n \
+            --arg title "$TITLE" \
+            --arg url "$URL" \
+            --arg actor "$ACTOR" \
+            --argjson color "$COLOR" \
+            '{embeds: [{title: $title, url: $url, description: "by \($actor)", color: $color}]}' \
+          | curl -sSf -X POST -H "Content-Type: application/json" -d @- "$WEBHOOK_URL"
