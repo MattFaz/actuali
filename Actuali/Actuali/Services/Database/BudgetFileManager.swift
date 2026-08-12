@@ -7,6 +7,7 @@ enum BudgetFileError: LocalizedError {
     case missingMetadata
     case extractionFailed(Error)
     case metadataParsingFailed
+    case unsafeArchive(String)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum BudgetFileError: LocalizedError {
             return "Failed to extract budget file: \(error.localizedDescription)"
         case .metadataParsingFailed:
             return "Failed to parse budget metadata"
+        case .unsafeArchive(let error):
+            return "The archive failed a safety check: \(error)"
         }
     }
 }
@@ -123,6 +126,104 @@ class BudgetFileManager {
     static func backupTempName(now: Date) -> String {
         "db.\(Int(now.timeIntervalSince1970 * 1000)).sqlite.tmp"
     }
+    
+    // MARK: - Backup Archives
+    
+    /// Creates a backup archive with EXACTLY the two root entries the import
+    /// path looks for, so Actuali-made archives round-trip through
+    /// `importBudget` and open in Actual desktop (upstream zips the same two
+    /// names, backups.ts:145-148).
+    func makeBudgetArchive(dbURL: URL, metadataURL: URL, to destinationURL: URL) throws {
+        // Same-second collision between a manual and an automatic backup:
+        // overwrite, matching upstream (the contents are equivalent).
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)
+        }
+        let archive = try Archive(url: destinationURL, accessMode: .create)
+        try archive.addEntry(with: "db.sqlite", fileURL: dbURL, compressionMethod: .deflate)
+        try archive.addEntry(with: "metadata.json", fileURL: metadataURL, compressionMethod: .deflate)
+    }
+
+    /// Ported from upstream's safeUnzip caps (util/zip.ts:9): fflate there —
+    /// and ZIPFoundation here — do no validation themselves, so guard against
+    /// zip-slip and decompression bombs before extracting anything.
+    private static let maxArchiveBytes = 500 * 1024 * 1024
+
+    /// util/zip.ts:20-35 — reject NUL, backslash, drive-letter prefix,
+    /// absolute paths, and `..` as a path *segment* (segment comparison, not
+    /// a substring match: "a..b/x" is legal, "a/../x" is not).
+    private func assertSafeEntryName(_ name: String) throws {
+        let hasTraversal = name
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .contains("..")
+        if name.contains("\0")
+            || name.contains("\\")
+            || name.range(of: #"^[a-zA-Z]:"#, options: .regularExpression) != nil
+            || name.hasPrefix("/")
+            || hasTraversal {
+            throw BudgetFileError.unsafeArchive("unsafe entry name: \(name)")
+        }
+    }
+
+    struct ExtractedBudget {
+        /// Temporary location of the extracted database. The caller owns it
+        /// and must delete it (or move it into place).
+        let databaseURL: URL
+        let metadataData: Data
+        let metadata: BudgetMetadata
+    }
+
+    /// Opens a budget archive, validates it (entry names, size caps, duplicates), and extracts db.sqlite to a temp file.
+    /// Shared by server import and backup restore.
+    func extractBudgetArchive(at archiveURL: URL) throws -> ExtractedBudget {
+        if let size = (try? fileManager.attributesOfItem(atPath: archiveURL.path))?[.size] as? Int,
+           size > Self.maxArchiveBytes {
+            throw BudgetFileError.unsafeArchive("archive exceeds \(Self.maxArchiveBytes) bytes")
+        }
+
+        let archive: Archive
+        do {
+            archive = try Archive(url: archiveURL, accessMode: .read)
+        } catch {
+            throw BudgetFileError.invalidZipFile
+        }
+
+        var seen = Set<String>()
+        var totalUncompressed = 0
+        for entry in archive {
+            try assertSafeEntryName(entry.path)
+            let entrySize = Int(entry.uncompressedSize)
+            if entrySize > Self.maxArchiveBytes {
+                throw BudgetFileError.unsafeArchive("entry \(entry.path) exceeds \(Self.maxArchiveBytes) bytes")
+            }
+            totalUncompressed += entrySize
+            if totalUncompressed > Self.maxArchiveBytes {
+                throw BudgetFileError.unsafeArchive("total uncompressed size exceeds \(Self.maxArchiveBytes) bytes")
+            }
+            if !seen.insert(entry.path.lowercased()).inserted {
+                throw BudgetFileError.unsafeArchive("duplicate entry: \(entry.path)")
+            }
+        }
+
+        guard let dbEntry = archive.first(where: { $0.path.hasSuffix("db.sqlite") }) else {
+            throw BudgetFileError.missingDatabase
+        }
+        guard let metaEntry = archive.first(where: { $0.path.hasSuffix("metadata.json") }) else {
+            throw BudgetFileError.missingMetadata
+        }
+
+        var metadataData = Data()
+        _ = try archive.extract(metaEntry) { metadataData.append($0) }
+        guard let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) else {
+            throw BudgetFileError.metadataParsingFailed
+        }
+
+        let tempDbURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        _ = try archive.extract(dbEntry, to: tempDbURL)
+
+        return ExtractedBudget(databaseURL: tempDbURL, metadataData: metadataData, metadata: metadata)
+    }
 
     // MARK: - Budget Management
 
@@ -159,57 +260,35 @@ class BudgetFileManager {
         defer {
             try? fileManager.removeItem(at: tempURL)
         }
-
-        // Open the ZIP archive
-        let archive: Archive
-        do {
-            archive = try Archive(url: tempURL, accessMode: .read)
-        } catch {
-            throw BudgetFileError.invalidZipFile
-        }
-
-        // Find the required files
-        guard let dbEntry = archive.first(where: { $0.path.hasSuffix("db.sqlite") }) else {
-            throw BudgetFileError.missingDatabase
-        }
-
-        guard let metaEntry = archive.first(where: { $0.path.hasSuffix("metadata.json") }) else {
-            throw BudgetFileError.missingMetadata
-        }
-
-        // Extract metadata first to get the budget ID
-        var metadataData = Data()
-        _ = try archive.extract(metaEntry) { data in
-            metadataData.append(data)
-        }
-
-        guard let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) else {
-            throw BudgetFileError.metadataParsingFailed
+        
+        let extracted = try extractBudgetArchive(at: tempURL)
+        defer {
+            try? fileManager.removeItem(at: extracted.databaseURL)
         }
 
         // Update metadata with cloud info
         let updatedMetadata = BudgetMetadata(
-            id: metadata.id,
-            budgetName: metadata.budgetName,
+            id: extracted.metadata.id,
+            budgetName: extracted.metadata.budgetName,
             cloudFileId: fileId,
             groupId: groupId,
-            resetClock: metadata.resetClock,
-            lastUploaded: metadata.lastUploaded,
-            encryptKeyId: metadata.encryptKeyId
+            resetClock: extracted.metadata.resetClock,
+            lastUploaded: extracted.metadata.lastUploaded,
+            encryptKeyId: extracted.metadata.encryptKeyId
         )
 
         // Create budget directory
-        let budgetDir = budgetDirectory(for: metadata.id)
+        let budgetDir = budgetDirectory(for: extracted.metadata.id)
         try? fileManager.removeItem(at: budgetDir) // Remove existing if any
         try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
 
         // Extract database
-        let dbPath = databasePath(for: metadata.id)
-        _ = try archive.extract(dbEntry, to: dbPath)
+        let dbPath = databasePath(for: extracted.metadata.id)
+        try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
 
         // Write updated metadata
         let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
-        try updatedMetadataData.write(to: metadataPath(for: metadata.id))
+        try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
 
         return updatedMetadata
     }
