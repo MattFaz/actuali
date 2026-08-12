@@ -669,6 +669,7 @@ final class BudgetStore: ObservableObject {
     func configureForTesting(database: BudgetDatabase, syncClient: SyncClient) {
         self.database = database
         self.syncClient = syncClient
+        subscribeToSyncState()
     }
 
     /// Test-only: install an already-completed load task that produced no
@@ -1214,12 +1215,7 @@ final class BudgetStore: ObservableObject {
                 logger.error("Database is nil, cannot configure sync")
             }
 
-            // Subscribe to sync state
-            syncStateCancellable = syncClient?.statePublisher
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] state in
-                    self?.syncState = state
-                }
+            subscribeToSyncState()
 
             refreshPayeeLocationSupport()
 
@@ -2634,11 +2630,44 @@ final class BudgetStore: ObservableObject {
         "Posted \(count) scheduled transaction\(count == 1 ? "" : "s")"
     }
 
-    private func postDueSchedulesIfNeeded() async {
+    /// Mirror sync state into the published property, and post due schedules
+    /// whenever a sync completes successfully (.syncing → .idle; performSync
+    /// is the only sender of that transition). loot-core runs its schedule
+    /// service on every sync completion event, so posting must not depend on
+    /// WHICH sync succeeded: before this hook existed the only trigger was
+    /// inline in syncOnForeground(), and a foreground attempt that failed
+    /// (network not up yet at wake) with the retry ladder succeeding seconds
+    /// later — or a pull-to-refresh / background-push sync — never posted
+    /// anything (GH #97).
+    private func subscribeToSyncState() {
+        syncStateCancellable = syncClient?.statePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self else { return }
+                let wasSyncing = syncState == .syncing
+                syncState = state
+                if wasSyncing, state == .idle {
+                    Task { await self.postDueSchedulesAfterSync() }
+                }
+            }
+    }
+
+    /// Sink-triggered posting for syncs that finish outside
+    /// syncOnForeground() — that path refreshes after posting itself; here
+    /// nothing else would republish the register, so refresh when anything
+    /// posted.
+    private func postDueSchedulesAfterSync() async {
+        if await postDueSchedulesIfNeeded() > 0 {
+            await refreshDataOnly()
+        }
+    }
+
+    @discardableResult
+    private func postDueSchedulesIfNeeded() async -> Int {
         guard postScheduledTransactions,
               let client = syncClient,
               let database,
-              let budgetId = currentBudgetId else { return }
+              let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
         // so two MainActor-interleaved calls still share one instance.
         let poster: SchedulePoster
@@ -2649,7 +2678,7 @@ final class BudgetStore: ObservableObject {
             schedulePoster = poster
         }
         let count = await poster.runIfNeeded(budgetId: budgetId)
-        guard count > 0 else { return }
+        guard count > 0 else { return 0 }
         schedulePostNotice = Self.schedulePostNoticeText(count: count)
         scheduleNoticeDismissTask?.cancel()
         scheduleNoticeDismissTask = Task { [weak self] in
@@ -2657,6 +2686,7 @@ final class BudgetStore: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.schedulePostNotice = nil
         }
+        return count
     }
 
     // MARK: - Budget

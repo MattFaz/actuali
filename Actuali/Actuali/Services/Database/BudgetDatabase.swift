@@ -2079,9 +2079,11 @@ class BudgetDatabase {
     /// Fetch schedules eligible for auto-posting: alive, not completed, and
     /// flagged `posts_transaction = 1`, with their rule conditions extracted
     /// (port of loot-core `extractScheduleConds`). The poster writes to users'
-    /// real servers, so every doubt case is a logged skip — never a throw and
-    /// never a partially-understood schedule. Returns [] when the schedule
-    /// tables don't exist (older budget files).
+    /// real servers, so doubt about WHAT to post (conditions, account, next
+    /// date) is a logged skip — never a throw. Doubt about the recurrence
+    /// alone is `.unsupported`, not a skip: upstream posts the stored due
+    /// occurrence either way and only its advance fails. Returns [] when the
+    /// schedule tables don't exist (older budget files).
     func fetchPostableSchedules() throws -> [Schedule] {
         try dbQueue.read { db in
             guard try db.tableExists("schedules"),
@@ -2121,11 +2123,14 @@ class BudgetDatabase {
                     return nil
                 }
 
-                guard let nextDateRowId: String = row["nd_id"],
-                      let baseNextDateTs: Int64 = row["base_next_date_ts"] else {
+                guard let nextDateRowId: String = row["nd_id"] else {
                     logger.notice("Skipping schedule \(id, privacy: .public): incomplete schedules_next_date row")
                     return nil
                 }
+                // NULL is postable: the web's v_schedules CASE falls through
+                // to base_next_date for NULL timestamps, and its advance
+                // writes local_next_date_ts = NULL — so must ours.
+                let baseNextDateTs: Int64? = row["base_next_date_ts"]
 
                 guard let conditions = Self.parseConditionsArray(row["conditions"]) else {
                     logger.notice("Skipping schedule \(id, privacy: .public): unparseable rule conditions")
@@ -2144,11 +2149,14 @@ class BudgetDatabase {
                     return nil
                 }
 
-                // Date: required; unsupported recurrences mean we can't advance
-                // the schedule correctly after posting, so skip.
-                guard let dateCondition = Self.parseDateCondition(in: conditions) else {
-                    logger.notice("Skipping schedule \(id, privacy: .public): missing or unsupported date condition")
-                    return nil
+                // Date: informs only the ADVANCE. Upstream posting works off
+                // the stored next_date regardless of this condition (its
+                // setNextDate throws on unsupported shapes after posting and
+                // the service swallows it), so a missing or unparseable date
+                // condition still posts — once, without advancing.
+                let dateCondition = Self.parseDateCondition(in: conditions)
+                if case .unsupported = dateCondition {
+                    logger.notice("Schedule \(id, privacy: .public): date condition missing or unsupported - due occurrence will post without advancing")
                 }
 
                 // Effective next date, per loot-core's v_schedules view:
@@ -2259,10 +2267,10 @@ class BudgetDatabase {
         return nil
     }
 
-    private static func parseDateCondition(in conditions: [[String: Any]]) -> ScheduleDateCondition? {
+    private static func parseDateCondition(in conditions: [[String: Any]]) -> ScheduleDateCondition {
         guard let cond = firstCondition(
             in: conditions, ops: ["is", "isapprox"], fields: ["date"]
-        ) else { return nil }
+        ) else { return .unsupported }
         // Fixed dates inside conditions JSON are "YYYY-MM-DD" strings
         // (unlike the schedules_next_date columns, which are YYYYMMDD ints).
         if let iso = cond["value"] as? String, let day = DayDate(iso: iso) {
@@ -2271,7 +2279,7 @@ class BudgetDatabase {
         if let recur = cond["value"] as? [String: Any], let config = RecurConfig(json: recur) {
             return .recurring(config)
         }
-        return nil
+        return .unsupported
     }
 
     // MARK: - Preferences

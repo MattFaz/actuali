@@ -584,16 +584,18 @@ actor SyncClient {
     /// so the local override stays valid (per the v_schedules CASE rule) until
     /// another client resets the base. `base_next_date`/`base_next_date_ts`
     /// are never touched.
-    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws {
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("advanceScheduleNextDate() - row: \(nextDateRowId, privacy: .private), newDate: \(newNextDate, privacy: .public)")
 
         // 1. Generate CRDT messages (before any DB write, so an HLC failure
         //    leaves nothing stranded)
+        // .map flattens Int64? into Any? so a NULL base ts serializes through
+        // CRDTValue's nil case ("0:"), the null loot-core's setNextDate writes.
         let fields: [(column: String, value: Any?)] = [
             ("local_next_date", newNextDate),
-            ("local_next_date_ts", baseNextDateTs),
+            ("local_next_date_ts", baseNextDateTs.map { $0 as Any }),
         ]
         let messages = try await messageGenerator.messages(dataset: "schedules_next_date", row: nextDateRowId, fields: fields)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")

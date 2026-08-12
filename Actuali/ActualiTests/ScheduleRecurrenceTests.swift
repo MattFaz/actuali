@@ -59,6 +59,22 @@ struct ScheduleRecurrenceTests {
         #expect(RecurConfig(json: ["frequency": "daily", "start": "2026-13-01"]) == nil)
     }
 
+    /// Legacy picker state could persist interval as a string; rSchedule
+    /// throws on it upstream ("interval" expects a whole number), so the
+    /// config must be rejected — silently treating it as 1 would post on the
+    /// wrong cadence. Absent or null interval stays 1 (upstream default).
+    @Test func configRejectsNonIntegerInterval() {
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "interval": "2",
+        ]) == nil)
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01",
+        ])?.interval == 1)
+        #expect(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-01", "interval": NSNull(),
+        ])?.interval == 1)
+    }
+
     @Test func configRejectsMalformedPatterns() {
         let badType: [String: Any] = [
             "frequency": "monthly", "start": "2026-01-01",
