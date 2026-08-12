@@ -134,7 +134,66 @@ actor BackupService {
         logger.info("Backup created: \(archiveURL.lastPathComponent, privacy: .public)")
     }
 
-    // TODO: - Implement these functions
-    func availableBackups(budgetId: String) -> [Backup] { [] }
-    private func prune(budgetId: String, today: Date) {}
+    // MARK: - List
+
+    /// Newest-first archives with the revert prepended while the user is viewing a backup.
+    func availableBackups(budgetId: String) -> [Backup] {
+        var result: [Backup] = []
+        if fm.fileExists(atPath: fileManager.latestDatabasePath(for: budgetId).path) {
+            result.append(.latest)
+        }
+        result.append(contentsOf: archiveList(budgetId: budgetId).map {
+            .archive(id: $0.id, date: $0.date)
+        })
+        return result
+    }
+
+    private func archiveList(budgetId: String) -> [(id: String, date: Date)] {
+        let backupsDir = fileManager.backupsDirectory(for: budgetId)
+        let urls = (try? fm.contentsOfDirectory(
+            at: backupsDir,
+            includingPropertiesForKeys: [.contentModificationDateKey]
+        )) ?? []
+
+        return urls
+            .filter { $0.pathExtension == "zip" }
+            .map { url in
+                let date = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                    .contentModificationDate ?? .distantPast
+                return (id: url.lastPathComponent, date: date)
+            }
+            .sorted { $0.date > $1.date }
+    }
+
+    // MARK: - Retention
+
+    /// Within each local calendar day keep the first 3 (today) or first 1 (other days) of the given newest-first list
+    /// then keep only the first 10 survivors. Returns the ids to delete.
+    static func backupsToRemove(
+        _ backups: [(id: String, date: Date)],
+        today: Date,
+        calendar: Calendar = .current
+    ) -> [String] {
+        var byDay: [Date: [(id: String, date: Date)]] = [:]
+        for backup in backups {
+            byDay[calendar.startOfDay(for: backup.date), default: []].append(backup)
+        }
+
+        let todayStart = calendar.startOfDay(for: today)
+        var removed: [String] = []
+        for (day, dayBackups) in byDay {
+            let keep = day == todayStart ? 3 : 1
+            removed.append(contentsOf: dayBackups.dropFirst(keep).map(\.id))
+        }
+
+        let remaining = backups.filter { !removed.contains($0.id) }
+        removed.append(contentsOf: remaining.dropFirst(10).map(\.id))
+        return removed
+    }
+
+    private func prune(budgetId: String, today: Date) {
+        for id in Self.backupsToRemove(archiveList(budgetId: budgetId), today: today) {
+            try? fm.removeItem(at: fileManager.backupPath(for: budgetId, name: id))
+        }
+    }
 }
