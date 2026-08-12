@@ -38,13 +38,13 @@ final class CategoryNotesUITests: XCTestCase {
 
         // Tapping opens the editor, already focused so typing lands in it.
         noteRow.tap()
-        let editor = app.textViews["categoryNoteEditor"]
+        let editor = app.textViews["noteEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5), "note editor not shown")
         attachScreenshot(app, name: "2-note-editor")
 
         editor.typeText("checked")
 
-        let save = app.buttons["saveCategoryNote"]
+        let save = app.buttons["saveNote"]
         XCTAssertTrue(save.waitForExistence(timeout: 5), "Save button not shown")
         save.tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "note editor did not dismiss")

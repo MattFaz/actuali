@@ -1,23 +1,30 @@
 import SwiftUI
 
-/// Editor for one category's note (GH #131), presented as a sheet from the
-/// category detail view. Saving writes through to Actual; a failure keeps the
-/// sheet open with the text intact so nothing the user typed is lost.
-struct CategoryNoteEditorView: View {
+/// Editor for one row's note — a category (GH #131) or an account (GH #198) —
+/// presented as a sheet from that row's detail view. Saving writes through to
+/// Actual; a failure keeps the sheet open with the text intact so nothing the
+/// user typed is lost.
+///
+/// One editor serves every annotated entity because Actual's `notes` table is
+/// keyed by the annotated row's id: the only things that differ per entity are
+/// the id to write and the name to put in the title.
+struct NoteEditorView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
 
-    let categoryId: String
-    let categoryName: String
+    /// The annotated row's id — a category id or an account id.
+    let noteId: String
+    /// Shown as the sheet's title, so the user can see what they're annotating.
+    let title: String
 
     @State private var text: String
     @State private var isSaving = false
     @State private var saveError: String?
     @FocusState private var editorFocused: Bool
 
-    init(categoryId: String, categoryName: String, note: String) {
-        self.categoryId = categoryId
-        self.categoryName = categoryName
+    init(noteId: String, title: String, note: String) {
+        self.noteId = noteId
+        self.title = title
         _text = State(initialValue: note)
     }
 
@@ -28,7 +35,7 @@ struct CategoryNoteEditorView: View {
                     TextEditor(text: $text)
                         .frame(minHeight: 160)
                         .focused($editorFocused)
-                        .accessibilityIdentifier("categoryNoteEditor")
+                        .accessibilityIdentifier("noteEditor")
                     // Links stay openable mid-edit (GH #190); the editor text
                     // itself has to remain plain to stay editable.
                     NoteLinkRows(text: text)
@@ -41,7 +48,7 @@ struct CategoryNoteEditorView: View {
                     }
                 }
             }
-            .navigationTitle(categoryName)
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -55,7 +62,7 @@ struct CategoryNoteEditorView: View {
                         Button("Save") {
                             Task { await save() }
                         }
-                        .accessibilityIdentifier("saveCategoryNote")
+                        .accessibilityIdentifier("saveNote")
                     }
                 }
             }
@@ -69,9 +76,9 @@ struct CategoryNoteEditorView: View {
         isSaving = true
         saveError = nil
         do {
-            try await budgetStore.saveCategoryNote(
-                categoryId: categoryId,
-                note: CategoryNote.normalizedForSave(text)
+            try await budgetStore.saveNote(
+                id: noteId,
+                note: EntityNote.normalizedForSave(text)
             )
             dismiss()
         } catch {
@@ -82,9 +89,9 @@ struct CategoryNoteEditorView: View {
 }
 
 #Preview {
-    CategoryNoteEditorView(
-        categoryId: "cat-1",
-        categoryName: "Food",
+    NoteEditorView(
+        noteId: "cat-1",
+        title: "Food",
         note: "Cap at $400/mo — fuel comes out of Transport."
     )
     .environmentObject(BudgetStore.previewInstance())

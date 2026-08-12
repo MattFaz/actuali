@@ -112,7 +112,7 @@ struct DemoDataSeederTests {
 
         let groceries = try #require(
             groups.flatMap(\.categories).first { $0.name == "Groceries" })
-        let note = try await database.fetchCategoryNote(categoryId: groceries.id)
+        let note = try await database.fetchNote(id: groceries.id)
 
         #expect(note.supported)
         #expect(note.text.contains("Target $650/mo"))
@@ -125,7 +125,36 @@ struct DemoDataSeederTests {
         let groups = try await database.fetchCategoryGroups()
 
         let rent = try #require(groups.flatMap(\.categories).first { $0.name == "Rent" })
-        let note = try await database.fetchCategoryNote(categoryId: rent.id)
+        let note = try await database.fetchNote(id: rent.id)
+
+        #expect(note.supported)
+        #expect(note.isEmpty)
+    }
+
+    /// One demo account ships annotated too (GH #198), so the account note
+    /// menu item opens onto something in demo mode rather than an empty sheet.
+    @Test func seededBudgetShipsAnAnnotatedAccount() async throws {
+        let database = try seedAndOpen()
+        let accounts = try await database.fetchAccounts()
+
+        let checking = try #require(accounts.first { $0.name == "Chase Checking" })
+        let note = try await database.fetchNote(id: EntityNote.accountNoteId(checking.id))
+
+        #expect(note.supported)
+        #expect(note.text.contains("Direct deposit"))
+        // Seeded at Actual's key, so the bare id holds nothing — the demo
+        // budget mirrors a real file rather than papering over the prefix.
+        #expect(try await database.fetchNote(id: checking.id).isEmpty)
+    }
+
+    /// Accounts nobody has annotated read as empty-but-supported, so the menu
+    /// offers "Add Note" instead of hiding.
+    @Test func unannotatedAccountsSupportNotes() async throws {
+        let database = try seedAndOpen()
+        let accounts = try await database.fetchAccounts()
+
+        let savings = try #require(accounts.first { $0.name == "Ally Savings" })
+        let note = try await database.fetchNote(id: EntityNote.accountNoteId(savings.id))
 
         #expect(note.supported)
         #expect(note.isEmpty)

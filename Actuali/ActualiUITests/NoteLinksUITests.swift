@@ -40,7 +40,7 @@ final class NoteLinksUITests: XCTestCase {
         // line 2) still opens the editor: links must not cost the row its
         // tap-to-edit.
         noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).tap()
-        let editor = app.textViews["categoryNoteEditor"]
+        let editor = app.textViews["noteEditor"]
         XCTAssertTrue(editor.waitForExistence(timeout: 5), "note editor did not open")
 
         // The editor surfaces the draft's link as a tappable row beneath the

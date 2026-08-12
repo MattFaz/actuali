@@ -16,6 +16,10 @@ struct AccountDetailView: View {
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
+    /// The account's note (GH #198). Starts `.unsupported` so the menu item
+    /// stays hidden until the read confirms this file can store notes.
+    @State private var note: EntityNote = .unsupported
+    @State private var editingNote = false
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -47,7 +51,57 @@ struct AccountDetailView: View {
 
     private func reload() async {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
+        await reloadNote()
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func reloadNote() async {
+        note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
+    }
+
+    /// The account's note (GH #198), presented exactly as a category's is (see
+    /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
+    /// while searching — a search is about finding transactions, not reading
+    /// guidance — and on files with no `notes` table, where an edit could never
+    /// save.
+    private var noteSection: some View {
+        Section("Note") {
+            if note.isEmpty {
+                Button {
+                    editingNote = true
+                } label: {
+                    // Tinted: an empty note row is an invitation to act, where
+                    // an existing note is content to read.
+                    Label("Add Note", systemImage: "note.text.badge.plus")
+                        .foregroundStyle(Color.accentColor)
+                }
+                // Plain: a tinted List button would tint the label twice over.
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountNoteRow")
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    // Attributed so markdown links and bare URLs in the note
+                    // are tappable (GH #190). That's also why this row is a
+                    // tap gesture rather than the Button the empty state uses:
+                    // a Button label swallows link taps, where links inside a
+                    // gesture-carrying row take precedence over the gesture.
+                    Text(NoteLinkText.attributed(note.text))
+                        .multilineTextAlignment(.leading)
+                        // Multi-line notes are the point — let the row grow
+                        // instead of truncating the guidance to one line.
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "pencil")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { editingNote = true }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("accountNoteRow")
+            }
+        }
     }
 
     private func breakdownRow(_ title: String, amount: Int) -> some View {
@@ -93,6 +147,10 @@ struct AccountDetailView: View {
                     breakdownRow("Uncleared", amount: breakdown.uncleared)
                     breakdownRow("Reconciled", amount: breakdown.reconciled)
                 }
+            }
+
+            if note.supported && searchQuery == nil {
+                noteSection
             }
 
             Section("Recent Transactions") {
@@ -188,6 +246,18 @@ struct AccountDetailView: View {
         .sheet(item: $editingTransaction) { transaction in
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
+        }
+        .sheet(isPresented: $editingNote, onDismiss: {
+            // Only the note needs re-reading — a note save doesn't touch
+            // transactions or the balance.
+            Task { await reloadNote() }
+        }) {
+            NoteEditorView(
+                noteId: EntityNote.accountNoteId(account.id),
+                title: account.name,
+                note: note.text
+            )
+            .environmentObject(budgetStore)
         }
         // Keyed on the account as well as the search: selecting another
         // account in the iPad split layout reuses this view, and without the

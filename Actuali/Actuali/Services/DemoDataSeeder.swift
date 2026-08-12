@@ -318,6 +318,13 @@ enum DemoDataSeeder {
             Cap $250/mo.
             [Rewards portal](https://example.com/rewards)
             """)
+        // One account arrives annotated so the account note (GH #198) shows in
+        // the demo budget, same reasoning. Note the "account-" prefix: that's
+        // the key Actual itself uses for account notes.
+        try insertNote(db, id: EntityNote.accountNoteId(chaseId), note: """
+            Direct deposit lands here on the 15th; \
+            keep a $500 buffer for the card autopay.
+            """)
 
         // --- Payees ---
         let wholeFoodsId = UUID().uuidString
