@@ -1,0 +1,117 @@
+import Foundation
+import GRDB
+import Testing
+
+@testable import Actuali
+
+struct BackupServiceMakeTests {
+    /// A budget directory with a real db carrying CRDT tables + one data
+    /// table, and a metadata.json — the minimum makeBackup touches.
+    private func seedBudget(manager: BudgetFileManager, id: String) throws {
+        let dir = manager.budgetDirectory(for: id)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
+        try dbQueue.write { db in
+            try db.execute(sql: "CREATE TABLE t (id TEXT PRIMARY KEY, note TEXT)")
+            try db.execute(sql: "INSERT INTO t VALUES ('row1', 'original')")
+            try db.execute(sql: """
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
+                    timestamp TEXT NOT NULL UNIQUE, dataset TEXT, row TEXT,
+                    column TEXT, value BLOB)
+                """)
+            try db.execute(sql: "CREATE TABLE messages_clock (id INTEGER PRIMARY KEY, clock TEXT)")
+            try db.execute(sql: """
+                INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+                VALUES ('2026-08-12T00:00:00.000Z-0000-0123456789abcdef', 't', 'row1', 'note', 'x')
+                """)
+            try db.execute(sql: "INSERT INTO messages_clock VALUES (1, '{}')")
+        }
+
+        let metadata = BudgetMetadata(
+            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "g-1",
+            resetClock: nil, lastUploaded: "2026-08-01", encryptKeyId: nil
+        )
+        try JSONEncoder().encode(metadata).write(to: manager.metadataPath(for: id))
+    }
+
+    private func makeManager() -> (BudgetFileManager, URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        return (BudgetFileManager(rootDirectoryForTesting: root), root)
+    }
+
+    @Test func backupStripsCRDTStateAndKeepsData() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b1")
+
+        let service = BackupService(fileManager: manager)
+        try await service.makeBackup(budgetId: "b1", database: nil)
+
+        let zips = try FileManager.default
+            .contentsOfDirectory(at: manager.backupsDirectory(for: "b1"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "zip" }
+        #expect(zips.count == 1)
+
+        // No stray temp files survive.
+        let tmps = try FileManager.default
+            .contentsOfDirectory(at: manager.backupsDirectory(for: "b1"), includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasSuffix(".sqlite.tmp") }
+        #expect(tmps.isEmpty)
+
+        // The archived db is standalone: CRDT tables empty, data intact.
+        let extracted = try manager.extractBudgetArchive(at: zips[0])
+        defer { try? FileManager.default.removeItem(at: extracted.databaseURL) }
+        let queue = try DatabaseQueue(path: extracted.databaseURL.path)
+        try await queue.read { db in
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
+            #expect(try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_clock") == 0)
+            #expect(try String.fetchOne(db, sql: "SELECT note FROM t WHERE id = 'row1'") == "original")
+        }
+
+        // The live db is untouched.
+        let liveQueue = try DatabaseQueue(path: manager.databasePath(for: "b1").path)
+        let liveMessages = try await liveQueue.read {
+            try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM messages_crdt")
+        }
+        #expect(liveMessages == 1)
+
+        // Archived metadata is the verbatim live copy (groupId intact —
+        // detachment happens on restore, not on backup).
+        #expect(extracted.metadata.groupId == "g-1")
+    }
+
+    @Test func backupClearsRevertBaseline() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b2")
+
+        // Simulate "viewing a backup".
+        try Data("old-db".utf8).write(to: manager.latestDatabasePath(for: "b2"))
+        try Data("old-meta".utf8).write(to: manager.latestMetadataPath(for: "b2"))
+
+        let service = BackupService(fileManager: manager)
+        try await service.makeBackup(budgetId: "b2", database: nil)
+
+        #expect(!FileManager.default.fileExists(atPath: manager.latestDatabasePath(for: "b2").path))
+        #expect(!FileManager.default.fileExists(atPath: manager.latestMetadataPath(for: "b2").path))
+    }
+
+    @Test func backupWorksThroughOpenBudgetDatabase() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b3")
+
+        // The live-database path: snapshot via the open BudgetDatabase
+        // (exercises snapshotDatabase / writeWithoutTransaction).
+        let database = try BudgetDatabase(path: manager.databasePath(for: "b3"))
+        let service = BackupService(fileManager: manager)
+        try await service.makeBackup(budgetId: "b3", database: database)
+
+        let zips = try FileManager.default
+            .contentsOfDirectory(at: manager.backupsDirectory(for: "b3"), includingPropertiesForKeys: nil)
+            .filter { $0.pathExtension == "zip" }
+        #expect(zips.count == 1)
+    }
+}

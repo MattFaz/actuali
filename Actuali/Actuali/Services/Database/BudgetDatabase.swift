@@ -402,6 +402,15 @@ class BudgetDatabase {
             }
         }
     }
+    
+    // MARK: - Backup Support
+
+    /// Writes a consistent single-file snapshot of the live database, regardless of journal mode.
+    func snapshotDatabase(to url: URL) async throws {
+        try await dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "VACUUM INTO ?", arguments: [url.path])
+        }
+    }
 
     // MARK: - Accounts
 
