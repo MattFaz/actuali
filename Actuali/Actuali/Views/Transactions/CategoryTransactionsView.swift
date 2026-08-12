@@ -24,7 +24,7 @@ struct CategoryTransactionsView: View {
     @State private var editingTransaction: Transaction?
     /// Starts `.unsupported` so the section stays hidden until the read
     /// confirms this file can store notes (GH #131).
-    @State private var note: CategoryNote = .unsupported
+    @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
 
     private var scopeTitle: String {
@@ -181,9 +181,9 @@ struct CategoryTransactionsView: View {
         .sheet(isPresented: $editingNote, onDismiss: {
             Task { await reloadNote() }
         }) {
-            CategoryNoteEditorView(
-                categoryId: destination.categoryId,
-                categoryName: destination.categoryName,
+            NoteEditorView(
+                noteId: destination.categoryId,
+                title: destination.categoryName,
                 note: note.text
             )
             .environmentObject(budgetStore)
@@ -200,7 +200,7 @@ struct CategoryTransactionsView: View {
     }
 
     private func reloadNote() async {
-        note = await budgetStore.fetchCategoryNote(categoryId: destination.categoryId)
+        note = await budgetStore.fetchNote(id: destination.categoryId)
     }
 }
 

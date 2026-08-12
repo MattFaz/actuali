@@ -1339,22 +1339,23 @@ class BudgetDatabase {
 
     // MARK: - Notes
 
-    /// The note stored for a category (GH #131). Actual's `notes` table is
-    /// keyed by the annotated row's own id, so a category's note lives at
-    /// `notes.id = <categoryId>`.
+    /// The note stored for one row of the budget — a category (GH #131) or an
+    /// account (GH #198). Actual's `notes` table is keyed by the annotated
+    /// row's own id, so the note lives at `notes.id = <the row's id>` whatever
+    /// kind of row it is.
     ///
     /// One read reports both whether the file has the table and what it holds,
     /// so the caller can distinguish "this file can't store notes" from "this
-    /// category has none" without a second round trip or a cached capability
-    /// flag that could go stale when the open file changes.
-    func fetchCategoryNote(categoryId: String) async throws -> CategoryNote {
+    /// row has none" without a second round trip or a cached capability flag
+    /// that could go stale when the open file changes.
+    func fetchNote(id: String) async throws -> EntityNote {
         try await dbQueue.read { db in
             guard try db.tableExists("notes") else { return .unsupported }
             // A row can exist with a NULL note (another client cleared it that
             // way); that reads as empty, same as no row at all.
             let note = try String.fetchOne(
-                db, sql: "SELECT note FROM notes WHERE id = ?", arguments: [categoryId])
-            return CategoryNote(supported: true, text: note ?? "")
+                db, sql: "SELECT note FROM notes WHERE id = ?", arguments: [id])
+            return EntityNote(supported: true, text: note ?? "")
         }
     }
 

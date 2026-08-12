@@ -2868,30 +2868,31 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
-    // MARK: - Category Notes
+    // MARK: - Notes
 
-    /// Load a category's note (GH #131). Reported as `.unsupported` when no
-    /// budget file is open, the file has no `notes` table, or the read fails —
-    /// the note section hides itself in all three cases, which is the right
-    /// outcome for each and beats surfacing a banner over a secondary field.
-    func fetchCategoryNote(categoryId: String) async -> CategoryNote {
+    /// Load the note for a category (GH #131) or account (GH #198), keyed by
+    /// that row's id. Reported as `.unsupported` when no budget file is open,
+    /// the file has no `notes` table, or the read fails — the note affordance
+    /// hides itself in all three cases, which is the right outcome for each and
+    /// beats surfacing a banner over a secondary field.
+    func fetchNote(id: String) async -> EntityNote {
         guard let database else { return .unsupported }
         do {
-            return try await database.fetchCategoryNote(categoryId: categoryId)
+            return try await database.fetchNote(id: id)
         } catch {
-            logger.error("Failed to read category note: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to read note: \(error.localizedDescription, privacy: .public)")
             return .unsupported
         }
     }
 
-    /// Save a category's note, syncing back to Actual (GH #131). An empty
-    /// string clears it. Throws so the caller can keep the editor open and show
-    /// the failure rather than silently dropping what the user typed.
-    func saveCategoryNote(categoryId: String, note: String) async throws {
+    /// Save a note, syncing back to Actual (GH #131, #198). An empty string
+    /// clears it. Throws so the caller can keep the editor open and show the
+    /// failure rather than silently dropping what the user typed.
+    func saveNote(id: String, note: String) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        try await syncClient.setNote(id: categoryId, note: note)
+        try await syncClient.setNote(id: id, note: note)
     }
 
     // MARK: - Currency Formatting
