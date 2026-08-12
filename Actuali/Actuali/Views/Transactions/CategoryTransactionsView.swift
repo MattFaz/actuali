@@ -163,6 +163,7 @@ struct CategoryTransactionsView: View {
                 transactionsSection
             }
         }
+        .readableWidth()
         .navigationTitle(destination.categoryName)
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")

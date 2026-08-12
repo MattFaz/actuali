@@ -5,6 +5,10 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var pager: TransactionPager?
+    /// Which account `pager` was built for. The iPad split layout reuses one
+    /// instance of this view across selections, so the account can change
+    /// under state that was scoped to the previous one.
+    @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
     @State private var searchText = ""
@@ -24,9 +28,10 @@ struct AccountDetailView: View {
 
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
-    /// until body/task time.
+    /// until body/task time. Rebuilt when the account changes: the closure
+    /// captures the id, so a reused pager would keep paging the old account.
     private func currentPager() -> TransactionPager {
-        if let pager { return pager }
+        if let pager, pagerAccountId == account.id { return pager }
         let store = budgetStore
         let accountId = account.id
         let created = TransactionPager { offset, limit, search in
@@ -36,6 +41,7 @@ struct AccountDetailView: View {
             )
         }
         pager = created
+        pagerAccountId = accountId
         return created
     }
 
@@ -136,6 +142,7 @@ struct AccountDetailView: View {
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
+        .readableWidth()
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
@@ -182,9 +189,19 @@ struct AccountDetailView: View {
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
-        .task(id: searchText) {
-            // Debounce keystrokes; the initial (empty) load runs immediately.
-            if searchQuery != nil {
+        // Keyed on the account as well as the search: selecting another
+        // account in the iPad split layout reuses this view, and without the
+        // account in the key nothing would reload — the previous account's
+        // rows would sit under the new one's name and balance.
+        .task(id: [account.id, searchText]) {
+            if pagerAccountId != account.id {
+                // Drop the previous account's page and balance split rather
+                // than showing them while the new ones load.
+                pager = nil
+                breakdown = nil
+            } else if searchQuery != nil {
+                // Debounce keystrokes; the initial (empty) load and account
+                // switches run immediately.
                 try? await Task.sleep(for: .milliseconds(250))
                 if Task.isCancelled { return }
             }

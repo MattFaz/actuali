@@ -2,6 +2,7 @@ import SwiftUI
 
 struct DashboardView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let widgets: [DashboardWidget]
 
     /// Report transactions fetched once per dashboard load and shared by all
@@ -30,6 +31,13 @@ struct DashboardView: View {
         }
     }
 
+    @ViewBuilder
+    private var widgetCards: some View {
+        ForEach(visibleWidgets, id: \.id) { widget in
+            widgetView(for: widget)
+        }
+    }
+
     var body: some View {
         if widgets.isEmpty {
             ContentUnavailableView(
@@ -39,12 +47,26 @@ struct DashboardView: View {
             )
         } else {
             ScrollView {
+                // Regular width (iPad, never iPhone) tiles the cards two-up
+                // rather than running one column down the middle. Adaptive
+                // rather than a fixed pair, so a card never gets squeezed
+                // below phone width in a narrow window or beside a sidebar —
+                // below ~660 pt of content the grid falls back to one column.
                 LazyVStack(spacing: 12) {
+                    // Full width above the cards rather than taking a grid
+                    // cell of its own — it describes the whole dashboard.
                     if hasUnsupportedWidgets {
                         UnsupportedTypesNotice()
                     }
-                    ForEach(visibleWidgets, id: \.id) { widget in
-                        widgetView(for: widget)
+                    if horizontalSizeClass == .regular {
+                        LazyVGrid(
+                            columns: [GridItem(.adaptive(minimum: 320), spacing: 12)],
+                            spacing: 12
+                        ) {
+                            widgetCards
+                        }
+                    } else {
+                        widgetCards
                     }
                 }
                 .padding(.horizontal, 6)

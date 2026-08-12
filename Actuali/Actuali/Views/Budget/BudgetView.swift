@@ -268,6 +268,10 @@ struct BudgetView: View {
                                 }
                         )
                     }
+                    // The budget table is a fixed grid of narrow amount
+                    // columns; stretched to iPad width it becomes a category
+                    // name and its numbers separated by a foot of nothing.
+                    .readableWidth()
                     // The pinned summary sits outside the List, so paint the
                     // grouped background behind it to match.
                     .background(Color(.systemGroupedBackground).ignoresSafeArea())

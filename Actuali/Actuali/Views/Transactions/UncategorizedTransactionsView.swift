@@ -80,6 +80,7 @@ struct UncategorizedTransactionsView: View {
                 }
             }
         }
+        .readableWidth()
         .navigationTitle("Uncategorized")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")

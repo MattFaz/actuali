@@ -568,6 +568,7 @@ struct SettingsView: View {
                     Text("About")
                 }
             }
+            .readableWidth()
             .navigationTitle("Settings")
             .contentMargins(.horizontal, 6, for: .scrollContent)
             .task {

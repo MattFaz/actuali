@@ -450,8 +450,14 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    // Hardware-keyboard commit, for the iPad case where the
+                    // form is filled without ever leaving the keys. Return on
+                    // its own belongs to the focused field; ⌘Return is the
+                    // whole form. Inert while the save is disabled.
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
+            .readableWidth()
             .navigationTitle(isEditing ? "Edit Transaction" : "Add Transaction")
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
@@ -461,7 +467,9 @@ struct AddTransactionView: View {
                 // to dismiss to, so it shows none.
                 if isEditing || isPresented {
                     ToolbarItem(placement: .cancellationAction) {
+                        // Esc closes the form on a hardware keyboard.
                         Button("Cancel") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
                     }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
