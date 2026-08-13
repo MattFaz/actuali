@@ -1,6 +1,10 @@
 # Reference repos
 actual/
 
+# Personal AI-agent instructions (repo-wide guidance lives in AGENTS.md)
+CLAUDE.local.md
+AGENTS.local.md
+
 # Worktrees
 .worktrees/
 
