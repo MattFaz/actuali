@@ -14,6 +14,7 @@ struct BudgetStoreDuplicationTests {
             try db.execute(sql: """
                 CREATE TABLE transactions (
                     id TEXT PRIMARY KEY,
+                    starting_balance_flag INTEGER DEFAULT 0,
                     isParent INTEGER DEFAULT 0,
                     isChild INTEGER DEFAULT 0,
                     acct TEXT,
@@ -31,36 +32,31 @@ struct BudgetStoreDuplicationTests {
                     reconciled INTEGER DEFAULT 0,
                     parent_id TEXT,
                     schedule TEXT
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE payees (
                     id TEXT PRIMARY KEY,
                     name TEXT,
                     transfer_acct TEXT,
                     tombstone INTEGER DEFAULT 0
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE payee_mapping (
                     id TEXT PRIMARY KEY,
                     targetId TEXT
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE categories (
                     id TEXT PRIMARY KEY,
                     name TEXT,
                     tombstone INTEGER DEFAULT 0
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE category_mapping (
                     id TEXT PRIMARY KEY,
                     transferId TEXT
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE messages_crdt (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL UNIQUE,
@@ -68,9 +64,8 @@ struct BudgetStoreDuplicationTests {
                     row TEXT NOT NULL,
                     column TEXT NOT NULL,
                     value BLOB NOT NULL
-                )
-                """)
-            try db.execute(sql: """
+                );
+
                 CREATE TABLE accounts (
                     id TEXT PRIMARY KEY,
                     name TEXT,
@@ -78,11 +73,19 @@ struct BudgetStoreDuplicationTests {
                     closed INTEGER DEFAULT 0,
                     sort_order REAL,
                     tombstone INTEGER DEFAULT 0
-                )
-                """)
-            try db.execute(sql: """
-                INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone)
-                VALUES ('acct-1', 'Checking', 0, 0, 1, 0)
+                );
+
+                INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
+                    ('acct-1', 'Checking', 0, 0, 1, 0),
+                    ('acct-2', 'Savings', 0, 0, 2, 0);
+
+                INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES
+                    ('payee-transfer-1', 'Transfer: Checking', 'acct-1', 0),
+                    ('payee-transfer-2', 'Transfer: Savings', 'acct-2', 0);
+
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-transfer-1', 'payee-transfer-1'),
+                    ('payee-transfer-2', 'payee-transfer-2');
                 """)
         }
 
@@ -95,6 +98,14 @@ struct BudgetStoreDuplicationTests {
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-2", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-transfer-1", name: "Transfer: Checking", transferAccountId: "acct-1", tombstone: false),
+            Payee(id: "payee-transfer-2", name: "Transfer: Savings", transferAccountId: "acct-2", tombstone: false),
+        ]
         return (store, syncClient)
     }
 
@@ -174,19 +185,6 @@ struct BudgetStoreDuplicationTests {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, _) = try await makeStore(database: database)
-
-        let source = Transaction(
-            id: "tx-source", accountId: "acct-1", date: 20260810, amount: -5000,
-            payeeId: "payee-transfer-2", payeeName: "Transfer to Acct 2", categoryId: nil,
-            categoryName: nil, notes: "Transfer funds", cleared: true, reconciled: false,
-            transferId: "tx-target", isParent: false, parentId: nil, tombstone: false, sortOrder: 100
-        )
-        let target = Transaction(
-            id: "tx-target", accountId: "acct-2", date: 20260810, amount: 5000,
-            payeeId: "payee-transfer-1", payeeName: "Transfer from Acct 1", categoryId: nil,
-            categoryName: nil, notes: "Transfer funds", cleared: true, reconciled: false,
-            transferId: "tx-source", isParent: false, parentId: nil, tombstone: false, sortOrder: 100
-        )
 
         try await store.createTransfer(
             fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
