@@ -2192,6 +2192,148 @@ class BudgetDatabase {
             }
         }
     }
+    
+    /// Every live schedule, for the schedules screen — including completed and
+    /// manual ones, which `fetchPostableSchedules` deliberately excludes.
+    ///
+    /// Unlike the poster's fetch, the rule and next-date joins are LEFT joins.
+    /// The poster is right to skip a schedule it can't fully understand; the
+    /// list is not — a schedule whose rule or next-date row went missing must
+    /// still appear so it can be fixed or deleted, rather than becoming an
+    /// invisible row only the web app can reach.
+    func fetchSchedules() throws -> [ScheduleSummary] {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules"),
+                  try db.tableExists("schedules_next_date"),
+                  try db.tableExists("rules")
+            else { return [] }
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT s.*,
+                       nd.id AS nd_id,
+                       nd.local_next_date, nd.local_next_date_ts,
+                       nd.base_next_date, nd.base_next_date_ts,
+                       r.id AS rule_id, r.conditions, r.actions
+                FROM schedules s
+                LEFT JOIN schedules_next_date nd ON nd.schedule_id = s.id
+                LEFT JOIN rules r ON r.id = s.rule
+                    AND (r.tombstone = 0 OR r.tombstone IS NULL)
+                WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
+                ORDER BY s.id, nd.id
+                """)
+
+            // A duplicated schedules_next_date row (bad sync) would list the
+            // same schedule twice. First row wins, deterministically via the
+            // ORDER BY above — same rule the poster uses.
+            var seen = Set<String>()
+
+            return try rows.compactMap { row -> ScheduleSummary? in
+                guard let id: String = row["id"], seen.insert(id).inserted else { return nil }
+
+                let conditions = Self.parseConditionsArray(row["conditions"]) ?? []
+                let actions = Self.parseConditionsArray(row["actions"]) ?? []
+
+                let accountCond = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["account", "acct"])
+                let payeeCond = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["payee", "description"])
+                let amountCond = Self.firstCondition(
+                    in: conditions, ops: ["is", "isapprox", "isbetween"], fields: ["amount"])
+                let dateCond = Self.firstCondition(
+                    in: conditions, ops: ["is", "isapprox"], fields: ["date"])
+
+                // Effective next date, per loot-core's v_schedules view:
+                // local when the timestamps agree, else base.
+                let localTs: Int64? = row["local_next_date_ts"]
+                let baseTs: Int64? = row["base_next_date_ts"]
+                let effectiveRaw: Int? = (localTs != nil && localTs == baseTs)
+                    ? row["local_next_date"]
+                    : row["base_next_date"]
+
+                // Payee ids resolve through payee_mapping, so a merged payee
+                // reads as its surviving target — same as the v_schedules
+                // LEFT JOIN.
+                var payeeId = payeeCond?["value"] as? String
+                if let raw = payeeId {
+                    payeeId = try String.fetchOne(
+                        db,
+                        sql: "SELECT targetId FROM payee_mapping WHERE id = ?",
+                        arguments: [raw])
+                }
+
+                // "Custom" = the rule says more than the four conditions a
+                // schedule owns, or does something other than link itself.
+                let recognised = [accountCond, payeeCond, amountCond, dateCond]
+                    .compactMap { $0 }.count
+                let isCustom = conditions.count > recognised
+                    || actions.contains { ($0["op"] as? String) != "link-schedule" }
+
+                return ScheduleSummary(
+                    id: id,
+                    name: row["name"],
+                    ruleId: row["rule_id"],
+                    nextDate: effectiveRaw.flatMap { DayDate(yyyymmdd: $0) },
+                    nextDateRowId: row["nd_id"],
+                    baseNextDateTs: baseTs,
+                    accountId: accountCond?["value"] as? String,
+                    payeeId: payeeId,
+                    amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
+                    amountOp: (amountCond?["op"] as? String)
+                        .flatMap(ScheduleAmountOp.init(rawValue:)) ?? .isApprox,
+                    dateOp: dateCond?["op"] as? String,
+                    dateCondition: Self.parseDateCondition(in: conditions),
+                    postsTransaction: row["posts_transaction"] == 1,
+                    completed: row["completed"] == 1,
+                    customUpcomingLength: row["custom_upcoming_length"],
+                    sortOrder: row["sort_order"],
+                    isCustom: isCustom,
+                    conditionsJSON: row["conditions"],
+                    actionsJSON: row["actions"]
+                )
+            }
+        }
+    }
+
+    /// Schedules that already have a transaction covering their current
+    /// occurrence — the `paid` input to the status calculator. Port of
+    /// loot-core `getHasTransactionsQuery`, collapsed into one grouped query
+    /// rather than a large OR: each schedule's own lower bound is applied in
+    /// Swift against the latest linked transaction date.
+    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) throws -> Set<String> {
+        let bounds: [(id: String, start: Int)] = schedules.compactMap { schedule in
+            guard let nextDate = schedule.nextDate else { return nil }
+            let start = ScheduleStatusCalculator.occurrenceMatchStartDate(
+                nextDate: nextDate,
+                dateOp: schedule.dateOp,
+                postsTransaction: schedule.postsTransaction)
+            return (schedule.id, start.yyyymmdd)
+        }
+        guard !bounds.isEmpty else { return [] }
+
+        return try dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: bounds.count).joined(separator: ", ")
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT schedule, MAX(date) AS max_date
+                FROM transactions
+                WHERE schedule IN (\(placeholders))
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                GROUP BY schedule
+                """, arguments: StatementArguments(bounds.map(\.id)))
+
+            var latestDate: [String: Int] = [:]
+            for row in rows {
+                guard let scheduleId: String = row["schedule"],
+                      let maxDate: Int = row["max_date"] else { continue }
+                latestDate[scheduleId] = maxDate
+            }
+
+            var paid = Set<String>()
+            for bound in bounds where (latestDate[bound.id] ?? Int.min) >= bound.start {
+                paid.insert(bound.id)
+            }
+            return paid
+        }
+    }
 
     /// Dedup guard for the poster: does an alive transaction linked to this
     /// schedule already exist on/after `date` (YYYYMMDD int)?

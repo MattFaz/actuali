@@ -1,9 +1,9 @@
 import Foundation
 
 /// Parsed schedule recurrence config, mirroring loot-core's `_conditions.date` recurring value.
-struct RecurConfig {
+struct RecurConfig: Equatable {
     enum Frequency: String { case daily, weekly, monthly, yearly }
-    struct Pattern { let type: String; let value: Int }   // type: "day" | "SU".."SA"
+    struct Pattern: Equatable { let type: String; let value: Int }   // type: "day" | "SU".."SA"
 
     let frequency: Frequency
     let interval: Int

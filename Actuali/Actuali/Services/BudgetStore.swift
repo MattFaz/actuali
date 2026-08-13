@@ -136,6 +136,8 @@ final class BudgetStore: ObservableObject {
     @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
+    @Published var schedules: [ScheduleSummary] = []
+    @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Bumped every time the published data snapshot above is republished
     /// (budget load, local mutation, sync). Views that cache their own
@@ -1298,6 +1300,7 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+            await loadSchedules()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -2657,6 +2660,60 @@ final class BudgetStore: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.schedulePostNotice = nil
         }
+    }
+    
+    // MARK: - Scheduled Transactions
+    
+    /// Refresh the schedules cache and recompute every status. Statuses depend
+    /// on today's date as well as on transactions, so they are derived here on
+    /// every refresh rather than cached against a schedule row.
+    func loadSchedules() async {
+        guard let database else {
+            schedules = []
+            scheduleStatuses = [:]
+            return
+        }
+        do {
+            let loaded = try database.fetchSchedules()
+            let paid = try database.fetchPaidScheduleIds(for: loaded)
+            let today = DayDate.today()
+
+            var statuses: [String: ScheduleStatus] = [:]
+            for schedule in loaded {
+                statuses[schedule.id] = ScheduleStatusCalculator.status(
+                    nextDate: schedule.nextDate,
+                    completed: schedule.completed,
+                    hasTransaction: paid.contains(schedule.id),
+                    upcomingLength: schedule.customUpcomingLength,
+                    today: today)
+            }
+
+            schedules = loaded.sorted(by: Self.scheduleOrder)
+            scheduleStatuses = statuses
+        } catch {
+            logger.error("Failed to load schedules: \(error, privacy: .public)")
+            schedules = []
+            scheduleStatuses = [:]
+        }
+    }
+
+    /// Explicit `sort_order` first (the web's manual ordering), then soonest
+    /// next date, then name — so a budget that has never been reordered still
+    /// reads sensibly.
+    private static func scheduleOrder(_ a: ScheduleSummary, _ b: ScheduleSummary) -> Bool {
+        switch (a.sortOrder, b.sortOrder) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: break
+        }
+        switch (a.nextDate, b.nextDate) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: break
+        }
+        return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
     }
 
     // MARK: - Budget

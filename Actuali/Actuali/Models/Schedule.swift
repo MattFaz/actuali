@@ -18,7 +18,7 @@ enum ScheduledAmount: Equatable {
 }
 
 /// The rule's date condition: either a one-off day or a recurrence.
-enum ScheduleDateCondition {
+enum ScheduleDateCondition: Equatable {
     case fixed(DayDate)
     case recurring(RecurConfig)
 }
