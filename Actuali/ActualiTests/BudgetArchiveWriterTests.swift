@@ -117,4 +117,40 @@ struct BudgetArchiveWriterTests {
             _ = try manager.extractBudgetArchive(at: archiveURL)
         }
     }
+    
+    // A backup interrupted mid-write (the app suspended during a background backup) must never replace or
+    // corrupt an existing archive: makeBudgetArchive builds at a temp path and only renames into place once
+    // both entries are written.
+    @Test func interruptedArchiveDoesNotReplaceExistingBackup() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let manager = BudgetFileManager(
+            rootDirectoryForTesting: dir.appendingPathComponent("root", isDirectory: true)
+        )
+
+        let fixture = try writeFixtureBudget(in: dir, id: "atomic")
+        let archiveURL = dir.appendingPathComponent("backup.zip")
+
+        // A first, complete backup.
+        try manager.makeBudgetArchive(
+            dbURL: fixture.dbURL, metadataURL: fixture.metadataURL, to: archiveURL
+        )
+        let goodBytes = try Data(contentsOf: archiveURL)
+
+        // A second backup that fails partway — its db source is missing — must
+        // throw without touching the good archive already at the destination.
+        let missingDb = dir.appendingPathComponent("gone.sqlite")
+        #expect(throws: (any Error).self) {
+            try manager.makeBudgetArchive(
+                dbURL: missingDb, metadataURL: fixture.metadataURL, to: archiveURL
+            )
+        }
+
+        // The prior archive survives byte-for-byte and is still extractable.
+        #expect(FileManager.default.fileExists(atPath: archiveURL.path))
+        #expect(try Data(contentsOf: archiveURL) == goodBytes)
+        let extracted = try manager.extractBudgetArchive(at: archiveURL)
+        defer { try? FileManager.default.removeItem(at: extracted.databaseURL) }
+        #expect(extracted.metadata.id == "atomic")
+    }
 }

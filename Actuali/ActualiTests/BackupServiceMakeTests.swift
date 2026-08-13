@@ -126,4 +126,30 @@ struct BackupServiceMakeTests {
             .filter { $0.pathExtension == "zip" }
         #expect(zips.count == 1)
     }
+    
+    @Test func backupSweepsLeftoverArchiveTemp() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b4")
+
+        // A .zip.tmp a killed background backup left mid-write. It must never
+        // be surfaced as a restorable backup, and the next backup sweeps it.
+        let leftover = manager.backupsDirectory(for: "b4")
+            .appendingPathComponent("2026-01-01_00-00-00.zip.tmp")
+        try Data("truncated".utf8).write(to: leftover)
+
+        let service = BackupService(fileManager: manager)
+        let before = await service.availableBackups(budgetId: "b4")
+        #expect(!before.contains { $0.id.hasSuffix(".tmp") })   // never listed
+
+        try await service.makeBackup(budgetId: "b4", database: nil)
+        #expect(!FileManager.default.fileExists(atPath: leftover.path))   // swept
+
+        // Exactly the one real archive remains, no temp residue.
+        let remaining = try FileManager.default.contentsOfDirectory(
+            at: manager.backupsDirectory(for: "b4"), includingPropertiesForKeys: nil
+        )
+        #expect(remaining.filter { $0.pathExtension == "zip" }.count == 1)
+        #expect(remaining.filter { $0.lastPathComponent.hasSuffix(".tmp") }.isEmpty)
+    }
 }
