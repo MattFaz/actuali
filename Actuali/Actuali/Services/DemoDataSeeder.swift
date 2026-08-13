@@ -12,8 +12,9 @@ enum DemoDataSeeder {
 
     /// Creates a local "demo" budget directory with a populated SQLite DB.
     /// Overwrites any existing demo budget. Does NOT connect to a server or
-    /// start sync.
-    static func seed() throws {
+    /// start sync. `tracking` seeds a tracking (`reflect_budgets`) budget rather
+    /// than the default envelope (`zero_budgets`) one.
+    static func seed(tracking: Bool = false) throws {
         let fileManager = BudgetFileManager.shared
         let budgetDir = fileManager.budgetDirectory(for: budgetId)
 
@@ -26,7 +27,7 @@ enum DemoDataSeeder {
         // Write metadata.json
         let metadata = BudgetMetadata(
             id: budgetId,
-            budgetName: "Demo Budget",
+            budgetName: tracking ? "Demo Budget (Tracking)" : "Demo Budget",
             cloudFileId: nil,
             groupId: nil,
             resetClock: nil,
@@ -41,8 +42,8 @@ enum DemoDataSeeder {
         let dbQueue = try DatabaseQueue(path: dbPath.path)
 
         try dbQueue.write { db in
-            try createSchema(db)
-            try insertSeedData(db)
+            try createSchema(db, tracking: tracking)
+            try insertSeedData(db, tracking: tracking)
         }
 
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
@@ -50,7 +51,7 @@ enum DemoDataSeeder {
 
     // MARK: - Schema
 
-    private static func createSchema(_ db: Database) throws {
+    private static func createSchema(_ db: Database, tracking: Bool) throws {
         try db.execute(sql: """
             CREATE TABLE accounts (
                 id TEXT PRIMARY KEY,
@@ -145,8 +146,11 @@ enum DemoDataSeeder {
             )
             """)
 
+        // Envelope budgets live in zero_budgets, tracking budgets in
+        // reflect_budgets. The columns are identical; only one table exists so
+        // BudgetDatabase.budgetTable picks it without needing the preference.
         try db.execute(sql: """
-            CREATE TABLE zero_budgets (
+            CREATE TABLE \(tracking ? "reflect_budgets" : "zero_budgets") (
                 id TEXT PRIMARY KEY,
                 month INTEGER,
                 category TEXT,
@@ -229,7 +233,7 @@ enum DemoDataSeeder {
 
     // MARK: - Seed Data
 
-    private static func insertSeedData(_ db: Database) throws {
+    private static func insertSeedData(_ db: Database, tracking: Bool) throws {
         let cal = Calendar(identifier: .gregorian)
         let now = Date()
         let comps = cal.dateComponents([.year, .month, .day], from: now)
@@ -483,8 +487,8 @@ enum DemoDataSeeder {
             sortOrder -= 1
         }
 
-        // --- Zero budgets (current month) ---
-        let budgets: [(String, Int)] = [
+        // --- Budgets (current month) ---
+        var budgets: [(String, Int)] = [
             (groceriesId, 60_000),
             (rentId, 185_000),
             (utilitiesId, 10_000),
@@ -499,9 +503,16 @@ enum DemoDataSeeder {
             (gymId, 3_500),
             (pharmacyId, 3_000)
         ]
+        // Tracking budgets also budget income (unlike envelope), so the Saved /
+        // Projected savings summary has a budgeted-income figure to work with.
+        // Matches the two 320,000 monthly paychecks.
+        if tracking {
+            budgets.append((salaryId, 640_000))
+        }
+        let budgetsTable = tracking ? "reflect_budgets" : "zero_budgets"
         for (catId, amount) in budgets {
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount, carryover)
+                INSERT INTO \(budgetsTable) (id, month, category, amount, carryover)
                 VALUES (?, ?, ?, ?, 0)
                 """, arguments: [UUID().uuidString, yyyymm, catId, amount])
         }
@@ -510,6 +521,13 @@ enum DemoDataSeeder {
         try db.execute(sql: """
             INSERT INTO preferences (id, value) VALUES ('defaultCurrencyCode', 'USD')
             """)
+        // Mirror a real tracking file: budgetType drives which budget table is
+        // live when both exist (harmless here where only one does).
+        if tracking {
+            try db.execute(sql: """
+                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking')
+                """)
+        }
 
         // --- Reports dashboards ---
         // Two pages so the demo exercises the dashboard switcher (GH #120);
