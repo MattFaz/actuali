@@ -645,6 +645,16 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
+    
+    // MARK: - Backups
+
+    @Published private(set) var backups: [Backup] = []
+
+    /// True when metadata carries a cloudFileId but no groupId (a backup was restored over a synced budget).
+    /// Sync can't run again until the user re-downloads the server copy.
+    @Published private(set) var syncDetachedByRestore = false
+
+    private lazy var backupService = BackupService(fileManager: fileManager)
 
     /// Handle to the in-flight `loadLocalBudget` started in `init()`. App Intents
     /// can run before that background load has wired `syncClient`, so the headless
@@ -695,6 +705,7 @@ final class BudgetStore: ObservableObject {
     /// Budgets directory (parallel suites create real budgets there).
     func setFileManagerForTesting(_ manager: BudgetFileManager) {
         fileManager = manager
+        backupService = BackupService(fileManager: manager)
     }
     #endif
 
@@ -983,6 +994,9 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+        
+        backups = []
+        syncDetachedByRestore = false
 
         // Clear everything currently loaded in memory too, so nothing from
         // the old budget lingers in the UI post-disconnect. The dataVersion
@@ -1202,8 +1216,10 @@ final class BudgetStore: ObservableObject {
                let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) {
                 fileId = metadata.cloudFileId ?? budgetId
                 groupId = metadata.groupId ?? ""
+                syncDetachedByRestore = (metadata.cloudFileId != nil && (metadata.groupId ?? "").isEmpty)
                 logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
             } else {
+                syncDetachedByRestore = false
                 logger.notice("Could not load metadata for budget \(budgetId, privacy: .private)")
             }
 
@@ -1321,6 +1337,69 @@ final class BudgetStore: ObservableObject {
             guard self.database === database else { return }
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
+    }
+    
+    // MARK: - Backup Actions
+
+    func refreshBackups() async {
+        guard let budgetId = currentBudgetId else {
+            backups = []
+            return
+        }
+        backups = await backupService.availableBackups(budgetId: budgetId)
+    }
+
+    func makeBackupNow() async {
+        guard let budgetId = currentBudgetId else { return }
+        do {
+            try await backupService.makeBackup(budgetId: budgetId, database: database)
+            await refreshBackups()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Automatic backup on app-background. Skipped while viewing a backup.
+    /// Backgrounding happens seconds after a restore (the user checks another app),
+    /// and makeBackup's first step would destroy the revert baseline.
+    func backupOnBackground() {
+        guard let budgetId = currentBudgetId, let database else { return }
+        let viewingBackup = FileManager.default.fileExists(
+            atPath: fileManager.latestDatabasePath(for: budgetId).path
+        )
+        guard !viewingBackup else { return }
+        let service = backupService
+        Task { [weak self] in
+            try? await service.makeBackup(budgetId: budgetId, database: database)
+            await self?.refreshBackups()
+        }
+    }
+
+    func restoreBackup(_ backupId: String) async {
+        guard let budgetId = currentBudgetId else { return }
+        isLoading = true
+        error = nil
+
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
+        do {
+            try await backupService.loadBackup(budgetId: budgetId, backupId: backupId)
+        } catch {
+            self.error = error.localizedDescription
+        }
+
+        // Reopen even after a failure: the live files are still (or again) a
+        // valid budget, and the UI needs a database either way.
+        await loadLocalBudget(budgetId)
+        await refreshBackups()
+        isLoading = false
+    }
+
+    func revertToLatest() async {
+        await restoreBackup(Backup.latest.id)
     }
 
     // MARK: - Payees

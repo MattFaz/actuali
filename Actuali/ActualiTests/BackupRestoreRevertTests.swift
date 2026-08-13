@@ -51,7 +51,7 @@ struct BackupRestoreRevertTests {
 
         // The budget moves on after the backup was taken.
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
-        try dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'current-state'") }
+        try await dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'current-state'") }
         let preRestoreDbBytes = try Data(contentsOf: manager.databasePath(for: "b"))
         let preRestoreMetaBytes = try Data(contentsOf: manager.metadataPath(for: "b"))
 
@@ -87,9 +87,9 @@ struct BackupRestoreRevertTests {
         let service = BackupService(fileManager: manager)
         try await service.makeBackup(budgetId: "b", database: nil, now: Date())
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
-        try dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'v2'") }
+        try await dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'v2'") }
         try await service.makeBackup(budgetId: "b", database: nil, now: Date().addingTimeInterval(1))
-        try dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'v3'") }
+        try await dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'v3'") }
 
         let archives = await service.availableBackups(budgetId: "b").filter { !$0.isLatest }
         #expect(archives.count == 2)
@@ -129,7 +129,7 @@ struct BackupRestoreRevertTests {
         try FileManager.default.createDirectory(at: stagingDir, withIntermediateDirectories: true)
         let stagedDb = stagingDir.appendingPathComponent("db.sqlite")
         let queue = try DatabaseQueue(path: stagedDb.path)
-        try queue.write { try $0.execute(sql: "CREATE TABLE t (id TEXT)") }
+        try await queue.write { try $0.execute(sql: "CREATE TABLE t (id TEXT)") }
         let stagedMeta = stagingDir.appendingPathComponent("metadata.json")
         try JSONEncoder().encode(BudgetMetadata(
             id: "b", budgetName: "Server Copy", cloudFileId: nil, groupId: nil,

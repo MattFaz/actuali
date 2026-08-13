@@ -456,6 +456,12 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
+                        
+                        if budgetStore.syncDetachedByRestore {
+                            Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
 
                         if let lastSync = budgetStore.lastSyncTime {
                             HStack {
@@ -507,6 +513,34 @@ struct SettingsView: View {
                             .disabled(budgetStore.syncState == .syncing)
                         }
                     }
+                }
+                
+                if budgetStore.currentBudgetId != nil {
+                    Section {
+                        NavigationLink {
+                            BackupListView()
+                        } label: {
+                            HStack {
+                                Text("Backups")
+                                Spacer()
+                                if !budgetStore.backups.isEmpty {
+                                    Text("\(budgetStore.backups.count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
+                        Button("Back Up Now") {
+                            Task { await budgetStore.makeBackupNow() }
+                        }
+                    } header: {
+                        Text("Backups")
+                    } footer: {
+                        // No cadence promise — iOS can't run a 15-minute
+                        // background timer (plan D2).
+                        Text("Backups are stored on this device. One is taken automatically when you leave the app.")
+                    }
+                    .task { await budgetStore.refreshBackups() }
                 }
 
                 Section {
