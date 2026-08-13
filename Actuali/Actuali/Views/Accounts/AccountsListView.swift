@@ -14,7 +14,12 @@ private enum AccountSelection: Hashable {
 
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
-    @StateObject private var notificationRouter = NotificationRouter.shared
+    // A singleton reference, not a view-owned object — @ObservedObject is the
+    // semantically correct wrapper here. @StateObject would imply this view
+    // creates/owns the router's lifecycle, which it doesn't; functionally
+    // both work identically for a `.shared` instance, since the underlying
+    // object never changes regardless of how the view struct re-inits.
+    @ObservedObject private var notificationRouter = NotificationRouter.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @State private var path = NavigationPath()
@@ -22,6 +27,11 @@ struct AccountsListView: View {
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
+
+    /// Independent expand/collapse state per section.
+    @State private var isOnBudgetExpanded = true
+    @State private var isOffBudgetExpanded = true
+    @State private var isClosedExpanded = true
 
     /// Two real columns, or tap-and-push? Width, not just size class: in a
     /// window too narrow for a second column the split view hides the sidebar
@@ -32,7 +42,7 @@ struct AccountsListView: View {
     }
 
     var totalBalance: Int {
-        budgetStore.accounts.reduce(0) { $0 + $1.balance }
+        budgetStore.accounts.sumBalance
     }
 
     var onBudgetAccounts: [Account] {
@@ -46,6 +56,10 @@ struct AccountsListView: View {
     var closedAccounts: [Account] {
         budgetStore.accounts.filter { $0.closed }
     }
+
+    var onBudgetTotal: Int { onBudgetAccounts.sumBalance }
+    var offBudgetTotal: Int { offBudgetAccounts.sumBalance }
+    var closedTotal: Int { closedAccounts.sumBalance }
 
     var body: some View {
         Group {
@@ -73,34 +87,55 @@ struct AccountsListView: View {
                                 allAccountsRow
                             }
                         }
-
                         if !onBudgetAccounts.isEmpty {
-                            Section("On Budget") {
-                                ForEach(onBudgetAccounts) { account in
-                                    NavigationLink(value: account) {
-                                        AccountRow(account: account)
+                            Section {
+                                if isOnBudgetExpanded {
+                                    ForEach(onBudgetAccounts) { account in
+                                        NavigationLink(value: account) {
+                                            AccountRow(account: account)
+                                        }
                                     }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "On Budget",
+                                    total: onBudgetTotal,
+                                    isExpanded: $isOnBudgetExpanded
+                                )
                             }
                         }
-
                         if !offBudgetAccounts.isEmpty {
-                            Section("Off Budget") {
-                                ForEach(offBudgetAccounts) { account in
-                                    NavigationLink(value: account) {
-                                        AccountRow(account: account)
+                            Section {
+                                if isOffBudgetExpanded {
+                                    ForEach(offBudgetAccounts) { account in
+                                        NavigationLink(value: account) {
+                                            AccountRow(account: account)
+                                        }
                                     }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "Off Budget",
+                                    total: offBudgetTotal,
+                                    isExpanded: $isOffBudgetExpanded
+                                )
                             }
                         }
-
                         if !closedAccounts.isEmpty {
-                            Section("Closed Accounts") {
-                                ForEach(closedAccounts) { account in
-                                    NavigationLink(value: account) {
-                                        AccountRow(account: account)
+                            Section {
+                                if isClosedExpanded {
+                                    ForEach(closedAccounts) { account in
+                                        NavigationLink(value: account) {
+                                            AccountRow(account: account)
+                                        }
                                     }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "Closed Accounts",
+                                    total: closedTotal,
+                                    isExpanded: $isClosedExpanded
+                                )
                             }
                         }
                     }
@@ -132,31 +167,52 @@ struct AccountsListView: View {
                             allAccountsRow
                                 .tag(AccountSelection.allAccounts)
                         }
-
                         if !onBudgetAccounts.isEmpty {
-                            Section("On Budget") {
-                                ForEach(onBudgetAccounts) { account in
-                                    AccountRow(account: account)
-                                        .tag(AccountSelection.account(account.id))
+                            Section {
+                                if isOnBudgetExpanded {
+                                    ForEach(onBudgetAccounts) { account in
+                                        AccountRow(account: account)
+                                            .tag(AccountSelection.account(account.id))
+                                    }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "On Budget",
+                                    total: onBudgetTotal,
+                                    isExpanded: $isOnBudgetExpanded
+                                )
                             }
                         }
-
                         if !offBudgetAccounts.isEmpty {
-                            Section("Off Budget") {
-                                ForEach(offBudgetAccounts) { account in
-                                    AccountRow(account: account)
-                                        .tag(AccountSelection.account(account.id))
+                            Section {
+                                if isOffBudgetExpanded {
+                                    ForEach(offBudgetAccounts) { account in
+                                        AccountRow(account: account)
+                                            .tag(AccountSelection.account(account.id))
+                                    }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "Off Budget",
+                                    total: offBudgetTotal,
+                                    isExpanded: $isOffBudgetExpanded
+                                )
                             }
                         }
-
                         if !closedAccounts.isEmpty {
-                            Section("Closed Accounts") {
-                                ForEach(closedAccounts) { account in
-                                    AccountRow(account: account)
-                                        .tag(AccountSelection.account(account.id))
+                            Section {
+                                if isClosedExpanded {
+                                    ForEach(closedAccounts) { account in
+                                        AccountRow(account: account)
+                                            .tag(AccountSelection.account(account.id))
+                                    }
                                 }
+                            } header: {
+                                AccountSectionHeader(
+                                    title: "Closed Accounts",
+                                    total: closedTotal,
+                                    isExpanded: $isClosedExpanded
+                                )
                             }
                         }
                     }
@@ -202,7 +258,7 @@ struct AccountsListView: View {
             Spacer()
             Text(budgetStore.displayBalance(totalBalance))
                 .font(.headline)
-                .foregroundColor(totalBalance > 0 ? .green : (totalBalance < 0 ? .red : .primary))
+                .foregroundStyle(balanceColor(for: totalBalance))
         }
     }
 
@@ -232,8 +288,8 @@ struct AccountsListView: View {
     }
 
     /// Everything both layouts hang off their account list: title, sync
-    /// status, notification routing, pull-to-refresh, loading overlay. Shared
-    /// so the two layouts can't drift apart.
+    /// status, notification routing, pull-to-refresh, loading overlay.
+    /// Shared so the two layouts can't drift apart.
     private func withChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         Group(content: content)
             .contentMargins(.horizontal, 6, for: .scrollContent)
@@ -306,6 +362,71 @@ struct AccountsListView: View {
     }
 }
 
+/// Green over positive, red over negative, primary at exactly zero — shared
+/// by every balance-displaying view in this file so the three don't drift.
+private func balanceColor(for balance: Int) -> Color {
+    if balance > 0 { return .green }
+    if balance < 0 { return .red }
+    return .primary
+}
+
+private extension Array where Element == Account {
+    /// Sum of every account's balance in the array — used for the "All
+    /// Accounts" total and each section's subtotal alike, so the reduction
+    /// itself only lives in one place.
+    var sumBalance: Int {
+        reduce(0) { $0 + $1.balance }
+    }
+}
+
+/// Header used for the On Budget, Off Budget, and Closed Accounts sections.
+/// The section name sits on the left, the total is right-aligned with extra
+/// trailing padding to separate it from the screen edge, and tapping
+/// anywhere on the header expands/collapses that section.
+private enum AccountSectionHeaderMetrics {
+    /// Extra breathing room between the total and the trailing edge, beyond
+    /// the list's own content margin.
+    static let totalTrailingPadding: CGFloat = 24
+}
+
+struct AccountSectionHeader: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let title: String
+    let total: Int
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption)
+                    .frame(width: 12)
+                    // Decorative: the expanded/collapsed state is already
+                    // conveyed through the accessibility hint below, so this
+                    // icon would otherwise just add noise before the title.
+                    .accessibilityHidden(true)
+                Text(title)
+                Spacer()
+                Text(budgetStore.displayBalance(total))
+                    .fontWeight(.regular)
+                    .foregroundStyle(balanceColor(for: total))
+                    .padding(.trailing, AccountSectionHeaderMetrics.totalTrailingPadding)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("\(title), \(budgetStore.displayBalance(total))")
+        // Hints describe the result of the action, not the gesture itself —
+        // VoiceOver already announces this as double-tap-activatable.
+        .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
+    }
+}
+
 struct AccountRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
@@ -316,7 +437,7 @@ struct AccountRow: View {
                 .font(.body)
             Spacer()
             Text(budgetStore.displayBalance(account.balance))
-                .foregroundColor(account.balance > 0 ? .green : (account.balance < 0 ? .red : .primary))
+                .foregroundStyle(balanceColor(for: account.balance))
         }
     }
 }
