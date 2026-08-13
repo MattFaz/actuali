@@ -31,6 +31,9 @@ Re-derive these after editing a master:
 - `website/public/favicon.ico` — 16/32/48 rasterised from `favicon.svg`:
   `rsvg-convert -w $s -h $s website/public/favicon.svg -o $s.png` for each size,
   then `magick 16.png 32.png 48.png website/public/favicon.ico`
+- `assets/readme/icon.png` — 256×256 with rounded corners baked into the alpha,
+  for the README header (GitHub strips `style`, so CSS can't round it). See
+  [`assets/readme/README.md`](../readme/README.md)
 - `website/src/components/Logo.astro` — the same gradient and path inlined, so
   the header logo costs no extra request. Keep it in sync with `favicon.svg`.
 
