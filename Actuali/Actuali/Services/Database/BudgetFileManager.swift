@@ -307,14 +307,9 @@ class BudgetFileManager {
 }
 
 extension BudgetMetadata {
-    /// The metadata to persist after restoring this (archived) metadata over a
-    /// live budget. Sync-group fields are nulled: upstream nulls them only
-    /// transiently before its re-upload registers a fresh server group
-    /// (backups.ts:220-224, cloud-storage.ts:347), but Actuali has no upload
-    /// path, so a restored fork must stay detached until the user re-downloads
-    /// (docs/backup-planning/implementation-plan.md §1, D1). Identity fields
-    /// come from the live metadata when present — the directory's live file is
-    /// the source of truth for which cloud file this is.
+    /// The metadata to persist after restoring this (archived) metadata over a live budget. Sync-group fields are nulled: upstream nulls them only
+    /// transiently before its re-upload registers a fresh server group, but Actuali has no upload path, so a restored fork must stay detached until the
+    /// user re-downloads. Identity fields come from the live metadata when present — the directory's live file is the source of truth for which cloud file this is.
     func restoredOver(_ live: BudgetMetadata?) -> BudgetMetadata {
         BudgetMetadata(
             id: id,

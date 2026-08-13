@@ -26,6 +26,9 @@ struct BackupServiceMakeTests {
                 VALUES ('2026-08-12T00:00:00.000Z-0000-0123456789abcdef', 't', 'row1', 'note', 'x')
                 """)
             try db.execute(sql: "INSERT INTO messages_clock VALUES (1, '{}')")
+            try db.execute(sql: "CREATE TABLE __migrations__ (id INTEGER PRIMARY KEY NOT NULL)")
+            try db.execute(sql: "INSERT INTO __migrations__ (id) VALUES (1548957970627)") // real upstream id
+            try db.execute(sql: "INSERT INTO __migrations__ (id) VALUES (1765518577216)") // Actuali-only
         }
 
         let metadata = BudgetMetadata(
@@ -71,6 +74,7 @@ struct BackupServiceMakeTests {
             #expect(crdtCount == 0)
             #expect(clockCount == 0)
             #expect(note == "original")
+            #expect(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__") == [1548957970627])
         }
 
         // The live db is untouched.
@@ -79,6 +83,11 @@ struct BackupServiceMakeTests {
             try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM messages_crdt")
         }
         #expect(liveMessages == 1)
+        
+        let liveMigrations = try await liveQueue.read {
+        try Int.fetchOne($0, sql: "SELECT COUNT(*) FROM __migrations__")
+        }
+        #expect(liveMigrations == 2)
 
         // Archived metadata is the verbatim live copy (groupId intact —
         // detachment happens on restore, not on backup).

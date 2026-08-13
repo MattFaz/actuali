@@ -103,6 +103,18 @@ actor BackupService {
                 if try db.tableExists("messages_clock") {
                     try db.execute(sql: "DELETE FROM messages_clock")
                 }
+                // Strip Actuali's own migration bookkeeping: Actual's import
+                // rejects any db whose __migrations__ holds ids it doesn't
+                // ship. Without these rows the snapshot looks exactly like a
+                // file an upstream client migrated; restoring it in Actuali
+                // simply re-records the ids (the guards see the schema
+                // already exists and skip the SQL).
+                if try db.tableExists("__migrations__") {
+                    let ids = BudgetDatabase.actualiOnlyMigrationIds
+                        .map(String.init)
+                        .joined(separator: ", ")
+                    try db.execute(sql: "DELETE FROM __migrations__ WHERE id IN (\(ids))")
+                }
             }
         } catch {
             throw BackupError.snapshotFailed(error)
@@ -192,6 +204,18 @@ actor BackupService {
         }
     }
     
+    // MARK: - Delete
+
+    /// Delete specific archives (a user action — upstream only ever prunes
+    /// automatically). The revert baseline can't be deleted this way: it is
+    /// consumed by revert or superseded by the next backup. The .zip/no-slash
+    /// filter enforces that and doubles as a guard against path-like ids.
+    func deleteBackups(budgetId: String, ids: [String]) {
+        for id in ids where id.hasSuffix(".zip") && !id.contains("/") {
+            try? fm.removeItem(at: fileManager.backupPath(for: budgetId, name: id))
+        }
+    }
+    
     // MARK: - Restore
 
     /// Restore backupId over the live files, first snapshotting the current state so the user can revert.
@@ -252,7 +276,10 @@ actor BackupService {
     }
 
     private func removeSQLiteSidecars(for dbURL: URL) {
-        for suffix in ["-wal", "-shm"] {
+        // -journal for DELETE mode (the app's default), -wal/-shm in case a
+        // snapshot or older file carried them. A stale sidecar left next to the
+        // swapped-in database would be reinterpreted against the wrong file.
+        for suffix in ["-journal", "-wal", "-shm"] {
             try? fm.removeItem(at: URL(fileURLWithPath: dbURL.path + suffix))
         }
     }

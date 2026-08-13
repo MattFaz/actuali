@@ -650,6 +650,11 @@ final class BudgetStore: ObservableObject {
 
     @Published private(set) var backups: [Backup] = []
 
+    /// True while the user is viewing a restored backup — the revert baseline
+    /// (db.latest.sqlite) exists. Taking a new backup consumes it, so the UI
+    /// confirms first (backupOnBackground skips entirely for the same reason).
+    var isViewingBackup: Bool { backups.contains(where: \.isLatest) }
+
     /// True when metadata carries a cloudFileId but no groupId (a backup was restored over a synced budget).
     /// Sync can't run again until the user re-downloads the server copy.
     @Published private(set) var syncDetachedByRestore = false
@@ -1358,6 +1363,12 @@ final class BudgetStore: ObservableObject {
             self.error = error.localizedDescription
         }
     }
+    
+    func deleteBackups(_ ids: [String]) async {
+        guard let budgetId = currentBudgetId else { return }
+        await backupService.deleteBackups(budgetId: budgetId, ids: ids)
+        await refreshBackups()
+    }
 
     /// Automatic backup on app-background. Skipped while viewing a backup.
     /// Backgrounding happens seconds after a restore (the user checks another app),
@@ -1380,6 +1391,12 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         error = nil
 
+        // Drop the sync client and database before loadBackup swaps files. Any
+        // sync still running inside the old actor writes to the now-unlinked
+        // old inode (harmlessly discarded) — it can't touch the new db.sqlite,
+        // which is a different inode. We deliberately do NOT flushPendingSync()
+        // here: that awaits the network push and would hang this local restore
+        // for the URLSession timeout when the server is unreachable.
         syncStateCancellable?.cancel()
         syncStateCancellable = nil
         syncClient = nil

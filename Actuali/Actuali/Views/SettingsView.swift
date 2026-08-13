@@ -80,6 +80,7 @@ struct SettingsView: View {
     @State private var notificationPermissionDenied = false
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
+    @State private var confirmBackupOverBaseline = false
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -531,7 +532,23 @@ struct SettingsView: View {
                         }
 
                         Button("Back Up Now") {
-                            Task { await budgetStore.makeBackupNow() }
+                            if budgetStore.isViewingBackup {
+                                confirmBackupOverBaseline = true
+                            } else {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                        }
+                        .confirmationDialog(
+                            "Back up the restored data?",
+                            isPresented: $confirmBackupOverBaseline,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Back Up", role: .destructive) {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
                         }
                     } header: {
                         Text("Backups")
