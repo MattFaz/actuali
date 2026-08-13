@@ -20,6 +20,9 @@ struct AccountDetailView: View {
     /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
+    @State private var isSelecting = false
+    @State private var selectedTransactionIds: Set<String> = []
+    @State private var showingConfirmDelete = false
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -104,6 +107,14 @@ struct AccountDetailView: View {
         }
     }
 
+    private func toggleSelection(for id: String) {
+        if selectedTransactionIds.contains(id) {
+            selectedTransactionIds.remove(id)
+        } else {
+            selectedTransactionIds.insert(id)
+        }
+    }
+
     private func breakdownRow(_ title: String, amount: Int) -> some View {
         HStack {
             Text(title)
@@ -164,26 +175,47 @@ struct AccountDetailView: View {
                 } else if let pager {
                     ForEach(pager.transactions) { transaction in
                         Button {
-                            editingTransaction = transaction
+                            if isSelecting {
+                                toggleSelection(for: transaction.id)
+                            } else {
+                                editingTransaction = transaction
+                            }
                         } label: {
-                            TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
+                            TransactionRow(
+                                transaction: transaction,
+                                showAccount: false,
+                                isSelectionMode: isSelecting,
+                                isSelected: selectedTransactionIds.contains(transaction.id),
+                                onToggleCleared: {
+                                    Task { await budgetStore.toggleCleared(transaction) }
+                                },
+                                onToggleSelect: {
+                                    toggleSelection(for: transaction.id)
+                                }
+                            )
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                            if !isSelecting {
+                                Button(role: .destructive) {
+                                    Task { await budgetStore.deleteTransaction(transaction) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                Button {
+                                    Task { await budgetStore.duplicateTransaction(transaction) }
+                                } label: {
+                                    Label("Duplicate", systemImage: "plus.square.on.square")
+                                }
+                                .tint(.blue)
+                                Button {
+                                    editingTransaction = transaction
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.yellow)
                             }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.yellow)
                         }
                     }
                     if pager.hasMore {
@@ -204,6 +236,16 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(isSelecting ? "Done" : "Select") {
+                    withAnimation {
+                        isSelecting.toggle()
+                        if !isSelecting {
+                            selectedTransactionIds.removeAll()
+                        }
+                    }
+                }
+            }
             if WalletImportView.isSupported {
                 ToolbarItem(placement: .secondaryAction) {
                     Button {
@@ -223,14 +265,51 @@ struct AccountDetailView: View {
                     Label("Reconcile", systemImage: "checkmark.seal")
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button {
                     showingAddTransaction = true
                 } label: {
-                    Image(systemName: "plus")
+                    Label("Add Transaction", systemImage: "plus")
                 }
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting, let pager {
+                TransactionBulkActionBar(
+                    totalCount: pager.transactions.count,
+                    selectedCount: selectedTransactionIds.count,
+                    onSelectAll: {
+                        selectedTransactionIds = Set(pager.transactions.map(\.id))
+                    },
+                    onDeselectAll: {
+                        selectedTransactionIds.removeAll()
+                    },
+                    onMarkCleared: { cleared in
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.setClearedStatus(transactions: selectedTxs, cleared: cleared)
+                        }
+                    },
+                    onDuplicate: {
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.duplicateTransactions(selectedTxs)
+                            selectedTransactionIds.removeAll()
+                            withAnimation { isSelecting = false }
+                        }
+                    },
+                    onDelete: {
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.deleteTransactions(selectedTxs)
+                            selectedTransactionIds.removeAll()
+                            withAnimation { isSelecting = false }
+                        }
+                    }
+                )
+            }
+        }
+        .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .sheet(isPresented: $showingReconcile) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)

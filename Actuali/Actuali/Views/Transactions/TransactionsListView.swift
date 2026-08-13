@@ -5,6 +5,9 @@ struct TransactionsListView: View {
     @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var editingTransaction: Transaction?
+    @State private var isSelecting = false
+    @State private var selectedTransactionIds: Set<String> = []
+    @State private var showingConfirmDelete = false
 
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
@@ -31,6 +34,14 @@ struct TransactionsListView: View {
         await currentPager().loadFirstPage(search: searchQuery)
     }
 
+    private func toggleSelection(for id: String) {
+        if selectedTransactionIds.contains(id) {
+            selectedTransactionIds.remove(id)
+        } else {
+            selectedTransactionIds.insert(id)
+        }
+    }
+
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
@@ -53,26 +64,46 @@ struct TransactionsListView: View {
                 List {
                     ForEach(pager.transactions) { transaction in
                         Button {
-                            editingTransaction = transaction
+                            if isSelecting {
+                                toggleSelection(for: transaction.id)
+                            } else {
+                                editingTransaction = transaction
+                            }
                         } label: {
-                            TransactionRow(transaction: transaction, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
+                            TransactionRow(
+                                transaction: transaction,
+                                isSelectionMode: isSelecting,
+                                isSelected: selectedTransactionIds.contains(transaction.id),
+                                onToggleCleared: {
+                                    Task { await budgetStore.toggleCleared(transaction) }
+                                },
+                                onToggleSelect: {
+                                    toggleSelection(for: transaction.id)
+                                }
+                            )
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                            if !isSelecting {
+                                Button(role: .destructive) {
+                                    Task { await budgetStore.deleteTransaction(transaction) }
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+                                Button {
+                                    Task { await budgetStore.duplicateTransaction(transaction) }
+                                } label: {
+                                    Label("Duplicate", systemImage: "plus.square.on.square")
+                                }
+                                .tint(.blue)
+                                Button {
+                                    editingTransaction = transaction
+                                } label: {
+                                    Label("Edit", systemImage: "pencil")
+                                }
+                                .tint(.yellow)
                             }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.yellow)
                         }
                     }
                     if pager.hasMore {
@@ -93,10 +124,57 @@ struct TransactionsListView: View {
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(isSelecting ? "Done" : "Select") {
+                    withAnimation {
+                        isSelecting.toggle()
+                        if !isSelecting {
+                            selectedTransactionIds.removeAll()
+                        }
+                    }
+                }
+            }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting, let pager {
+                TransactionBulkActionBar(
+                    totalCount: pager.transactions.count,
+                    selectedCount: selectedTransactionIds.count,
+                    onSelectAll: {
+                        selectedTransactionIds = Set(pager.transactions.map(\.id))
+                    },
+                    onDeselectAll: {
+                        selectedTransactionIds.removeAll()
+                    },
+                    onMarkCleared: { cleared in
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.setClearedStatus(transactions: selectedTxs, cleared: cleared)
+                        }
+                    },
+                    onDuplicate: {
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.duplicateTransactions(selectedTxs)
+                            selectedTransactionIds.removeAll()
+                            withAnimation { isSelecting = false }
+                        }
+                    },
+                    onDelete: {
+                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
+                        Task {
+                            await budgetStore.deleteTransactions(selectedTxs)
+                            selectedTransactionIds.removeAll()
+                            withAnimation { isSelecting = false }
+                        }
+                    }
+                )
+            }
+        }
+        .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .task(id: searchText) {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
@@ -138,10 +216,13 @@ struct TransactionRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let transaction: Transaction
     var showAccount: Bool = true
+    var isSelectionMode: Bool = false
+    var isSelected: Bool = false
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
     var onToggleCleared: (() -> Void)? = nil
+    var onToggleSelect: (() -> Void)? = nil
 
     @State private var confirmingUnlock = false
 
@@ -181,7 +262,19 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if let onToggleCleared {
+            if isSelectionMode {
+                Button {
+                    onToggleSelect?()
+                } label: {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                        .frame(width: 28, height: 28)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isSelected ? "Selected" : "Not selected")
+            } else if let onToggleCleared {
                 Button {
                     if transaction.reconciled {
                         confirmingUnlock = true

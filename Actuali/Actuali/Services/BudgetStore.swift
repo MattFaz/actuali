@@ -1797,24 +1797,248 @@ final class BudgetStore: ObservableObject {
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
         do {
-            guard let syncClient else {
-                throw BudgetStoreError.syncNotConfigured
-            }
-            // Deleting a split deletes its children too — orphaned children
-            // would be invisible in the list but still feed reports.
-            if transaction.isParent, let database {
-                for child in try await database.fetchChildTransactions(parentId: transaction.id) {
-                    var deletedChild = child
-                    deletedChild.tombstone = true
-                    try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
-                }
-            }
-            var deleted = transaction
-            deleted.tombstone = true
-            try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+            try await deleteSingleTransaction(transaction)
         } catch {
             self.error = "Failed to delete transaction: \(error.localizedDescription)"
             return
+        }
+        await refreshDataOnly()
+    }
+
+    /// Bulk soft-delete a list of transactions.
+    func deleteTransactions(_ transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        var handledTransferIds = Set<String>()
+        for tx in transactions {
+            if let transferId = tx.transferId, !transferId.isEmpty {
+                if handledTransferIds.contains(tx.id) {
+                    continue
+                }
+                handledTransferIds.insert(transferId)
+            }
+            do {
+                try await deleteSingleTransaction(tx)
+            } catch {
+                self.error = "Failed to delete transaction: \(error.localizedDescription)"
+            }
+        }
+        await refreshDataOnly()
+    }
+
+    private func deleteSingleTransaction(_ transaction: Transaction) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        if transaction.isParent, let database {
+            for child in try await database.fetchChildTransactions(parentId: transaction.id) {
+                var deletedChild = child
+                deletedChild.tombstone = true
+                try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
+            }
+        }
+        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
+            if var partner = try await database.fetchTransaction(id: transferId) {
+                partner.tombstone = true
+                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+            }
+        }
+        var deleted = transaction
+        deleted.tombstone = true
+        try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+    }
+
+    /// Duplicate a transaction (and its split children if parent, or paired transfer if transfer).
+    func duplicateTransaction(_ transaction: Transaction) async {
+        do {
+            try await duplicateSingleTransaction(transaction)
+        } catch {
+            self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
+            return
+        }
+        await refreshDataOnly()
+    }
+
+    /// Duplicate multiple transactions.
+    func duplicateTransactions(_ transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        var handledTransferIds = Set<String>()
+        for tx in transactions {
+            if let transferId = tx.transferId, !transferId.isEmpty {
+                if handledTransferIds.contains(tx.id) {
+                    continue
+                }
+                handledTransferIds.insert(transferId)
+            }
+            do {
+                try await duplicateSingleTransaction(tx)
+            } catch {
+                self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
+            }
+        }
+        await refreshDataOnly()
+    }
+
+    private func duplicateSingleTransaction(_ transaction: Transaction) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let nowMs = Date().timeIntervalSince1970 * 1000
+
+        // Handle transfers: duplicate both legs if partner found, otherwise clear transfer mapping
+        if let transferId = transaction.transferId, !transferId.isEmpty {
+            if let database, let partner = try? await database.fetchTransaction(id: transferId) {
+                let newSourceId = UUID().uuidString
+                let newTargetId = UUID().uuidString
+
+                let newSource = Transaction(
+                    id: newSourceId,
+                    accountId: transaction.accountId,
+                    date: transaction.date,
+                    amount: transaction.amount,
+                    payeeId: transaction.payeeId,
+                    payeeName: transaction.payeeName,
+                    categoryId: transaction.categoryId,
+                    categoryName: transaction.categoryName,
+                    notes: transaction.notes,
+                    cleared: false,
+                    reconciled: false,
+                    transferId: newTargetId,
+                    isParent: false,
+                    parentId: nil,
+                    tombstone: false,
+                    sortOrder: nowMs,
+                    importedPayee: transaction.importedPayee,
+                    schedule: nil
+                )
+
+                let newTarget = Transaction(
+                    id: newTargetId,
+                    accountId: partner.accountId,
+                    date: partner.date,
+                    amount: partner.amount,
+                    payeeId: partner.payeeId,
+                    payeeName: partner.payeeName,
+                    categoryId: partner.categoryId,
+                    categoryName: partner.categoryName,
+                    notes: partner.notes,
+                    cleared: false,
+                    reconciled: false,
+                    transferId: newSourceId,
+                    isParent: false,
+                    parentId: nil,
+                    tombstone: false,
+                    sortOrder: nowMs,
+                    importedPayee: partner.importedPayee,
+                    schedule: nil
+                )
+
+                try await syncClient.createTransfer(source: newSource, target: newTarget)
+                return
+            }
+        }
+
+        // Handle split parent
+        if transaction.isParent, let database {
+            let newParentId = UUID().uuidString
+            let children = (try? await database.fetchChildTransactions(parentId: transaction.id)) ?? []
+            let newChildren = children.map { child in
+                Transaction(
+                    id: UUID().uuidString,
+                    accountId: child.accountId,
+                    date: child.date,
+                    amount: child.amount,
+                    payeeId: child.payeeId,
+                    payeeName: child.payeeName,
+                    categoryId: child.categoryId,
+                    categoryName: child.categoryName,
+                    notes: child.notes,
+                    cleared: false,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: newParentId,
+                    tombstone: false,
+                    sortOrder: nowMs,
+                    importedPayee: child.importedPayee,
+                    schedule: nil
+                )
+            }
+            let newParent = Transaction(
+                id: newParentId,
+                accountId: transaction.accountId,
+                date: transaction.date,
+                amount: transaction.amount,
+                payeeId: transaction.payeeId,
+                payeeName: transaction.payeeName,
+                categoryId: transaction.categoryId,
+                categoryName: transaction.categoryName,
+                notes: transaction.notes,
+                cleared: false,
+                reconciled: false,
+                transferId: nil,
+                isParent: true,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: nowMs,
+                importedPayee: transaction.importedPayee,
+                schedule: nil
+            )
+            try await syncClient.createSplit(parent: newParent, children: newChildren)
+            return
+        }
+
+        // Standard transaction (ensure transfer payee is cleared if transaction has no transferId)
+        let isTransfer = payees.first { $0.id == transaction.payeeId && $0.transferAccountId != nil } != nil
+        let newTx = Transaction(
+            id: UUID().uuidString,
+            accountId: transaction.accountId,
+            date: transaction.date,
+            amount: transaction.amount,
+            payeeId: isTransfer ? nil : transaction.payeeId,
+            payeeName: isTransfer ? nil : transaction.payeeName,
+            categoryId: transaction.categoryId,
+            categoryName: transaction.categoryName,
+            notes: transaction.notes,
+            cleared: false,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nowMs,
+            importedPayee: transaction.importedPayee,
+            schedule: nil
+        )
+        try await syncClient.createTransaction(newTx)
+    }
+
+    /// Bulk update the cleared status of transactions.
+    func setClearedStatus(transactions: [Transaction], cleared: Bool) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        for tx in transactions {
+            guard tx.cleared != cleared else { continue }
+            var updated = tx
+            updated.cleared = cleared
+            if !cleared && updated.reconciled {
+                updated.reconciled = false
+            }
+            do {
+                try await syncClient.updateTransaction(
+                    updated,
+                    changedFields: updated.reconciled != tx.reconciled ? ["cleared", "reconciled"] : ["cleared"]
+                )
+            } catch {
+                self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            }
         }
         await refreshDataOnly()
     }
