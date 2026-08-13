@@ -67,7 +67,6 @@ struct BackupListView: View {
             }
             Button("Cancel", role: .cancel) { pendingRestore = nil }
         } message: {
-            // The honest D1 copy for synced budgets; simpler for demo/local.
             if budgetStore.isConnected {
                 Text("Restoring disconnects this budget from sync. To sync again, re-download the budget from your server — that replaces the restored data. Your current data is saved first so you can revert.")
             } else {
