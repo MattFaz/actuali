@@ -60,10 +60,10 @@ jobs:
             issues:reopened)
               TITLE="♻️ Issue reopened: #$ISSUE_NUMBER $ISSUE_TITLE"
               URL="$ISSUE_URL" COLOR=$RED ;;
-            pull_request:opened)
+            pull_request_target:opened)
               TITLE="🔀 PR opened: #$PR_NUMBER $PR_TITLE"
               URL="$PR_URL" COLOR=$BLUE ;;
-            pull_request:closed)
+            pull_request_target:closed)
               if [ "$PR_MERGED" = "true" ]; then
                 TITLE="🟣 PR merged: #$PR_NUMBER $PR_TITLE"
                 URL="$PR_URL" COLOR=$PURPLE
@@ -71,7 +71,7 @@ jobs:
                 TITLE="❌ PR closed: #$PR_NUMBER $PR_TITLE"
                 URL="$PR_URL" COLOR=$RED
               fi ;;
-            pull_request:reopened)
+            pull_request_target:reopened)
               TITLE="♻️ PR reopened: #$PR_NUMBER $PR_TITLE"
               URL="$PR_URL" COLOR=$BLUE ;;
             release:published)
