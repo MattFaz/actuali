@@ -1,6 +1,9 @@
 # Reference repos
 actual/
 
+# Feature branch worktrees (see CLAUDE.md)
+.worktrees/
+
 # Xcode
 *.xcuserstate
 *.xcuserdatad
