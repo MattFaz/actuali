@@ -90,19 +90,19 @@ struct BudgetStoreDuplicationTests {
         return (database, tempURL)
     }
 
-    private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
+    private func makeStore(database: BudgetDatabase) async throws -> (BudgetStore, SyncClient) {
         let store = BudgetStore.previewInstance()
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
-        return store
+        return (store, syncClient)
     }
 
     @Test
     func duplicateSingleTransaction() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        let store = try await makeStore(database: database)
+        let (store, _) = try await makeStore(database: database)
 
         let tx = Transaction(
             id: "tx-orig",
@@ -141,7 +141,7 @@ struct BudgetStoreDuplicationTests {
     func duplicateTransactionsAndBulkDelete() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        let store = try await makeStore(database: database)
+        let (store, _) = try await makeStore(database: database)
 
         let tx1 = Transaction(
             id: "tx-1", accountId: "acct-1", date: 20260810, amount: -1000,
@@ -173,7 +173,7 @@ struct BudgetStoreDuplicationTests {
     func duplicateTransferTransaction() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        let store = try await makeStore(database: database)
+        let (store, _) = try await makeStore(database: database)
 
         let source = Transaction(
             id: "tx-source", accountId: "acct-1", date: 20260810, amount: -5000,
@@ -218,7 +218,7 @@ struct BudgetStoreDuplicationTests {
     func duplicateSplitTransaction() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        let store = try await makeStore(database: database)
+        let (store, syncClient) = try await makeStore(database: database)
 
         let parent = Transaction(
             id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
@@ -239,7 +239,7 @@ struct BudgetStoreDuplicationTests {
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 100
         )
 
-        try await store.createSplit(parent: parent, children: [child1, child2])
+        try await syncClient.createSplit(parent: parent, children: [child1, child2])
 
         await store.duplicateTransaction(parent)
 
@@ -261,7 +261,7 @@ struct BudgetStoreDuplicationTests {
     func bulkSetClearedStatus() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
-        let store = try await makeStore(database: database)
+        let (store, _) = try await makeStore(database: database)
 
         let tx1 = Transaction(
             id: "tx-1", accountId: "acct-1", date: 20260810, amount: -1000,
