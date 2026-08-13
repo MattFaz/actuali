@@ -14,12 +14,7 @@ private enum AccountSelection: Hashable {
 
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
-    // A singleton reference, not a view-owned object — @ObservedObject is the
-    // semantically correct wrapper here. @StateObject would imply this view
-    // creates/owns the router's lifecycle, which it doesn't; functionally
-    // both work identically for a `.shared` instance, since the underlying
-    // object never changes regardless of how the view struct re-inits.
-    @ObservedObject private var notificationRouter = NotificationRouter.shared
+    @StateObject private var notificationRouter = NotificationRouter.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
     @State private var path = NavigationPath()
@@ -28,10 +23,12 @@ struct AccountsListView: View {
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
 
-    /// Independent expand/collapse state per section.
-    @State private var isOnBudgetExpanded = true
-    @State private var isOffBudgetExpanded = true
-    @State private var isClosedExpanded = true
+    /// Independent expand/collapse state per section, persisted so a
+    /// collapsed section stays collapsed across launches — same contract as
+    /// the budget tab's collapsedBudgetGroups.
+    @AppStorage("accountsOnBudgetExpanded") private var isOnBudgetExpanded = true
+    @AppStorage("accountsOffBudgetExpanded") private var isOffBudgetExpanded = true
+    @AppStorage("accountsClosedExpanded") private var isClosedExpanded = true
 
     /// Two real columns, or tap-and-push? Width, not just size class: in a
     /// window too narrow for a second column the split view hides the sidebar
@@ -179,7 +176,8 @@ struct AccountsListView: View {
                                 AccountSectionHeader(
                                     title: "On Budget",
                                     total: onBudgetTotal,
-                                    isExpanded: $isOnBudgetExpanded
+                                    isExpanded: $isOnBudgetExpanded,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -195,7 +193,8 @@ struct AccountsListView: View {
                                 AccountSectionHeader(
                                     title: "Off Budget",
                                     total: offBudgetTotal,
-                                    isExpanded: $isOffBudgetExpanded
+                                    isExpanded: $isOffBudgetExpanded,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -211,7 +210,8 @@ struct AccountsListView: View {
                                 AccountSectionHeader(
                                     title: "Closed Accounts",
                                     total: closedTotal,
-                                    isExpanded: $isClosedExpanded
+                                    isExpanded: $isClosedExpanded,
+                                    totalTrailingPadding: 0
                                 )
                             }
                         }
@@ -380,20 +380,17 @@ private extension Array where Element == Account {
 }
 
 /// Header used for the On Budget, Off Budget, and Closed Accounts sections.
-/// The section name sits on the left, the total is right-aligned with extra
-/// trailing padding to separate it from the screen edge, and tapping
+/// The section name sits on the left, the total is right-aligned, and tapping
 /// anywhere on the header expands/collapses that section.
-private enum AccountSectionHeaderMetrics {
-    /// Extra breathing room between the total and the trailing edge, beyond
-    /// the list's own content margin.
-    static let totalTrailingPadding: CGFloat = 24
-}
-
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let title: String
     let total: Int
     @Binding var isExpanded: Bool
+    /// Extra trailing inset lining the total up with row balances that sit
+    /// left of a NavigationLink disclosure chevron. The split layout's rows
+    /// carry no chevron, so it passes zero to keep its totals flush too.
+    var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
         Button {
@@ -414,16 +411,33 @@ struct AccountSectionHeader: View {
                 Text(budgetStore.displayBalance(total))
                     .fontWeight(.regular)
                     .foregroundStyle(balanceColor(for: total))
-                    .padding(.trailing, AccountSectionHeaderMetrics.totalTrailingPadding)
+                    // Grouped-list headers uppercase their content; fine for
+                    // the title (string headers always rendered that way) but
+                    // it would mangle alphabetic currency symbols ("kr"→"KR").
+                    .textCase(nil)
+                    // One line always: a narrow sidebar wraps "USD 48,800.00"
+                    // onto two lines rather than shrinking it.
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .padding(.trailing, totalTrailingPadding)
             }
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(title), \(budgetStore.displayBalance(total))")
+        // State lives in the label, not the hint: hints are read last and can
+        // be disabled outright, and a collapsed section is otherwise
+        // indistinguishable from an empty one. Same convention as the budget
+        // tab's group headers ("Essentials, collapsed").
+        .accessibilityLabel("\(title), \(expandedState), \(budgetStore.displayBalance(total))")
+        .accessibilityIdentifier("\(title), \(expandedState)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
         .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
+    }
+
+    private var expandedState: String {
+        isExpanded ? "expanded" : "collapsed"
     }
 }
 
