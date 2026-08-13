@@ -64,7 +64,7 @@ actor BackupService {
         //    any .tmp a crashed backup left behind.
         let backupsDir = fileManager.backupsDirectory(for: budgetId)
         if let leftovers = try? fm.contentsOfDirectory(at: backupsDir, includingPropertiesForKeys: nil) {
-            for url in leftovers where url.lastPathComponent.hasSuffix(".sqlite.tmp") {
+            for url in leftovers where url.lastPathComponent.hasSuffix(".tmp") {
                 try? fm.removeItem(at: url)
             }
         }

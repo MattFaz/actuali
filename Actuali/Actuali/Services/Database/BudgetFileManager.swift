@@ -133,14 +133,20 @@ class BudgetFileManager {
     /// `importBudget` and open in Actual desktop (upstream zips the same two
     /// names, backups.ts:145-148).
     func makeBudgetArchive(dbURL: URL, metadataURL: URL, to destinationURL: URL) throws {
-        // Same-second collision between a manual and an automatic backup:
-        // overwrite, matching upstream (the contents are equivalent).
-        if fileManager.fileExists(atPath: destinationURL.path) {
-            try fileManager.removeItem(at: destinationURL)
-        }
-        let archive = try Archive(url: destinationURL, accessMode: .create)
+        // Build at a temp path and rename into place: a crash or an iOS
+        // suspension mid-write (background backups have no time assertion) can
+        // then only leave a *.zip.tmp the sweep removes — never a truncated
+        // .zip at the real path for archiveList to surface as a dead entry.
+        let tempURL = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(destinationURL.lastPathComponent + ".tmp")
+        try? fileManager.removeItem(at: tempURL)
+        let archive = try Archive(url: tempURL, accessMode: .create)
         try archive.addEntry(with: "db.sqlite", fileURL: dbURL, compressionMethod: .deflate)
         try archive.addEntry(with: "metadata.json", fileURL: metadataURL, compressionMethod: .deflate)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)   // same-second overwrite, per upstream
+        }
+        try fileManager.moveItem(at: tempURL, to: destinationURL)
     }
 
     /// Ported from upstream's safeUnzip caps (util/zip.ts:9): fflate there —
