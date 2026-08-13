@@ -1414,6 +1414,13 @@ final class BudgetStore: ObservableObject {
         await refreshBackups()
         isLoading = false
     }
+    
+    /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
+    /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
+    func backupFileURL(_ backupId: String) -> URL? {
+        guard let budgetId = currentBudgetId else { return nil }
+        return fileManager.backupPath(for: budgetId, name: backupId)
+    }
 
     func revertToLatest() async {
         await restoreBackup(Backup.latest.id)

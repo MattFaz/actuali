@@ -34,18 +34,25 @@ struct BackupListView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(archives) { backup in
-                        if case .archive(_, let date) = backup {
+                        if case .archive(let id, let date) = backup {
                             Button {
                                 pendingRestore = backup
                             } label: {
                                 Text(Self.dateFormatter.string(from: date))
+                            }
+                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                                if let url = budgetStore.backupFileURL(id) {
+                                    ShareLink(item: url) {
+                                        Label("Export", systemImage: "square.and.arrow.up")
+                                    }
+                                }
                             }
                         }
                     }
                 }
             } footer: {
                 if !hasLatest && !archives.isEmpty {
-                    Text("Restoring a backup replaces the current budget. Your current data is saved first so you can revert.")
+                    Text("Restoring a backup replaces the current budget. Your current data is saved first so you can revert. Swipe a backup to export it for import into Actual on the web or desktop.")
                 }
             }
         }

@@ -60,4 +60,21 @@ struct BudgetStoreBackupTests {
             .filter { $0.pathExtension == "zip" }
         #expect(zips.isEmpty)
     }
+    
+    @Test func backupFileURLPointsAtImportableArchive() async throws {
+        let (store, manager, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b")
+        store.currentBudgetId = "b"
+
+        await store.makeBackupNow()
+        let id = try #require(store.backups.first(where: { !$0.isLatest })?.id)
+
+        // The exported URL is a real file and a valid Actual-import archive.
+        let url = try #require(store.backupFileURL(id))
+        #expect(FileManager.default.fileExists(atPath: url.path))
+        let extracted = try manager.extractBudgetArchive(at: url)
+        defer { try? FileManager.default.removeItem(at: extracted.databaseURL) }
+        #expect(extracted.metadata.id == "b")
+    }
 }
