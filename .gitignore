@@ -1,6 +1,9 @@
 # Reference repos
 actual/
 
+# Worktrees
+.worktrees/
+
 # Xcode
 *.xcuserstate
 *.xcuserdatad
