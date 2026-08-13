@@ -99,7 +99,6 @@ class BudgetFileManager {
         backupsDirectory(for: budgetId).appendingPathComponent(name)
     }
     
-    /// The baseline that will be reverted too if there is ever a failure in backing up.
     func latestDatabasePath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("db.latest.sqlite")
     }
