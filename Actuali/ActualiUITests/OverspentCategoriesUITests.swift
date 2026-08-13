@@ -67,11 +67,16 @@ final class OverspentCategoriesUITests: XCTestCase {
 
         let field = app.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
-        field.tap()
-        // Focus select-alls the current value asynchronously; don't rely on
-        // that racing in our favor — backspace the old value away instead.
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
-        field.typeText(centsKeystrokes)
+        // The sheet autofocuses the field; the decimal pad appearing is the
+        // signal that it's ready. Enter the amount by tapping keypad keys —
+        // typeText's focus-dependent event synthesis flakes on CI runners.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not appear for the amount field")
+        let deleteKey = app.keys["Delete"]
+        for _ in 0..<10 { deleteKey.tap() }
+        for digit in centsKeystrokes {
+            app.keys[String(digit)].tap()
+        }
 
         let saveButton = app.buttons["Save"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")

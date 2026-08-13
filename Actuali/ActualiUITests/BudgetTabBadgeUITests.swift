@@ -32,8 +32,15 @@ final class BudgetTabBadgeUITests: XCTestCase {
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
         app.tabBars.buttons["Settings"].tap()
+        // The toggle sits below the fold as Settings has grown, and lazy
+        // lists don't expose off-screen rows — scroll until it's reachable.
         let toggle = app.switches["Overspent Badge"]
-        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
+        var scrollsLeft = 8
+        while !toggle.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(toggle.isHittable, "Overspent Badge toggle not found")
         tapSwitch(toggle)
         XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
                       "badge still shown with the setting off: \(budgetTab.debugDescription)")
@@ -65,11 +72,16 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         let field = app.textFields.firstMatch
         XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
-        field.tap()
-        // Focus select-alls the current value asynchronously; don't rely on
-        // that racing in our favor — backspace the old value away instead.
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
-        field.typeText(centsKeystrokes)
+        // The sheet autofocuses the field; the decimal pad appearing is the
+        // signal that it's ready. Enter the amount by tapping keypad keys —
+        // typeText's focus-dependent event synthesis flakes on CI runners.
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not appear for the amount field")
+        let deleteKey = app.keys["Delete"]
+        for _ in 0..<10 { deleteKey.tap() }
+        for digit in centsKeystrokes {
+            app.keys[String(digit)].tap()
+        }
 
         let saveButton = app.buttons["Save"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")
