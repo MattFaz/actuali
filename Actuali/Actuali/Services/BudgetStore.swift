@@ -22,6 +22,13 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case splitAmountMismatch
     case invalidAccountName
     case accountCreationFailed(String)
+    case ruleNeedsCondition
+    case ruleNeedsAction
+    case ruleInvalidCondition(field: String, op: String)
+    case ruleInvalidAction
+    case ruleEmptyValue(field: String)
+    case ruleInvalidPattern(pattern: String)
+    case ruleOwnedBySchedule
 
     var errorDescription: String? {
         switch self {
@@ -55,6 +62,20 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter an account name"
         case .accountCreationFailed(let message):
             return "Failed to create account: \(message)"
+        case .ruleNeedsCondition: 
+            return "Add at least one condition."
+        case .ruleNeedsAction: 
+            return "Add at least one action."
+        case .ruleInvalidCondition(let field, let op):
+            return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
+        case .ruleInvalidAction: 
+            return "Choose a field for every action."
+        case .ruleEmptyValue(let field): 
+            return "\(RuleSchema.label(field: field).capitalized) needs a value."
+        case .ruleInvalidPattern(let pattern): 
+            return "\"\(pattern)\" isn't a valid regular expression."
+        case .ruleOwnedBySchedule: 
+            return "This rule belongs to a schedule. Delete the schedule instead."
         }
     }
 }
@@ -3242,6 +3263,106 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setNote(id: id, note: note)
     }
+    
+    // MARK: - Rules
+
+    /// Live rules in engine order (GH #222). Loaded on demand by the Rules
+    /// screen rather than at budget load — most sessions never open it.
+    @Published private(set) var rules: [Rule] = []
+    /// Rules a schedule owns: editable, but not deletable, same as upstream.
+    @Published private(set) var scheduleOwnedRuleIds: Set<String> = []
+    /// False when the open budget file predates the `rules` table, which hides
+    /// the whole feature rather than failing at save time.
+    @Published private(set) var rulesSupported = false
+
+    func loadRules() async {
+        guard let database else {
+            rules = []
+            scheduleOwnedRuleIds = []
+            rulesSupported = false
+            return
+        }
+        do {
+            rulesSupported = try database.rulesTableExists()
+            rules = rulesSupported ? try await database.fetchRulesRanked() : []
+            scheduleOwnedRuleIds = (try? database.scheduleOwnedRuleIds()) ?? []
+        } catch {
+            logger.error("loadRules failed: \(error.localizedDescription, privacy: .public)")
+            rules = []
+        }
+    }
+
+    /// Create or update a rule. Validation mirrors upstream `rule-validate`:
+    /// a rule needs at least one condition and one action, and every condition
+    /// must use an operator its field supports.
+    func saveRule(_ rule: Rule) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try Self.validate(rule)
+        try await syncClient.saveRule(rule)
+        await loadRules()
+    }
+
+    /// Delete a rule. Refuses when a schedule owns it, like upstream's
+    /// `deleteRule`, which returns false rather than orphaning the schedule.
+    func deleteRule(_ rule: Rule) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !scheduleOwnedRuleIds.contains(rule.id) else {
+            throw BudgetStoreError.ruleOwnedBySchedule
+        }
+        try await syncClient.deleteRule(rule)
+        await loadRules()
+    }
+
+    static func validate(_ rule: Rule) throws {
+        guard !rule.conditions.isEmpty else { throw BudgetStoreError.ruleNeedsCondition }
+        guard !rule.actions.isEmpty else { throw BudgetStoreError.ruleNeedsAction }
+
+        for condition in rule.conditions {
+            guard RuleSchema.isValidOp(field: condition.field, op: condition.op) else {
+                throw BudgetStoreError.ruleInvalidCondition(field: condition.field, op: condition.op)
+            }
+            // Upstream's Condition constructor rejects empty values for
+            // non-nullable types, and empty arrays for oneOf/notOneOf.
+            switch condition.op {
+            case "oneOf", "notOneOf":
+                guard condition.value.listValue?.isEmpty == false else {
+                    throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                }
+            case "onBudget", "offBudget":
+                break
+            default:
+                let type = RuleSchema.fieldType(condition.field)
+                if type == .number || type == .date || type == .boolean {
+                    guard !condition.value.isNull else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                }
+                if ["contains", "doesNotContain", "matches", "hasTags", "hasAnyTag"].contains(condition.op) {
+                    guard let text = condition.value.stringValue, !text.isEmpty else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                    // Upstream doesn't check this — a bad pattern just fails
+                    // silently at apply time. Catching it here is the one place
+                    // the user can still do something about it. Compile the
+                    // lowercased pattern, which is what the engine will run.
+                    if condition.op == "matches",
+                       (try? NSRegularExpression(pattern: text.lowercased())) == nil {
+                        throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                    }
+                }
+            }
+        }
+
+        for action in rule.actions where action.op == "set" {
+            guard let field = action.field, RuleSchema.fieldType(field) != nil else {
+                throw BudgetStoreError.ruleInvalidAction
+            }
+            // Upstream: `account` may never be set to nothing.
+            if field == "account", action.value.stringValue?.isEmpty != false {
+                throw BudgetStoreError.ruleEmptyValue(field: field)
+            }
+        }
+    }
 
     // MARK: - Currency Formatting
 
@@ -3272,3 +3393,4 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
+
