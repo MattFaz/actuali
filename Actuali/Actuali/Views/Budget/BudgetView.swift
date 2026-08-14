@@ -550,11 +550,7 @@ struct BudgetCheckInSection: View {
     @AppStorage("budgetCheckInExpanded") private var isExpanded = true
 
     private var hasIssues: Bool {
-        (budget.toBudget ?? 0) > 0
-            || (budgetStore.showOverspentBadge && budget.overspentCount > 0)
-            || budgetStore.uncategorizedCount > 0
-            || !budget.unassignedCategories.isEmpty
-            || !budget.approachingLimitCategories.isEmpty
+        budget.hasCheckInIssues(uncategorizedCount: budgetStore.uncategorizedCount)
     }
 
     var body: some View {
@@ -576,6 +572,33 @@ struct BudgetCheckInSection: View {
             .buttonStyle(.plain)
             .accessibilityLabel("Budget Check-In, \(isExpanded ? "expanded" : "collapsed")")
 
+            if isExpanded, budget.overspentCount > 0 {
+                NavigationLink {
+                    OverspentCategoriesView()
+                } label: {
+                    Label(
+                        budget.isTrackingBudget
+                            ? "\(budget.overspentCount) over budget"
+                            : "\(budget.overspentCount) overspent",
+                        systemImage: "exclamationmark.circle.fill"
+                    )
+                    .foregroundStyle(.red)
+                }
+                .accessibilityIdentifier("budgetCheckInOverspent")
+            }
+
+            if isExpanded, budgetStore.uncategorizedCount > 0 {
+                NavigationLink {
+                    UncategorizedTransactionsView()
+                } label: {
+                    Label(
+                        "\(budgetStore.uncategorizedCount) uncategorized",
+                        systemImage: "questionmark.circle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+
             if isExpanded, let toBudget = budget.toBudget, toBudget > 0 {
                 NavigationLink {
                     BudgetGuidanceCategoryList(
@@ -593,32 +616,6 @@ struct BudgetCheckInSection: View {
                     } icon: {
                         Image(systemName: "dollarsign.arrow.circlepath").foregroundStyle(.green)
                     }
-                }
-            }
-
-            if isExpanded, budgetStore.showOverspentBadge, budget.overspentCount > 0 {
-                NavigationLink {
-                    OverspentCategoriesView()
-                } label: {
-                    Label(
-                        budget.isTrackingBudget
-                            ? "\(budget.overspentCount) over budget"
-                            : "\(budget.overspentCount) overspent",
-                        systemImage: "exclamationmark.circle.fill"
-                    )
-                    .foregroundStyle(.red)
-                }
-            }
-
-            if isExpanded, budgetStore.uncategorizedCount > 0 {
-                NavigationLink {
-                    UncategorizedTransactionsView()
-                } label: {
-                    Label(
-                        "\(budgetStore.uncategorizedCount) uncategorized",
-                        systemImage: "questionmark.circle.fill"
-                    )
-                    .foregroundStyle(.orange)
                 }
             }
 

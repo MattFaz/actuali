@@ -43,6 +43,11 @@ struct BudgetMonthOverspentCountTests {
         #expect(makeMonth(availables: [0]).overspentCount == 0)
     }
 
+    @Test func overspendingAlwaysRequiresCheckIn() {
+        let month = makeMonth(availables: [-8500])
+        #expect(month.hasCheckInIssues(uncategorizedCount: 0))
+    }
+
     // MARK: - overspentCategories (the badge's explanation, GH #138)
 
     @Test func overspentCategoriesListsOnlyTheOnesInTheRed() {

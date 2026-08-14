@@ -49,6 +49,17 @@ struct BudgetMonth: Identifiable, Hashable {
             .sorted { $0.progressFraction > $1.progressFraction }
     }
 
+    /// Whether the monthly check-in has anything actionable to show. This is
+    /// intentionally independent of presentation preferences such as the
+    /// optional Budget tab badge.
+    func hasCheckInIssues(uncategorizedCount: Int) -> Bool {
+        (toBudget ?? 0) > 0
+            || overspentCount > 0
+            || uncategorizedCount > 0
+            || !unassignedCategories.isEmpty
+            || !approachingLimitCategories.isEmpty
+    }
+
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
