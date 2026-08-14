@@ -615,26 +615,6 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if isExpanded, let toBudget = budget.toBudget, toBudget > 0 {
-                NavigationLink {
-                    BudgetGuidanceCategoryList(
-                        title: "Ready to Assign",
-                        message: "Choose categories for the money still waiting to be assigned.",
-                        categories: budget.unassignedCategories.isEmpty
-                            ? budget.categoryBudgets
-                            : budget.unassignedCategories
-                    )
-                } label: {
-                    Label {
-                        LabeledContent("Ready to Assign") {
-                            Text(budgetStore.displayBalance(toBudget)).foregroundStyle(.green)
-                        }
-                    } icon: {
-                        Image(systemName: "dollarsign.arrow.circlepath").foregroundStyle(.green)
-                    }
-                }
-            }
-
             if isExpanded, !budget.unassignedCategories.isEmpty {
                 NavigationLink {
                     BudgetGuidanceCategoryList(
