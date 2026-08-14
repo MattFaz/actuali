@@ -46,8 +46,8 @@ struct BudgetTransferSheet: View {
         // Overspent: default to covering from To Budget (like the web UI);
         // tracking budgets have no To Budget, so fall back to the first
         // category with funds. Surplus: default to sending back to To Budget.
-        let hasToBudget = context.budget.toBudget != nil
-        let firstCategory = Self.eligibleCategories(context).first.map { Endpoint.category($0.categoryId) }
+        let hasToBudget = Self.canUseToBudget(context)
+        let firstCategory = Self.rankedCategories(context).first.map { Endpoint.category($0.categoryId) }
         _endpoint = State(initialValue: hasToBudget ? .toBudget : (firstCategory ?? .toBudget))
         // Prefill with the full amount in play: the overspending to cover,
         // or the surplus available to move.
@@ -58,38 +58,97 @@ struct BudgetTransferSheet: View {
         context.category.available < 0
     }
 
-    /// Categories offered on the other side, in the budget table's order.
-    /// Covering only lists categories that have funds to give; a surplus can
-    /// go to any other category, including one at zero.
-    private static func eligibleCategories(_ context: BudgetTransferContext) -> [CategoryBudget] {
-        context.budget.categoryBudgets
+    /// Covering ranks sources that can fully solve the problem first, then
+    /// prefers the same group and the smallest sufficient balance. Partial
+    /// sources follow largest-first. Moving a surplus keeps table order.
+    static func rankedCategories(_ context: BudgetTransferContext) -> [CategoryBudget] {
+        let candidates = context.budget.categoryBudgets
             .filter { $0.categoryId != context.category.categoryId }
             .filter { context.category.available < 0 ? $0.available > 0 : true }
-            .sorted {
+        guard context.category.available < 0 else {
+            return candidates.sorted {
                 ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder)
             }
+        }
+        let needed = abs(context.category.available)
+        return candidates.sorted { lhs, rhs in
+            let lhsCovers = lhs.available >= needed
+            let rhsCovers = rhs.available >= needed
+            if lhsCovers != rhsCovers { return lhsCovers }
+            let lhsSameGroup = lhs.groupId == context.category.groupId
+            let rhsSameGroup = rhs.groupId == context.category.groupId
+            if lhsSameGroup != rhsSameGroup { return lhsSameGroup }
+            if lhs.available != rhs.available {
+                return lhsCovers ? lhs.available < rhs.available : lhs.available > rhs.available
+            }
+            return (lhs.groupSortOrder, lhs.categorySortOrder)
+                < (rhs.groupSortOrder, rhs.categorySortOrder)
+        }
+    }
+
+    static func canUseToBudget(_ context: BudgetTransferContext) -> Bool {
+        guard let toBudget = context.budget.toBudget else { return false }
+        return context.category.available < 0 ? toBudget > 0 : true
     }
 
     private var eligibleCategories: [CategoryBudget] {
-        Self.eligibleCategories(context)
+        Self.rankedCategories(context)
     }
 
     private var hasOptions: Bool {
-        context.budget.toBudget != nil || !eligibleCategories.isEmpty
+        Self.canUseToBudget(context) || !eligibleCategories.isEmpty
+    }
+
+    private var rolledOverAmount: Int {
+        abs(context.category.rolledOverOverspending)
+    }
+
+    private var currentMonthShortfall: Int {
+        max(0, abs(context.category.available) - rolledOverAmount)
+    }
+
+    private var selectedSourceAvailable: Int? {
+        switch endpoint {
+        case .toBudget:
+            return context.budget.toBudget
+        case .category(let id):
+            return eligibleCategories.first(where: { $0.categoryId == id })?.available
+        }
     }
 
     var body: some View {
         NavigationStack {
             Form {
+                if isCovering {
+                    Section {
+                        LabeledContent("Amount to cover") {
+                            Text(budgetStore.displayBalance(abs(context.category.available)))
+                                .foregroundStyle(.red)
+                        }
+                        if currentMonthShortfall > 0 {
+                            LabeledContent("This month") {
+                                Text(budgetStore.displayBalance(currentMonthShortfall))
+                            }
+                        }
+                        if rolledOverAmount > 0 {
+                            LabeledContent("From earlier months") {
+                                Text(budgetStore.displayBalance(rolledOverAmount))
+                            }
+                        }
+                    } footer: {
+                        Text("Covering moves budgeted money only. It does not change or duplicate any transactions.")
+                    }
+                }
+
                 Section {
                     if hasOptions {
                         Picker(isCovering ? "From" : "To", selection: $endpoint) {
-                            if let toBudget = context.budget.toBudget {
+                            if Self.canUseToBudget(context), let toBudget = context.budget.toBudget {
                                 Text("To Budget (\(budgetStore.displayBalance(toBudget)))")
                                     .tag(Endpoint.toBudget)
                             }
-                            ForEach(eligibleCategories) { candidate in
-                                Text("\(candidate.categoryName) (\(budgetStore.displayBalance(candidate.available)))")
+                            ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
+                                Text("\(index == 0 && isCovering ? "Recommended: " : "")\(candidate.categoryName) (\(budgetStore.displayBalance(candidate.available)))")
                                     .tag(Endpoint.category(candidate.categoryId))
                             }
                         }
@@ -141,6 +200,9 @@ struct BudgetTransferSheet: View {
         Task {
             do {
                 let cents = try BudgetStore.budgetAmountCents(from: amountText)
+                if isCovering, let selectedSourceAvailable, cents > selectedSourceAvailable {
+                    throw BudgetStoreError.transferAmountExceedsSource
+                }
                 // Covering pulls money into the tapped category; moving a
                 // surplus pushes money out of it.
                 let from = isCovering ? endpoint.categoryId : context.category.categoryId

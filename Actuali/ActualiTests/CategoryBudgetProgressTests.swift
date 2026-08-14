@@ -5,6 +5,8 @@ import Testing
 struct CategoryBudgetProgressTests {
 
     private func makeCategory(
+        id: String = "cat1",
+        groupId: String = "g1",
         budgeted: Int,
         spent: Int,
         available: Int,
@@ -12,9 +14,9 @@ struct CategoryBudgetProgressTests {
     ) -> CategoryBudget {
         CategoryBudget(
             month: "2026-07",
-            categoryId: "cat1",
+            categoryId: id,
             categoryName: "Groceries",
-            groupId: "g1",
+            groupId: groupId,
             groupName: "Everyday",
             groupSortOrder: 0,
             categorySortOrder: 0,
@@ -101,5 +103,24 @@ struct CategoryBudgetProgressTests {
     @Test func quickAssignOmitsUnavailableHistoricalChoices() {
         let current = makeCategory(budgeted: 0, spent: 0, available: 0)
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
+    }
+
+    @Test func coverSourcesPrioritizeFullCoverageThenSameGroup() {
+        let overspent = makeCategory(id: "target", groupId: "home", budgeted: 0, spent: -5000, available: -5000)
+        let partialSameGroup = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)
+        let largeOtherGroup = makeCategory(id: "large", groupId: "other", budgeted: 12000, spent: 0, available: 12000)
+        let smallSameGroup = makeCategory(id: "small", groupId: "home", budgeted: 6000, spent: 0, available: 6000)
+        let context = BudgetTransferContext(
+            category: overspent,
+            budget: BudgetMonth(
+                month: overspent.month,
+                categoryBudgets: [partialSameGroup, largeOtherGroup, smallSameGroup],
+                toBudget: 0
+            )
+        )
+
+        #expect(BudgetTransferSheet.rankedCategories(context).map(\.categoryId)
+            == ["small", "large", "partial"])
+        #expect(!BudgetTransferSheet.canUseToBudget(context))
     }
 }
