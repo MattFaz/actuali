@@ -297,6 +297,23 @@ class BudgetDatabase {
             )
         """)
     ]
+    
+    /// Migration ids Actuali mints itself, no upstream migration file has
+    /// them (split halves of upstream migrations, plus defensive backfills).
+    /// Actual's import validates a file's __migrations__ rows against its
+    /// migrations directory and rejects unknown ids (loot-core
+    /// migrations.ts, checkDatabaseValidity), so backups strip these before
+    /// archiving. Any id added to upstreamSchemaMigrations or
+    /// createTableMigrations that doesn't exist in upstream's migrations/
+    /// directory MUST also be listed here.
+    static let actualiOnlyMigrationIds: [Int64] = [
+        1765518577216, // ALTER half of upstream 1765518577215 (dashboard_page_id)
+        1770000000001, // defensive CREATE dashboard
+        1770000000002, // defensive CREATE custom_reports
+        1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
+        1780606214999, // locally minted transactions.schedule backfill
+        1780606215002, // second half of upstream index migration 1780606215001
+    ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
     /// guards of the write path below so a fully migrated file opens without
@@ -400,6 +417,15 @@ class BudgetDatabase {
                     rowId: rowId, value: CRDTValue.deserialize(value)
                 )
             }
+        }
+    }
+    
+    // MARK: - Backup Support
+
+    /// Writes a consistent single-file snapshot of the live database, regardless of journal mode.
+    func snapshotDatabase(to url: URL) async throws {
+        try await dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "VACUUM INTO ?", arguments: [url.path])
         }
     }
 

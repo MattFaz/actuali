@@ -203,8 +203,9 @@ struct BudgetStoreInitialSyncTests {
     // MARK: - Upstream schema
 
     /// The tables `loadLocalBudget` reads and `SyncClient.configure` needs,
-    /// matching the schema an Actual server ships in a budget ZIP.
-    private static let upstreamSchema = """
+    /// matching the schema an Actual server ships in a budget ZIP. Internal:
+    /// BudgetStoreBackupTests seeds the same schema to drive loadLocalBudget.
+    static let upstreamSchema = """
         CREATE TABLE accounts (
             id TEXT PRIMARY KEY, name TEXT, type TEXT, offbudget INTEGER DEFAULT 0,
             closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0, sort_order REAL,

@@ -7,6 +7,7 @@ enum BudgetFileError: LocalizedError {
     case missingMetadata
     case extractionFailed(Error)
     case metadataParsingFailed
+    case unsafeArchive(String)
 
     var errorDescription: String? {
         switch self {
@@ -20,6 +21,8 @@ enum BudgetFileError: LocalizedError {
             return "Failed to extract budget file: \(error.localizedDescription)"
         case .metadataParsingFailed:
             return "Failed to parse budget metadata"
+        case .unsafeArchive(let error):
+            return "The archive failed a safety check: \(error)"
         }
     }
 }
@@ -80,6 +83,158 @@ class BudgetFileManager {
     func metadataPath(for budgetId: String) -> URL {
         budgetDirectory(for: budgetId).appendingPathComponent("metadata.json")
     }
+    
+    // MARK: - Backup Paths
+    
+    /// Directory holding this budget's local backup archives, created on first use.
+    func backupsDirectory(for budgetId: String) -> URL {
+        let dir = budgetDirectory(for: budgetId).appendingPathComponent("backups", isDirectory: true)
+        if !fileManager.fileExists(atPath: dir.path) {
+            try? fileManager.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
+        return dir
+    }
+    
+    func backupPath(for budgetId: String, name: String) -> URL {
+        backupsDirectory(for: budgetId).appendingPathComponent(name)
+    }
+    
+    func latestDatabasePath(for budgetId: String) -> URL {
+        budgetDirectory(for: budgetId).appendingPathComponent("db.latest.sqlite")
+    }
+    
+    func latestMetadataPath(for budgetId: String) -> URL {
+        budgetDirectory(for: budgetId).appendingPathComponent("metadata.latest.json")
+    }
+    
+    // MARK: - Backup Naming
+    
+    /// Archive names match upstream's yyyy-MM-dd_HH-mm-ss.zip.
+    /// The device timezone is deliberate: "today"  means the user's today.
+    static let backupNameFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        return formatter
+    }()
+    
+    static func backupArchiveName(for date: Date) -> String {
+        backupNameFormatter.string(from: date) + ".zip"
+    }
+
+    static func backupTempName(now: Date) -> String {
+        "db.\(Int(now.timeIntervalSince1970 * 1000)).sqlite.tmp"
+    }
+    
+    // MARK: - Backup Archives
+    
+    /// Creates a backup archive with EXACTLY the two root entries the import
+    /// path looks for, so Actuali-made archives round-trip through
+    /// `importBudget` and open in Actual desktop (upstream zips the same two
+    /// names, backups.ts:145-148).
+    func makeBudgetArchive(dbURL: URL, metadataURL: URL, to destinationURL: URL) throws {
+        // Build at a temp path and rename into place: a crash or an iOS
+        // suspension mid-write (background backups have no time assertion) can
+        // then only leave a *.zip.tmp the sweep removes — never a truncated
+        // .zip at the real path for archiveList to surface as a dead entry.
+        let tempURL = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(destinationURL.lastPathComponent + ".tmp")
+        try? fileManager.removeItem(at: tempURL)
+        let archive = try Archive(url: tempURL, accessMode: .create)
+        try archive.addEntry(with: "db.sqlite", fileURL: dbURL, compressionMethod: .deflate)
+        try archive.addEntry(with: "metadata.json", fileURL: metadataURL, compressionMethod: .deflate)
+        if fileManager.fileExists(atPath: destinationURL.path) {
+            try fileManager.removeItem(at: destinationURL)   // same-second overwrite, per upstream
+        }
+        try fileManager.moveItem(at: tempURL, to: destinationURL)
+    }
+
+    /// Ported from upstream's safeUnzip caps (util/zip.ts:9): fflate there —
+    /// and ZIPFoundation here — do no validation themselves, so guard against
+    /// zip-slip and decompression bombs before extracting anything.
+    private static let maxArchiveBytes = 500 * 1024 * 1024
+
+    /// util/zip.ts:20-35 — reject NUL, backslash, drive-letter prefix,
+    /// absolute paths, and `..` as a path *segment* (segment comparison, not
+    /// a substring match: "a..b/x" is legal, "a/../x" is not).
+    private func assertSafeEntryName(_ name: String) throws {
+        let hasTraversal = name
+            .split(separator: "/", omittingEmptySubsequences: false)
+            .contains("..")
+        if name.contains("\0")
+            || name.contains("\\")
+            || name.range(of: #"^[a-zA-Z]:"#, options: .regularExpression) != nil
+            || name.hasPrefix("/")
+            || hasTraversal {
+            throw BudgetFileError.unsafeArchive("unsafe entry name: \(name)")
+        }
+    }
+
+    struct ExtractedBudget {
+        /// Temporary location of the extracted database. The caller owns it
+        /// and must delete it (or move it into place).
+        let databaseURL: URL
+        let metadataData: Data
+        let metadata: BudgetMetadata
+    }
+
+    /// Opens a budget archive, validates it (entry names, size caps, duplicates), and extracts db.sqlite to a temp file.
+    /// Shared by server import and backup restore.
+    func extractBudgetArchive(at archiveURL: URL) throws -> ExtractedBudget {
+        if let size = (try? fileManager.attributesOfItem(atPath: archiveURL.path))?[.size] as? Int,
+           size > Self.maxArchiveBytes {
+            throw BudgetFileError.unsafeArchive("archive exceeds \(Self.maxArchiveBytes) bytes")
+        }
+
+        let archive: Archive
+        do {
+            archive = try Archive(url: archiveURL, accessMode: .read)
+        } catch {
+            throw BudgetFileError.invalidZipFile
+        }
+
+        var seen = Set<String>()
+        var totalUncompressed = 0
+        for entry in archive {
+            try assertSafeEntryName(entry.path)
+            // fflate (upstream's extractor) can only materialize regular
+            // files; ZIPFoundation would also create symlinks, which a hostile
+            // archive could aim anywhere the sandbox reaches.
+            if entry.type == .symlink {
+                throw BudgetFileError.unsafeArchive("symlink entry: \(entry.path)")
+            }
+            let entrySize = Int(entry.uncompressedSize)
+            if entrySize > Self.maxArchiveBytes {
+                throw BudgetFileError.unsafeArchive("entry \(entry.path) exceeds \(Self.maxArchiveBytes) bytes")
+            }
+            totalUncompressed += entrySize
+            if totalUncompressed > Self.maxArchiveBytes {
+                throw BudgetFileError.unsafeArchive("total uncompressed size exceeds \(Self.maxArchiveBytes) bytes")
+            }
+            if !seen.insert(entry.path.lowercased()).inserted {
+                throw BudgetFileError.unsafeArchive("duplicate entry: \(entry.path)")
+            }
+        }
+
+        guard let dbEntry = archive.first(where: { $0.path.hasSuffix("db.sqlite") }) else {
+            throw BudgetFileError.missingDatabase
+        }
+        guard let metaEntry = archive.first(where: { $0.path.hasSuffix("metadata.json") }) else {
+            throw BudgetFileError.missingMetadata
+        }
+
+        var metadataData = Data()
+        _ = try archive.extract(metaEntry) { metadataData.append($0) }
+        guard let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) else {
+            throw BudgetFileError.metadataParsingFailed
+        }
+
+        let tempDbURL = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString + ".sqlite")
+        _ = try archive.extract(dbEntry, to: tempDbURL)
+
+        return ExtractedBudget(databaseURL: tempDbURL, metadataData: metadataData, metadata: metadata)
+    }
 
     // MARK: - Budget Management
 
@@ -116,57 +271,41 @@ class BudgetFileManager {
         defer {
             try? fileManager.removeItem(at: tempURL)
         }
-
-        // Open the ZIP archive
-        let archive: Archive
-        do {
-            archive = try Archive(url: tempURL, accessMode: .read)
-        } catch {
-            throw BudgetFileError.invalidZipFile
-        }
-
-        // Find the required files
-        guard let dbEntry = archive.first(where: { $0.path.hasSuffix("db.sqlite") }) else {
-            throw BudgetFileError.missingDatabase
-        }
-
-        guard let metaEntry = archive.first(where: { $0.path.hasSuffix("metadata.json") }) else {
-            throw BudgetFileError.missingMetadata
-        }
-
-        // Extract metadata first to get the budget ID
-        var metadataData = Data()
-        _ = try archive.extract(metaEntry) { data in
-            metadataData.append(data)
-        }
-
-        guard let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) else {
-            throw BudgetFileError.metadataParsingFailed
+        
+        let extracted = try extractBudgetArchive(at: tempURL)
+        defer {
+            try? fileManager.removeItem(at: extracted.databaseURL)
         }
 
         // Update metadata with cloud info
         let updatedMetadata = BudgetMetadata(
-            id: metadata.id,
-            budgetName: metadata.budgetName,
+            id: extracted.metadata.id,
+            budgetName: extracted.metadata.budgetName,
             cloudFileId: fileId,
             groupId: groupId,
-            resetClock: metadata.resetClock,
-            lastUploaded: metadata.lastUploaded,
-            encryptKeyId: metadata.encryptKeyId
+            resetClock: extracted.metadata.resetClock,
+            lastUploaded: extracted.metadata.lastUploaded,
+            encryptKeyId: extracted.metadata.encryptKeyId
         )
 
-        // Create budget directory
-        let budgetDir = budgetDirectory(for: metadata.id)
-        try? fileManager.removeItem(at: budgetDir) // Remove existing if any
+        // Replace only the live files — deleting the whole directory here used to be harmless,
+        // but it would now silently destroy backups/ on every re-download. A fresh download does,
+        // however, supersede any revert baseline.
+        let budgetDir = budgetDirectory(for: extracted.metadata.id)
         try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+        try? fileManager.removeItem(at: latestDatabasePath(for: extracted.metadata.id))
+        try? fileManager.removeItem(at: latestMetadataPath(for: extracted.metadata.id))
 
-        // Extract database
-        let dbPath = databasePath(for: metadata.id)
-        _ = try archive.extract(dbEntry, to: dbPath)
+        let dbPath = databasePath(for: extracted.metadata.id)
+        for suffix in ["-wal", "-shm"] {
+            try? fileManager.removeItem(at: URL(fileURLWithPath: dbPath.path + suffix))
+        }
+        try? fileManager.removeItem(at: dbPath)
+        try fileManager.moveItem(at: extracted.databaseURL, to: dbPath)
 
         // Write updated metadata
         let updatedMetadataData = try JSONEncoder().encode(updatedMetadata)
-        try updatedMetadataData.write(to: metadataPath(for: metadata.id))
+        try updatedMetadataData.write(to: metadataPath(for: extracted.metadata.id))
 
         return updatedMetadata
     }
@@ -176,5 +315,22 @@ class BudgetFileManager {
     func deleteBudget(_ budgetId: String) throws {
         let budgetDir = budgetDirectory(for: budgetId)
         try fileManager.removeItem(at: budgetDir)
+    }
+}
+
+extension BudgetMetadata {
+    /// The metadata to persist after restoring this (archived) metadata over a live budget. Sync-group fields are nulled: upstream nulls them only
+    /// transiently before its re-upload registers a fresh server group, but Actuali has no upload path, so a restored fork must stay detached until the
+    /// user re-downloads. Identity fields come from the live metadata when present — the directory's live file is the source of truth for which cloud file this is.
+    func restoredOver(_ live: BudgetMetadata?) -> BudgetMetadata {
+        BudgetMetadata(
+            id: id,
+            budgetName: budgetName,
+            cloudFileId: live?.cloudFileId ?? cloudFileId,
+            groupId: nil,
+            resetClock: resetClock,
+            lastUploaded: nil,
+            encryptKeyId: live?.encryptKeyId ?? encryptKeyId
+        )
     }
 }

@@ -645,6 +645,21 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
+    
+    // MARK: - Backups
+
+    @Published private(set) var backups: [Backup] = []
+
+    /// True while the user is viewing a restored backup — the revert baseline
+    /// (db.latest.sqlite) exists. Taking a new backup consumes it, so the UI
+    /// confirms first (backupOnBackground skips entirely for the same reason).
+    var isViewingBackup: Bool { backups.contains(where: \.isLatest) }
+
+    /// True when metadata carries a cloudFileId but no groupId (a backup was restored over a synced budget).
+    /// Sync can't run again until the user re-downloads the server copy.
+    @Published private(set) var syncDetachedByRestore = false
+
+    private lazy var backupService = BackupService(fileManager: fileManager)
 
     /// Handle to the in-flight `loadLocalBudget` started in `init()`. App Intents
     /// can run before that background load has wired `syncClient`, so the headless
@@ -695,7 +710,12 @@ final class BudgetStore: ObservableObject {
     /// Budgets directory (parallel suites create real budgets there).
     func setFileManagerForTesting(_ manager: BudgetFileManager) {
         fileManager = manager
+        backupService = BackupService(fileManager: manager)
     }
+
+    /// Test-only: whether loadLocalBudget wired a sync client (it must not
+    /// for a budget detached by a backup restore).
+    var isSyncConfiguredForTesting: Bool { syncClient != nil }
     #endif
 
     private init() {
@@ -983,6 +1003,9 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+        
+        backups = []
+        syncDetachedByRestore = false
 
         // Clear everything currently loaded in memory too, so nothing from
         // the old budget lingers in the UI post-disconnect. The dataVersion
@@ -1182,15 +1205,6 @@ final class BudgetStore: ObservableObject {
             currentBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
 
-            // Configure sync client
-            let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
-                let id = HybridLogicalClock.generateNodeId()
-                UserDefaults.standard.set(id, forKey: "nodeId")
-                return id
-            }()
-
-            syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
-
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
@@ -1202,26 +1216,48 @@ final class BudgetStore: ObservableObject {
                let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) {
                 fileId = metadata.cloudFileId ?? budgetId
                 groupId = metadata.groupId ?? ""
-                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                syncDetachedByRestore = (metadata.cloudFileId != nil && groupId.isEmpty)
             } else {
+                syncDetachedByRestore = false
                 logger.notice("Could not load metadata for budget \(budgetId, privacy: .private)")
             }
 
-            if let db = database {
-                let loadedKey = EncryptionKeyManager.load(fileId: fileId)
-                try await syncClient?.configure(
-                    database: db,
-                    fileId: fileId,
-                    groupId: groupId,
-                    encryptionKey: loadedKey?.key,
-                    keyId: loadedKey?.keyId
-                )
-                logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+            if syncDetachedByRestore {
+                // A restored backup: the server still has the old sync group,
+                // so any sync with our nulled groupId earns a 400
+                // file-has-reset and an endless retry loop. Leave sync
+                // unconfigured until a re-download writes a fresh groupId.
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                syncState = .idle
+                logger.notice("Budget detached by restore - sync not configured")
             } else {
-                logger.error("Database is nil, cannot configure sync")
-            }
+                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
+                    let id = HybridLogicalClock.generateNodeId()
+                    UserDefaults.standard.set(id, forKey: "nodeId")
+                    return id
+                }()
 
-            subscribeToSyncState()
+                syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
+
+                if let db = database {
+                    let loadedKey = EncryptionKeyManager.load(fileId: fileId)
+                    try await syncClient?.configure(
+                        database: db,
+                        fileId: fileId,
+                        groupId: groupId,
+                        encryptionKey: loadedKey?.key,
+                        keyId: loadedKey?.keyId
+                    )
+                    logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+                } else {
+                    logger.error("Database is nil, cannot configure sync")
+                }
+
+                subscribeToSyncState()
+            }
 
             refreshPayeeLocationSupport()
 
@@ -1321,6 +1357,87 @@ final class BudgetStore: ObservableObject {
             guard self.database === database else { return }
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
+    }
+    
+    // MARK: - Backup Actions
+
+    func refreshBackups() async {
+        guard let budgetId = currentBudgetId else {
+            backups = []
+            return
+        }
+        backups = await backupService.availableBackups(budgetId: budgetId)
+    }
+
+    func makeBackupNow() async {
+        guard let budgetId = currentBudgetId else { return }
+        do {
+            try await backupService.makeBackup(budgetId: budgetId, database: database)
+            await refreshBackups()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    /// Automatic backup on app-background. Skipped while viewing a backup.
+    /// Backgrounding happens seconds after a restore (the user checks another app),
+    /// and makeBackup's first step would destroy the revert baseline.
+    func backupOnBackground() {
+        guard let budgetId = currentBudgetId, let database else { return }
+        let viewingBackup = FileManager.default.fileExists(
+            atPath: fileManager.latestDatabasePath(for: budgetId).path
+        )
+        guard !viewingBackup else { return }
+        let service = backupService
+        Task { [weak self] in
+            try? await service.makeBackup(budgetId: budgetId, database: database)
+            await self?.refreshBackups()
+        }
+    }
+
+    func restoreBackup(_ backupId: String) async {
+        guard let budgetId = currentBudgetId else { return }
+        isLoading = true
+        error = nil
+
+        // Drop the sync client and database references before loadBackup swaps
+        // files. Any sync still running inside the old actor keeps the old
+        // database open: its baseline snapshot goes through that queue's write
+        // serialization (VACUUM INTO, never a raw file copy racing a write),
+        // and post-swap writes land on the now-unlinked old inode (harmlessly
+        // discarded). We deliberately do NOT flushPendingSync() here: that
+        // awaits the network push and would hang this local restore for the
+        // URLSession timeout when the server is unreachable.
+        let openDatabase = database
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
+        do {
+            try await backupService.loadBackup(
+                budgetId: budgetId, backupId: backupId, database: openDatabase
+            )
+        } catch {
+            self.error = error.localizedDescription
+        }
+
+        // Reopen even after a failure: the live files are still (or again) a
+        // valid budget, and the UI needs a database either way.
+        await loadLocalBudget(budgetId)
+        await refreshBackups()
+        isLoading = false
+    }
+    
+    /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
+    /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
+    func backupFileURL(_ backupId: String) -> URL? {
+        guard let budgetId = currentBudgetId else { return nil }
+        return fileManager.backupPath(for: budgetId, name: backupId)
+    }
+
+    func revertToLatest() async {
+        await restoreBackup(Backup.latest.id)
     }
 
     // MARK: - Payees
