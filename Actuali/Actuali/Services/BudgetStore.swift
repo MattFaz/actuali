@@ -205,6 +205,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// How transaction lists are presented (flat list vs grouped by date).
+    /// Persisted to UserDefaults, defaults to flat list.
+    @Published var transactionDisplayMode: TransactionDisplayMode = .flat {
+        didSet {
+            UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
+        }
+    }
+
     /// Whether Budget rows show a spent-vs-available progress bar.
     /// Persisted to UserDefaults, defaults to on.
     @Published var showBudgetProgressBars: Bool = true {
@@ -746,6 +754,7 @@ final class BudgetStore: ObservableObject {
            let style = BudgetDisplayStyle(rawValue: raw) {
             _budgetDisplayStyle = Published(initialValue: style)
         }
+        _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard

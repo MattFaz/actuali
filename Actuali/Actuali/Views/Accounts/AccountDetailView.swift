@@ -153,48 +153,48 @@ struct AccountDetailView: View {
                 noteSection
             }
 
-            Section("Recent Transactions") {
-                if let pager, pager.transactions.isEmpty {
-                    Text(searchQuery != nil
-                        ? "No matching transactions"
-                        : budgetStore.hideClearedTransactions
-                            ? "No uncleared transactions"
-                            : "No transactions")
-                        .foregroundStyle(.secondary)
-                } else if let pager {
-                    ForEach(pager.transactions) { transaction in
-                        Button {
-                            editingTransaction = transaction
-                        } label: {
-                            TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+            if let pager, !pager.transactions.isEmpty {
+                if budgetStore.transactionDisplayMode == .groupedByDate {
+                    let groups = pager.transactions.groupedByDate()
+                    ForEach(groups) { group in
+                        Section(group.title) {
+                            ForEach(group.transactions) { transaction in
+                                TransactionListRow(transaction: transaction,
+                                                   showAccount: false,
+                                                   showDate: false,
+                                                   editing: $editingTransaction)
                             }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
+                            // The sentinel rides in the last date section so
+                            // grouped mode doesn't grow a headerless section
+                            // (and its gap) of its own.
+                            if pager.hasMore, group.id == groups.last?.id {
+                                TransactionPagingSentinel(pager: pager)
                             }
-                            .tint(.yellow)
                         }
                     }
-                    if pager.hasMore {
-                        // Sentinel row: appearing near the bottom of the list
-                        // pulls in the next page.
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                } else {
+                    Section("Recent Transactions") {
+                        ForEach(pager.transactions) { transaction in
+                            TransactionListRow(transaction: transaction,
+                                               showAccount: false,
+                                               editing: $editingTransaction)
                         }
-                        .task { await pager.loadNextPage() }
+                        if pager.hasMore {
+                            TransactionPagingSentinel(pager: pager)
+                        }
+                    }
+                }
+            } else {
+                // Header stays put while the first page is still loading, so
+                // the screen doesn't reflow once the rows land.
+                Section("Recent Transactions") {
+                    if pager != nil {
+                        Text(searchQuery != nil
+                            ? "No matching transactions"
+                            : budgetStore.hideClearedTransactions
+                                ? "No uncleared transactions"
+                                : "No transactions")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -212,6 +212,9 @@ struct AccountDetailView: View {
                         Label("Import from Wallet", systemImage: "wallet.pass")
                     }
                 }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
