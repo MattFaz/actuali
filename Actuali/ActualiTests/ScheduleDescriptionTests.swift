@@ -13,6 +13,10 @@ struct ScheduleDescriptionTests {
         merged.merge(json) { _, new in new }
         return RecurConfig(json: merged)!
     }
+    
+    private func pattern(_ type: String, _ value: Int) -> [String: Any] {
+        ["type": type, "value": value]
+    }
 
     @Test func daily() {
         #expect(ScheduleDescription.recurring(config(["frequency": "daily"])) == "Every day")

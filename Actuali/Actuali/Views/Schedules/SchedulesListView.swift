@@ -10,6 +10,7 @@ struct SchedulesListView: View {
 
     @State private var searchText = ""
     @State private var showCompleted = false
+    @State private var isAddingSchedule = false
 
     var body: some View {
         Group {
@@ -19,11 +20,15 @@ struct SchedulesListView: View {
                 List {
                     Section {
                         ForEach(visibleSchedules) { schedule in
-                            ScheduleRow(
-                                schedule: schedule,
-                                status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
-                                accountName: accountName(schedule),
-                                payeeName: payeeName(schedule))
+                            NavigationLink {
+                                ScheduleEditView(editing: schedule, budgetStore: budgetStore)
+                            } label: {
+                                ScheduleRow(
+                                    schedule: schedule,
+                                    status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
+                                    accountName: accountName(schedule),
+                                    payeeName: payeeName(schedule))
+                            }
                         }
                     } footer: {
                         if completedCount > 0 && !showCompleted {
@@ -44,9 +49,27 @@ struct SchedulesListView: View {
                     Label("Options", systemImage: "ellipsis.circle")
                 }
             }
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    isAddingSchedule = true
+                } label: {
+                    Label("Add Schedule", systemImage: "plus")
+                }
+                .disabled(budgetStore.accounts.allSatisfy(\.closed))
+            }
         }
         .refreshable { await budgetStore.loadSchedules() }
         .task { await budgetStore.loadSchedules() }
+        .sheet(isPresented: $isAddingSchedule) {
+            NavigationStack {
+                ScheduleEditView(budgetStore: budgetStore)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { isAddingSchedule = false }
+                        }
+                    }
+            }
+        }
     }
 
     @ViewBuilder
@@ -54,10 +77,13 @@ struct SchedulesListView: View {
         if !searchText.isEmpty {
             ContentUnavailableView.search(text: searchText)
         } else {
-            ContentUnavailableView(
-                "No Scheduled Transactions",
-                systemImage: "calendar.badge.clock",
-                description: Text("Schedules you create in Actual appear here."))
+            ContentUnavailableView {
+                Label("No Scheduled Transactions", systemImage: "calendar.badge.clock")
+            } description: {
+                Text("Create a schedule to track a recurring bill or paycheck.")
+            } actions: {
+                Button("New Schedule") { isAddingSchedule = true }
+            }
         }
     }
 

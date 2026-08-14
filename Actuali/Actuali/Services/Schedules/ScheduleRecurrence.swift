@@ -193,6 +193,32 @@ enum ScheduleRecurrence {
 }
 
 extension RecurConfig {
+    /// Build a config directly. `init?(json:)` stays the parsing entry point;
+    /// this is what the editor writes through.
+    init(
+        frequency: Frequency,
+        interval: Int = 1,
+        start: DayDate,
+        patterns: [Pattern] = [],
+        skipWeekend: Bool = false,
+        weekendSolveMode: String = "after",
+        endMode: String = "never",
+        endOccurrences: Int? = nil,
+        endDate: DayDate? = nil
+    ) {
+        self.frequency = frequency
+        self.interval = max(1, interval)
+        self.start = start
+        // Patterns only mean anything for a monthly recurrence; carrying them
+        // on any other frequency would change which sub-rules are generated.
+        self.patterns = frequency == .monthly ? patterns : []
+        self.skipWeekend = skipWeekend
+        self.weekendSolveMode = weekendSolveMode
+        self.endMode = endMode
+        self.endOccurrences = endOccurrences
+        self.endDate = endDate
+    }
+    
     /// Serialize back into the shape loot-core stores inside a rule's date
     /// condition, mirroring the picker's `unparseConfig`: interval and
     /// occurrence counts are clamped to sane positives at the boundary, and
@@ -210,10 +236,36 @@ extension RecurConfig {
         // Patterns only mean anything for monthly recurrences; upstream omits
         // the key entirely otherwise.
         if !patterns.isEmpty {
-            json["patterns"] = patterns.map { ["type": $0.type, "value": $0.value] }
+            json["patterns"] = patterns.map { pattern -> [String: Any] in
+                ["type": pattern.type, "value": pattern.value]
+            }
         }
         if let endOccurrences { json["endOccurrences"] = max(1, endOccurrences) }
         if let endDate { json["endDate"] = endDate.iso }
         return json
+    }
+}
+
+extension ScheduleRecurrence {
+    /// The next `count` occurrences on or after `today`, for the editor's
+    /// preview. Port of loot-core `schedule/get-upcoming-dates`.
+    static func upcomingDates(
+        for config: RecurConfig,
+        count: Int,
+        from today: DayDate = .today()
+    ) -> [DayDate] {
+        var dates: [DayDate] = []
+        var cursor = today
+
+        while dates.count < count {
+            guard let next = nextOccurrence(config: config, onOrAfter: cursor) else { break }
+            // `nextOccurrence` falls back to the LAST occurrence once a
+            // bounded schedule has run out, which shows up here as a date that
+            // stops advancing. Stop rather than repeat it forever.
+            if let previous = dates.last, next <= previous { break }
+            dates.append(next)
+            cursor = next.adding(days: 1)
+        }
+        return dates
     }
 }
