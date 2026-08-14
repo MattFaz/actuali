@@ -59,6 +59,29 @@ struct BudgetMonthOverspentCountTests {
         #expect(makeMonth(availables: [5000, 0]).overspentCategories.isEmpty)
     }
 
+    @Test func checkInSeparatesUnassignedAndApproachingCategories() {
+        var unassigned = makeCategory(id: "unassigned", available: 0)
+        unassigned.budgeted = 0
+        unassigned.spent = 0
+
+        var approaching = makeCategory(id: "approaching", available: 1000)
+        approaching.budgeted = 10000
+        approaching.spent = -9000
+
+        var healthy = makeCategory(id: "healthy", available: 6000)
+        healthy.budgeted = 10000
+        healthy.spent = -4000
+
+        let month = BudgetMonth(
+            month: "2026-07",
+            categoryBudgets: [healthy, approaching, unassigned],
+            toBudget: 5000
+        )
+
+        #expect(month.unassignedCategories.map(\.categoryId) == ["unassigned"])
+        #expect(month.approachingLimitCategories.map(\.categoryId) == ["approaching"])
+    }
+
     // MARK: - rolledOverOverspending
 
     @Test func negativeCarryoverIsRolledOverOverspending() {

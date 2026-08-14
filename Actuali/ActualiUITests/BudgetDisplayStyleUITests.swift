@@ -22,6 +22,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
+        XCTAssertTrue(app.staticTexts["Budget Check-In"].exists,
+                      "the month guidance should stay visible above the category groups")
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "clean rows carry a 'Budgeted:' caption")
     }

@@ -124,39 +124,7 @@ struct BudgetView: View {
                         .padding(.bottom, 8)
 
                         List {
-                            // Explains the tab badge (GH #138): which categories
-                            // are overspent, including overspending rolled over
-                            // from earlier months. Shares the badge's Settings
-                            // toggle — off means no overspending callouts at all.
-                            if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
-                                Section {
-                                    NavigationLink {
-                                        OverspentCategoriesView()
-                                    } label: {
-                                        Label {
-                                            Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
-                                        } icon: {
-                                            Image(systemName: "exclamationmark.circle.fill")
-                                                .foregroundStyle(.red)
-                                        }
-                                    }
-                                }
-                            }
-
-                            if budgetStore.uncategorizedCount > 0 {
-                                Section {
-                                    NavigationLink {
-                                        UncategorizedTransactionsView()
-                                    } label: {
-                                        Label {
-                                            Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
-                                        } icon: {
-                                            Image(systemName: "questionmark.circle.fill")
-                                                .foregroundStyle(.orange)
-                                        }
-                                    }
-                                }
-                            }
+                            BudgetCheckInSection(budget: budget)
 
                             ForEach(groupedCategories, id: \.id) { group in
                                 let isCollapsed = collapsedGroups.contains(group.id)
@@ -572,6 +540,170 @@ private struct TwoLineName: View {
                 .font(font)
                 .lineLimit(2)
                 .minimumScaleFactor(minimumScaleFactor)
+        }
+    }
+}
+
+struct BudgetCheckInSection: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let budget: BudgetMonth
+
+    private var hasIssues: Bool {
+        (budget.toBudget ?? 0) > 0
+            || (budgetStore.showOverspentBadge && budget.overspentCount > 0)
+            || budgetStore.uncategorizedCount > 0
+            || !budget.unassignedCategories.isEmpty
+            || !budget.approachingLimitCategories.isEmpty
+    }
+
+    var body: some View {
+        Section {
+            if let toBudget = budget.toBudget, toBudget > 0 {
+                NavigationLink {
+                    BudgetGuidanceCategoryList(
+                        title: "Ready to Assign",
+                        message: "Choose categories for the money still waiting to be assigned.",
+                        categories: budget.unassignedCategories.isEmpty
+                            ? budget.categoryBudgets
+                            : budget.unassignedCategories
+                    )
+                } label: {
+                    Label {
+                        LabeledContent("Ready to Assign") {
+                            Text(budgetStore.displayBalance(toBudget)).foregroundStyle(.green)
+                        }
+                    } icon: {
+                        Image(systemName: "dollarsign.arrow.circlepath").foregroundStyle(.green)
+                    }
+                }
+            }
+
+            if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
+                NavigationLink {
+                    OverspentCategoriesView()
+                } label: {
+                    Label(
+                        budget.isTrackingBudget
+                            ? "\(budget.overspentCount) over budget"
+                            : "\(budget.overspentCount) overspent",
+                        systemImage: "exclamationmark.circle.fill"
+                    )
+                    .foregroundStyle(.red)
+                }
+            }
+
+            if budgetStore.uncategorizedCount > 0 {
+                NavigationLink {
+                    UncategorizedTransactionsView()
+                } label: {
+                    Label(
+                        "\(budgetStore.uncategorizedCount) uncategorized",
+                        systemImage: "questionmark.circle.fill"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+
+            if !budget.unassignedCategories.isEmpty {
+                NavigationLink {
+                    BudgetGuidanceCategoryList(
+                        title: budget.isTrackingBudget ? "No Budget Set" : "Not Funded",
+                        message: budget.isTrackingBudget
+                            ? "These categories have no budget or activity this month."
+                            : "These categories have no assigned or carried money this month.",
+                        categories: budget.unassignedCategories
+                    )
+                } label: {
+                    Label(
+                        budget.isTrackingBudget
+                            ? "\(budget.unassignedCategories.count) without a budget"
+                            : "\(budget.unassignedCategories.count) not funded",
+                        systemImage: "circle.dashed"
+                    )
+                }
+            }
+
+            if !budget.approachingLimitCategories.isEmpty {
+                NavigationLink {
+                    BudgetGuidanceCategoryList(
+                        title: budget.isTrackingBudget ? "Near Budget" : "Almost Spent",
+                        message: "These categories have used at least 80% of their available amount.",
+                        categories: budget.approachingLimitCategories
+                    )
+                } label: {
+                    Label(
+                        "\(budget.approachingLimitCategories.count) nearing the limit",
+                        systemImage: "gauge.with.dots.needle.67percent"
+                    )
+                    .foregroundStyle(.orange)
+                }
+            }
+
+            if !hasIssues {
+                Label("Budget looks good", systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(.green)
+            }
+        } header: {
+            Text("Budget Check-In")
+        } footer: {
+            Text(budget.isTrackingBudget
+                ? "Review the plan against this month's actual activity."
+                : "Resolve the important items before assigning the rest of the month.")
+        }
+    }
+}
+
+/// A focused check-in result. Selecting a category opens the same actionable
+/// detail sheet as the main budget table, so guidance always ends in a real
+/// resolution path rather than a dead-end status list.
+struct BudgetGuidanceCategoryList: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let title: String
+    let message: String
+    let categories: [CategoryBudget]
+    @State private var selectedCategory: CategoryBudget?
+
+    var body: some View {
+        List {
+            Section {
+                Text(message)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                ForEach(categories) { category in
+                    Button {
+                        selectedCategory = category
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            HStack {
+                                Text(category.categoryName)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Text(budgetStore.displayBalance(category.available))
+                                    .foregroundStyle(category.isOverspent ? .red : .secondary)
+                                    .monospacedDigit()
+                            }
+                            Text(category.groupName)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                            if category.showsProgressBar {
+                                CategoryProgressBar(
+                                    fraction: category.progressFraction,
+                                    state: category.progressState
+                                )
+                            }
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Details for \(category.categoryName)")
+                }
+            }
+        }
+        .readableWidth()
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
+        .sheet(item: $selectedCategory) { category in
+            CategoryBudgetDetailSheet(category: category)
         }
     }
 }

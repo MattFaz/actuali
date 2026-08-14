@@ -29,6 +29,22 @@ struct BudgetMonth: Identifiable, Hashable {
             .sorted { $0.available < $1.available }
     }
 
+    /// Categories with neither assigned money nor carried balance/activity.
+    /// This is a check-in prompt, not a target calculation.
+    var unassignedCategories: [CategoryBudget] {
+        categoryBudgets
+            .filter { $0.progressState == .unassigned }
+            .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
+    }
+
+    /// Healthy categories that have consumed at least 80% of their available
+    /// capacity. Overspent and fully spent categories have separate guidance.
+    var approachingLimitCategories: [CategoryBudget] {
+        categoryBudgets
+            .filter { !$0.isOverspent && $0.available > 0 && $0.spent < 0 && $0.progressFraction >= 0.8 }
+            .sorted { $0.progressFraction > $1.progressFraction }
+    }
+
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
