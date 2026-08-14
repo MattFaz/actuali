@@ -2160,34 +2160,8 @@ class BudgetDatabase {
 
     // MARK: - Rules
 
-    /// Fetch all non-tombstoned rules from the rules table.
-    /// Returns an empty array if the rules table doesn't exist.
-    func fetchRules() throws -> [Rule] {
-        try dbQueue.read { db in
-            guard try db.tableExists("rules") else { return [] }
-
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, stage, conditions_op, conditions, actions
-                FROM rules
-                WHERE tombstone = 0 OR tombstone IS NULL
-                """)
-
-            return rows.compactMap { row in
-                let id: String? = row["id"]
-                guard let id else { return nil }
-                do {
-                    return try Rule.parse(
-                        id: id,
-                        stage: row["stage"],
-                        conditionsOp: row["conditions_op"],
-                        conditionsJSON: row["conditions"],
-                        actionsJSON: row["actions"]
-                    )
-                } catch {
-                    return nil
-                }
-            }
-        }
+    func rulesTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("rules") }
     }
     
     /// Budget-level context the rules engine needs for conditions it can't
@@ -2237,6 +2211,53 @@ class BudgetDatabase {
                 """, arguments: [name])
             guard let row, let id: String = row["id"] else { return nil }
             return Payee(id: id, name: row["name"] ?? name, transferAccountId: row["transfer_acct"])
+        }
+    }
+
+    /// All live rules. Returns [] when the budget file has no `rules` table.
+    func fetchRules() throws -> [Rule] {
+        try dbQueue.read { db in try Self.liveRules(db) }
+    }
+
+    /// Live rules in the order the engine runs them — what the Rules screen shows,
+    /// matching upstream's `rules-get` (which returns `rankRules(...)`).
+    func fetchRulesRanked() async throws -> [Rule] {
+        try await dbQueue.read { db in RuleRanker.rank(try Self.liveRules(db)) }
+    }
+
+    private static func liveRules(_ db: Database) throws -> [Rule] {
+        guard try db.tableExists("rules") else { return [] }
+
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT id, stage, conditions_op, conditions, actions
+            FROM rules
+            WHERE tombstone = 0 OR tombstone IS NULL
+            """)
+
+        return rows.compactMap { row in
+            guard let id: String = row["id"] else { return nil }
+            // A rule we can't parse is a rule we must not silently half-apply:
+            // upstream drops invalid rules on load too (`makeRule` returns null).
+            return try? Rule.parse(
+                id: id,
+                stage: row["stage"],
+                conditionsOp: row["conditions_op"],
+                conditionsJSON: row["conditions"],
+                actionsJSON: row["actions"]
+            )
+        }
+    }
+
+    /// Rule ids a schedule owns. Upstream refuses to delete these
+    /// (`deleteRule` returns false when a schedule points at the rule), and the
+    /// list badges them so it's clear why.
+    func scheduleOwnedRuleIds() throws -> Set<String> {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules") else { return [] }
+            return try Set(String.fetchAll(db, sql: """
+                SELECT rule FROM schedules
+                WHERE rule IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
+                """))
         }
     }
 

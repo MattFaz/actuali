@@ -15,6 +15,7 @@ enum SyncError: LocalizedError, Equatable {
     case serverError(String)
     case budgetTableMissing
     case notesTableMissing
+    case rulesTableMissing
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ enum SyncError: LocalizedError, Equatable {
             return "This budget file has no budget table to write to."
         case .notesTableMissing:
             return "This budget file has no notes table to write to."
+        case .rulesTableMissing:
+            return "This budget file has no rules table to write to."
         }
     }
 }
@@ -651,6 +654,62 @@ actor SyncClient {
 
         // 4. Push in the background — the Save button awaits this write, and
         //    an unreachable server must not hold the sheet open (issue #125).
+        scheduleAutomaticSync()
+    }
+    
+    /// Create or update a rule (optimistic local-first). Mirrors upstream
+    /// `rule-add` / `rule-update` (loot-core server/rules/app.ts): the whole row
+    /// is written every time — stage, conditionsOp, conditions and actions — so
+    /// a rule edited on two devices converges on one client's complete rule
+    /// rather than an interleaving of both, which is what upstream's `db.update`
+    /// of the same four columns produces.
+    ///
+    /// Requires the `rules` table: without it `applyMessages` would skip the
+    /// local apply as unknown schema and the save would look like it worked.
+    func saveRule(_ rule: Rule) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard try database.rulesTableExists() else { throw SyncError.rulesTableMissing }
+
+        logger.debug("saveRule() - id: \(rule.id, privacy: .private), conditions: \(rule.conditions.count, privacy: .public), actions: \(rule.actions.count, privacy: .public)")
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        let messages = try await messageGenerator.messagesForInsert(rule)
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving from
+        //    another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
+    }
+
+    /// Tombstone a rule (optimistic local-first), upstream `rule-delete`.
+    /// The caller is responsible for refusing to delete a schedule's rule —
+    /// see `BudgetStore.deleteRule`.
+    func deleteRule(_ rule: Rule) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard try database.rulesTableExists() else { throw SyncError.rulesTableMissing }
+
+        logger.debug("deleteRule() - id: \(rule.id, privacy: .private)")
+
+        let message = try await messageGenerator.messageForDelete(rule)
+        try database.applyMessages([message])
+
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
         scheduleAutomaticSync()
     }
 
