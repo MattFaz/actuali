@@ -2189,6 +2189,56 @@ class BudgetDatabase {
             }
         }
     }
+    
+    /// Budget-level context the rules engine needs for conditions it can't
+    /// answer from the transaction row (upstream `prepareTransactionForRules`).
+    func ruleContext() throws -> RuleContext {
+        try dbQueue.read { db in
+            let offBudget = try Set(String.fetchAll(
+                db, sql: "SELECT id FROM accounts WHERE offbudget = 1"
+            ))
+
+            var groups: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, cat_group FROM categories
+                WHERE tombstone = 0 OR tombstone IS NULL
+                """) {
+                if let id: String = row["id"], let group: String = row["cat_group"] {
+                    groups[id] = group
+                }
+            }
+
+            var payeeNames: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, name FROM payees
+                WHERE tombstone = 0 OR tombstone IS NULL
+                """) {
+                if let id: String = row["id"], let name: String = row["name"] {
+                    payeeNames[id] = name
+                }
+            }
+
+            return RuleContext(
+                offBudgetAccountIds: offBudget,
+                categoryGroupIds: groups,
+                payeeNames: payeeNames
+            )
+        }
+    }
+
+    /// The live payee with this name, case-insensitively — how a `payee_name`
+    /// action resolves to an id before we fall back to creating one.
+    func payee(named name: String) throws -> Payee? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT id, name, transfer_acct FROM payees
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND name = ? COLLATE NOCASE
+                LIMIT 1
+                """, arguments: [name])
+            guard let row, let id: String = row["id"] else { return nil }
+            return Payee(id: id, name: row["name"] ?? name, transferAccountId: row["transfer_acct"])
+        }
+    }
 
     // MARK: - Schedules
 
