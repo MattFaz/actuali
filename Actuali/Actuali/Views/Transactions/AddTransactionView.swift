@@ -501,7 +501,10 @@ struct AddTransactionView: View {
             BudgetStore.SplitLineForm(
                 childId: child.id,
                 categoryId: child.categoryId,
-                amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
+                // Signed relative to the parent so a refund line inside a
+                // spend split loads (and saves back) as negative (GH #216).
+                amount: SplitEntryMath.relativeAmountString(
+                    childCents: child.amount, parentCents: editing.amount),
                 notes: child.notes ?? "",
                 payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
             )
@@ -705,6 +708,15 @@ enum SplitEntryMath {
     static func amountString(fromCents cents: Int) -> String {
         "\(cents / 100).\(String(format: "%02d", cents % 100))"
     }
+
+    /// Form-relative amount text for an existing child. The form keeps line
+    /// amounts unsigned and applies the expense/income sign on save, so a
+    /// child running opposite to its parent (a refund inside a spend split,
+    /// GH #216) must load as negative to round-trip through that flip.
+    static func relativeAmountString(childCents: Int, parentCents: Int) -> String {
+        let relative = parentCents < 0 ? -childCents : childCents
+        return String(format: "%.2f", Double(relative) / 100.0)
+    }
 }
 
 /// One editable split line: a category picked through a sheet and an amount.
@@ -738,7 +750,9 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 Spacer()
-                AmountInputField(text: $line.amount)
+                // Negative flips the line against the expense/income toggle:
+                // the only way to put a refund inside a spend split (GH #216).
+                AmountInputField(text: $line.amount, allowsNegative: true)
                     .frame(width: 110)
             }
             if line.amount.isEmpty, let remaining = remainingCents, remaining > 0 {

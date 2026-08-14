@@ -80,11 +80,33 @@ struct BudgetStoreSplitPlanTests {
         }
     }
 
-    @Test func splitLineWithNonPositiveAmountIsRejected() {
+    @Test func splitLineWithZeroAmountIsRejected() {
         #expect(throws: BudgetStoreError.invalidAmount) {
             try BudgetStore.plan(for: form(
                 amount: "10.00",
                 splits: [line("cat-a", "0"), line("cat-b", "10.00")]
+            ))
+        }
+    }
+
+    @Test func splitAllowsOppositeSignLines() throws {
+        // A refund/credit line alongside spend lines (GH #216): the negative
+        // form amount flips against the expense sign into a positive child.
+        let plan = try BudgetStore.plan(for: form(
+            type: .expense, amount: "20.00",
+            splits: [line("cat-a", "30.00"), line("cat-b", "-10.00")]
+        ))
+        #expect(plan == .split(amountCents: -2000, lines: [
+            .init(categoryId: "cat-a", amountCents: -3000, notes: nil),
+            .init(categoryId: "cat-b", amountCents: 1000, notes: nil)
+        ]))
+    }
+
+    @Test func mixedSignLinesMustStillSumToTotal() {
+        #expect(throws: BudgetStoreError.splitAmountMismatch) {
+            try BudgetStore.plan(for: form(
+                amount: "20.00",
+                splits: [line("cat-a", "30.00"), line("cat-b", "-5.00")]
             ))
         }
     }

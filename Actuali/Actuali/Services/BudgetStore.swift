@@ -2011,8 +2011,9 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Resolve an expense/income form to `.standard`, or `.split` when split
-    /// lines are present: every line must parse to a positive amount and the
-    /// lines must add up exactly to the total.
+    /// lines are present: every line must parse to a non-zero amount and the
+    /// lines must add up exactly to the total. Negative lines run opposite
+    /// to the transaction's direction — a refund inside a spend (GH #216).
     private static func planStandardOrSplit(
         _ form: TransactionForm,
         amountCents: Int,
@@ -2027,7 +2028,7 @@ final class BudgetStore: ObservableObject {
         let lines = try form.splits.map { line in
             guard let dollars = Double(line.amount),
                   let cents = Transaction.cents(fromDollars: dollars),
-                  cents > 0 else {
+                  cents != 0 else {
                 throw BudgetStoreError.invalidAmount
             }
             let payeeName = line.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
