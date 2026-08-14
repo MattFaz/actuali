@@ -1171,6 +1171,9 @@ final class BudgetStore: ObservableObject {
             if let code = fetchedCurrencyCode, !code.isEmpty {
                 currencyCode = code
             }
+            
+            upcomingScheduledTransactionLength = fetchedUpcomingLength
+            
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
