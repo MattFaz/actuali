@@ -2476,7 +2476,7 @@ class BudgetDatabase {
                 ORDER BY t.date DESC, t.sort_order DESC
                 LIMIT ?
                 """, arguments: [scheduleId, limit])
-            return rows.map(Self.transaction(from:))
+            return rows.map(Self.mapTransaction)
         }
     }
 

@@ -134,6 +134,28 @@ struct SchedulesListView: View {
                     }
             }
         }
+        .confirmationDialog(
+            pendingDelete.map { _ in "Delete this schedule?" } ?? "",
+            isPresented: Binding(
+                get: { pendingDelete != nil },
+                set: { if !$0 { pendingDelete = nil } }),
+            titleVisibility: .visible
+        ) {
+            Button("Delete Schedule", role: .destructive) {
+                guard let schedule = pendingDelete else { return }
+                run { try await budgetStore.deleteSchedule(schedule) }
+            }
+        } message: {
+            Text("Transactions this schedule already created are kept.")
+        }
+        .alert("Action Failed", isPresented: Binding(
+            get: { actionError != nil },
+            set: { if !$0 { actionError = nil } })
+        ) {
+            Button("OK") {}
+        } message: {
+            Text(actionError ?? "")
+        }
     }
 
     @ViewBuilder

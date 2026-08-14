@@ -25,6 +25,8 @@ struct ScheduleEditView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingDelete = false
+    
+    @State private var linkedTransactions: [Transaction] = []
 
     /// "Use the budget default" is modelled as an empty string rather than nil
     /// so it can ride in a `Picker` selection.
@@ -114,7 +116,37 @@ struct ScheduleEditView: View {
             } footer: {
                 Text("Automatically added transactions are created on your server when the app opens, if “Post Scheduled Transactions” is on in Settings.")
             }
-
+            if let editing {
+                Section("Linked Transactions") {
+                    if linkedTransactions.isEmpty {
+                        Text("No transactions linked yet.")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(linkedTransactions) { transaction in
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(transaction.payeeName ?? "No payee")
+                                    Text(transaction.dateFormatted)
+                                        .font(.caption)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                Text(budgetStore.formatCurrency(transaction.amount))
+                                    .monospacedDigit()
+                            }
+                            .swipeActions {
+                                Button("Unlink") {
+                                    Task {
+                                        try? await budgetStore.linkTransactions([transaction], to: nil)
+                                        await loadLinkedTransactions(editing.id)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                .task { await loadLinkedTransactions(editing.id) }
+            }
             if isEditing {
                 Section {
                     Button("Delete Schedule", role: .destructive) { confirmingDelete = true }
@@ -294,5 +326,9 @@ struct ScheduleEditView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+    
+    private func loadLinkedTransactions(_ scheduleId: String) async {
+        linkedTransactions = await budgetStore.fetchScheduleTransactions(scheduleId)
     }
 }
