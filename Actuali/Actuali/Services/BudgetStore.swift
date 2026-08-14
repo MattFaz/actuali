@@ -2778,6 +2778,23 @@ final class BudgetStore: ObservableObject {
         try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
         await refreshDataOnly()
     }
+    
+    /// Scan transaction history for repeating payments. Runs off the main
+    /// actor — the sweep is CPU-bound and would otherwise stutter the UI.
+    func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
+        guard let database else { return [] }
+        let accounts = self.accounts
+        return await Task.detached(priority: .userInitiated) {
+            (try? ScheduleDiscovery.discover(
+                accounts: accounts,
+                loadCandidates: { accountId, notBefore in
+                    try database.fetchDiscoveryTransactions(
+                        accountId: accountId, notBefore: notBefore)
+                },
+                latestDate: { try database.latestTransactionDate(accountId: $0) }))
+                ?? []
+        }.value
+    }
 
     // MARK: - Budget
 

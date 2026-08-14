@@ -2479,6 +2479,60 @@ class BudgetDatabase {
             return rows.map(Self.mapTransaction)
         }
     }
+    
+    /// One account's transactions that are eligible to form a schedule.
+    ///
+    /// Mirrors the filters in upstream's `getTransactions`: already-scheduled
+    /// rows are excluded, transfers are excluded (they pair two accounts and
+    /// aren't a bill), and split children are excluded so a split doesn't read
+    /// as several independent payments.
+    func fetchDiscoveryTransactions(
+        accountId: String,
+        notBefore: Int
+    ) throws -> [ScheduleDiscovery.Candidate] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT t.id, t.date, t.amount, pm.targetId AS payee_id
+                FROM transactions t
+                JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                WHERE t.acct = ?
+                  AND t.date >= ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.schedule IS NULL
+                  AND (t.isChild = 0 OR t.isChild IS NULL)
+                  AND t.transferred_id IS NULL
+                  AND p.transfer_acct IS NULL
+                ORDER BY t.date ASC
+                """, arguments: [accountId, notBefore])
+
+            return rows.compactMap { row in
+                guard let id: String = row["id"],
+                      let rawDate: Int = row["date"],
+                      let date = DayDate(yyyymmdd: rawDate),
+                      let payeeId: String = row["payee_id"],
+                      let amount: Int = row["amount"]
+                else { return nil }
+                return ScheduleDiscovery.Candidate(
+                    id: id, date: date, amount: amount,
+                    payeeId: payeeId, accountId: accountId)
+            }
+        }
+    }
+
+    /// Latest transaction date on an account — the anchor every pattern sweep
+    /// measures back from.
+    func latestTransactionDate(accountId: String) throws -> DayDate? {
+        try dbQueue.read { db in
+            let raw = try Int.fetchOne(db, sql: """
+                SELECT date FROM transactions
+                WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+                  AND parent_id IS NULL
+                ORDER BY date DESC LIMIT 1
+                """, arguments: [accountId])
+            return raw.flatMap { DayDate(yyyymmdd: $0) }
+        }
+    }
 
     // MARK: - Preferences
 

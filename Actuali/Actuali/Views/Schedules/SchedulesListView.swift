@@ -109,10 +109,15 @@ struct SchedulesListView: View {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Toggle("Show Completed", isOn: $showCompleted)
+
+                    NavigationLink {
+                        DiscoverSchedulesView()
+                    } label: {
+                        Label("Find Schedules", systemImage: "sparkle.magnifyingglass")
+                    }
                 } label: {
                     Label("Options", systemImage: "ellipsis.circle")
-                }
-            }
+                }            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isAddingSchedule = true
