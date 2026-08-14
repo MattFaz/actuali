@@ -104,16 +104,30 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         groceries.tap()
 
         let actions = app.buttons["Actions, expanded"]
+        let collapsedActions = app.buttons["Actions, collapsed"]
+        if collapsedActions.waitForExistence(timeout: 2) {
+            collapsedActions.tap()
+        }
         XCTAssertTrue(actions.waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Assign Money"].exists)
         actions.tap()
-        XCTAssertTrue(app.buttons["Actions, collapsed"].waitForExistence(timeout: 5))
+        XCTAssertTrue(collapsedActions.waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["Assign Money"].exists)
 
         let quickAssign = app.buttons["Quick Assign, expanded"]
+        let collapsedQuickAssign = app.buttons["Quick Assign, collapsed"]
+        if collapsedQuickAssign.waitForExistence(timeout: 2) {
+            collapsedQuickAssign.tap()
+        }
         XCTAssertTrue(quickAssign.waitForExistence(timeout: 10))
         quickAssign.tap()
-        XCTAssertTrue(app.buttons["Quick Assign, collapsed"].waitForExistence(timeout: 5))
+        XCTAssertTrue(collapsedQuickAssign.waitForExistence(timeout: 5))
+
+        app.navigationBars.buttons["Done"].tap()
+        XCTAssertTrue(groceries.waitForExistence(timeout: 5))
+        groceries.tap()
+        XCTAssertTrue(collapsedActions.waitForExistence(timeout: 10))
+        XCTAssertTrue(collapsedQuickAssign.waitForExistence(timeout: 10))
     }
 
     @MainActor
