@@ -191,3 +191,29 @@ enum ScheduleRecurrence {
         return x
     }
 }
+
+extension RecurConfig {
+    /// Serialize back into the shape loot-core stores inside a rule's date
+    /// condition, mirroring the picker's `unparseConfig`: interval and
+    /// occurrence counts are clamped to sane positives at the boundary, and
+    /// every field the type models is emitted so a config written here round
+    /// trips through the web unchanged.
+    var jsonObject: [String: Any] {
+        var json: [String: Any] = [
+            "start": start.iso,
+            "frequency": frequency.rawValue,
+            "interval": max(1, interval),
+            "skipWeekend": skipWeekend,
+            "weekendSolveMode": weekendSolveMode,
+            "endMode": endMode,
+        ]
+        // Patterns only mean anything for monthly recurrences; upstream omits
+        // the key entirely otherwise.
+        if !patterns.isEmpty {
+            json["patterns"] = patterns.map { ["type": $0.type, "value": $0.value] }
+        }
+        if let endOccurrences { json["endOccurrences"] = max(1, endOccurrences) }
+        if let endDate { json["endDate"] = endDate.iso }
+        return json
+    }
+}

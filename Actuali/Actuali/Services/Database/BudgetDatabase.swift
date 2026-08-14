@@ -2334,6 +2334,44 @@ class BudgetDatabase {
             return paid
         }
     }
+    
+    /// Is another live schedule already using this name? Mirrors loot-core
+    /// `checkIfScheduleExists`, which enforces unique names so the "link to
+    /// schedule" pickers stay unambiguous.
+    func scheduleNameExists(_ name: String, excluding scheduleId: String?) throws -> Bool {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules") else { return false }
+            let existingId = try String.fetchOne(db, sql: """
+                SELECT id FROM schedules
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND name = ?
+                """, arguments: [name])
+            guard let existingId else { return false }
+            return existingId != scheduleId
+        }
+    }
+
+    /// Refresh the local `schedules_json_paths` cache for one schedule.
+    ///
+    /// This table is NOT synced — loot-core rebuilds it locally from a sync
+    /// listener whenever a rule changes, so the web repairs its own copy when
+    /// our rule arrives. Actuali doesn't read the table at all (it parses rule
+    /// conditions directly), but keeping the local file self-consistent costs
+    /// one statement and means nothing depends on a listener we don't run.
+    ///
+    /// It also has no `id` column, so it could not go through the CRDT apply
+    /// path even if it were synced.
+    func writeScheduleJSONPaths(scheduleId: String, conditions: [[String: Any]]) throws {
+        try dbQueue.write { db in
+            guard try db.tableExists("schedules_json_paths") else { return }
+            let paths = ScheduleConditions.jsonPaths(for: conditions)
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO schedules_json_paths
+                    (schedule_id, payee, account, amount, date)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [scheduleId, paths.payee, paths.account,
+                                 paths.amount, paths.date])
+        }
+    }
 
     /// Dedup guard for the poster: does an alive transaction linked to this
     /// schedule already exist on/after `date` (YYYYMMDD int)?

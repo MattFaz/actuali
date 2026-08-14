@@ -2715,6 +2715,31 @@ final class BudgetStore: ObservableObject {
         }
         return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
     }
+    
+    @discardableResult
+    func createSchedule(fields: ScheduleFormFields) async throws -> String {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        let id = try await syncClient.createSchedule(fields: fields)
+        await refreshDataOnly()
+        return id
+    }
+
+    func updateSchedule(
+        _ schedule: ScheduleSummary,
+        fields: ScheduleFormFields,
+        resetNextDate: Bool = false
+    ) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.updateSchedule(
+            schedule, fields: fields, resetNextDate: resetNextDate)
+        await refreshDataOnly()
+    }
+
+    func deleteSchedule(_ schedule: ScheduleSummary) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.deleteSchedule(schedule)
+        await refreshDataOnly()
+    }
 
     // MARK: - Budget
 
