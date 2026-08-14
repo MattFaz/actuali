@@ -53,7 +53,7 @@ struct RulesListView: View {
                             }
                         }
                     } footer: {
-                        Text("Rules run in stage order — Pre, then Default, then Post — and within a stage the most specific rule runs last.")
+                        Text("Rules run in stage order: Pre, then Default, then Post, within a stage the most specific rule runs last.")
                     }
                 }
                 .searchable(text: $searchText, prompt: "Search rules")
