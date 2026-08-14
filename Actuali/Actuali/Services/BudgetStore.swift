@@ -1318,6 +1318,8 @@ final class BudgetStore: ObservableObject {
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
+
+            await loadSchedules()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
