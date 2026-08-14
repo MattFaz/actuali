@@ -627,7 +627,7 @@ actor SyncClient {
     func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
         guard let currentNextDate = schedule.nextDate,
               case .recurring(let config)? = schedule.dateCondition
-        else { return }
+        else { throw ScheduleWriteError.notRecurring }
 
         var searchFrom = currentNextDate
         if config.skipWeekend, config.weekendSolveMode == "before",
@@ -650,7 +650,7 @@ actor SyncClient {
     /// the advance service, which will see the posted transaction through the
     /// same dedup guard the auto-poster uses and move the schedule on.
     func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
-        guard let accountId = schedule.accountId else { return }
+        guard let accountId = schedule.accountId else { throw ScheduleWriteError.noAccount }
         let date = today ? DayDate.today() : (schedule.nextDate ?? DayDate.today())
 
         var transaction = Transaction(

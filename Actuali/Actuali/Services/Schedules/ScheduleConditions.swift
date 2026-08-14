@@ -26,6 +26,8 @@ enum ScheduleWriteError: LocalizedError, Equatable {
     case amountRequired
     case duplicateName(String)
     case unsupportedRecurrence
+    case notRecurring
+    case noAccount
 
     var errorDescription: String? {
         switch self {
@@ -33,6 +35,8 @@ enum ScheduleWriteError: LocalizedError, Equatable {
         case .amountRequired: "A valid amount is required."
         case .duplicateName(let name): "Another schedule is already called “\(name)”."
         case .unsupportedRecurrence: "This repeat pattern isn't supported."
+        case .notRecurring: "Only a repeating schedule can be skipped."
+        case .noAccount: "This schedule has no account, so it can't post a transaction."
         }
     }
 }
