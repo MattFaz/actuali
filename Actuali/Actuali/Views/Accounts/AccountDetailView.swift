@@ -115,6 +115,32 @@ struct AccountDetailView: View {
         .font(.subheadline)
     }
 
+    @ViewBuilder
+    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
+        Button {
+            editingTransaction = transaction
+        } label: {
+            TransactionRow(transaction: transaction, showAccount: false, showDate: showDate, onToggleCleared: {
+                Task { await budgetStore.toggleCleared(transaction) }
+            })
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                Task { await budgetStore.deleteTransaction(transaction) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                editingTransaction = transaction
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.yellow)
+        }
+    }
+
     var body: some View {
         List {
             Section {
@@ -153,48 +179,47 @@ struct AccountDetailView: View {
                 noteSection
             }
 
-            Section("Recent Transactions") {
-                if let pager, pager.transactions.isEmpty {
+            if let pager, pager.transactions.isEmpty {
+                Section("Recent Transactions") {
                     Text(searchQuery != nil
                         ? "No matching transactions"
                         : budgetStore.hideClearedTransactions
                             ? "No uncleared transactions"
                             : "No transactions")
                         .foregroundStyle(.secondary)
-                } else if let pager {
-                    ForEach(pager.transactions) { transaction in
-                        Button {
-                            editingTransaction = transaction
-                        } label: {
-                            TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+                }
+            } else if let pager {
+                if budgetStore.transactionDisplayMode == .groupedByDate {
+                    ForEach(pager.transactions.groupedByDate()) { group in
+                        Section(Transaction.formattedDate(from: group.date, style: .long)) {
+                            ForEach(group.transactions) { transaction in
+                                transactionRow(transaction, showDate: false)
                             }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.yellow)
                         }
                     }
                     if pager.hasMore {
-                        // Sentinel row: appearing near the bottom of the list
-                        // pulls in the next page.
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                        Section {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .task { await pager.loadNextPage() }
                         }
-                        .task { await pager.loadNextPage() }
+                    }
+                } else {
+                    Section("Recent Transactions") {
+                        ForEach(pager.transactions) { transaction in
+                            transactionRow(transaction, showDate: true)
+                        }
+                        if pager.hasMore {
+                            HStack {
+                                Spacer()
+                                ProgressView()
+                                Spacer()
+                            }
+                            .task { await pager.loadNextPage() }
+                        }
                     }
                 }
             }
@@ -210,6 +235,13 @@ struct AccountDetailView: View {
                         showingWalletImport = true
                     } label: {
                         Label("Import from Wallet", systemImage: "wallet.pass")
+                    }
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                    ForEach(TransactionDisplayMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
                     }
                 }
             }

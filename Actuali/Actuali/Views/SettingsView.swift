@@ -376,6 +376,12 @@ struct SettingsView: View {
                         }
                     }
 
+                    Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                        ForEach(TransactionDisplayMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)

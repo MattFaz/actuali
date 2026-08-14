@@ -50,10 +50,10 @@ struct Transaction: Identifiable, Hashable {
         var amount: Int  // cents, signed like the parent
     }
 
-    var dateFormatted: String {
-        let year = date / 10000
-        let month = (date % 10000) / 100
-        let day = date % 100
+    static func formattedDate(from dateInt: Int, style: Date.FormatStyle.DateStyle = .abbreviated) -> String {
+        let year = dateInt / 10000
+        let month = (dateInt % 10000) / 100
+        let day = dateInt % 100
 
         var components = DateComponents()
         components.year = year
@@ -64,7 +64,11 @@ struct Transaction: Identifiable, Hashable {
             return "\(year)-\(month)-\(day)"
         }
 
-        return date.formatted(date: .abbreviated, time: .omitted)
+        return date.formatted(date: style, time: .omitted)
+    }
+
+    var dateFormatted: String {
+        Self.formattedDate(from: date, style: .abbreviated)
     }
 
     var isOutflow: Bool {
@@ -146,5 +150,32 @@ extension Transaction: CRDTSyncable {
             fields["starting_balance_flag"] = 1
         }
         return fields
+    }
+}
+
+// MARK: - Date Grouping
+
+struct TransactionDateGroup: Identifiable {
+    let date: Int
+    var id: Int { date }
+    var transactions: [Transaction]
+}
+
+extension Array where Element == Transaction {
+    /// Groups transactions by date, preserving the array's existing encounter order.
+    func groupedByDate() -> [TransactionDateGroup] {
+        var groupDict: [Int: [Transaction]] = [:]
+        var order: [Int] = []
+        for tx in self {
+            if groupDict[tx.date] == nil {
+                order.append(tx.date)
+                groupDict[tx.date] = [tx]
+            } else {
+                groupDict[tx.date]?.append(tx)
+            }
+        }
+        return order.map { date in
+            TransactionDateGroup(date: date, transactions: groupDict[date] ?? [])
+        }
     }
 }

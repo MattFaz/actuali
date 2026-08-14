@@ -31,6 +31,32 @@ struct TransactionsListView: View {
         await currentPager().loadFirstPage(search: searchQuery)
     }
 
+    @ViewBuilder
+    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
+        Button {
+            editingTransaction = transaction
+        } label: {
+            TransactionRow(transaction: transaction, showDate: showDate, onToggleCleared: {
+                Task { await budgetStore.toggleCleared(transaction) }
+            })
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                Task { await budgetStore.deleteTransaction(transaction) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                editingTransaction = transaction
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.yellow)
+        }
+    }
+
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
@@ -51,28 +77,17 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
-                    ForEach(pager.transactions) { transaction in
-                        Button {
-                            editingTransaction = transaction
-                        } label: {
-                            TransactionRow(transaction: transaction, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
-                            .contentShape(Rectangle())
+                    if budgetStore.transactionDisplayMode == .groupedByDate {
+                        ForEach(pager.transactions.groupedByDate()) { group in
+                            Section(Transaction.formattedDate(from: group.date, style: .long)) {
+                                ForEach(group.transactions) { transaction in
+                                    transactionRow(transaction, showDate: false)
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
-                            }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
-                            }
-                            .tint(.yellow)
+                    } else {
+                        ForEach(pager.transactions) { transaction in
+                            transactionRow(transaction, showDate: true)
                         }
                     }
                     if pager.hasMore {
@@ -93,6 +108,13 @@ struct TransactionsListView: View {
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            ToolbarItem(placement: .secondaryAction) {
+                Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                    ForEach(TransactionDisplayMode.allCases) { mode in
+                        Text(mode.label).tag(mode)
+                    }
+                }
+            }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
             }
@@ -138,6 +160,7 @@ struct TransactionRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let transaction: Transaction
     var showAccount: Bool = true
+    var showDate: Bool = true
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
@@ -249,9 +272,11 @@ struct TransactionRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
-                Text(transaction.dateFormatted)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showDate {
+                    Text(transaction.dateFormatted)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)
