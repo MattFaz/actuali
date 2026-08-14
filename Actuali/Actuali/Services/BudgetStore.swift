@@ -1305,7 +1305,6 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
-            await loadSchedules()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
