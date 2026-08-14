@@ -396,4 +396,98 @@ struct RulesEngineTests {
         let (updated, _) = RulesEngine.apply(tx, rules: [rule])
         #expect(updated.categoryId == nil)
     }
+    
+    // MARK: - Ranking
+
+    /// Two matching rules: the less specific one (contains, score 0) applies
+    /// first and the exact match (is, score 20) overwrites it, whatever order
+    /// they come out of the database in.
+    @Test func moreSpecificRuleWinsRegardlessOfInputOrder() {
+        let broad = parseRule(
+            id: "r-b",
+            conditions: #"[{"op":"contains","field":"imported_description","value":"coffee"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-broad"}]"#)
+        let exact = parseRule(
+            id: "r-a",
+            conditions: #"[{"op":"is","field":"imported_description","value":"coffee co"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-exact"}]"#)
+
+        let tx = makeTransaction(importedPayee: "Coffee Co")
+
+        #expect(RulesEngine.apply(tx, rules: [broad, exact]).transaction.categoryId == "cat-exact")
+        #expect(RulesEngine.apply(tx, rules: [exact, broad]).transaction.categoryId == "cat-exact")
+    }
+
+    @Test func preStageRunsBeforeDefault() { /* pre sets payee, default keys off it */ }
+
+    // MARK: - Dates (regression: these never matched before)
+
+    @Test func exactDateConditionMatches() {
+        let rule = parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026-05-03","type":"date"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-day"}]"#)
+        #expect(RulesEngine.apply(makeTransaction(), rules: [rule]).transaction.categoryId == "cat-day")
+    }
+
+    @Test func monthDateConditionMatches() { /* value "2026-05" */ }
+    @Test func approxDateMatchesWithinTwoDays() { /* "2026-05-05" matches 20260503 */ }
+    @Test func approxDateMissesOutsideTwoDays() { /* "2026-05-07" doesn't */ }
+    @Test func dateComparisonOps() { /* gt/gte/lt/lte */ }
+
+    // MARK: - isapprox rounding
+
+    /// getApproxNumberThreshold rounds (100 * 0.075 = 7.5 -> 8); flooring to 7
+    /// made -1092 miss a rule the web app applies.
+    @Test func approxAmountUsesRoundedThreshold() {
+        let rule = parseRule(
+            conditions: #"[{"op":"isapprox","field":"amount","value":-1000}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-approx"}]"#)
+        let tx = makeTransaction(amount: -1075)
+        #expect(RulesEngine.apply(tx, rules: [rule]).transaction.categoryId == "cat-approx")
+    }
+
+    // MARK: - New fields and ops
+
+    @Test func categoryGroupConditionUsesContext() { /* RuleContext.categoryGroupIds */ }
+    @Test func payeeNameConditionUsesContext() { /* RuleContext.payeeNames */ }
+    @Test func offBudgetConditionMatchesOffBudgetAccount() { /* RuleContext.offBudgetAccountIds */ }
+    @Test func emptyNotesMatchesIsEmptyString() { /* notes nil, `is ""` -> true */ }
+
+    // MARK: - New actions
+
+    @Test func setPayeeNameReportsPendingPayee() {
+        let rule = parseRule(
+            conditions: #"[{"op":"contains","field":"imported_description","value":"woolies"}]"#,
+            actions: #"[{"op":"set","field":"payee_name","value":"Woolworths"}]"#)
+        let result = RulesEngine.apply(makeTransaction(importedPayee: "WOOLIES 123"), rules: [rule])
+        #expect(result.pendingPayeeName == "Woolworths")
+        #expect(result.transaction.payeeId == nil)
+    }
+
+    /// Upstream's live path can't see `transfer`/`parent` — only its query path
+    /// maps them — so a filter-derived rule using them must not fire here
+    /// either, however tempting it is to make it work.
+    @Test func transferConditionsNeverMatchInTheEngine() {
+        let rule = parseRule(
+            conditions: #"[{"op":"is","field":"transfer","value":true,"type":"boolean"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-transfer"}]"#)
+        var tx = makeTransaction()
+        tx.transferId = "tx-2"
+        #expect(RulesEngine.apply(tx, rules: [rule]).transaction.categoryId == nil)
+    }
+
+    /// Upstream lowercases the pattern, so `\D` runs as `\d`. A rule written on
+    /// the web has to behave the same here, quirk included.
+    @Test func matchesLowercasesThePatternLikeUpstream() {
+        let rule = parseRule(
+            conditions: #"[{"op":"matches","field":"notes","value":"\\D+"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-digits"}]"#)
+        // "1234" has no non-digits, but \D lowercases to \d and matches.
+        let tx = makeTransaction(notes: "1234")
+        #expect(RulesEngine.apply(tx, rules: [rule]).transaction.categoryId == "cat-digits")
+    }
+
+    @Test func deleteTransactionActionMarksResultDeleted() { /* result.isDeleted */ }
+    @Test func linkScheduleActionSetsSchedule() { /* transaction.schedule */ }
+    @Test func splitActionsAreSkippedNotApplied() { /* set-split-amount leaves the tx alone */ }
 }

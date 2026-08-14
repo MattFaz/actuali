@@ -182,16 +182,27 @@ actor SyncClient {
         //    Skip for transfers — upstream runs rules on the transfer leg, but our
         //    transfer flow already builds both legs explicitly and we don't want
         //    rules rewriting the linked payee/account.
-        let finalTransaction: Transaction
+        var finalTransaction = transaction
         if applyRules, transaction.transferId == nil {
             let rules = (try? database.fetchRules()) ?? []
-            let (updated, changed) = RulesEngine.apply(transaction, rules: rules)
-            if !changed.isEmpty {
-                logger.info("Rules updated \(changed.count, privacy: .public) field(s) on new transaction")
+            let context = (try? database.ruleContext()) ?? .empty
+            let result = RulesEngine.apply(transaction, rules: rules, context: context)
+
+            if result.isDeleted {
+                // A `delete-transaction` rule matched. Upstream tombstones the
+                // row; for a transaction that doesn't exist yet, not creating it
+                // is the same outcome with less to sync.
+                logger.notice("Rules deleted the incoming transaction — skipping insert")
+                return
             }
-            finalTransaction = updated
-        } else {
-            finalTransaction = transaction
+
+            finalTransaction = result.transaction
+            if let name = result.pendingPayeeName {
+                finalTransaction.payeeId = try await resolvePayee(named: name)
+            }
+            if !result.changedFields.isEmpty {
+                logger.info("Rules updated \(result.changedFields.count, privacy: .public) field(s) on new transaction")
+            }
         }
 
         // 1. Insert locally (optimistic)
@@ -364,6 +375,20 @@ actor SyncClient {
         try saveClock()
 
         // Note: Don't schedule sync here - let the transaction sync handle it
+    }
+    
+    /// Turn a `payee_name` a rule set into a payee id, creating the payee when
+    /// it's new — upstream `resolvePayeeNameForRules`.
+    private func resolvePayee(named name: String) async throws -> String? {
+        guard let database else { throw SyncError.notConfigured }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let existing = try database.payee(named: trimmed) { return existing.id }
+
+        let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
+        try await createPayee(payee)
+        return payee.id
     }
 
     /// Create a new account, its transfer payee (the empty-named payee every
