@@ -878,7 +878,7 @@ struct EditBudgetAmountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    AmountInputField(text: $amountText, autofocus: true)
+                    AmountInputField(text: $amountText, allowsNegative: true, autofocus: true)
                 } header: {
                     Text("Budgeted in \(MonthPicker.title(for: category.month))")
                 } footer: {
@@ -911,7 +911,8 @@ struct EditBudgetAmountSheet: View {
             do {
                 // An emptied field means "no longer budgeted", i.e. zero.
                 let cents = try BudgetStore.budgetAmountCents(
-                    from: amountText.isEmpty ? "0" : amountText
+                    from: amountText.isEmpty ? "0" : amountText,
+                    allowNegative: true
                 )
                 try await budgetStore.setBudgetAmount(
                     month: category.month,
