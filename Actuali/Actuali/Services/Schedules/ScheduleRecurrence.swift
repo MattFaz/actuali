@@ -262,6 +262,13 @@ extension ScheduleRecurrence {
             // `nextOccurrence` falls back to the LAST occurrence once a
             // bounded schedule has run out, which shows up here as a date that
             // stops advancing. Stop rather than repeat it forever.
+            //
+            // The guard below needs a previous date, so the FIRST iteration is
+            // unprotected — and `nextOccurrence` returns the last occurrence
+            // once a bounded recurrence is exhausted, rendering a past date as
+            // "next". Weekend solving can legitimately pull a date two days
+            // earlier; allow that much and no more.
+            if dates.isEmpty, next < today.adding(days: -2) { break }
             if let previous = dates.last, next <= previous { break }
             dates.append(next)
             cursor = next.adding(days: 1)
