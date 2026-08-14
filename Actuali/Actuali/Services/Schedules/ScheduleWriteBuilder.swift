@@ -87,7 +87,8 @@ enum ScheduleWriteBuilder {
         now: Int64,
         today: DayDate = .today(),
         resetRequested: Bool = false,
-        newNextDateRowId: @autoclosure () -> String = UUID().uuidString.lowercased()
+        newNextDateRowId: @autoclosure () -> String = UUID().uuidString.lowercased(),
+        newRuleId: @autoclosure () -> String = UUID().uuidString.lowercased()
     ) throws -> ScheduleWritePlan {
         let existingConditions = ScheduleConditions.parse(schedule.conditionsJSON)
         let existingActions = ScheduleConditions.parse(schedule.actionsJSON)
@@ -99,18 +100,25 @@ enum ScheduleWriteBuilder {
 
         var writes: [ScheduleWritePlan.RowWrite] = []
 
-        // The rule: conditions always, actions only when the amount action
-        // drifted (upstream skips the write otherwise).
-        if let ruleId = schedule.ruleId {
-            var ruleFields: [(column: String, value: Any?)] = [
-                ("conditions", try ScheduleConditions.serialize(merged)),
-            ]
-            if let actions = ScheduleConditions.syncedActions(
-                conditions: merged, actions: existingActions) {
-                ruleFields.append(("actions", try ScheduleConditions.serialize(actions)))
-            }
-            writes.append(.init(dataset: "rules", row: ruleId, fields: ruleFields))
+        // A schedule whose rule went missing gets a fresh one rather than
+        // dropping every field change on the floor (upstream fixRuleForSchedule).
+        // This is the one case where writing `rule` is correct — upstream's
+        // "you cannot change the rule" guard is about swapping a live rule.
+        let ruleId = schedule.ruleId ?? newRuleId()
+        var ruleFields: [(column: String, value: Any?)] = [
+            ("conditions", try ScheduleConditions.serialize(merged)),
+        ]
+        if schedule.ruleId == nil {
+            ruleFields.append(("stage", nil))
+            ruleFields.append(("conditions_op", "and"))
+            ruleFields.append(("actions", try ScheduleConditions.serialize(
+                [["op": "link-schedule", "value": schedule.id]])))
+            ruleFields.append(("tombstone", 0))
+        } else if let actions = ScheduleConditions.syncedActions(
+            conditions: merged, actions: existingActions) {
+            ruleFields.append(("actions", try ScheduleConditions.serialize(actions)))
         }
+        writes.append(.init(dataset: "rules", row: ruleId, fields: ruleFields))
 
         // Next date: reset when forced, or when account/date changed.
         let oldIndices = ScheduleConditions.extract(existingConditions)
@@ -146,11 +154,13 @@ enum ScheduleWriteBuilder {
             writes.append(.init(dataset: "schedules_next_date", row: rowId, fields: fields))
         }
 
-        writes.append(.init(dataset: "schedules", row: schedule.id, fields: [
+        var scheduleFields: [(column: String, value: Any?)] = [
             ("name", fields.normalizedName),
             ("posts_transaction", fields.postsTransaction ? 1 : 0),
             ("custom_upcoming_length", fields.customUpcomingLength),
-        ]))
+        ]
+        if schedule.ruleId == nil { scheduleFields.append(("rule", ruleId)) }
+        writes.append(.init(dataset: "schedules", row: schedule.id, fields: scheduleFields))
 
         return ScheduleWritePlan(scheduleId: schedule.id, writes: writes, conditions: merged)
     }
