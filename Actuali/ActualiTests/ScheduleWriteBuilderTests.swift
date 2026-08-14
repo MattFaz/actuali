@@ -121,6 +121,57 @@ struct ScheduleWriteBuilderTests {
         #expect(write(plan, "schedules_next_date") == nil)
         #expect(plan.writes.map(\.dataset) == ["rules", "schedules"])
     }
+    
+    /// A recurrence written by the web omits the optional keys that
+    /// `RecurConfig.jsonObject` always emits. Re-encoding it is not an edit, so
+    /// saving an otherwise-untouched schedule must NOT reset the next date —
+    /// doing so silently undoes a skip and re-anchors a missed schedule.
+    @Test func reEncodingAWebWrittenRecurrenceIsNotADateChange() throws {
+        // Exactly what Actual stores: no interval, no endMode, no weekend keys.
+        let webRecurrence = """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"isapprox","field":"date","value":
+               {"frequency":"monthly","start":"2026-01-15"}},
+             {"op":"isapprox","field":"amount","value":-125000}]
+            """
+        let schedule = existingSchedule(conditions: webRecurrence)
+
+        // The form hands back the same recurrence, parsed and re-serialised.
+        let parsed = try #require(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-15",
+        ]))
+        var unchanged = fields
+        unchanged.date = .recurring(parsed)
+
+        let plan = try ScheduleWriteBuilder.updatePlan(
+            schedule: schedule, fields: unchanged, now: Self.now, today: Self.today)
+
+        #expect(write(plan, "schedules_next_date") == nil)
+        #expect(plan.writes.map(\.dataset) == ["rules", "schedules"])
+    }
+
+    /// The guard above must not go so far that a real recurrence edit stops
+    /// resetting the next date.
+    @Test func changingTheRecurrenceStillResetsTheNextDate() throws {
+        let schedule = existingSchedule(conditions: """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"isapprox","field":"date","value":
+               {"frequency":"monthly","start":"2026-01-15"}},
+             {"op":"isapprox","field":"amount","value":-125000}]
+            """)
+
+        // Same start, different interval — a genuine change.
+        let edited = try #require(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-01-15", "interval": 3,
+        ]))
+        var moved = fields
+        moved.date = .recurring(edited)
+
+        let plan = try ScheduleWriteBuilder.updatePlan(
+            schedule: schedule, fields: moved, now: Self.now, today: Self.today)
+
+        #expect(write(plan, "schedules_next_date") != nil)
+    }
 
     @Test func changingTheDateResetsTheBaseNextDate() throws {
         var moved = fields

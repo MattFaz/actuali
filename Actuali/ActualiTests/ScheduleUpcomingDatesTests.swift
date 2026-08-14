@@ -45,6 +45,33 @@ struct ScheduleUpcomingDatesTests {
             count: 5, from: Self.today)
         #expect(dates.map(\.yyyymmdd) == [20260815, 20260915, 20261015])
     }
+    
+    /// Once a bounded recurrence is exhausted `nextOccurrence` reports it by
+    /// returning the LAST occurrence. On the first iteration there is no
+    /// previous date to catch that, so an ended schedule would otherwise
+    /// preview a date in the past as its next occurrence.
+    @Test func anEndedRecurrenceHasNoUpcomingDates() {
+        let ended = config(["endMode": "on_date", "endDate": "2026-03-20"])
+        #expect(ScheduleRecurrence.upcomingDates(
+            for: ended, count: 4, from: Self.today).isEmpty)
+    }
+
+    @Test func aRecurrenceOutOfOccurrencesHasNoUpcomingDates() {
+        // Two monthly occurrences from 2026-01-15 end at 2026-02-15.
+        let ended = config(["endMode": "after_n_occurrences", "endOccurrences": 2])
+        #expect(ScheduleRecurrence.upcomingDates(
+            for: ended, count: 4, from: Self.today).isEmpty)
+    }
+
+    /// The two-day slack that allows for weekend solving must not swallow a
+    /// legitimate occurrence that lands just before today.
+    @Test func weekendSolvingCanStillPullTheFirstDateBackwards() {
+        // 2026-08-15 is a Saturday; solving "before" moves it to Friday the 14th.
+        let solved = config(["skipWeekend": true, "weekendSolveMode": "before"])
+        let dates = ScheduleRecurrence.upcomingDates(
+            for: solved, count: 1, from: Self.today)
+        #expect(dates.map(\.yyyymmdd) == [20260814])
+    }
 
     @Test func multiplePatternsProduceMultipleDatesPerMonth() {
         let dates = ScheduleRecurrence.upcomingDates(
