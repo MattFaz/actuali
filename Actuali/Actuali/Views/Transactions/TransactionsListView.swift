@@ -31,32 +31,6 @@ struct TransactionsListView: View {
         await currentPager().loadFirstPage(search: searchQuery)
     }
 
-    @ViewBuilder
-    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
-        Button {
-            editingTransaction = transaction
-        } label: {
-            TransactionRow(transaction: transaction, showDate: showDate, onToggleCleared: {
-                Task { await budgetStore.toggleCleared(transaction) }
-            })
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                Task { await budgetStore.deleteTransaction(transaction) }
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            Button {
-                editingTransaction = transaction
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.yellow)
-        }
-    }
-
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
@@ -78,27 +52,29 @@ struct TransactionsListView: View {
             } else if let pager {
                 List {
                     if budgetStore.transactionDisplayMode == .groupedByDate {
-                        ForEach(pager.transactions.groupedByDate()) { group in
-                            Section(Transaction.formattedDate(from: group.date, style: .long)) {
+                        let groups = pager.transactions.groupedByDate()
+                        ForEach(groups) { group in
+                            Section(group.title) {
                                 ForEach(group.transactions) { transaction in
-                                    transactionRow(transaction, showDate: false)
+                                    TransactionListRow(transaction: transaction,
+                                                       showDate: false,
+                                                       editing: $editingTransaction)
+                                }
+                                // The sentinel rides in the last date section
+                                // so grouped mode doesn't grow a headerless
+                                // section (and its gap) of its own.
+                                if pager.hasMore, group.id == groups.last?.id {
+                                    TransactionPagingSentinel(pager: pager)
                                 }
                             }
                         }
                     } else {
                         ForEach(pager.transactions) { transaction in
-                            transactionRow(transaction, showDate: true)
+                            TransactionListRow(transaction: transaction, editing: $editingTransaction)
                         }
-                    }
-                    if pager.hasMore {
-                        // Sentinel row: appearing near the bottom of the list
-                        // pulls in the next page.
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                        if pager.hasMore {
+                            TransactionPagingSentinel(pager: pager)
                         }
-                        .task { await pager.loadNextPage() }
                     }
                 }
             }
@@ -109,11 +85,7 @@ struct TransactionsListView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             ToolbarItem(placement: .secondaryAction) {
-                Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
-                    ForEach(TransactionDisplayMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
+                TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
@@ -153,6 +125,74 @@ struct TransactionsListView: View {
                 ProgressView()
             }
         }
+    }
+}
+
+/// Tappable `TransactionRow` with the standard edit/delete swipe actions,
+/// shared by the all-accounts and account-detail lists. The category and
+/// uncategorized lists build their own rows: they suppress tap and swipe on
+/// split children and reload after every mutation.
+struct TransactionListRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    let transaction: Transaction
+    var showAccount: Bool = true
+    var showDate: Bool = true
+    @Binding var editing: Transaction?
+
+    var body: some View {
+        Button {
+            editing = transaction
+        } label: {
+            TransactionRow(transaction: transaction, showAccount: showAccount, showDate: showDate, onToggleCleared: {
+                Task { await budgetStore.toggleCleared(transaction) }
+            })
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                Task { await budgetStore.deleteTransaction(transaction) }
+            } label: {
+                Label("Delete", systemImage: "trash")
+            }
+            Button {
+                editing = transaction
+            } label: {
+                Label("Edit", systemImage: "pencil")
+            }
+            .tint(.yellow)
+        }
+    }
+}
+
+/// Sentinel row: appearing near the bottom of the list pulls in the next page.
+struct TransactionPagingSentinel: View {
+    let pager: TransactionPager
+
+    var body: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+            Spacer()
+        }
+        .task { await pager.loadNextPage() }
+    }
+}
+
+/// Flat-vs-grouped switch for the transaction list toolbars.
+///
+/// A Toggle rather than the Picker Settings uses: `.secondaryAction` silently
+/// drops a Picker when it collapses into the `…` menu (inline or not), while a
+/// Toggle renders — same as the "Hide Cleared Transactions" switch beside it.
+/// The mode only has two cases, so nothing is lost.
+struct TransactionGroupingToggle: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    var body: some View {
+        Toggle("Group by Date", isOn: Binding(
+            get: { budgetStore.transactionDisplayMode == .groupedByDate },
+            set: { budgetStore.transactionDisplayMode = $0 ? .groupedByDate : .flat }
+        ))
     }
 }
 

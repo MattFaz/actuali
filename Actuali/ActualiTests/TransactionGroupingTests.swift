@@ -70,13 +70,22 @@ struct TransactionGroupingTests {
         #expect(groups[2].transactions.map(\.id) == ["t-5"])
     }
 
-    @Test func formattedDateFormatsCorrectly() {
-        // Date integer 20260814 = 2026-08-14
-        let formattedLong = Transaction.formattedDate(from: 20260814, style: .long)
-        #expect(formattedLong.contains("2026"))
-        #expect(formattedLong.localizedCaseInsensitiveContains("August") || formattedLong.contains("Aug"))
+    /// The logic under test is the YYYYMMDD split, not the localized spelling —
+    /// asserting on "August" or "2026" would fail under a non-English locale or
+    /// a non-Gregorian calendar.
+    @Test func formattedDateDecodesTheDateInteger() {
+        let expected = Calendar.current.date(from: DateComponents(year: 2026, month: 8, day: 14))!
 
-        let formattedAbbreviated = Transaction.formattedDate(from: 20260814, style: .abbreviated)
-        #expect(formattedAbbreviated.contains("2026"))
+        #expect(Transaction.formattedDate(from: 20260814, style: .long)
+            == expected.formatted(date: .long, time: .omitted))
+        #expect(Transaction.formattedDate(from: 20260814, style: .abbreviated)
+            == expected.formatted(date: .abbreviated, time: .omitted))
+    }
+
+    @Test func groupTitleSpellsOutTheDate() {
+        let group = [makeTxn("t-1", date: 20260814)].groupedByDate()[0]
+        #expect(group.title == Transaction.formattedDate(from: 20260814, style: .long))
+        // The long form is what earns dropping the date from every row.
+        #expect(group.title != Transaction.formattedDate(from: 20260814, style: .abbreviated))
     }
 }

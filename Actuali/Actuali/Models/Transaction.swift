@@ -159,10 +159,16 @@ struct TransactionDateGroup: Identifiable {
     let date: Int
     var id: Int { date }
     var transactions: [Transaction]
+
+    /// Section header for the group. Spelled out in full because the rows
+    /// underneath drop their own date once they're grouped.
+    var title: String { Transaction.formattedDate(from: date, style: .long) }
 }
 
 extension Array where Element == Transaction {
-    /// Groups transactions by date, preserving the array's existing encounter order.
+    /// Groups transactions by date, preserving the array's existing encounter
+    /// order. Every list that calls this fetches `ORDER BY date DESC`, so the
+    /// groups come out newest-first and each date appears exactly once.
     func groupedByDate() -> [TransactionDateGroup] {
         var groupDict: [Int: [Transaction]] = [:]
         var order: [Int] = []

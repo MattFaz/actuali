@@ -115,32 +115,6 @@ struct AccountDetailView: View {
         .font(.subheadline)
     }
 
-    @ViewBuilder
-    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
-        Button {
-            editingTransaction = transaction
-        } label: {
-            TransactionRow(transaction: transaction, showAccount: false, showDate: showDate, onToggleCleared: {
-                Task { await budgetStore.toggleCleared(transaction) }
-            })
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                Task { await budgetStore.deleteTransaction(transaction) }
-            } label: {
-                Label("Delete", systemImage: "trash")
-            }
-            Button {
-                editingTransaction = transaction
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.yellow)
-        }
-    }
-
     var body: some View {
         List {
             Section {
@@ -179,47 +153,48 @@ struct AccountDetailView: View {
                 noteSection
             }
 
-            if let pager, pager.transactions.isEmpty {
-                Section("Recent Transactions") {
-                    Text(searchQuery != nil
-                        ? "No matching transactions"
-                        : budgetStore.hideClearedTransactions
-                            ? "No uncleared transactions"
-                            : "No transactions")
-                        .foregroundStyle(.secondary)
-                }
-            } else if let pager {
+            if let pager, !pager.transactions.isEmpty {
                 if budgetStore.transactionDisplayMode == .groupedByDate {
-                    ForEach(pager.transactions.groupedByDate()) { group in
-                        Section(Transaction.formattedDate(from: group.date, style: .long)) {
+                    let groups = pager.transactions.groupedByDate()
+                    ForEach(groups) { group in
+                        Section(group.title) {
                             ForEach(group.transactions) { transaction in
-                                transactionRow(transaction, showDate: false)
+                                TransactionListRow(transaction: transaction,
+                                                   showAccount: false,
+                                                   showDate: false,
+                                                   editing: $editingTransaction)
                             }
-                        }
-                    }
-                    if pager.hasMore {
-                        Section {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                Spacer()
+                            // The sentinel rides in the last date section so
+                            // grouped mode doesn't grow a headerless section
+                            // (and its gap) of its own.
+                            if pager.hasMore, group.id == groups.last?.id {
+                                TransactionPagingSentinel(pager: pager)
                             }
-                            .task { await pager.loadNextPage() }
                         }
                     }
                 } else {
                     Section("Recent Transactions") {
                         ForEach(pager.transactions) { transaction in
-                            transactionRow(transaction, showDate: true)
+                            TransactionListRow(transaction: transaction,
+                                               showAccount: false,
+                                               editing: $editingTransaction)
                         }
                         if pager.hasMore {
-                            HStack {
-                                Spacer()
-                                ProgressView()
-                                Spacer()
-                            }
-                            .task { await pager.loadNextPage() }
+                            TransactionPagingSentinel(pager: pager)
                         }
+                    }
+                }
+            } else {
+                // Header stays put while the first page is still loading, so
+                // the screen doesn't reflow once the rows land.
+                Section("Recent Transactions") {
+                    if pager != nil {
+                        Text(searchQuery != nil
+                            ? "No matching transactions"
+                            : budgetStore.hideClearedTransactions
+                                ? "No uncleared transactions"
+                                : "No transactions")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
@@ -239,11 +214,7 @@ struct AccountDetailView: View {
                 }
             }
             ToolbarItem(placement: .secondaryAction) {
-                Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
-                    ForEach(TransactionDisplayMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
-                    }
-                }
+                TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
