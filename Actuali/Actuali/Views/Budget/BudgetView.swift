@@ -743,11 +743,14 @@ struct CategoryBudgetRow: View {
                 Button {
                     onShowDetails(category)
                 } label: {
-                    TwoLineName(
-                        text: category.categoryName,
-                        font: .subheadline,
-                        minimumScaleFactor: 0.85
-                    )
+                    HStack(spacing: 5) {
+                        CompactCategoryStatusDot(state: category.progressState)
+                        TwoLineName(
+                            text: category.categoryName,
+                            font: .subheadline,
+                            minimumScaleFactor: 0.85
+                        )
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Details for \(category.categoryName)")
@@ -819,8 +822,11 @@ struct CleanCategoryBudgetRow: View {
                 Button {
                     onShowDetails(category)
                 } label: {
-                    Text(category.categoryName)
-                        .font(.body)
+                    HStack(spacing: 6) {
+                        CompactCategoryStatusDot(state: category.progressState)
+                        Text(category.categoryName)
+                            .font(.body)
+                    }
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Details for \(category.categoryName)")
@@ -1523,6 +1529,39 @@ struct CategoryProgressBar: View {
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
         .accessibilityLabel("\(status), spent \(Int((fraction * 100).rounded())) percent")
+    }
+}
+
+/// A deliberately quiet status cue for budget rows. The category detail sheet
+/// carries the full plain-language status so the main budget remains scannable.
+struct CompactCategoryStatusDot: View {
+    let state: CategoryProgressState
+
+    private var tint: Color {
+        switch state {
+        case .overspent: .red
+        case .spent: .orange
+        case .spending: .blue
+        case .funded: .green
+        case .unassigned: .secondary
+        }
+    }
+
+    private var status: String {
+        switch state {
+        case .overspent: "Overspent"
+        case .spent: "Fully spent"
+        case .spending: "Partially spent"
+        case .funded: "Funded"
+        case .unassigned: "No money assigned"
+        }
+    }
+
+    var body: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 7, height: 7)
+            .accessibilityLabel(status)
     }
 }
 
