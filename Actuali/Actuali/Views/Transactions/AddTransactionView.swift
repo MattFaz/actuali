@@ -128,7 +128,11 @@ struct AddTransactionView: View {
     /// doesn't parse yet. Blank lines count as zero so the remainder stays
     /// visible while the user is still filling lines in.
     private var splitRemainingCents: Int? {
-        SplitEntryMath.remainingCents(total: amount, lineAmounts: splitLines.map(\.amount))
+        // Opposite-direction lines hand their amount back to the remainder
+        // instead of consuming it (GH #216).
+        SplitEntryMath.remainingCents(total: amount, lineAmounts: splitLines.map { line in
+            line.isOpposite && !line.amount.isEmpty ? "-\(line.amount)" : line.amount
+        })
     }
 
     private var hasBlankSplitLine: Bool {
@@ -501,10 +505,10 @@ struct AddTransactionView: View {
             BudgetStore.SplitLineForm(
                 childId: child.id,
                 categoryId: child.categoryId,
-                // Signed relative to the parent so a refund line inside a
-                // spend split loads (and saves back) as negative (GH #216).
-                amount: SplitEntryMath.relativeAmountString(
-                    childCents: child.amount, parentCents: editing.amount),
+                amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
+                // A child running against the parent's direction — a refund
+                // inside a spend split — keeps its flip on reload (GH #216).
+                isOpposite: (child.amount < 0) != (editing.amount < 0),
                 notes: child.notes ?? "",
                 payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
             )
@@ -516,7 +520,7 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(line: $line, remainingCents: splitRemainingCents)
+                SplitLineRow(line: $line, txType: txType, remainingCents: splitRemainingCents)
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -708,15 +712,6 @@ enum SplitEntryMath {
     static func amountString(fromCents cents: Int) -> String {
         "\(cents / 100).\(String(format: "%02d", cents % 100))"
     }
-
-    /// Form-relative amount text for an existing child. The form keeps line
-    /// amounts unsigned and applies the expense/income sign on save, so a
-    /// child running opposite to its parent (a refund inside a spend split,
-    /// GH #216) must load as negative to round-trip through that flip.
-    static func relativeAmountString(childCents: Int, parentCents: Int) -> String {
-        let relative = parentCents < 0 ? -childCents : childCents
-        return String(format: "%.2f", Double(relative) / 100.0)
-    }
 }
 
 /// One editable split line: a category picked through a sheet and an amount.
@@ -724,6 +719,9 @@ enum SplitEntryMath {
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
+    /// The transaction's direction, so the line's sign glyph can show its
+    /// effective direction relative to it.
+    var txType: TransactionType
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
@@ -739,6 +737,12 @@ private struct SplitLineRow: View {
         return "Category"
     }
 
+    /// Whether the line runs as an outflow once the transaction's direction
+    /// and the line's flip are combined.
+    private var isOutflow: Bool {
+        (txType == .expense) != line.isOpposite
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -750,12 +754,28 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 Spacer()
-                // Negative flips the line against the expense/income toggle:
-                // the only way to put a refund inside a spend split (GH #216).
-                AmountInputField(text: $line.amount, allowsNegative: true)
+                // Every line carries a sign like the total's, so direction is
+                // never implicit; tapping it flips the line — how a refund
+                // goes inside a spend split (GH #216).
+                Button {
+                    line.isOpposite.toggle()
+                } label: {
+                    Text(isOutflow ? "-" : "+")
+                        .foregroundStyle(isOutflow ? Color.red : Color.green)
+                        // Grow the tap target beyond the one-character glyph.
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
+                .accessibilityHint("Flips this line's direction")
+                AmountInputField(text: $line.amount)
                     .frame(width: 110)
             }
-            if line.amount.isEmpty, let remaining = remainingCents, remaining > 0 {
+            // No fill offer on a flipped line: the remainder is stated in the
+            // transaction's direction, and filling it here would double the
+            // gap instead of closing it.
+            if line.amount.isEmpty, !line.isOpposite, let remaining = remainingCents, remaining > 0 {
                 HStack {
                     Spacer()
                     Button {

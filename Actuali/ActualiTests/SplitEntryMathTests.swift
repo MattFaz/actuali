@@ -28,18 +28,10 @@ struct SplitEntryMathTests {
     }
 
     @Test func negativeLinesGiveBackTheirAmount() {
-        // A refund line inside an expense split enlarges the remainder
-        // instead of consuming it (GH #216).
+        // A flipped (refund) line inside an expense split enlarges the
+        // remainder instead of consuming it — the view maps `isOpposite`
+        // lines to negative strings before calling this (GH #216).
         #expect(SplitEntryMath.remainingCents(total: "20", lineAmounts: ["30", "-10"]) == 0)
-    }
-
-    @Test func relativeAmountStringSignsAgainstParentDirection() {
-        // Children matching the parent's direction load unsigned; opposite
-        // ones load negative so plan()'s sign flip round-trips them (GH #216).
-        #expect(SplitEntryMath.relativeAmountString(childCents: -3000, parentCents: -2000) == "30.00")
-        #expect(SplitEntryMath.relativeAmountString(childCents: 1000, parentCents: -2000) == "-10.00")
-        #expect(SplitEntryMath.relativeAmountString(childCents: 600, parentCents: 1000) == "6.00")
-        #expect(SplitEntryMath.relativeAmountString(childCents: -400, parentCents: 1000) == "-4.00")
     }
 
     @Test func amountStringMatchesFieldFormat() {
