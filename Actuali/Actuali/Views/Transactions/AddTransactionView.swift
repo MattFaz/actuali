@@ -266,7 +266,11 @@ struct AddTransactionView: View {
                         // form, so the add flow opens with the keyboard ready.
                         // Edits and prefilled amounts already have one and
                         // start with the keyboard down.
-                        AmountInputField(text: $amount, autofocus: !isEditing && amount.isEmpty)
+                        AmountInputField(
+                            text: $amount,
+                            conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                            autofocus: !isEditing && amount.isEmpty
+                        )
                     }
                 }
 
@@ -769,7 +773,11 @@ private struct SplitLineRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
                 .accessibilityHint("Flips this line's direction")
-                AmountInputField(text: $line.amount, onToggleSign: { line.isOpposite.toggle() })
+                AmountInputField(
+                    text: $line.amount,
+                    conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                    onToggleSign: { line.isOpposite.toggle() }
+                )
                     .frame(width: 110)
             }
             // No fill offer on a flipped line: the remainder is stated in the
@@ -828,6 +836,9 @@ private struct SplitLineRow: View {
 /// editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
+    /// When true, digits are entered as a conventional decimal amount instead
+    /// of shifting into cents.
+    var conventionalAmountEntry = false
     var alignment: NSTextAlignment = .natural
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
@@ -1199,10 +1210,13 @@ struct AmountInputField: UIViewRepresentable {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
                 return sign + whole + "." + fractionDigits
             }
-            let cents = Int(integerDigits) ?? 0
-            let dollars = cents / 100
-            let pennies = cents % 100
-            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            if !parent.conventionalAmountEntry {
+                let cents = Int(integerDigits) ?? 0
+                let dollars = cents / 100
+                let pennies = cents % 100
+                return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            }
+            return sign + integerDigits
         }
 
         /// What the field shows: the running total and armed operator, if any,

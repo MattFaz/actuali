@@ -16,11 +16,13 @@ struct AmountInputFieldTests {
     /// Builds a coordinator wired to a real UITextField, mirroring makeUIView.
     private func makeField(
         initial: String = "",
-        allowsNegative: Bool = false
+        allowsNegative: Bool = false,
+        conventionalAmountEntry: Bool = false
     ) -> (coordinator: AmountInputField.Coordinator, textField: UITextField, box: TextBox) {
         let box = TextBox(initial)
         let field = AmountInputField(
             text: Binding(get: { box.value }, set: { box.value = $0 }),
+            conventionalAmountEntry: conventionalAmountEntry,
             allowsNegative: allowsNegative
         )
         let coordinator = field.makeCoordinator()
@@ -63,6 +65,125 @@ struct AmountInputFieldTests {
         type("120", into: coordinator, textField)
         #expect(textField.text == "1.20")
         #expect(box.value == "1.20")
+    }
+
+    // MARK: - Standard entry
+
+    @Test func standardModeEntersWholeDigitsWithoutShiftingCents() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        #expect(textField.text == "12")
+        #expect(box.value == "12")
+    }
+
+    @Test func standardModeKeepsExplicitDecimalEntry() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12.05", into: coordinator, textField)
+        #expect(textField.text == "12.05")
+        #expect(box.value == "12.05")
+    }
+
+    @Test func standardModeLimitsFractionToTwoDigits() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12.056", into: coordinator, textField)
+        #expect(textField.text == "12.05")
+        #expect(box.value == "12.05")
+    }
+
+    @Test func standardModeBackspaceWorksThroughDecimalAndDigits() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12.05", into: coordinator, textField)
+        backspace(coordinator, textField)
+        #expect(box.value == "12.0")
+        backspace(coordinator, textField)
+        #expect(box.value == "12.")
+        backspace(coordinator, textField)
+        #expect(box.value == "12")
+        backspace(coordinator, textField)
+        #expect(box.value == "1")
+    }
+
+    @Test func standardModeKeepsEmptyFieldEmpty() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        backspace(coordinator, textField)
+        #expect(textField.text == "")
+        #expect(box.value == "")
+    }
+
+    @Test func standardModeEditsPrefilledAmount() {
+        let (coordinator, textField, box) = makeField(
+            initial: "12.5", conventionalAmountEntry: true
+        )
+        type("0", into: coordinator, textField)
+        #expect(textField.text == "12.50")
+        #expect(box.value == "12.50")
+    }
+
+    @Test func standardModeSupportsNegativeAmounts() {
+        let (coordinator, textField, box) = makeField(
+            allowsNegative: true, conventionalAmountEntry: true
+        )
+        coordinator.toggleSign()
+        type("12.05", into: coordinator, textField)
+        #expect(textField.text == "-12.05")
+        #expect(box.value == "-12.05")
+    }
+
+    @Test func standardModeAdditionEvaluatesWhenEditingEnds() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        coordinator.addTapped()
+        type("6", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "18.00")
+    }
+
+    @Test func standardModeSubtractionEvaluatesWhenEditingEnds() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        coordinator.subtractTapped()
+        type("6", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "6.00")
+    }
+
+    @Test func standardModeMultiplicationEvaluatesWhenEditingEnds() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        coordinator.multiplyTapped()
+        type("6", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "72.00")
+    }
+
+    @Test func standardModeDivisionEvaluatesWhenEditingEnds() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        coordinator.divideTapped()
+        type("6", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "2.00")
+    }
+
+    @Test func standardModeEvaluatesLeftToRight() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("2", into: coordinator, textField)
+        coordinator.addTapped()
+        type("3", into: coordinator, textField)
+        coordinator.multiplyTapped()
+        type("4", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "20.00")
+    }
+
+    @Test func standardModeBindingStaysValidDuringExpression() {
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("12", into: coordinator, textField)
+        coordinator.addTapped()
+        type("6", into: coordinator, textField)
+        #expect(textField.text == "12.00 + 6")
+        #expect(box.value == "18.00")
+        #expect(Double(box.value) == 18)
     }
 
     @Test func toggleSignNegatesAndRestores() {

@@ -386,6 +386,15 @@ struct SettingsView: View {
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
 
+                    Toggle(isOn: $budgetStore.conventionalAmountEntry) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Conventional amount entry")
+                            Text("When enabled, enter the decimal separator explicitly.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
                     // Meaningless against servers that predate payee
