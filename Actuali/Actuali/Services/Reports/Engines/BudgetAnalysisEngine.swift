@@ -200,8 +200,9 @@ enum BudgetAnalysisEngine {
     /// Port of budgetDataQuery.ts filterCategoriesByConditions: only
     /// category / category_group conditions narrow the set, and if any of
     /// them can't be safely interpreted, no filtering happens at all (better
-    /// to be broad than to silently exclude data).
-    private static func filterCategoriesByConditions(
+    /// to be broad than to silently exclude data). Shared with SpendingEngine,
+    /// mirroring upstream's import into getSpendingBudgetFilters.
+    static func filterCategoriesByConditions(
         _ categories: [Category],
         groups: [CategoryGroup],
         conditions: [WidgetRuleCondition]?,
@@ -226,7 +227,7 @@ enum BudgetAnalysisEngine {
     }
 
     /// Port of budgetDataQuery.ts isSupportedCategoryCondition.
-    private static func isSupportedCategoryCondition(_ cond: WidgetRuleCondition) -> Bool {
+    static func isSupportedCategoryCondition(_ cond: WidgetRuleCondition) -> Bool {
         switch cond.op {
         case "is", "isNot", "contains", "doesNotContain", "matches":
             return decodeString(cond.value) != nil

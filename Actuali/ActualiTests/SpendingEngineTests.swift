@@ -23,15 +23,29 @@ struct SpendingEngineTests {
     }
 
     private func meta(
+        conditions: [WidgetRuleCondition]? = nil,
         compare: String? = nil,
         compareTo: String? = nil,
         isLive: Bool? = true,
         mode: SpendingMeta.Mode? = nil,
         averageRange: SpendingAverageRange? = nil
     ) -> SpendingMeta {
-        SpendingMeta(name: nil, conditions: nil, conditionsOp: nil,
+        SpendingMeta(name: nil, conditions: conditions, conditionsOp: nil,
                      compare: compare, compareTo: compareTo, isLive: isLive,
                      mode: mode, averageRange: averageRange)
+    }
+
+    // Actuali.Category: the ObjC runtime also exports a `Category` type.
+    private var budgetCategories: [Actuali.Category] {
+        [
+            Actuali.Category(id: "groceries", name: "Groceries", groupId: "g1", isIncome: false, hidden: false, sortOrder: 0),
+            Actuali.Category(id: "rent", name: "Rent", groupId: "g1", isIncome: false, hidden: false, sortOrder: 1)
+        ]
+    }
+
+    private var budgetGroups: [CategoryGroup] {
+        [CategoryGroup(id: "g1", name: "Expenses", isIncome: false, hidden: false, sortOrder: 0,
+                       categories: budgetCategories)]
     }
 
     // Upstream nets positive amounts (refunds) into spending; income
@@ -181,5 +195,62 @@ struct SpendingEngineTests {
     @Test func budgetModeReturnsZeroComparison() {
         let result = SpendingEngine.compute(meta: meta(mode: .budget), transactions: [], today: asOf)
         #expect(result.comparisonCents == 0)
+    }
+
+    // Upstream spreads the compare month's budgeted total over its days and
+    // accumulates through today's day bucket (spending-spreadsheet.ts
+    // dailyBudget / SpendingCard.tsx todayDay).
+    @Test func budgetModeProratesBudgetThroughToday() {
+        let budgets = [
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "groceries", amountCents: 200000),
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "rent", amountCents: 110000),
+            BudgetAnalysisBudgetEntry(month: 202604, categoryId: "rent", amountCents: 999999)  // other month — ignored
+        ]
+        let result = SpendingEngine.compute(meta: meta(mode: .budget), transactions: [],
+                                            budgets: budgets, categories: budgetCategories,
+                                            categoryGroups: budgetGroups, today: asOf)
+        // 310000 over May's 31 days × 14 elapsed days
+        #expect(result.comparisonCents == 140000)
+    }
+
+    @Test func budgetModeUsesFullMonthForPastCompare() {
+        let budgets = [BudgetAnalysisBudgetEntry(month: 202603, categoryId: "rent", amountCents: 155000)]
+        let result = SpendingEngine.compute(
+            meta: meta(compare: "2026-03", isLive: false, mode: .budget),
+            transactions: [], budgets: budgets, categories: budgetCategories,
+            categoryGroups: budgetGroups, today: asOf
+        )
+        #expect(result.comparisonCents == 155000)
+    }
+
+    // getSpendingBudgetFilters: category conditions narrow the budgets too.
+    @Test func budgetModeFiltersByCategoryConditions() {
+        let budgets = [
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "groceries", amountCents: 100000),
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "rent", amountCents: 200000)
+        ]
+        let cond = WidgetRuleCondition.makeMock(op: "is", field: "category", stringValue: "groceries")
+        let result = SpendingEngine.compute(meta: meta(conditions: [cond], mode: .budget),
+                                            transactions: [], budgets: budgets,
+                                            categories: budgetCategories,
+                                            categoryGroups: budgetGroups, today: asOf)
+        // 100000 / 31 × 14 = 45161.29…
+        #expect(result.comparisonCents == 45161)
+    }
+
+    // getSpendingBudgetFilters: any unsupported category condition ⇒ budgets
+    // are not narrowed at all.
+    @Test func budgetModeUnsupportedCategoryConditionSkipsFilter() {
+        let budgets = [
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "groceries", amountCents: 100000),
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "rent", amountCents: 200000)
+        ]
+        let cond = WidgetRuleCondition.makeMock(op: "gt", field: "category", stringValue: "x")
+        let result = SpendingEngine.compute(meta: meta(conditions: [cond], mode: .budget),
+                                            transactions: [], budgets: budgets,
+                                            categories: budgetCategories,
+                                            categoryGroups: budgetGroups, today: asOf)
+        // 300000 / 31 × 14 = 135483.87…
+        #expect(result.comparisonCents == 135484)
     }
 }

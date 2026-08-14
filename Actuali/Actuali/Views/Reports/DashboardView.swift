@@ -102,6 +102,7 @@ struct DashboardView: View {
         let needsBudgets = widgets.contains {
             switch $0 {
             case .budgetAnalysis, .sankey, .balanceForecast: return true
+            case .spending(_, let meta): return meta?.mode == .budget
             default: return false
             }
         }
@@ -168,7 +169,11 @@ struct DashboardView: View {
             }
         case .spending(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date(), context: conditionsContext)
+                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions),
+                                       budgets: reportBudgets.entries,
+                                       categories: budgetStore.categoryGroups.flatMap(\.categories),
+                                       categoryGroups: budgetStore.categoryGroups,
+                                       today: Date(), context: conditionsContext)
             } content: { data in
                 SpendingWidgetView(
                     displayName: widget.displayName,
