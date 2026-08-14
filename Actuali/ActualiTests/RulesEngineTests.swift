@@ -264,10 +264,12 @@ struct RulesEngineTests {
                 stage: .default,
                 conditionsOp: .and,
                 conditions: [
-                    Rule.Condition(op: "contains", field: "imported_payee", value: "X", options: nil)
+                    Rule.Condition(op: "contains", field: "imported_payee",
+                                   value: .string("X"), options: nil)
                 ],
                 actions: [
-                    Rule.Action(op: "set", field: "amount", value: bad, options: nil)
+                    Rule.Action(op: "set", field: "amount",
+                                value: .number(bad), options: nil)
                 ]
             )
             let tx = makeTransaction(importedPayee: "X-Co", amount: -500)
