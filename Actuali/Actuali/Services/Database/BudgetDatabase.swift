@@ -2201,8 +2201,8 @@ class BudgetDatabase {
     /// list is not — a schedule whose rule or next-date row went missing must
     /// still appear so it can be fixed or deleted, rather than becoming an
     /// invisible row only the web app can reach.
-    func fetchSchedules() throws -> [ScheduleSummary] {
-        try dbQueue.read { db in
+    func fetchSchedules() async throws -> [ScheduleSummary] {
+        try await dbQueue.read { db in
             guard try db.tableExists("schedules"),
                   try db.tableExists("schedules_next_date"),
                   try db.tableExists("rules")
@@ -2300,7 +2300,7 @@ class BudgetDatabase {
     /// loot-core `getHasTransactionsQuery`, collapsed into one grouped query
     /// rather than a large OR: each schedule's own lower bound is applied in
     /// Swift against the latest linked transaction date.
-    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) throws -> Set<String> {
+    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) async throws -> Set<String> {
         let bounds: [(id: String, start: Int)] = schedules.compactMap { schedule in
             guard let nextDate = schedule.nextDate else { return nil }
             let start = ScheduleStatusCalculator.occurrenceMatchStartDate(
@@ -2311,7 +2311,7 @@ class BudgetDatabase {
         }
         guard !bounds.isEmpty else { return [] }
 
-        return try dbQueue.read { db in
+        return try await dbQueue.read { db in
             let placeholders = Array(repeating: "?", count: bounds.count).joined(separator: ", ")
             let rows = try Row.fetchAll(db, sql: """
                 SELECT schedule, MAX(date) AS max_date
