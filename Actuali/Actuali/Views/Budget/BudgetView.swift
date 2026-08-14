@@ -590,6 +590,24 @@ struct CleanCategoryBudgetRow: View {
     }
 }
 
+/// Whether `month` ("YYYY-MM") is before the current calendar month. The
+/// strings are zero-padded, so a plain lexicographic compare is exact.
+private func isPastMonth(_ month: String) -> Bool {
+    month < BudgetView.currentMonthString()
+}
+
+/// The tracking-budget result figure for the summary bar: actual savings once
+/// a month is finished, projected savings while it's still current or ahead.
+/// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
+/// the month rolls over.
+private func trackingSavings(_ budget: BudgetMonth) -> Int {
+    isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
+}
+
+private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
+    isPastMonth(budget.month) ? "Saved" : "Projected"
+}
+
 /// Clean-style summary card: a 2x2 grid whose reading order follows the
 /// money — came in, allocated, went out, left over. Two rows because four
 /// currency amounts don't fit across narrow devices.
@@ -618,8 +636,8 @@ struct CleanBudgetSummary: View {
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
-                // budgets have no to-budget concept, so fall back to the
-                // total of category balances.
+                // budgets report savings instead — actual for a finished month,
+                // projected for the current/future month.
                 if let toBudget = budget.toBudget {
                     SummaryStat(
                         label: "To Budget",
@@ -628,10 +646,11 @@ struct CleanBudgetSummary: View {
                         alignment: .trailing
                     )
                 } else {
+                    let value = trackingSavings(budget)
                     SummaryStat(
-                        label: "Available",
-                        value: budgetStore.displayBalance(budget.totalAvailable),
-                        valueColor: budget.totalAvailable >= 0 ? .green : .red,
+                        label: trackingSavingsLabel(budget),
+                        value: budgetStore.displayBalance(value),
+                        valueColor: value >= 0 ? .green : .red,
                         alignment: .trailing
                     )
                 }
@@ -673,11 +692,23 @@ struct TableBudgetSummary: View {
                 label: "Spent",
                 value: budgetStore.displayBudgetCell(budget.totalSpent)
             )
-            SummaryColumn(
-                label: "Balance",
-                value: budgetStore.displayBudgetCell(budget.totalAvailable),
-                valueColor: budget.totalAvailable >= 0 ? .green : .red
-            )
+            // Envelope budgets total the category balances; tracking budgets
+            // report savings instead — actual for a finished month, projected
+            // for the current/future month.
+            if budget.toBudget != nil {
+                SummaryColumn(
+                    label: "Balance",
+                    value: budgetStore.displayBudgetCell(budget.totalAvailable),
+                    valueColor: budget.totalAvailable >= 0 ? .green : .red
+                )
+            } else {
+                let value = trackingSavings(budget)
+                SummaryColumn(
+                    label: trackingSavingsLabel(budget),
+                    value: budgetStore.displayBudgetCell(value),
+                    valueColor: value >= 0 ? .green : .red
+                )
+            }
         }
     }
 }
