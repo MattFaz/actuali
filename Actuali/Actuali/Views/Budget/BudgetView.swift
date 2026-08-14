@@ -547,6 +547,7 @@ private struct TwoLineName: View {
 struct BudgetCheckInSection: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
+    @AppStorage("budgetCheckInExpanded") private var isExpanded = true
 
     private var hasIssues: Bool {
         (budget.toBudget ?? 0) > 0
@@ -558,7 +559,24 @@ struct BudgetCheckInSection: View {
 
     var body: some View {
         Section {
-            if let toBudget = budget.toBudget, toBudget > 0 {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isExpanded.toggle()
+                }
+            } label: {
+                HStack {
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.caption)
+                    Text("Budget Check-In")
+                        .font(.headline)
+                    Spacer()
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("Budget Check-In, \(isExpanded ? "expanded" : "collapsed")")
+
+            if isExpanded, let toBudget = budget.toBudget, toBudget > 0 {
                 NavigationLink {
                     BudgetGuidanceCategoryList(
                         title: "Ready to Assign",
@@ -578,7 +596,7 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
+            if isExpanded, budgetStore.showOverspentBadge, budget.overspentCount > 0 {
                 NavigationLink {
                     OverspentCategoriesView()
                 } label: {
@@ -592,7 +610,7 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if budgetStore.uncategorizedCount > 0 {
+            if isExpanded, budgetStore.uncategorizedCount > 0 {
                 NavigationLink {
                     UncategorizedTransactionsView()
                 } label: {
@@ -604,7 +622,7 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if !budget.unassignedCategories.isEmpty {
+            if isExpanded, !budget.unassignedCategories.isEmpty {
                 NavigationLink {
                     BudgetGuidanceCategoryList(
                         title: budget.isTrackingBudget ? "No Budget Set" : "Not Funded",
@@ -623,7 +641,7 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if !budget.approachingLimitCategories.isEmpty {
+            if isExpanded, !budget.approachingLimitCategories.isEmpty {
                 NavigationLink {
                     BudgetGuidanceCategoryList(
                         title: budget.isTrackingBudget ? "Near Budget" : "Almost Spent",
@@ -639,16 +657,16 @@ struct BudgetCheckInSection: View {
                 }
             }
 
-            if !hasIssues {
+            if isExpanded, !hasIssues {
                 Label("Budget looks good", systemImage: "checkmark.circle.fill")
                     .foregroundStyle(.green)
             }
-        } header: {
-            Text("Budget Check-In")
         } footer: {
-            Text(budget.isTrackingBudget
-                ? "Review the plan against this month's actual activity."
-                : "Resolve the important items before assigning the rest of the month.")
+            if isExpanded {
+                Text(budget.isTrackingBudget
+                    ? "Review the plan against this month's actual activity."
+                    : "Resolve the important items before assigning the rest of the month.")
+            }
         }
     }
 }
