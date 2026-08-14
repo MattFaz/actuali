@@ -285,7 +285,9 @@ struct ScheduleEditView: View {
             guard let low = cents(amountText), let high = cents(amountHighText) else {
                 throw BudgetStoreError.invalidAmount
             }
-            amount = .range(sign * low, sign * high)
+            // Signing flips the ordering for expenses; Actual stores num1 <= num2.
+            let a = sign * low, b = sign * high
+            amount = .range(min(a, b), max(a, b))
         } else {
             guard let value = cents(amountText) else { throw BudgetStoreError.invalidAmount }
             amount = .fixed(sign * value)
