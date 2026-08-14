@@ -293,25 +293,30 @@ struct BudgetView: View {
             }
             .navigationTitle("Budget")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel("Previous month")
-                }
+                // Both arrows flank the month in the center, so nothing sits in
+                // the leading "back button" position where the previous-month
+                // chevron used to be mistaken for one (it steps the month, not
+                // the navigation stack).
                 ToolbarItem(placement: .principal) {
-                    MonthPicker(selectedMonth: $selectedMonth)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .accessibilityLabel("Next month")
+                    HStack(spacing: 8) {
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel("Previous month")
 
+                        MonthPicker(selectedMonth: $selectedMonth)
+
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .accessibilityLabel("Next month")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     // Every "how should this look" control lives here (GH
                     // #157). Whole-table expand/collapse is a menu rather
                     // than a long-press on the group headers: SwiftUI context
