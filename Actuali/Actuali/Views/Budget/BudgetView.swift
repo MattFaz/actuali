@@ -50,6 +50,7 @@ struct BudgetView: View {
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
     @State private var newBudgetItem: NewBudgetItem?
+    @State private var categoryFilter: BudgetCategoryFilter = .all
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
     /// string because @AppStorage can't hold a Set directly.
     @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
@@ -126,6 +127,18 @@ struct BudgetView: View {
                         List {
                             BudgetCheckInSection(budget: budget)
 
+                            if categoryFilter != .all, groupedCategories.isEmpty {
+                                ContentUnavailableView {
+                                    Label("No Matching Categories", systemImage: "line.3.horizontal.decrease.circle")
+                                } description: {
+                                    Text("Try another category filter.")
+                                } actions: {
+                                    Button("Show All Categories") {
+                                        categoryFilter = .all
+                                    }
+                                }
+                            }
+
                             ForEach(groupedCategories, id: \.id) { group in
                                 let isCollapsed = collapsedGroups.contains(group.id)
                                 if budgetStore.budgetDisplayStyle == .clean {
@@ -190,7 +203,7 @@ struct BudgetView: View {
 
                             // Income group last, matching the bottom of the web
                             // UI's budget table.
-                            if !budget.incomeCategories.isEmpty {
+                            if categoryFilter == .all, !budget.incomeCategories.isEmpty {
                                 Section {
                                     ForEach(budget.incomeCategories) { income in
                                         IncomeCategoryRow(
@@ -356,6 +369,8 @@ struct BudgetView: View {
                     // menus don't fire inside the clean style's section
                     // headers (GH #130).
                     BudgetOptionsMenu(
+                        categoryFilter: $categoryFilter,
+                        isTrackingBudget: budgetStore.currentBudgetMonth?.isTrackingBudget == true,
                         expandAllGroups: budgetStore.currentBudgetMonth == nil ? nil : expandAllGroups,
                         collapseAllGroups: budgetStore.currentBudgetMonth == nil ? nil : collapseAllGroups
                     )
@@ -459,6 +474,7 @@ struct BudgetView: View {
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
                 let visible = budgetStore.visibleCategoryBudgets(items)
+                    .filter(categoryFilter.includes)
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
                 // A group whose rows are all hidden drops out entirely rather
                 // than leaving a header stranded over an empty card.
@@ -469,7 +485,7 @@ struct BudgetView: View {
                         id: groupId,
                         name: first.groupName,
                         categories: visible,
-                        totals: CategoryGroupTotals(items)
+                        totals: CategoryGroupTotals(categoryFilter == .all ? items : visible)
                     )
                 )
             }
