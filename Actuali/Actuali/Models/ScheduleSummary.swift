@@ -69,4 +69,10 @@ struct ScheduleSummary: Identifiable, Equatable {
     /// What a posted transaction would carry. `nil` amount posts 0, matching
     /// loot-core `getScheduledAmount(null)`.
     var postAmount: Int { amount?.postAmount ?? 0 }
+    
+    /// From the linked rule's `set category` action, when present. The rules
+    /// engine can't match a schedule's recurring-date condition (see
+    /// Rule.swift), so the category is surfaced here and applied directly —
+    /// the same reason `Schedule` carries it.
+    var categoryId: String?
 }

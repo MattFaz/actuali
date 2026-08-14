@@ -2740,6 +2740,44 @@ final class BudgetStore: ObservableObject {
         try await syncClient.deleteSchedule(schedule)
         await refreshDataOnly()
     }
+    
+    func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.skipScheduleNextDate(schedule)
+        await refreshDataOnly()
+    }
+
+    func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.postScheduleTransaction(schedule, today: today)
+        await refreshDataOnly()
+    }
+
+    func setScheduleCompleted(_ schedule: ScheduleSummary, completed: Bool) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setScheduleCompleted(schedule, completed: completed)
+        await refreshDataOnly()
+    }
+
+    func fetchScheduleTransactions(_ scheduleId: String) async -> [Transaction] {
+        guard let database else { return [] }
+        return (try? database.fetchTransactions(scheduleId: scheduleId)) ?? []
+    }
+
+    /// Link transactions to a schedule, or unlink them by passing nil.
+    /// `transactions.schedule` is already a syncable field, so this needs no
+    /// new write path.
+    func linkTransactions(_ transactions: [Transaction], to scheduleId: String?) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !transactions.isEmpty else { return }
+        let updated = transactions.map { transaction -> Transaction in
+            var copy = transaction
+            copy.schedule = scheduleId
+            return copy
+        }
+        try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
+        await refreshDataOnly()
+    }
 
     // MARK: - Budget
 

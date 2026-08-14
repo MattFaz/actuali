@@ -615,6 +615,101 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
     
+    /// Skip the current occurrence. Port of loot-core `skipNextDate`: search
+    /// for the next occurrence starting the day AFTER the current one, and
+    /// move only the local override.
+    ///
+    /// The weekend special case is upstream's and is load-bearing. With
+    /// `weekendSolveMode: "before"`, an occurrence that lands on a weekend has
+    /// already been pulled back to the Friday, so searching from "Friday + 1"
+    /// finds the same occurrence again and the skip does nothing. Jumping to
+    /// the following Monday first steps clear of it.
+    func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
+        guard let currentNextDate = schedule.nextDate,
+              case .recurring(let config)? = schedule.dateCondition
+        else { return }
+
+        var searchFrom = currentNextDate
+        if config.skipWeekend, config.weekendSolveMode == "before",
+           searchFrom.weekday == 6 || searchFrom.isWeekend {
+            searchFrom = ScheduleRecurrence.nextMonday(from: searchFrom)
+        }
+
+        guard let next = ScheduleRecurrence.nextOccurrence(
+            config: config, onOrAfter: searchFrom.adding(days: 1)),
+            next != currentNextDate
+        else { return }
+
+        try await setScheduleNextDate(schedule, to: next, reset: false)
+    }
+
+    /// Post a transaction for a schedule now. Port of loot-core
+    /// `postTransactionForSchedule`.
+    ///
+    /// Deliberately does NOT advance the next date — upstream leaves that to
+    /// the advance service, which will see the posted transaction through the
+    /// same dedup guard the auto-poster uses and move the schedule on.
+    func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
+        guard let accountId = schedule.accountId else { return }
+        let date = today ? DayDate.today() : (schedule.nextDate ?? DayDate.today())
+
+        var transaction = Transaction(
+            id: UUID().uuidString.lowercased(),
+            accountId: accountId,
+            date: date.yyyymmdd,
+            amount: schedule.postAmount,
+            payeeId: schedule.payeeId,
+            payeeName: nil,
+            categoryId: schedule.categoryId,
+            categoryName: nil,
+            notes: nil,
+            cleared: false,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil)
+        transaction.schedule = schedule.id
+
+        try await createTransaction(transaction, applyRules: true)
+    }
+
+    /// Mark a schedule finished, or restart it. Restarting also resets the
+    /// next date, matching the web's "restart" menu item
+    /// (`resetNextDate: true`) — a schedule resumed without that would still
+    /// be sitting on a date in the past.
+    func setScheduleCompleted(
+        _ schedule: ScheduleSummary,
+        completed: Bool,
+        today: DayDate = .today()
+    ) async throws {
+        try await updateScheduleColumns(
+            scheduleId: schedule.id,
+            fields: [("completed", completed ? 1 : 0)])
+
+        guard !completed,
+              let date = schedule.dateCondition,
+              let next = ScheduleConditions.nextDate(for: date, from: today)
+        else { return }
+        try await setScheduleNextDate(schedule, to: next, reset: true)
+    }
+
+    /// Persist a manual ordering.
+    ///
+    /// Upstream inserts a fractional `sort_order` between neighbours; this
+    /// restamps the whole list instead. With schedules numbering in the tens
+    /// that is a handful of extra cells, and it avoids the precision drift a
+    /// repeatedly-halved fraction accumulates.
+    func reorderSchedules(_ ordered: [ScheduleSummary]) async throws {
+        for (index, schedule) in ordered.enumerated() {
+            try await updateScheduleColumns(
+                scheduleId: schedule.id,
+                fields: [("sort_order", Double((index + 1) * 1000))])
+        }
+    }
+    
     /// Apply one schedule write plan: local rows, CRDT messages, JSON-path
     /// cache, push.
     ///

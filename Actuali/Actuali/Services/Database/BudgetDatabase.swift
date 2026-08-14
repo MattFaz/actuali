@@ -2288,7 +2288,8 @@ class BudgetDatabase {
                     sortOrder: row["sort_order"],
                     isCustom: isCustom,
                     conditionsJSON: row["conditions"],
-                    actionsJSON: row["actions"]
+                    actionsJSON: row["actions"],
+                    categoryId: Self.parseCategoryAction(row["actions"])
                 )
             }
         }
@@ -2452,6 +2453,31 @@ class BudgetDatabase {
             return .recurring(config)
         }
         return nil
+    }
+    
+    /// Transactions linked to a schedule, newest first. Powers the editor's
+    /// linked-transactions section and the unlink action.
+    func fetchTransactions(scheduleId: String, limit: Int = 50) throws -> [Transaction] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                       t.description, t.notes, t.date, t.imported_description,
+                       t.schedule, t.transferred_id, t.cleared, t.reconciled,
+                       t.sort_order, t.tombstone, t.parent_id,
+                       COALESCE(pa.name, p.name) AS payee_name,
+                       c.name AS category_name
+                FROM transactions t
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN payees pa ON pa.id = t.description
+                LEFT JOIN categories c ON c.id = t.category
+                WHERE t.schedule = ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                ORDER BY t.date DESC, t.sort_order DESC
+                LIMIT ?
+                """, arguments: [scheduleId, limit])
+            return rows.map(Self.transaction(from:))
+        }
     }
 
     // MARK: - Preferences

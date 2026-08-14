@@ -179,7 +179,7 @@ enum ScheduleRecurrence {
         }
     }
 
-    private static func nextMonday(from d: DayDate) -> DayDate {
+    static func nextMonday(from d: DayDate) -> DayDate {
         var x = d
         while x.weekday != 2 { x = x.adding(days: 1) }
         return x

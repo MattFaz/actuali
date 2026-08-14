@@ -11,6 +11,18 @@ struct SchedulesListView: View {
     @State private var searchText = ""
     @State private var showCompleted = false
     @State private var isAddingSchedule = false
+    
+    @State private var pendingDelete: ScheduleSummary?
+    @State private var actionError: String?
+
+    /// Row actions all write to the server; surface failures rather than
+    /// letting a tap look like it worked.
+    private func run(_ operation: @escaping () async throws -> Void) {
+        Task {
+            do { try await operation() }
+            catch { actionError = error.localizedDescription }
+        }
+    }
 
     var body: some View {
         Group {
@@ -28,6 +40,58 @@ struct SchedulesListView: View {
                                     status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
                                     accountName: accountName(schedule),
                                     payeeName: payeeName(schedule))
+                            }
+                            .swipeActions(edge: .trailing) {
+                                Button(role: .destructive) {
+                                    pendingDelete = schedule
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
+
+                                if !schedule.completed {
+                                    Button {
+                                        run { try await budgetStore.skipScheduleNextDate(schedule) }
+                                    } label: {
+                                        Label("Skip", systemImage: "forward.end")
+                                    }
+                                    .tint(.orange)
+                                }
+                            }
+                            .contextMenu {
+                                if !schedule.completed {
+                                    Button {
+                                        run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
+                                    } label: {
+                                        Label("Post Transaction", systemImage: "plus.circle")
+                                    }
+                                    Button {
+                                        run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
+                                    } label: {
+                                        Label("Post Transaction Today", systemImage: "calendar.badge.plus")
+                                    }
+                                    Button {
+                                        run { try await budgetStore.skipScheduleNextDate(schedule) }
+                                    } label: {
+                                        Label("Skip Next Date", systemImage: "forward.end")
+                                    }
+                                }
+
+                                Divider()
+
+                                Button {
+                                    run { try await budgetStore.setScheduleCompleted(
+                                        schedule, completed: !schedule.completed) }
+                                } label: {
+                                    schedule.completed
+                                        ? Label("Restart", systemImage: "arrow.clockwise")
+                                        : Label("Mark Completed", systemImage: "checkmark.seal")
+                                }
+
+                                Button(role: .destructive) {
+                                    pendingDelete = schedule
+                                } label: {
+                                    Label("Delete", systemImage: "trash")
+                                }
                             }
                         }
                     } footer: {
