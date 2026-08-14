@@ -1061,6 +1061,9 @@ struct CategoryBudgetDetailSheet: View {
     @State private var editingNote = false
     @State private var note: EntityNote = .unsupported
     @State private var recentTransactions: [Transaction] = []
+    @State private var quickAssignSuggestions: [QuickAssignSuggestion] = []
+    @State private var isApplyingSuggestion = false
+    @State private var quickAssignError: String?
 
     private var isTracking: Bool {
         budgetStore.currentBudgetMonth?.isTrackingBudget == true
@@ -1166,6 +1169,35 @@ struct CategoryBudgetDetailSheet: View {
                     }
                 }
 
+                if !quickAssignSuggestions.isEmpty {
+                    Section {
+                        ForEach(quickAssignSuggestions) { suggestion in
+                            Button {
+                                Task { await apply(suggestion) }
+                            } label: {
+                                HStack {
+                                    Text(quickAssignTitle(for: suggestion.kind))
+                                    Spacer()
+                                    Text(budgetStore.displayBalance(suggestion.amount))
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            .disabled(isApplyingSuggestion)
+                        }
+                    } header: {
+                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                    } footer: {
+                        Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
+                    }
+                }
+
+                if let quickAssignError {
+                    Section {
+                        Text(quickAssignError)
+                            .foregroundStyle(.red)
+                    }
+                }
+
                 if note.supported {
                     Section("Note") {
                         Button {
@@ -1222,8 +1254,36 @@ struct CategoryBudgetDetailSheet: View {
             month: category.month
         )
         async let fetchedNote = budgetStore.fetchNote(id: category.categoryId)
+        async let fetchedHistory = budgetStore.budgetHistory(for: category)
         recentTransactions = await fetchedTransactions
         note = await fetchedNote
+        quickAssignSuggestions = category.quickAssignSuggestions(history: await fetchedHistory)
+    }
+
+    private func quickAssignTitle(for kind: QuickAssignSuggestion.Kind) -> String {
+        switch kind {
+        case .spentLastMonth: "Spent Last Month"
+        case .averageSpent: "Average Spent (3 Months)"
+        case .assignedLastMonth: isTracking ? "Budgeted Last Month" : "Assigned Last Month"
+        case .resetAvailable: isTracking ? "Reset Balance to Zero" : "Reset Available to Zero"
+        case .setToZero: isTracking ? "Set Budget to Zero" : "Set Assigned to Zero"
+        }
+    }
+
+    private func apply(_ suggestion: QuickAssignSuggestion) async {
+        isApplyingSuggestion = true
+        quickAssignError = nil
+        do {
+            try await budgetStore.setBudgetAmount(
+                month: category.month,
+                categoryId: category.categoryId,
+                amountCents: suggestion.amount
+            )
+            dismiss()
+        } catch {
+            quickAssignError = error.localizedDescription
+            isApplyingSuggestion = false
+        }
     }
 }
 

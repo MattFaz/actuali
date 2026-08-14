@@ -85,5 +85,6 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Assign Money"].exists)
         XCTAssertTrue(app.buttons["This Month's Transactions"].exists)
         XCTAssertTrue(app.buttons["All Transactions"].exists)
+        XCTAssertTrue(app.staticTexts["Quick Assign"].exists)
     }
 }

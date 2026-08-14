@@ -141,6 +141,53 @@ enum CategoryProgressState: Equatable {
     case overspent
 }
 
+struct QuickAssignSuggestion: Identifiable, Equatable {
+    enum Kind: String {
+        case spentLastMonth
+        case averageSpent
+        case assignedLastMonth
+        case resetAvailable
+        case setToZero
+    }
+
+    var id: Kind { kind }
+    let kind: Kind
+    let amount: Int
+}
+
+extension CategoryBudget {
+    /// Suggested *final assigned amounts*, never deltas. This keeps the UI on
+    /// Actual's existing setBudgetAmount path and makes every choice previewable.
+    func quickAssignSuggestions(history: [CategoryBudget]) -> [QuickAssignSuggestion] {
+        var suggestions: [QuickAssignSuggestion] = []
+        if let lastMonth = history.first {
+            let spent = abs(min(lastMonth.spent, 0))
+            if spent > 0 {
+                suggestions.append(.init(kind: .spentLastMonth, amount: spent))
+            }
+            if lastMonth.budgeted != 0 {
+                suggestions.append(.init(kind: .assignedLastMonth, amount: lastMonth.budgeted))
+            }
+        }
+
+        let spending = history.map { abs(min($0.spent, 0)) }
+        if !spending.isEmpty {
+            let average = Int((Double(spending.reduce(0, +)) / Double(spending.count)).rounded())
+            if average > 0 {
+                suggestions.append(.init(kind: .averageSpent, amount: average))
+            }
+        }
+
+        if available != 0 {
+            suggestions.append(.init(kind: .resetAvailable, amount: budgeted - available))
+        }
+        if budgeted != 0 {
+            suggestions.append(.init(kind: .setToZero, amount: 0))
+        }
+        return suggestions
+    }
+}
+
 /// Column sums for one category group, shown in the detailed style's group
 /// header the way the PWA's table totals its group rows. Always built from a
 /// group's full category list — "Hide Spent Categories" trims which rows are

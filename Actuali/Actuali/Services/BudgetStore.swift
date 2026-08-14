@@ -3424,6 +3424,39 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Budget Amounts
 
+    /// Prior category-month rows used for Quick Assign suggestions. Reading
+    /// history never changes the displayed month or introduces new storage.
+    func budgetHistory(for category: CategoryBudget, monthCount: Int = 3) async -> [CategoryBudget] {
+        guard let database, monthCount > 0 else { return [] }
+        var result: [CategoryBudget] = []
+        var month = category.month
+        for _ in 0..<monthCount {
+            guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
+            month = previous
+            guard let budget = try? await database.fetchBudgetMonth(month: previous),
+                  let priorCategory = budget.categoryBudgets.first(where: {
+                      $0.categoryId == category.categoryId
+                  }) else { continue }
+            result.append(priorCategory)
+        }
+        return result
+    }
+
+    private static func shiftBudgetMonth(_ month: String, by offset: Int) -> String? {
+        let parts = month.split(separator: "-")
+        guard parts.count == 2,
+              let year = Int(parts[0]),
+              let monthNumber = Int(parts[1]),
+              let date = Calendar.current.date(from: DateComponents(
+                  year: year, month: monthNumber, day: 1
+              )),
+              let shifted = Calendar.current.date(byAdding: .month, value: offset, to: date)
+        else { return nil }
+        let components = Calendar.current.dateComponents([.year, .month], from: shifted)
+        guard let shiftedYear = components.year, let shiftedMonth = components.month else { return nil }
+        return String(format: "%04d-%02d", shiftedYear, shiftedMonth)
+    }
+
     /// Parse the budget edit field ("25.50") into cents. Negative amounts
     /// (intentional overdraw, as Actual's web client allows) are only valid
     /// where the caller opts in — a transfer, for instance, must stay

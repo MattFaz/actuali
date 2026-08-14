@@ -80,4 +80,26 @@ struct CategoryBudgetProgressTests {
         #expect(makeCategory(budgeted: 10000, spent: -10000, available: 0).progressState == .spent)
         #expect(makeCategory(budgeted: 10000, spent: -12000, available: -2000).progressState == .overspent)
     }
+
+    @Test func quickAssignUsesActualHistoryAndProducesFinalAmounts() {
+        let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
+        let history = [
+            makeCategory(budgeted: 9000, spent: -8000, available: 1000),
+            makeCategory(budgeted: 6000, spent: -4000, available: 2000),
+            makeCategory(budgeted: 3000, spent: 1000, available: 4000)
+        ]
+        let byKind = Dictionary(uniqueKeysWithValues:
+            current.quickAssignSuggestions(history: history).map { ($0.kind, $0.amount) })
+
+        #expect(byKind[.spentLastMonth] == 8000)
+        #expect(byKind[.assignedLastMonth] == 9000)
+        #expect(byKind[.averageSpent] == 4000)
+        #expect(byKind[.resetAvailable] == 4000)
+        #expect(byKind[.setToZero] == 0)
+    }
+
+    @Test func quickAssignOmitsUnavailableHistoricalChoices() {
+        let current = makeCategory(budgeted: 0, spent: 0, available: 0)
+        #expect(current.quickAssignSuggestions(history: []).isEmpty)
+    }
 }
