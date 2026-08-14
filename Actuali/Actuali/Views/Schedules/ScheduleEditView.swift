@@ -106,7 +106,7 @@ struct ScheduleEditView: View {
                     }
                 }
             } footer: {
-                Text("A schedule needs an account. Leave the payee blank to match any payee.")
+                Text("A schedule needs an account. Leaving the payee blank matches only transactions that have no payee.")
             }
 
             amountSection
