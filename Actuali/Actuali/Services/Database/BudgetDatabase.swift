@@ -1124,8 +1124,7 @@ class BudgetDatabase {
                 SELECT
                     (t.date / 100) AS month,
                     COALESCE(cm.transferId, t.category) AS category_id,
-                    SUM(t.amount) AS spent,
-                    SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END) AS outflow
+                    SUM(t.amount) AS spent
                 FROM transactions t
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN accounts a ON a.id = t.acct
@@ -1139,18 +1138,11 @@ class BudgetDatabase {
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
             var spentByMonthCat: [Int: [String: Int]] = [:]
-            // Outflow-only spending (inflows like refunds excluded) for the
-            // target month. The leftover chain needs the net, but the summary
-            // "Spent" total shows money that actually went out.
-            var targetOutflowByCat: [String: Int] = [:]
             for row in spentRows {
                 let m: Int = row["month"] ?? 0
                 guard m > 0, let categoryId: String = row["category_id"] else { continue }
                 let spent: Int = row["spent"] ?? 0
                 spentByMonthCat[m, default: [:]][categoryId] = spent
-                if m == targetMonthInt {
-                    targetOutflowByCat[categoryId] = row["outflow"] ?? 0
-                }
             }
 
             // "Hold for next month" amounts, keyed by YYYYMM. Upstream writes
@@ -1301,7 +1293,6 @@ class BudgetDatabase {
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
-                    outflow: targetOutflowByCat[cat.id] ?? 0,
                     available: available,
                     carryover: priorContribution
                 )
