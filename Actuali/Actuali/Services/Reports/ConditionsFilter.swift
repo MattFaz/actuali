@@ -7,6 +7,8 @@ enum ConditionsFilter {
     struct Context {
         var offBudgetAccountIds: Set<String> = []
         var accountNames: [String: String] = [:]  // account id -> name
+        var categoryGroupIds: [String: String] = [:]  // category id -> group id
+        var categoryGroupNames: [String: String] = [:]  // group id -> name
 
         static let empty = Context()
     }
@@ -45,7 +47,7 @@ enum ConditionsFilter {
 
     private static func fieldType(_ field: String) -> FieldType? {
         switch field {
-        case "category", "account", "payee", "description": return .id
+        case "category", "category_group", "account", "payee", "description": return .id
         case "notes", "imported_payee": return .string
         case "amount", "amount-inflow", "amount-outflow": return .number
         case "date": return .date
@@ -165,6 +167,8 @@ enum ConditionsFilter {
         let txId: String?
         switch c.field {
         case "category": txId = tx.categoryId
+        // Upstream rewrites category_group to category.group (transaction-rules.ts).
+        case "category_group": txId = tx.categoryId.flatMap { context.categoryGroupIds[$0] }
         case "account": txId = tx.accountId
         default: txId = tx.payeeId  // "payee" / legacy "description"
         }
@@ -204,6 +208,7 @@ enum ConditionsFilter {
             let name: String?
             switch c.field {
             case "category": name = tx.categoryName
+            case "category_group": name = txId.flatMap { context.categoryGroupNames[$0] }
             case "account": name = context.accountNames[tx.accountId]
             default: name = tx.payeeName
             }

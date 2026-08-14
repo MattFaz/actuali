@@ -185,12 +185,20 @@ struct SpendingMeta: Codable, Equatable {
     let compareTo: String?
     let isLive: Bool?
     let mode: Mode?
+    let averageRange: SpendingAverageRange?
 
     enum Mode: String, Codable {
         case singleMonth = "single-month"
         case budget
         case average
     }
+}
+
+/// Window the spending widget's average mode averages over. Mirrors upstream
+/// SpendingAverageRange: `last-n-months` (3/6/12), `year-to-date`, `all-time`.
+struct SpendingAverageRange: Codable, Equatable {
+    let mode: String?
+    let months: Int?
 }
 
 struct MarkdownMeta: Codable, Equatable {

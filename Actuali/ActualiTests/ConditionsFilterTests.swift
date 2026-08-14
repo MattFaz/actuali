@@ -263,6 +263,42 @@ struct ConditionsFilterTests {
         let miss = WidgetRuleCondition.makeMock(op: "hasTags", field: "notes", stringValue: "#travel")
         #expect(!ConditionsFilter.matches(transaction: tx, conditions: [miss], op: "and"))
     }
+
+    // MARK: - category_group (upstream maps the field to category.group)
+
+    private var groupContext: ConditionsFilter.Context {
+        ConditionsFilter.Context(
+            categoryGroupIds: ["groceries": "g-food", "dining": "g-food", "rent": "g-home"],
+            categoryGroupNames: ["g-food": "Food", "g-home": "Home"]
+        )
+    }
+
+    @Test func categoryGroupIs() {
+        let cond = WidgetRuleCondition.makeMock(op: "is", field: "category_group", stringValue: "g-food")
+        let inGroup = makeTransaction(category: "groceries")
+        let outOfGroup = makeTransaction(category: "rent")
+        #expect(ConditionsFilter.matches(transaction: inGroup, conditions: [cond], op: "and", context: groupContext))
+        #expect(!ConditionsFilter.matches(transaction: outOfGroup, conditions: [cond], op: "and", context: groupContext))
+    }
+
+    @Test func categoryGroupIsNot() {
+        let cond = WidgetRuleCondition.makeMock(op: "isNot", field: "category_group", stringValue: "g-food")
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "dining"), conditions: [cond], op: "and", context: groupContext))
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "rent"), conditions: [cond], op: "and", context: groupContext))
+    }
+
+    @Test func categoryGroupOneOf() {
+        let cond = WidgetRuleCondition.makeMock(op: "oneOf", field: "category_group", stringArrayValue: ["g-home"])
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "rent"), conditions: [cond], op: "and", context: groupContext))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"), conditions: [cond], op: "and", context: groupContext))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: nil), conditions: [cond], op: "and", context: groupContext))
+    }
+
+    @Test func categoryGroupContainsMatchesGroupName() {
+        let cond = WidgetRuleCondition.makeMock(op: "contains", field: "category_group", stringValue: "foo")
+        #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"), conditions: [cond], op: "and", context: groupContext))
+        #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "rent"), conditions: [cond], op: "and", context: groupContext))
+    }
 }
 
 /// Test helper to build WidgetRuleCondition values from primitives.
