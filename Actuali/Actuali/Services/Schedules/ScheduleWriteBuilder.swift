@@ -118,9 +118,15 @@ enum ScheduleWriteBuilder {
         let accountChanged = !ScheduleConditions.conditionsEqual(
             ScheduleConditions.condition(at: oldIndices.account, in: existingConditions),
             ScheduleConditions.condition(at: newIndices.account, in: merged))
-        let dateChanged = !ScheduleConditions.conditionsEqual(
-            ScheduleConditions.condition(at: oldIndices.date, in: existingConditions),
-            ScheduleConditions.condition(at: newIndices.date, in: merged))
+        
+        let oldDateCondition = ScheduleConditions.condition(at: oldIndices.date, in: existingConditions)
+        let newDateCondition = ScheduleConditions.condition(at: newIndices.date, in: merged)
+        // Compare the date SEMANTICALLY, not as raw JSON. A config written by
+        // the web omits keys `RecurConfig.jsonObject` always emits (interval,
+        // skipWeekend, weekendSolveMode, endMode), so a byte comparison reports
+        // a change on every save — resetting the next date and undoing a skip.
+        let dateChanged = (oldDateCondition?["op"] as? String) != (newDateCondition?["op"] as? String)
+            || Self.parsedDate(oldDateCondition) != Self.parsedDate(newDateCondition)
 
         if resetRequested || accountChanged || dateChanged,
            let date = fields.date,
@@ -199,5 +205,17 @@ enum ScheduleWriteBuilder {
             scheduleId: scheduleId,
             writes: [.init(dataset: "schedules", row: scheduleId, fields: fields)],
             conditions: nil)
+    }
+    
+    /// Parse a raw date condition into its semantic form so two encodings of
+    /// the same recurrence compare equal. `RecurConfig(json:)` normalises the
+    /// optional fields, which is exactly the normalisation this needs.
+    private static func parsedDate(_ condition: [String: Any]?) -> ScheduleDateCondition? {
+        guard let value = condition?["value"] else { return nil }
+        if let iso = value as? String { return DayDate(iso: iso).map(ScheduleDateCondition.fixed) }
+        if let json = value as? [String: Any], let config = RecurConfig(json: json) {
+            return .recurring(config)
+        }
+        return nil
     }
 }
