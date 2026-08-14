@@ -109,12 +109,12 @@ struct ScheduleListFetchTests {
         }
     }
 
-    @Test func readsEveryFieldOffTheLinkedRule() throws {
+    @Test func readsEveryFieldOffTheLinkedRule() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "Rent")
 
-        let schedules = try database.fetchSchedules()
+        let schedules = try await database.fetchSchedules()
         #expect(schedules.count == 1)
         let schedule = try #require(schedules.first)
         #expect(schedule.name == "Rent")
@@ -132,40 +132,40 @@ struct ScheduleListFetchTests {
 
     /// Completed and manual schedules are excluded by the poster's fetch but
     /// must appear on the list screen.
-    @Test func includesCompletedAndManualSchedules() throws {
+    @Test func includesCompletedAndManualSchedules() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "Done", ruleId: "rule-1", completed: true)
         try insertSchedule(database, id: "sched-2", name: "Manual", ruleId: "rule-2")
 
-        #expect(try database.fetchSchedules().count == 2)
+        #expect(try await database.fetchSchedules().count == 2)
         #expect(try database.fetchPostableSchedules().isEmpty)
     }
 
-    @Test func brokenSchedulesStayVisible() throws {
+    @Test func brokenSchedulesStayVisible() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", name: "No rule", ruleId: nil)
         try insertSchedule(database, id: "sched-2", name: "No next date",
                            ruleId: "rule-2", nextDate: nil)
 
-        let schedules = try database.fetchSchedules()
+        let schedules = try await database.fetchSchedules()
         #expect(schedules.count == 2)
         #expect(schedules.contains { $0.name == "No rule" && $0.ruleId == nil })
         #expect(schedules.contains { $0.name == "No next date" && $0.nextDate == nil })
     }
 
-    @Test func tombstonedSchedulesAreExcluded() throws {
+    @Test func tombstonedSchedulesAreExcluded() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1")
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "UPDATE schedules SET tombstone = 1 WHERE id = 'sched-1'")
         }
-        #expect(try database.fetchSchedules().isEmpty)
+        #expect(try await database.fetchSchedules().isEmpty)
     }
 
-    @Test func mergedPayeesResolveThroughPayeeMapping() throws {
+    @Test func mergedPayeesResolveThroughPayeeMapping() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
@@ -175,12 +175,12 @@ struct ScheduleListFetchTests {
              {"op":"is","field":"amount","value":-500}]
             """)
 
-        let schedule = try #require(try database.fetchSchedules().first)
+        let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.payeeId == "payee-1")
         #expect(schedule.amountOp == .isExactly)
     }
 
-    @Test func recurringDateConditionIsParsed() throws {
+    @Test func recurringDateConditionIsParsed() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
@@ -190,14 +190,14 @@ struct ScheduleListFetchTests {
              {"op":"isbetween","field":"amount","value":{"num1":-1200,"num2":-1000}}]
             """)
 
-        let schedule = try #require(try database.fetchSchedules().first)
+        let schedule = try #require(try await database.fetchSchedules().first)
         #expect(schedule.isRecurring)
         #expect(schedule.amountOp == .isBetween)
         #expect(schedule.amount == .range(-1200, -1000))
         #expect(schedule.postAmount == -1100)
     }
 
-    @Test func extraConditionsMarkTheScheduleCustom() throws {
+    @Test func extraConditionsMarkTheScheduleCustom() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", conditions: """
@@ -206,22 +206,22 @@ struct ScheduleListFetchTests {
              {"op":"is","field":"amount","value":-500},
              {"op":"contains","field":"notes","value":"rent"}]
             """)
-        #expect(try #require(try database.fetchSchedules().first).isCustom)
+        #expect(try #require(try await database.fetchSchedules().first).isCustom)
     }
 
-    @Test func extraActionsMarkTheScheduleCustom() throws {
+    @Test func extraActionsMarkTheScheduleCustom() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1", actions: """
             [{"op":"link-schedule","value":"sched-1"},
              {"op":"set","field":"category","value":"cat-1"}]
             """)
-        #expect(try #require(try database.fetchSchedules().first).isCustom)
+        #expect(try #require(try await database.fetchSchedules().first).isCustom)
     }
 
     // MARK: - Paid status
 
-    @Test func paidRespectsEachSchedulesOwnLowerBound() throws {
+    @Test func paidRespectsEachSchedulesOwnLowerBound() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         // Exact-date schedule: no lookback allowed.
@@ -233,7 +233,7 @@ struct ScheduleListFetchTests {
         // Manual approximate schedule: two days of lookback.
         try insertSchedule(database, id: "sched-approx", ruleId: "rule-2")
 
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             // Two days early — covers the approx schedule only.
             try db.execute(sql: """
                 INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
@@ -242,28 +242,28 @@ struct ScheduleListFetchTests {
                 """)
         }
 
-        let schedules = try database.fetchSchedules()
-        let paid = try database.fetchPaidScheduleIds(for: schedules)
+        let schedules = try await database.fetchSchedules()
+        let paid = try await database.fetchPaidScheduleIds(for: schedules)
         #expect(paid == ["sched-approx"])
     }
 
-    @Test func tombstonedTransactionsDoNotCountAsPaid() throws {
+    @Test func tombstonedTransactionsDoNotCountAsPaid() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         try insertSchedule(database, id: "sched-1")
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
                 INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
                 VALUES ('t1', 'acct-1', 20260813, -500, 'sched-1', 1)
                 """)
         }
-        let schedules = try database.fetchSchedules()
-        #expect(try database.fetchPaidScheduleIds(for: schedules).isEmpty)
+        let schedules = try await database.fetchSchedules()
+        #expect(try await database.fetchPaidScheduleIds(for: schedules).isEmpty)
     }
 
-    @Test func noSchedulesMeansNoQuery() throws {
+    @Test func noSchedulesMeansNoQuery() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
-        #expect(try database.fetchPaidScheduleIds(for: []).isEmpty)
+        #expect(try await database.fetchPaidScheduleIds(for: []).isEmpty)
     }
 }
