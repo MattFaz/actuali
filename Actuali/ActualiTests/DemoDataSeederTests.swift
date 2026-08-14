@@ -11,10 +11,39 @@ import Testing
 @MainActor
 struct DemoDataSeederTests {
 
-    private func seedAndOpen() throws -> BudgetDatabase {
-        try DemoDataSeeder.seed()
+    private func seedAndOpen(tracking: Bool = false) throws -> BudgetDatabase {
+        try DemoDataSeeder.seed(tracking: tracking)
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
         return try BudgetDatabase(path: dbPath)
+    }
+
+    /// The current month as "YYYY-MM", matching the demo seeder's budget month.
+    private var currentMonth: String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM"
+        return formatter.string(from: Date())
+    }
+
+    /// The tracking demo seeds `reflect_budgets` and budgets income, so the
+    /// budget reads as tracking (no envelope "To Budget") and the new
+    /// Saved / Projected savings summary has real figures to show.
+    @Test func trackingSeedProducesATrackingBudget() async throws {
+        let database = try seedAndOpen(tracking: true)
+        let month = try await database.fetchBudgetMonth(month: currentMonth)
+
+        #expect(month.toBudget == nil)
+        // Tracking budgets can budget income; the seeder does, so the summary
+        // has a budgeted-income figure to work with.
+        #expect(month.incomeCategories.contains { $0.budgeted > 0 })
+    }
+
+    /// The default (envelope) demo keeps its "To Budget" unallocated-funds
+    /// figure — the tracking flag must not leak into the normal path.
+    @Test func envelopeSeedKeepsToBudget() async throws {
+        let database = try seedAndOpen()
+        let month = try await database.fetchBudgetMonth(month: currentMonth)
+
+        #expect(month.toBudget != nil)
     }
 
     // Two pages so the demo exercises the dashboard switcher (GH #120);

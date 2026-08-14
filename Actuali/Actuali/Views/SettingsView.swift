@@ -219,8 +219,13 @@ struct SettingsView: View {
                                 || (budgetStore.requiresServerPassword && password.isEmpty))
                         }
 
-                        Button("Try the demo budget") {
-                            Task { await budgetStore.loadDemoData() }
+                        Menu("Try the demo budget") {
+                            Button("Envelope budget") {
+                                Task { await budgetStore.loadDemoData() }
+                            }
+                            Button("Tracking budget") {
+                                Task { await budgetStore.loadDemoData(tracking: true) }
+                            }
                         }
                         .disabled(budgetStore.isLoading)
 
