@@ -27,8 +27,8 @@ struct BudgetStoreSplitPlanTests {
         )
     }
 
-    private func line(_ categoryId: String?, _ amount: String, notes: String = "") -> BudgetStore.SplitLineForm {
-        BudgetStore.SplitLineForm(categoryId: categoryId, amount: amount, notes: notes)
+    private func line(_ categoryId: String?, _ amount: String, isOpposite: Bool = false, notes: String = "") -> BudgetStore.SplitLineForm {
+        BudgetStore.SplitLineForm(categoryId: categoryId, amount: amount, isOpposite: isOpposite, notes: notes)
     }
 
     @Test func splitExpenseSignsParentAndLines() throws {
@@ -81,10 +81,35 @@ struct BudgetStoreSplitPlanTests {
     }
 
     @Test func splitLineWithNonPositiveAmountIsRejected() {
-        #expect(throws: BudgetStoreError.invalidAmount) {
+        // Direction is the line's flip, never a sign typed into the amount.
+        for bad in ["0", "-10.00"] {
+            #expect(throws: BudgetStoreError.invalidAmount) {
+                try BudgetStore.plan(for: form(
+                    amount: "10.00",
+                    splits: [line("cat-a", bad), line("cat-b", "10.00")]
+                ))
+            }
+        }
+    }
+
+    @Test func splitAllowsOppositeDirectionLines() throws {
+        // A refund/credit line alongside spend lines (GH #216): the flipped
+        // line runs against the expense sign into a positive child.
+        let plan = try BudgetStore.plan(for: form(
+            type: .expense, amount: "20.00",
+            splits: [line("cat-a", "30.00"), line("cat-b", "10.00", isOpposite: true)]
+        ))
+        #expect(plan == .split(amountCents: -2000, lines: [
+            .init(categoryId: "cat-a", amountCents: -3000, notes: nil),
+            .init(categoryId: "cat-b", amountCents: 1000, notes: nil)
+        ]))
+    }
+
+    @Test func oppositeDirectionLinesMustStillSumToTotal() {
+        #expect(throws: BudgetStoreError.splitAmountMismatch) {
             try BudgetStore.plan(for: form(
-                amount: "10.00",
-                splits: [line("cat-a", "0"), line("cat-b", "10.00")]
+                amount: "20.00",
+                splits: [line("cat-a", "30.00"), line("cat-b", "5.00", isOpposite: true)]
             ))
         }
     }

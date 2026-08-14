@@ -159,9 +159,10 @@ struct TransactionRow: View {
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
     /// ("Off budget", GH #123); split parents show their children's breakdown
-    /// ("Food $6.00, Fun $4.00" — amounts unsigned because the row's total
-    /// already carries the sign); transfers that can't take a category show
-    /// "Transfer" instead of nagging "Uncategorized" (GH #104).
+    /// ("Food $6.00, Refund +$4.00" — outflows unsigned, inflows keep a "+"
+    /// so a credit line inside a spend split stays distinguishable, GH #216);
+    /// transfers that can't take a category show "Transfer" instead of
+    /// nagging "Uncategorized" (GH #104).
     private var categoryLabel: String {
         if isInOffBudgetAccount {
             return "Off budget"
@@ -169,7 +170,7 @@ struct TransactionRow: View {
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
                 let name = portion.categoryName ?? "Uncategorized"
-                return "\(name) \(budgetStore.displayBalance(abs(portion.amount)))"
+                return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
             }.joined(separator: ", ")
         }
         if transaction.categoryName == nil, isTransfer,

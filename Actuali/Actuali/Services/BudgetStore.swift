@@ -1952,23 +1952,27 @@ final class BudgetStore: ObservableObject {
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
-    /// unsigned like `TransactionForm.amount`. An empty `payeeName` means
-    /// the line inherits the transaction's payee (Actual's makeChild rule).
-    /// `childId` links the line to an existing child row when editing a
-    /// split parent; nil means the line is new.
+    /// unsigned like `TransactionForm.amount`; `isOpposite` runs the line
+    /// against the transaction's direction — a refund inside a spend split
+    /// (GH #216). An empty `payeeName` means the line inherits the
+    /// transaction's payee (Actual's makeChild rule). `childId` links the
+    /// line to an existing child row when editing a split parent; nil means
+    /// the line is new.
     struct SplitLineForm: Identifiable, Equatable {
         let id: UUID
         var childId: String?
         var categoryId: String?
         var amount: String
+        var isOpposite: Bool
         var notes: String
         var payeeName: String
 
-        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", notes: String = "", payeeName: String = "") {
+        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", isOpposite: Bool = false, notes: String = "", payeeName: String = "") {
             self.id = id
             self.childId = childId
             self.categoryId = categoryId
             self.amount = amount
+            self.isOpposite = isOpposite
             self.notes = notes
             self.payeeName = payeeName
         }
@@ -2012,7 +2016,9 @@ final class BudgetStore: ObservableObject {
 
     /// Resolve an expense/income form to `.standard`, or `.split` when split
     /// lines are present: every line must parse to a positive amount and the
-    /// lines must add up exactly to the total.
+    /// lines must add up exactly to the total. An `isOpposite` line runs
+    /// against the transaction's direction — a refund inside a spend
+    /// (GH #216).
     private static func planStandardOrSplit(
         _ form: TransactionForm,
         amountCents: Int,
@@ -2033,7 +2039,7 @@ final class BudgetStore: ObservableObject {
             let payeeName = line.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
             return SplitPlanLine(
                 categoryId: line.categoryId,
-                amountCents: sign * cents,
+                amountCents: sign * (line.isOpposite ? -cents : cents),
                 notes: line.notes.isEmpty ? nil : line.notes,
                 payeeName: payeeName.isEmpty ? nil : payeeName,
                 childId: line.childId
