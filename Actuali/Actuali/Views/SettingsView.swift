@@ -416,6 +416,14 @@ struct SettingsView: View {
                             }
                         }
                     }
+                    
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            RulesListView()
+                        } label: {
+                            Text("Rules")
+                        }
+                    }
                 } header: {
                     Text("Preferences")
                 } footer: {
