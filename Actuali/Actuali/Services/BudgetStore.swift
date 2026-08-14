@@ -3165,6 +3165,36 @@ final class BudgetStore: ObservableObject {
         )
     }
 
+    /// Run every rule over the given transactions and save what changed —
+    /// upstream's "Run rules on selected transactions" (Account.tsx `onRunRules`).
+    /// Returns the number of transactions actually updated.
+    @discardableResult
+    func runRules(on transactions: [Transaction]) async throws -> Int {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+
+        let rules = try database.fetchRules()
+        let context = try database.ruleContext()
+        var updated = 0
+
+        for original in transactions {
+            let result = RulesEngine.apply(original, rules: rules, context: context)
+            guard !result.changedFields.isEmpty || result.pendingPayeeName != nil else { continue }
+
+            var transaction = result.transaction
+            if let name = result.pendingPayeeName {
+                transaction.payeeId = try await findOrCreatePayee(name: name).id
+            }
+            try await syncClient.updateTransaction(
+                transaction,
+                changedFields: Self.changedFields(original: original, updated: transaction)
+            )
+            updated += 1
+        }
+
+        await refreshData()
+        return updated
+    }
+
     // MARK: - Currency Formatting
 
     /// Format an amount in cents to a currency string using the budget's currency
