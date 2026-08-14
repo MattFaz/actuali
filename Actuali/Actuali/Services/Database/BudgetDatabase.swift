@@ -2480,6 +2480,24 @@ class BudgetDatabase {
         }
     }
     
+    /// Set or clear the schedule link on transactions.
+    ///
+    /// Deliberately narrow rather than adding `schedule` to `updateTransaction`:
+    /// the transaction editor rebuilds its row without carrying that column, so
+    /// widening the shared UPDATE would clear the link whenever a scheduled
+    /// transaction is edited by hand.
+    func setTransactionSchedule(transactionIds: [String], scheduleId: String?) throws {
+        guard !transactionIds.isEmpty else { return }
+        try dbQueue.write { db in
+            let placeholders = Array(repeating: "?", count: transactionIds.count).joined(separator: ", ")
+            var arguments: [DatabaseValueConvertible?] = [scheduleId]
+            arguments.append(contentsOf: transactionIds)
+            try db.execute(
+                sql: "UPDATE transactions SET schedule = ? WHERE id IN (\(placeholders))",
+                arguments: StatementArguments(arguments))
+        }
+    }
+    
     /// One account's transactions that are eligible to form a schedule.
     ///
     /// Mirrors the filters in upstream's `getTransactions`: already-scheduled

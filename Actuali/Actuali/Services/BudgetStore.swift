@@ -2773,8 +2773,12 @@ final class BudgetStore: ObservableObject {
     /// `transactions.schedule` is already a syncable field, so this needs no
     /// new write path.
     func linkTransactions(_ transactions: [Transaction], to scheduleId: String?) async throws {
-        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
         guard !transactions.isEmpty else { return }
+
+        try database.setTransactionSchedule(
+            transactionIds: transactions.map(\.id), scheduleId: scheduleId)
+
         let updated = transactions.map { transaction -> Transaction in
             var copy = transaction
             copy.schedule = scheduleId
