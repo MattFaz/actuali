@@ -1704,6 +1704,59 @@ class BudgetDatabase {
     }
 
     /// Synced pref controlling week bucketing (0 = Sunday … 6 = Saturday).
+    /// Budget rows for report engines from the live budgets table (see
+    /// budgetTable(_:)), plus whether that table is reflect_budgets so
+    /// callers can mirror upstream budgetType checks.
+    struct ReportBudgetData: Equatable {
+        var entries: [BudgetAnalysisBudgetEntry] = []
+        var isTracking = false
+    }
+
+    func fetchBudgetDataForReports() async throws -> ReportBudgetData {
+        try await dbQueue.read { db in
+            guard let table = try Self.budgetTable(db) else { return ReportBudgetData() }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT b.month, COALESCE(cm.transferId, b.category) AS category, b.amount
+                FROM \(table) b
+                LEFT JOIN category_mapping cm ON cm.id = b.category
+                WHERE b.category IS NOT NULL
+                """)
+            let entries = rows.compactMap { row -> BudgetAnalysisBudgetEntry? in
+                guard let month: Int = row["month"], let category: String = row["category"] else { return nil }
+                return BudgetAnalysisBudgetEntry(month: month, categoryId: category, amountCents: row["amount"] ?? 0)
+            }
+            return ReportBudgetData(entries: entries, isTracking: table == "reflect_budgets")
+        }
+    }
+
+    /// Per-month tracking-budget totals for the balance-forecast engine
+    /// (upstream forecast-tracking-budget.ts: income = budgeted amounts across
+    /// income categories, expenses = across the rest). Always reads
+    /// reflect_budgets; callers gate on the budget type.
+    func fetchTrackingBudgetMonths() async throws -> [BalanceForecastBudgetMonth] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("reflect_budgets") else { return [] }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT b.month AS month,
+                       SUM(CASE WHEN c.is_income = 1 THEN b.amount ELSE 0 END) AS income,
+                       SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE b.amount END) AS expenses
+                FROM reflect_budgets b
+                LEFT JOIN category_mapping cm ON cm.id = b.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, b.category)
+                WHERE b.category IS NOT NULL
+                GROUP BY b.month
+                """)
+            return rows.compactMap { row in
+                guard let month: Int = row["month"] else { return nil }
+                return BalanceForecastBudgetMonth(
+                    month: month,
+                    budgetedIncomeCents: row["income"] ?? 0,
+                    budgetedExpensesCents: row["expenses"] ?? 0
+                )
+            }
+        }
+    }
+
     func fetchFirstDayOfWeekIdx() async throws -> Int {
         try await dbQueue.read { db in
             guard try db.tableExists("preferences") else { return 0 }
@@ -2122,7 +2175,17 @@ class BudgetDatabase {
     /// occurrence either way and only its advance fails. Returns [] when the
     /// schedule tables don't exist (older budget files).
     func fetchPostableSchedules() throws -> [Schedule] {
-        try dbQueue.read { db in
+        try dbQueue.read { db in try Self.schedules(db, postableOnly: true) }
+    }
+
+    /// Schedules for the balance-forecast engine: same parsing as the poster,
+    /// but manual (posts_transaction = 0) schedules forecast too, matching
+    /// upstream forecast-schedules.ts.
+    func fetchForecastSchedules() async throws -> [Schedule] {
+        try await dbQueue.read { db in try Self.schedules(db, postableOnly: false) }
+    }
+
+    private static func schedules(_ db: Database, postableOnly: Bool) throws -> [Schedule] {
             guard try db.tableExists("schedules"),
                   try db.tableExists("schedules_next_date"),
                   try db.tableExists("rules")
@@ -2142,7 +2205,7 @@ class BudgetDatabase {
                 JOIN rules r ON r.id = s.rule
                 WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
                   AND (s.completed = 0 OR s.completed IS NULL)
-                  AND s.posts_transaction = 1
+                  AND (s.posts_transaction = 1 OR \(postableOnly ? 0 : 1))
                   AND (r.tombstone = 0 OR r.tombstone IS NULL)
                 ORDER BY s.id, nd.id
                 """)
@@ -2235,7 +2298,6 @@ class BudgetDatabase {
                     dateCondition: dateCondition
                 )
             }
-        }
     }
 
     /// Dedup guard for the poster: does an alive transaction linked to this
