@@ -227,6 +227,7 @@ enum ScheduleConditions {
         switch date {
         case .fixed(let day): day.iso
         case .recurring(let config): config.jsonObject
+        case .unsupported: "Unsupported repeat"
         }
     }
 
@@ -243,6 +244,10 @@ enum ScheduleConditions {
             return day
         case .recurring(let config):
             return ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: today)
+        case .unsupported:
+            // Can't advance a shape we can't model; the poster already treats
+            // these like one-offs and leaves the advance to the web app.
+            return nil
         }
     }
 

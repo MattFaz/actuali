@@ -73,7 +73,7 @@ struct ScheduleEditView: View {
             _repeats = State(initialValue: false)
             _recurrence = State(initialValue: RecurrenceDraft(config: nil))
             _oneOffDate = State(initialValue: Transaction.date(fromYYYYMMDD: day.yyyymmdd))
-        case nil:
+        case .unsupported, nil:
             _repeats = State(initialValue: false)
             _recurrence = State(initialValue: RecurrenceDraft(config: nil))
             _oneOffDate = State(initialValue: Date())

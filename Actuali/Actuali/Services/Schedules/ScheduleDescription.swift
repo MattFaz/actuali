@@ -24,6 +24,7 @@ enum ScheduleDescription {
         switch condition {
         case .fixed(let day): Self.mediumDate(day)
         case .recurring(let config): recurring(config)
+        case .unsupported: "Unsupported repeat"
         case nil: "No date"
         }
     }
