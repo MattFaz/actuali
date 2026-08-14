@@ -769,7 +769,7 @@ private struct SplitLineRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
                 .accessibilityHint("Flips this line's direction")
-                AmountInputField(text: $line.amount)
+                AmountInputField(text: $line.amount, onToggleSign: { line.isOpposite.toggle() })
                     .frame(width: 110)
             }
             // No fill offer on a flipped line: the remainder is stated in the
@@ -813,8 +813,11 @@ private struct SplitLineRow: View {
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar; sign is
-/// otherwise handled outside the field (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
+/// the text's own sign. With `onToggleSign`, the same button appears but the
+/// sign lives outside the field (a split line's direction flip) and the text
+/// stays unsigned. Neither set means sign is handled elsewhere entirely
+/// (e.g. the expense/income toggle).
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
@@ -831,6 +834,9 @@ struct AmountInputField: UIViewRepresentable {
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
+    /// Shows the ± toolbar button and delegates it here instead of signing
+    /// the text — for callers whose sign is separate state.
+    var onToggleSign: (() -> Void)? = nil
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -871,9 +877,9 @@ struct AmountInputField: UIViewRepresentable {
         // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
-        if allowsNegative {
+        if allowsNegative || onToggleSign != nil {
             // The decimal pad has no minus key, so this button is the only
-            // touchscreen affordance for entering a negative amount.
+            // keyboard affordance for flipping an amount's sign.
             items.append(UIBarButtonItem(
                 image: UIImage(systemName: "plus.forwardslash.minus"),
                 style: .plain,
@@ -1052,6 +1058,12 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         @objc func toggleSign() {
+            // Delegated sign lives outside the text (a split line's flip);
+            // the field's own text stays unsigned.
+            if let onToggleSign = parent.onToggleSign {
+                onToggleSign()
+                return
+            }
             guard parent.allowsNegative else { return }
             isNegative.toggle()
             if let textField {
