@@ -155,13 +155,13 @@ struct BudgetDatabaseDashboardTests {
 
     @Test func unknownTypeReturnsAsUnsupported() async throws {
         let (database, path) = try makeDatabase()
-        try insertWidget(path: path, id: "x", type: "sankey-card", meta: "{}")
+        try insertWidget(path: path, id: "x", type: "future-card", meta: "{}")
 
         let widgets = try await database.fetchWidgets(pageId: nil)
         #expect(widgets.count == 1)
         if case .unsupported(let id, let type) = widgets.first {
             #expect(id == "x")
-            #expect(type == "sankey-card")
+            #expect(type == "future-card")
         } else {
             Issue.record("Expected .unsupported")
         }

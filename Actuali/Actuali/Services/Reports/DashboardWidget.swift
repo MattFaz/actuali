@@ -262,6 +262,12 @@ enum DashboardWidget: Equatable {
     case ageOfMoney(id: String, meta: AgeOfMoneyMeta?)
     case formula(id: String, meta: FormulaMeta?)
     case customReport(id: String, meta: CustomReportMeta?)
+    case calendar(id: String, meta: CalendarMeta?)
+    case crossover(id: String, meta: CrossoverMeta?)
+    case budgetAnalysis(id: String, meta: BudgetAnalysisMeta?)
+    case sankey(id: String, meta: SankeyMeta?)
+    case balanceForecast(id: String, meta: BalanceForecastMeta?)
+    case monteCarlo(id: String, meta: MonteCarloMeta?)
     case unsupported(id: String, type: String)
 
     var id: String {
@@ -274,6 +280,12 @@ enum DashboardWidget: Equatable {
              .ageOfMoney(let id, _),
              .formula(let id, _),
              .customReport(let id, _),
+             .calendar(let id, _),
+             .crossover(let id, _),
+             .budgetAnalysis(let id, _),
+             .sankey(let id, _),
+             .balanceForecast(let id, _),
+             .monteCarlo(let id, _),
              .unsupported(let id, _):
             return id
         }
@@ -289,6 +301,12 @@ enum DashboardWidget: Equatable {
         case .ageOfMoney: return "Age of Money"
         case .formula: return "Formula"
         case .customReport: return "Custom Report"
+        case .calendar: return "Calendar"
+        case .crossover: return "Crossover"
+        case .budgetAnalysis: return "Budget Analysis"
+        case .sankey: return "Sankey"
+        case .balanceForecast: return "Balance Forecast"
+        case .monteCarlo: return "Monte Carlo"
         case .unsupported(_, let type): return type
         }
     }
@@ -303,6 +321,12 @@ enum DashboardWidget: Equatable {
         case .ageOfMoney(_, let meta): return meta?.name ?? typeLabel
         case .formula(_, let meta): return meta?.name ?? typeLabel
         case .customReport(_, let meta): return meta?.name ?? typeLabel
+        case .calendar(_, let meta): return meta?.name ?? typeLabel
+        case .crossover(_, let meta): return meta?.name ?? typeLabel
+        case .budgetAnalysis(_, let meta): return meta?.name ?? typeLabel
+        case .sankey(_, let meta): return meta?.name ?? typeLabel
+        case .balanceForecast(_, let meta): return meta?.name ?? typeLabel
+        case .monteCarlo(_, let meta): return meta?.name ?? typeLabel
         case .unsupported: return typeLabel
         }
     }
@@ -333,6 +357,18 @@ enum DashboardWidget: Equatable {
             return .formula(id: id, meta: decode(FormulaMeta.self))
         case "custom-report":
             return .customReport(id: id, meta: decode(CustomReportMeta.self))
+        case "calendar-card":
+            return .calendar(id: id, meta: decode(CalendarMeta.self))
+        case "crossover-card":
+            return .crossover(id: id, meta: decode(CrossoverMeta.self))
+        case "budget-analysis-card":
+            return .budgetAnalysis(id: id, meta: decode(BudgetAnalysisMeta.self))
+        case "sankey-card":
+            return .sankey(id: id, meta: decode(SankeyMeta.self))
+        case "balance-forecast-card":
+            return .balanceForecast(id: id, meta: decode(BalanceForecastMeta.self))
+        case "monte-carlo-card":
+            return .monteCarlo(id: id, meta: decode(MonteCarloMeta.self))
         default:
             return .unsupported(id: id, type: type)
         }
