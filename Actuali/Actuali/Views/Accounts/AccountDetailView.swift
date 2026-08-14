@@ -5,6 +5,10 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var pager: TransactionPager?
+    /// Which account `pager` was built for. The iPad split layout reuses one
+    /// instance of this view across selections, so the account can change
+    /// under state that was scoped to the previous one.
+    @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
     @State private var searchText = ""
@@ -12,6 +16,10 @@ struct AccountDetailView: View {
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
+    /// The account's note (GH #198). Starts `.unsupported` so the menu item
+    /// stays hidden until the read confirms this file can store notes.
+    @State private var note: EntityNote = .unsupported
+    @State private var editingNote = false
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -24,9 +32,10 @@ struct AccountDetailView: View {
 
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
-    /// until body/task time.
+    /// until body/task time. Rebuilt when the account changes: the closure
+    /// captures the id, so a reused pager would keep paging the old account.
     private func currentPager() -> TransactionPager {
-        if let pager { return pager }
+        if let pager, pagerAccountId == account.id { return pager }
         let store = budgetStore
         let accountId = account.id
         let created = TransactionPager { offset, limit, search in
@@ -36,12 +45,63 @@ struct AccountDetailView: View {
             )
         }
         pager = created
+        pagerAccountId = accountId
         return created
     }
 
     private func reload() async {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
+        await reloadNote()
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func reloadNote() async {
+        note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
+    }
+
+    /// The account's note (GH #198), presented exactly as a category's is (see
+    /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
+    /// while searching — a search is about finding transactions, not reading
+    /// guidance — and on files with no `notes` table, where an edit could never
+    /// save.
+    private var noteSection: some View {
+        Section("Note") {
+            if note.isEmpty {
+                Button {
+                    editingNote = true
+                } label: {
+                    // Tinted: an empty note row is an invitation to act, where
+                    // an existing note is content to read.
+                    Label("Add Note", systemImage: "note.text.badge.plus")
+                        .foregroundStyle(Color.accentColor)
+                }
+                // Plain: a tinted List button would tint the label twice over.
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountNoteRow")
+            } else {
+                HStack(alignment: .top, spacing: 12) {
+                    // Attributed so markdown links and bare URLs in the note
+                    // are tappable (GH #190). That's also why this row is a
+                    // tap gesture rather than the Button the empty state uses:
+                    // a Button label swallows link taps, where links inside a
+                    // gesture-carrying row take precedence over the gesture.
+                    Text(NoteLinkText.attributed(note.text))
+                        .multilineTextAlignment(.leading)
+                        // Multi-line notes are the point — let the row grow
+                        // instead of truncating the guidance to one line.
+                        .fixedSize(horizontal: false, vertical: true)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Image(systemName: "pencil")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture { editingNote = true }
+                .accessibilityElement(children: .combine)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityIdentifier("accountNoteRow")
+            }
+        }
     }
 
     private func breakdownRow(_ title: String, amount: Int) -> some View {
@@ -89,53 +149,58 @@ struct AccountDetailView: View {
                 }
             }
 
-            Section("Recent Transactions") {
-                if let pager, pager.transactions.isEmpty {
-                    Text(searchQuery != nil
-                        ? "No matching transactions"
-                        : budgetStore.hideClearedTransactions
-                            ? "No uncleared transactions"
-                            : "No transactions")
-                        .foregroundStyle(.secondary)
-                } else if let pager {
-                    ForEach(pager.transactions) { transaction in
-                        Button {
-                            editingTransaction = transaction
-                        } label: {
-                            TransactionRow(transaction: transaction, showAccount: false, onToggleCleared: {
-                                Task { await budgetStore.toggleCleared(transaction) }
-                            })
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button(role: .destructive) {
-                                Task { await budgetStore.deleteTransaction(transaction) }
-                            } label: {
-                                Label("Delete", systemImage: "trash")
+            if note.supported && searchQuery == nil {
+                noteSection
+            }
+
+            if let pager, !pager.transactions.isEmpty {
+                if budgetStore.transactionDisplayMode == .groupedByDate {
+                    let groups = pager.transactions.groupedByDate()
+                    ForEach(groups) { group in
+                        Section(group.title) {
+                            ForEach(group.transactions) { transaction in
+                                TransactionListRow(transaction: transaction,
+                                                   showAccount: false,
+                                                   showDate: false,
+                                                   editing: $editingTransaction)
                             }
-                            Button {
-                                editingTransaction = transaction
-                            } label: {
-                                Label("Edit", systemImage: "pencil")
+                            // The sentinel rides in the last date section so
+                            // grouped mode doesn't grow a headerless section
+                            // (and its gap) of its own.
+                            if pager.hasMore, group.id == groups.last?.id {
+                                TransactionPagingSentinel(pager: pager)
                             }
-                            .tint(.yellow)
                         }
                     }
-                    if pager.hasMore {
-                        // Sentinel row: appearing near the bottom of the list
-                        // pulls in the next page.
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
+                } else {
+                    Section("Recent Transactions") {
+                        ForEach(pager.transactions) { transaction in
+                            TransactionListRow(transaction: transaction,
+                                               showAccount: false,
+                                               editing: $editingTransaction)
                         }
-                        .task { await pager.loadNextPage() }
+                        if pager.hasMore {
+                            TransactionPagingSentinel(pager: pager)
+                        }
+                    }
+                }
+            } else {
+                // Header stays put while the first page is still loading, so
+                // the screen doesn't reflow once the rows land.
+                Section("Recent Transactions") {
+                    if pager != nil {
+                        Text(searchQuery != nil
+                            ? "No matching transactions"
+                            : budgetStore.hideClearedTransactions
+                                ? "No uncleared transactions"
+                                : "No transactions")
+                            .foregroundStyle(.secondary)
                     }
                 }
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
+        .readableWidth()
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
@@ -147,6 +212,9 @@ struct AccountDetailView: View {
                         Label("Import from Wallet", systemImage: "wallet.pass")
                     }
                 }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
@@ -182,9 +250,31 @@ struct AccountDetailView: View {
             AddTransactionView(editing: transaction)
                 .environmentObject(budgetStore)
         }
-        .task(id: searchText) {
-            // Debounce keystrokes; the initial (empty) load runs immediately.
-            if searchQuery != nil {
+        .sheet(isPresented: $editingNote, onDismiss: {
+            // Only the note needs re-reading — a note save doesn't touch
+            // transactions or the balance.
+            Task { await reloadNote() }
+        }) {
+            NoteEditorView(
+                noteId: EntityNote.accountNoteId(account.id),
+                title: account.name,
+                note: note.text
+            )
+            .environmentObject(budgetStore)
+        }
+        // Keyed on the account as well as the search: selecting another
+        // account in the iPad split layout reuses this view, and without the
+        // account in the key nothing would reload — the previous account's
+        // rows would sit under the new one's name and balance.
+        .task(id: [account.id, searchText]) {
+            if pagerAccountId != account.id {
+                // Drop the previous account's page and balance split rather
+                // than showing them while the new ones load.
+                pager = nil
+                breakdown = nil
+            } else if searchQuery != nil {
+                // Debounce keystrokes; the initial (empty) load and account
+                // switches run immediately.
                 try? await Task.sleep(for: .milliseconds(250))
                 if Task.isCancelled { return }
             }

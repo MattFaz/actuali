@@ -268,6 +268,10 @@ struct BudgetView: View {
                                 }
                         )
                     }
+                    // The budget table is a fixed grid of narrow amount
+                    // columns; stretched to iPad width it becomes a category
+                    // name and its numbers separated by a foot of nothing.
+                    .readableWidth()
                     // The pinned summary sits outside the List, so paint the
                     // grouped background behind it to match.
                     .background(Color(.systemGroupedBackground).ignoresSafeArea())
@@ -289,25 +293,30 @@ struct BudgetView: View {
             }
             .navigationTitle("Budget")
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel("Previous month")
-                }
+                // Both arrows flank the month in the center, so nothing sits in
+                // the leading "back button" position where the previous-month
+                // chevron used to be mistaken for one (it steps the month, not
+                // the navigation stack).
                 ToolbarItem(placement: .principal) {
-                    MonthPicker(selectedMonth: $selectedMonth)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .accessibilityLabel("Next month")
+                    HStack(spacing: 8) {
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel("Previous month")
 
+                        MonthPicker(selectedMonth: $selectedMonth)
+
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .accessibilityLabel("Next month")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     // Every "how should this look" control lives here (GH
                     // #157). Whole-table expand/collapse is a menu rather
                     // than a long-press on the group headers: SwiftUI context
@@ -581,6 +590,24 @@ struct CleanCategoryBudgetRow: View {
     }
 }
 
+/// Whether `month` ("YYYY-MM") is before the current calendar month. The
+/// strings are zero-padded, so a plain lexicographic compare is exact.
+private func isPastMonth(_ month: String) -> Bool {
+    month < BudgetView.currentMonthString()
+}
+
+/// The tracking-budget result figure for the summary bar: actual savings once
+/// a month is finished, projected savings while it's still current or ahead.
+/// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
+/// the month rolls over.
+private func trackingSavings(_ budget: BudgetMonth) -> Int {
+    isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
+}
+
+private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
+    isPastMonth(budget.month) ? "Saved" : "Projected"
+}
+
 /// Clean-style summary card: a 2x2 grid whose reading order follows the
 /// money — came in, allocated, went out, left over. Two rows because four
 /// currency amounts don't fit across narrow devices.
@@ -605,12 +632,12 @@ struct CleanBudgetSummary: View {
             HStack(alignment: .top) {
                 SummaryStat(
                     label: "Spent",
-                    value: budgetStore.displayBalance(abs(budget.totalOutflow))
+                    value: budgetStore.displayBalance(-budget.totalSpent)
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
-                // budgets have no to-budget concept, so fall back to the
-                // total of category balances.
+                // budgets report savings instead — actual for a finished month,
+                // projected for the current/future month.
                 if let toBudget = budget.toBudget {
                     SummaryStat(
                         label: "To Budget",
@@ -619,10 +646,11 @@ struct CleanBudgetSummary: View {
                         alignment: .trailing
                     )
                 } else {
+                    let value = trackingSavings(budget)
                     SummaryStat(
-                        label: "Available",
-                        value: budgetStore.displayBalance(budget.totalAvailable),
-                        valueColor: budget.totalAvailable >= 0 ? .green : .red,
+                        label: trackingSavingsLabel(budget),
+                        value: budgetStore.displayBalance(value),
+                        valueColor: value >= 0 ? .green : .red,
                         alignment: .trailing
                     )
                 }
@@ -662,13 +690,25 @@ struct TableBudgetSummary: View {
             )
             SummaryColumn(
                 label: "Spent",
-                value: budgetStore.displayBudgetCell(budget.totalOutflow)
+                value: budgetStore.displayBudgetCell(budget.totalSpent)
             )
-            SummaryColumn(
-                label: "Balance",
-                value: budgetStore.displayBudgetCell(budget.totalAvailable),
-                valueColor: budget.totalAvailable >= 0 ? .green : .red
-            )
+            // Envelope budgets total the category balances; tracking budgets
+            // report savings instead — actual for a finished month, projected
+            // for the current/future month.
+            if budget.toBudget != nil {
+                SummaryColumn(
+                    label: "Balance",
+                    value: budgetStore.displayBudgetCell(budget.totalAvailable),
+                    valueColor: budget.totalAvailable >= 0 ? .green : .red
+                )
+            } else {
+                let value = trackingSavings(budget)
+                SummaryColumn(
+                    label: trackingSavingsLabel(budget),
+                    value: budgetStore.displayBudgetCell(value),
+                    valueColor: value >= 0 ? .green : .red
+                )
+            }
         }
     }
 }
@@ -874,7 +914,7 @@ struct EditBudgetAmountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    AmountInputField(text: $amountText)
+                    AmountInputField(text: $amountText, allowsNegative: true, autofocus: true)
                 } header: {
                     Text("Budgeted in \(MonthPicker.title(for: category.month))")
                 } footer: {
@@ -907,7 +947,8 @@ struct EditBudgetAmountSheet: View {
             do {
                 // An emptied field means "no longer budgeted", i.e. zero.
                 let cents = try BudgetStore.budgetAmountCents(
-                    from: amountText.isEmpty ? "0" : amountText
+                    from: amountText.isEmpty ? "0" : amountText,
+                    allowNegative: true
                 )
                 try await budgetStore.setBudgetAmount(
                     month: category.month,

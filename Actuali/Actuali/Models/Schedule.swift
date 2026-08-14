@@ -21,6 +21,7 @@ enum ScheduledAmount: Equatable {
 enum ScheduleDateCondition: Equatable {
     case fixed(DayDate)
     case recurring(RecurConfig)
+    case unsupported
 }
 
 /// A schedule eligible for auto-posting, read from the synced Actual tables
@@ -35,8 +36,11 @@ struct Schedule {
     /// `schedules_next_date.id` — target row for the advance write after posting.
     let nextDateRowId: String
     /// `schedules_next_date.base_next_date_ts` (ms epoch); the advance write
-    /// sets `local_next_date_ts` to this value (loot-core setNextDate).
-    let baseNextDateTs: Int64
+    /// sets `local_next_date_ts` to this value (loot-core setNextDate). NULL
+    /// in the row stays nil here — the web posts such schedules (its
+    /// v_schedules CASE falls through to base_next_date) and its advance
+    /// writes a NULL local_next_date_ts, so ours must too.
+    let baseNextDateTs: Int64?
     let accountId: String
     let payeeId: String?
     /// From the linked rule's `set category` action, when present. Surfaced

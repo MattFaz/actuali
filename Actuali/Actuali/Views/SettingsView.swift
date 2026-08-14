@@ -80,6 +80,7 @@ struct SettingsView: View {
     @State private var notificationPermissionDenied = false
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
+    @State private var confirmBackupOverBaseline = false
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -219,8 +220,13 @@ struct SettingsView: View {
                                 || (budgetStore.requiresServerPassword && password.isEmpty))
                         }
 
-                        Button("Try the demo budget") {
-                            Task { await budgetStore.loadDemoData() }
+                        Menu("Try the demo budget") {
+                            Button("Envelope budget") {
+                                Task { await budgetStore.loadDemoData() }
+                            }
+                            Button("Tracking budget") {
+                                Task { await budgetStore.loadDemoData(tracking: true) }
+                            }
                         }
                         .disabled(budgetStore.isLoading)
 
@@ -370,6 +376,12 @@ struct SettingsView: View {
                         }
                     }
 
+                    Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                        ForEach(TransactionDisplayMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
@@ -457,6 +469,12 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
+                        
+                        if budgetStore.syncDetachedByRestore {
+                            Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
 
                         if let lastSync = budgetStore.lastSyncTime {
                             HStack {
@@ -508,6 +526,50 @@ struct SettingsView: View {
                             .disabled(budgetStore.syncState == .syncing)
                         }
                     }
+                }
+                
+                if budgetStore.currentBudgetId != nil {
+                    Section {
+                        NavigationLink {
+                            BackupListView()
+                        } label: {
+                            HStack {
+                                Text("Backups")
+                                Spacer()
+                                if !budgetStore.backups.isEmpty {
+                                    Text("\(budgetStore.backups.count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
+                        Button("Back Up Now") {
+                            if budgetStore.isViewingBackup {
+                                confirmBackupOverBaseline = true
+                            } else {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                        }
+                        .confirmationDialog(
+                            "Back up the restored data?",
+                            isPresented: $confirmBackupOverBaseline,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Back Up", role: .destructive) {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
+                        }
+                    } header: {
+                        Text("Backups")
+                    } footer: {
+                        // No cadence promise — iOS can't run a 15-minute
+                        // background timer (plan D2).
+                        Text("Backups are stored on this device. One is taken automatically when you leave the app.")
+                    }
+                    .task { await budgetStore.refreshBackups() }
                 }
 
                 Section {
@@ -574,6 +636,7 @@ struct SettingsView: View {
                     Text("About")
                 }
             }
+            .readableWidth()
             .navigationTitle("Settings")
             .contentMargins(.horizontal, 6, for: .scrollContent)
             .task {

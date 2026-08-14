@@ -3,10 +3,10 @@ import GRDB
 import Testing
 @testable import Actuali
 
-/// Reading category notes out of Actual's `notes` table (GH #131). The table
-/// is keyed by the annotated row's own id, so a category's note lives at
-/// `notes.id = <categoryId>`.
-struct BudgetDatabaseCategoryNoteTests {
+/// Reading notes out of Actual's `notes` table — categories (GH #131) and
+/// accounts (GH #198). The table is keyed by the annotated row's own id, so a
+/// note lives at `notes.id = <that row's id>` whatever kind of row it is.
+struct BudgetDatabaseNoteTests {
 
     /// A budget file with (or deliberately without) the `notes` table.
     /// `seedSQL` inserts rows once the schema is in place.
@@ -38,7 +38,7 @@ struct BudgetDatabaseCategoryNoteTests {
             """)
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(note.supported)
         #expect(note.text == "Cap at $400/mo")
@@ -54,7 +54,7 @@ struct BudgetDatabaseCategoryNoteTests {
             """)
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(note.text.contains("\n"))
     }
@@ -65,7 +65,7 @@ struct BudgetDatabaseCategoryNoteTests {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(note.supported)
         #expect(note.text.isEmpty)
@@ -80,7 +80,7 @@ struct BudgetDatabaseCategoryNoteTests {
             """)
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(note.supported)
         #expect(note.text.isEmpty)
@@ -94,7 +94,7 @@ struct BudgetDatabaseCategoryNoteTests {
             """)
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(note.text.isEmpty)
     }
@@ -106,7 +106,7 @@ struct BudgetDatabaseCategoryNoteTests {
         let (database, path) = try makeDatabase(includeNotesTable: false)
         defer { cleanup(path) }
 
-        let note = try await database.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = try await database.fetchNote(id: "cat-groceries")
 
         #expect(!note.supported)
         #expect(note.text.isEmpty)

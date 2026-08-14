@@ -20,6 +20,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case cannotConvertToSplit
     case splitNeedsTwoLines
     case splitAmountMismatch
+    case invalidAccountName
+    case accountCreationFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -49,6 +51,10 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "A split needs at least two lines"
         case .splitAmountMismatch:
             return "Split amounts must add up to the total"
+        case .invalidAccountName:
+            return "Enter an account name"
+        case .accountCreationFailed(let message):
+            return "Failed to create account: \(message)"
         }
     }
 }
@@ -199,6 +205,14 @@ final class BudgetStore: ObservableObject {
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
             UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+        }
+    }
+
+    /// How transaction lists are presented (flat list vs grouped by date).
+    /// Persisted to UserDefaults, defaults to flat list.
+    @Published var transactionDisplayMode: TransactionDisplayMode = .flat {
+        didSet {
+            UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
 
@@ -642,6 +656,21 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
+    
+    // MARK: - Backups
+
+    @Published private(set) var backups: [Backup] = []
+
+    /// True while the user is viewing a restored backup — the revert baseline
+    /// (db.latest.sqlite) exists. Taking a new backup consumes it, so the UI
+    /// confirms first (backupOnBackground skips entirely for the same reason).
+    var isViewingBackup: Bool { backups.contains(where: \.isLatest) }
+
+    /// True when metadata carries a cloudFileId but no groupId (a backup was restored over a synced budget).
+    /// Sync can't run again until the user re-downloads the server copy.
+    @Published private(set) var syncDetachedByRestore = false
+
+    private lazy var backupService = BackupService(fileManager: fileManager)
 
     /// Handle to the in-flight `loadLocalBudget` started in `init()`. App Intents
     /// can run before that background load has wired `syncClient`, so the headless
@@ -672,6 +701,7 @@ final class BudgetStore: ObservableObject {
     func configureForTesting(database: BudgetDatabase, syncClient: SyncClient) {
         self.database = database
         self.syncClient = syncClient
+        subscribeToSyncState()
     }
 
     /// Test-only: install an already-completed load task that produced no
@@ -691,7 +721,12 @@ final class BudgetStore: ObservableObject {
     /// Budgets directory (parallel suites create real budgets there).
     func setFileManagerForTesting(_ manager: BudgetFileManager) {
         fileManager = manager
+        backupService = BackupService(fileManager: manager)
     }
+
+    /// Test-only: whether loadLocalBudget wired a sync client (it must not
+    /// for a budget detached by a backup restore).
+    var isSyncConfiguredForTesting: Bool { syncClient != nil }
     #endif
 
     private init() {
@@ -722,6 +757,7 @@ final class BudgetStore: ObservableObject {
            let style = BudgetDisplayStyle(rawValue: raw) {
             _budgetDisplayStyle = Published(initialValue: style)
         }
+        _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
@@ -979,6 +1015,9 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
+        
+        backups = []
+        syncDetachedByRestore = false
 
         // Clear everything currently loaded in memory too, so nothing from
         // the old budget lingers in the UI post-disconnect. The dataVersion
@@ -1182,15 +1221,6 @@ final class BudgetStore: ObservableObject {
             currentBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
 
-            // Configure sync client
-            let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
-                let id = HybridLogicalClock.generateNodeId()
-                UserDefaults.standard.set(id, forKey: "nodeId")
-                return id
-            }()
-
-            syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
-
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
@@ -1202,31 +1232,48 @@ final class BudgetStore: ObservableObject {
                let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) {
                 fileId = metadata.cloudFileId ?? budgetId
                 groupId = metadata.groupId ?? ""
-                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                syncDetachedByRestore = (metadata.cloudFileId != nil && groupId.isEmpty)
             } else {
+                syncDetachedByRestore = false
                 logger.notice("Could not load metadata for budget \(budgetId, privacy: .private)")
             }
 
-            if let db = database {
-                let loadedKey = EncryptionKeyManager.load(fileId: fileId)
-                try await syncClient?.configure(
-                    database: db,
-                    fileId: fileId,
-                    groupId: groupId,
-                    encryptionKey: loadedKey?.key,
-                    keyId: loadedKey?.keyId
-                )
-                logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+            if syncDetachedByRestore {
+                // A restored backup: the server still has the old sync group,
+                // so any sync with our nulled groupId earns a 400
+                // file-has-reset and an endless retry loop. Leave sync
+                // unconfigured until a re-download writes a fresh groupId.
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                syncState = .idle
+                logger.notice("Budget detached by restore - sync not configured")
             } else {
-                logger.error("Database is nil, cannot configure sync")
-            }
+                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
+                    let id = HybridLogicalClock.generateNodeId()
+                    UserDefaults.standard.set(id, forKey: "nodeId")
+                    return id
+                }()
 
-            // Subscribe to sync state
-            syncStateCancellable = syncClient?.statePublisher
-                .receive(on: DispatchQueue.main)
-                .sink { [weak self] state in
-                    self?.syncState = state
+                syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
+
+                if let db = database {
+                    let loadedKey = EncryptionKeyManager.load(fileId: fileId)
+                    try await syncClient?.configure(
+                        database: db,
+                        fileId: fileId,
+                        groupId: groupId,
+                        encryptionKey: loadedKey?.key,
+                        keyId: loadedKey?.keyId
+                    )
+                    logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+                } else {
+                    logger.error("Database is nil, cannot configure sync")
                 }
+
+                subscribeToSyncState()
+            }
 
             refreshPayeeLocationSupport()
 
@@ -1272,13 +1319,13 @@ final class BudgetStore: ObservableObject {
     /// Populate a local "demo" budget with curated data, for screenshots and for
     /// letting users (and App Review) explore the app without configuring a server.
     /// Logs out any active server session so sync cannot fire against a real server.
-    func loadDemoData() async {
+    func loadDemoData(tracking: Bool = false) async {
         // Log out any active session so sync doesn't try to fire against a
         // real server — but keep local budget files: trying the demo must
         // never destroy a user's synced data.
         logout(clearLocalData: false)
         do {
-            try DemoDataSeeder.seed()
+            try DemoDataSeeder.seed(tracking: tracking)
             currentBudgetId = DemoDataSeeder.budgetId
             await loadLocalBudget(DemoDataSeeder.budgetId)
             // The seeder recreates the budget directory mid-launch, so any
@@ -1329,6 +1376,87 @@ final class BudgetStore: ObservableObject {
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
     }
+    
+    // MARK: - Backup Actions
+
+    func refreshBackups() async {
+        guard let budgetId = currentBudgetId else {
+            backups = []
+            return
+        }
+        backups = await backupService.availableBackups(budgetId: budgetId)
+    }
+
+    func makeBackupNow() async {
+        guard let budgetId = currentBudgetId else { return }
+        do {
+            try await backupService.makeBackup(budgetId: budgetId, database: database)
+            await refreshBackups()
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+    
+    /// Automatic backup on app-background. Skipped while viewing a backup.
+    /// Backgrounding happens seconds after a restore (the user checks another app),
+    /// and makeBackup's first step would destroy the revert baseline.
+    func backupOnBackground() {
+        guard let budgetId = currentBudgetId, let database else { return }
+        let viewingBackup = FileManager.default.fileExists(
+            atPath: fileManager.latestDatabasePath(for: budgetId).path
+        )
+        guard !viewingBackup else { return }
+        let service = backupService
+        Task { [weak self] in
+            try? await service.makeBackup(budgetId: budgetId, database: database)
+            await self?.refreshBackups()
+        }
+    }
+
+    func restoreBackup(_ backupId: String) async {
+        guard let budgetId = currentBudgetId else { return }
+        isLoading = true
+        error = nil
+
+        // Drop the sync client and database references before loadBackup swaps
+        // files. Any sync still running inside the old actor keeps the old
+        // database open: its baseline snapshot goes through that queue's write
+        // serialization (VACUUM INTO, never a raw file copy racing a write),
+        // and post-swap writes land on the now-unlinked old inode (harmlessly
+        // discarded). We deliberately do NOT flushPendingSync() here: that
+        // awaits the network push and would hang this local restore for the
+        // URLSession timeout when the server is unreachable.
+        let openDatabase = database
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
+        do {
+            try await backupService.loadBackup(
+                budgetId: budgetId, backupId: backupId, database: openDatabase
+            )
+        } catch {
+            self.error = error.localizedDescription
+        }
+
+        // Reopen even after a failure: the live files are still (or again) a
+        // valid budget, and the UI needs a database either way.
+        await loadLocalBudget(budgetId)
+        await refreshBackups()
+        isLoading = false
+    }
+    
+    /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
+    /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
+    func backupFileURL(_ backupId: String) -> URL? {
+        guard let budgetId = currentBudgetId else { return nil }
+        return fileManager.backupPath(for: budgetId, name: backupId)
+    }
+
+    func revertToLatest() async {
+        await restoreBackup(Backup.latest.id)
+    }
 
     // MARK: - Payees
 
@@ -1357,6 +1485,110 @@ final class BudgetStore: ObservableObject {
         payees.append(newPayee)
 
         return newPayee
+    }
+
+    // MARK: - Accounts
+
+    /// Create a new local (manually-added) account, matching the PWA's own
+    /// "Create local account" flow (loot-core `createAccount`): an accounts
+    /// row, the account's transfer payee (the empty-named payee carrying
+    /// `transfer_acct` that every transfer to or from this account resolves
+    /// through), and — only for a nonzero balance, like the PWA — an
+    /// opening-balance transaction from the shared "Starting Balance" payee
+    /// (Actual has no separate stored-balance field — every account's balance
+    /// is always the sum of its transactions, so this transaction IS the
+    /// starting balance, not a display shortcut).
+    @discardableResult
+    func createAccount(name: String, offBudget: Bool, startingBalanceCents: Int) async throws -> Account {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidAccountName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        // New accounts sort after existing ones, same convention as new
+        // transactions (Transaction.sortOrder) — a millisecond timestamp
+        // keeps concurrent creates from colliding.
+        let sortOrder = Int(Date().timeIntervalSince1970 * 1000)
+
+        let account = Account(
+            id: UUID().uuidString,
+            name: trimmedName,
+            type: .checking,
+            offBudget: offBudget,
+            closed: false,
+            sortOrder: sortOrder,
+            balance: startingBalanceCents
+        )
+
+        let transferPayee = Payee(
+            id: UUID().uuidString,
+            name: "",
+            transferAccountId: account.id,
+            tombstone: false
+        )
+
+        do {
+            var startingBalanceTransaction: Transaction?
+            if startingBalanceCents != 0 {
+                let startingBalancePayee = try await findOrCreatePayee(name: "Starting Balance")
+
+                // An on-budget opening balance is income the budget can
+                // allocate, so it takes the income category the PWA picks
+                // ("Starting Balances", else the first income category).
+                // Off-budget money never enters the budget, so no category.
+                let category = offBudget ? nil : startingBalanceCategory()
+
+                startingBalanceTransaction = Transaction(
+                    id: UUID().uuidString,
+                    accountId: account.id,
+                    date: Transaction.yyyymmdd(from: Date()),
+                    amount: startingBalanceCents,
+                    payeeId: startingBalancePayee.id,
+                    payeeName: startingBalancePayee.name,
+                    categoryId: category?.id,
+                    categoryName: category?.name,
+                    notes: nil,
+                    cleared: true,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: nil,
+                    tombstone: false,
+                    sortOrder: nil,
+                    importedPayee: nil,
+                    startingBalanceFlag: true
+                )
+            }
+
+            try await syncClient.createAccount(
+                account,
+                transferPayee: transferPayee,
+                startingBalanceTransaction: startingBalanceTransaction
+            )
+        } catch let error as BudgetStoreError {
+            throw error
+        } catch {
+            throw BudgetStoreError.accountCreationFailed(error.localizedDescription)
+        }
+
+        // Refresh local data (without recreating SyncClient, which would
+        // cancel the scheduled sync) so the new account appears immediately.
+        await refreshDataOnly()
+
+        return account
+    }
+
+    /// The category an on-budget opening balance lands in, mirroring the
+    /// PWA's `getStartingBalancePayee`: the income category named "Starting
+    /// Balances" when the budget has one, else any income category, else nil
+    /// (the transaction stays uncategorized, same as upstream).
+    private func startingBalanceCategory() -> Category? {
+        let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
+        return incomeCategories.first { $0.name.lowercased() == "starting balances" }
+            ?? incomeCategories.first
     }
 
     // MARK: - Transactions
@@ -1855,23 +2087,27 @@ final class BudgetStore: ObservableObject {
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
-    /// unsigned like `TransactionForm.amount`. An empty `payeeName` means
-    /// the line inherits the transaction's payee (Actual's makeChild rule).
-    /// `childId` links the line to an existing child row when editing a
-    /// split parent; nil means the line is new.
+    /// unsigned like `TransactionForm.amount`; `isOpposite` runs the line
+    /// against the transaction's direction — a refund inside a spend split
+    /// (GH #216). An empty `payeeName` means the line inherits the
+    /// transaction's payee (Actual's makeChild rule). `childId` links the
+    /// line to an existing child row when editing a split parent; nil means
+    /// the line is new.
     struct SplitLineForm: Identifiable, Equatable {
         let id: UUID
         var childId: String?
         var categoryId: String?
         var amount: String
+        var isOpposite: Bool
         var notes: String
         var payeeName: String
 
-        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", notes: String = "", payeeName: String = "") {
+        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", isOpposite: Bool = false, notes: String = "", payeeName: String = "") {
             self.id = id
             self.childId = childId
             self.categoryId = categoryId
             self.amount = amount
+            self.isOpposite = isOpposite
             self.notes = notes
             self.payeeName = payeeName
         }
@@ -1915,7 +2151,9 @@ final class BudgetStore: ObservableObject {
 
     /// Resolve an expense/income form to `.standard`, or `.split` when split
     /// lines are present: every line must parse to a positive amount and the
-    /// lines must add up exactly to the total.
+    /// lines must add up exactly to the total. An `isOpposite` line runs
+    /// against the transaction's direction — a refund inside a spend
+    /// (GH #216).
     private static func planStandardOrSplit(
         _ form: TransactionForm,
         amountCents: Int,
@@ -1936,7 +2174,7 @@ final class BudgetStore: ObservableObject {
             let payeeName = line.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
             return SplitPlanLine(
                 categoryId: line.categoryId,
-                amountCents: sign * cents,
+                amountCents: sign * (line.isOpposite ? -cents : cents),
                 notes: line.notes.isEmpty ? nil : line.notes,
                 payeeName: payeeName.isEmpty ? nil : payeeName,
                 childId: line.childId
@@ -2643,11 +2881,44 @@ final class BudgetStore: ObservableObject {
         "Posted \(count) scheduled transaction\(count == 1 ? "" : "s")"
     }
 
-    private func postDueSchedulesIfNeeded() async {
+    /// Mirror sync state into the published property, and post due schedules
+    /// whenever a sync completes successfully (.syncing → .idle; performSync
+    /// is the only sender of that transition). loot-core runs its schedule
+    /// service on every sync completion event, so posting must not depend on
+    /// WHICH sync succeeded: before this hook existed the only trigger was
+    /// inline in syncOnForeground(), and a foreground attempt that failed
+    /// (network not up yet at wake) with the retry ladder succeeding seconds
+    /// later — or a pull-to-refresh / background-push sync — never posted
+    /// anything (GH #97).
+    private func subscribeToSyncState() {
+        syncStateCancellable = syncClient?.statePublisher
+            .receive(on: DispatchQueue.main)
+            .sink { [weak self] state in
+                guard let self else { return }
+                let wasSyncing = syncState == .syncing
+                syncState = state
+                if wasSyncing, state == .idle {
+                    Task { await self.postDueSchedulesAfterSync() }
+                }
+            }
+    }
+
+    /// Sink-triggered posting for syncs that finish outside
+    /// syncOnForeground() — that path refreshes after posting itself; here
+    /// nothing else would republish the register, so refresh when anything
+    /// posted.
+    private func postDueSchedulesAfterSync() async {
+        if await postDueSchedulesIfNeeded() > 0 {
+            await refreshDataOnly()
+        }
+    }
+
+    @discardableResult
+    private func postDueSchedulesIfNeeded() async -> Int {
         guard postScheduledTransactions,
               let client = syncClient,
               let database,
-              let budgetId = currentBudgetId else { return }
+              let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
         // so two MainActor-interleaved calls still share one instance.
         let poster: SchedulePoster
@@ -2658,7 +2929,7 @@ final class BudgetStore: ObservableObject {
             schedulePoster = poster
         }
         let count = await poster.runIfNeeded(budgetId: budgetId)
-        guard count > 0 else { return }
+        guard count > 0 else { return 0 }
         schedulePostNotice = Self.schedulePostNoticeText(count: count)
         scheduleNoticeDismissTask?.cancel()
         scheduleNoticeDismissTask = Task { [weak self] in
@@ -2666,6 +2937,7 @@ final class BudgetStore: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.schedulePostNotice = nil
         }
+        return count
     }
     
     // MARK: - Scheduled Transactions
@@ -2831,11 +3103,14 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Budget Amounts
 
-    /// Parse the budget edit field ("25.50") into non-negative cents.
-    static func budgetAmountCents(from string: String) throws -> Int {
+    /// Parse the budget edit field ("25.50") into cents. Negative amounts
+    /// (intentional overdraw, as Actual's web client allows) are only valid
+    /// where the caller opts in — a transfer, for instance, must stay
+    /// non-negative or it would silently reverse direction.
+    static func budgetAmountCents(from string: String, allowNegative: Bool = false) throws -> Int {
         guard let dollars = Double(string),
               let cents = Transaction.cents(fromDollars: dollars),
-              cents >= 0 else {
+              allowNegative || cents >= 0 else {
             throw BudgetStoreError.invalidAmount
         }
         return cents
@@ -2875,30 +3150,31 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
-    // MARK: - Category Notes
+    // MARK: - Notes
 
-    /// Load a category's note (GH #131). Reported as `.unsupported` when no
-    /// budget file is open, the file has no `notes` table, or the read fails —
-    /// the note section hides itself in all three cases, which is the right
-    /// outcome for each and beats surfacing a banner over a secondary field.
-    func fetchCategoryNote(categoryId: String) async -> CategoryNote {
+    /// Load the note for a category (GH #131) or account (GH #198), keyed by
+    /// that row's id. Reported as `.unsupported` when no budget file is open,
+    /// the file has no `notes` table, or the read fails — the note affordance
+    /// hides itself in all three cases, which is the right outcome for each and
+    /// beats surfacing a banner over a secondary field.
+    func fetchNote(id: String) async -> EntityNote {
         guard let database else { return .unsupported }
         do {
-            return try await database.fetchCategoryNote(categoryId: categoryId)
+            return try await database.fetchNote(id: id)
         } catch {
-            logger.error("Failed to read category note: \(error.localizedDescription, privacy: .public)")
+            logger.error("Failed to read note: \(error.localizedDescription, privacy: .public)")
             return .unsupported
         }
     }
 
-    /// Save a category's note, syncing back to Actual (GH #131). An empty
-    /// string clears it. Throws so the caller can keep the editor open and show
-    /// the failure rather than silently dropping what the user typed.
-    func saveCategoryNote(categoryId: String, note: String) async throws {
+    /// Save a note, syncing back to Actual (GH #131, #198). An empty string
+    /// clears it. Throws so the caller can keep the editor open and show the
+    /// failure rather than silently dropping what the user typed.
+    func saveNote(id: String, note: String) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        try await syncClient.setNote(id: categoryId, note: note)
+        try await syncClient.setNote(id: id, note: note)
     }
 
     // MARK: - Currency Formatting

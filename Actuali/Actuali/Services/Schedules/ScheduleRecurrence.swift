@@ -21,7 +21,18 @@ struct RecurConfig: Equatable {
         else { return nil }
         frequency = freq
         self.start = start
-        interval = max(1, json["interval"] as? Int ?? 1)
+        // Absent/null interval defaults to 1 (upstream `config.interval ?? 1`),
+        // but a present non-integer value (legacy picker state stored strings)
+        // makes rSchedule throw upstream — reject rather than silently posting
+        // on interval-1 cadence.
+        switch json["interval"] {
+        case nil, is NSNull:
+            interval = 1
+        case let n as Int:
+            interval = max(1, n)
+        default:
+            return nil
+        }
         if let raw = json["patterns"] as? [[String: Any]] {
             var parsed: [Pattern] = []
             for p in raw {

@@ -3,10 +3,11 @@ import GRDB
 import Testing
 @testable import Actuali
 
-/// Saving category notes back to Actual (GH #131): the local row is written
-/// optimistically and a `notes`/`note` CRDT message is queued for the server.
+/// Saving notes back to Actual — categories (GH #131) and accounts (GH #198):
+/// the local row is written optimistically and a `notes`/`note` CRDT message is
+/// queued for the server.
 @MainActor
-struct BudgetStoreCategoryNoteTests {
+struct BudgetStoreNoteTests {
 
     /// The `notes` table plus messages_crdt for the sync write path. Both
     /// normally come from the downloaded budget file.
@@ -70,14 +71,14 @@ struct BudgetStoreCategoryNoteTests {
     // MARK: - Save normalization (pure)
 
     @Test func whitespaceOnlyNoteNormalizesToCleared() {
-        #expect(CategoryNote.normalizedForSave("   \n  ") == "")
-        #expect(CategoryNote.normalizedForSave("") == "")
+        #expect(EntityNote.normalizedForSave("   \n  ") == "")
+        #expect(EntityNote.normalizedForSave("") == "")
     }
 
     /// Indentation and blank lines inside a real note are deliberate — only
     /// entirely-blank input is treated as a clear.
     @Test func realNoteIsStoredVerbatim() {
-        #expect(CategoryNote.normalizedForSave("  Cap at $400\n\n    - fuel separate  ")
+        #expect(EntityNote.normalizedForSave("  Cap at $400\n\n    - fuel separate  ")
                 == "  Cap at $400\n\n    - fuel separate  ")
     }
 
@@ -90,7 +91,7 @@ struct BudgetStoreCategoryNoteTests {
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveCategoryNote(categoryId: "cat-groceries", note: "Cap at $400/mo")
+        try await store.saveNote(id: "cat-groceries", note: "Cap at $400/mo")
 
         let rows = try noteRows(path)
         #expect(rows.count == 1)
@@ -112,9 +113,9 @@ struct BudgetStoreCategoryNoteTests {
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveCategoryNote(categoryId: "cat-groceries", note: "Weekly shop only")
+        try await store.saveNote(id: "cat-groceries", note: "Weekly shop only")
 
-        let note = await store.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = await store.fetchNote(id: "cat-groceries")
         #expect(note.supported)
         #expect(note.text == "Weekly shop only")
     }
@@ -128,7 +129,7 @@ struct BudgetStoreCategoryNoteTests {
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveCategoryNote(categoryId: "cat-groceries", note: "new note")
+        try await store.saveNote(id: "cat-groceries", note: "new note")
 
         let rows = try noteRows(path)
         #expect(rows.count == 1)
@@ -140,9 +141,9 @@ struct BudgetStoreCategoryNoteTests {
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveCategoryNote(categoryId: "cat-groceries", note: "Line one\nLine two")
+        try await store.saveNote(id: "cat-groceries", note: "Line one\nLine two")
 
-        let note = await store.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = await store.fetchNote(id: "cat-groceries")
         #expect(note.text == "Line one\nLine two")
     }
 
@@ -156,7 +157,7 @@ struct BudgetStoreCategoryNoteTests {
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveCategoryNote(categoryId: "cat-groceries", note: "")
+        try await store.saveNote(id: "cat-groceries", note: "")
 
         let rows = try noteRows(path)
         #expect(rows.count == 1)
@@ -166,8 +167,75 @@ struct BudgetStoreCategoryNoteTests {
         #expect(messages.count == 1)
         #expect(messages.first?["value"] == "S:")
 
-        let note = await store.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = await store.fetchNote(id: "cat-groceries")
         #expect(note.isEmpty)
+    }
+
+    // MARK: - Account notes
+
+    /// Account notes are keyed `account-<id>`, not the bare account id — that's
+    /// the key Actual's own clients read and write (GH #198). Get this wrong and
+    /// the note is invisible in both directions: Actual's notes never show in
+    /// Actuali, and Actuali's never show in Actual.
+    @Test func accountNoteIdCarriesActualsAccountPrefix() {
+        #expect(EntityNote.accountNoteId("abc-123") == "account-abc-123")
+    }
+
+    /// An account's note goes through the same table and the same write path as
+    /// a category's, at the prefixed key — nothing about the save is
+    /// category-specific, and this pins the key down end to end.
+    @Test func savingAccountNoteWritesRowKeyedByPrefixedAccountId() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        let noteId = EntityNote.accountNoteId("acct-chase")
+        try await store.saveNote(id: noteId, note: "Direct deposit on the 15th")
+
+        let rows = try noteRows(path)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row["id"] == "account-acct-chase")
+        #expect(row["note"] == "Direct deposit on the 15th")
+
+        let messages = try noteMessages(path)
+        #expect(messages.count == 1)
+        #expect(messages.first?["row"] == "account-acct-chase")
+
+        let note = await store.fetchNote(id: noteId)
+        #expect(note.supported)
+        #expect(note.text == "Direct deposit on the 15th")
+    }
+
+    /// An account note written by Actual's web/desktop UI reads back in
+    /// Actuali — the case the feature request was actually about.
+    @Test func readsAccountNoteWrittenByActual() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+            INSERT INTO notes (id, note) VALUES ('account-acct-chase', 'Buffer $500');
+            """)
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        let note = await store.fetchNote(id: EntityNote.accountNoteId("acct-chase"))
+        #expect(note.supported)
+        #expect(note.text == "Buffer $500")
+    }
+
+    /// A category and an account annotated in the same file keep separate
+    /// rows — ids are the only key, so neither edit can clobber the other.
+    /// Actual's prefix also means an account and a category can never collide
+    /// even if a file somehow reused an id.
+    @Test func accountAndCategoryNotesAreIndependent() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
+            """)
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.saveNote(id: EntityNote.accountNoteId("acct-chase"), note: "Buffer $500")
+
+        #expect(await store.fetchNote(id: "cat-groceries").text == "Cap at $400/mo")
+        #expect(await store.fetchNote(id: EntityNote.accountNoteId("acct-chase")).text == "Buffer $500")
     }
 
     // MARK: - Unsupported files and misconfiguration
@@ -180,7 +248,7 @@ struct BudgetStoreCategoryNoteTests {
         let store = try await makeStore(database: database)
 
         await #expect(throws: SyncError.notesTableMissing) {
-            try await store.saveCategoryNote(categoryId: "cat-groceries", note: "nope")
+            try await store.saveNote(id: "cat-groceries", note: "nope")
         }
 
         #expect(try noteMessages(path).isEmpty)
@@ -190,14 +258,14 @@ struct BudgetStoreCategoryNoteTests {
         let store = BudgetStore.previewInstance()
 
         await #expect(throws: BudgetStoreError.syncNotConfigured) {
-            try await store.saveCategoryNote(categoryId: "cat-groceries", note: "nope")
+            try await store.saveNote(id: "cat-groceries", note: "nope")
         }
     }
 
     @Test func fetchWithoutDatabaseIsUnsupported() async throws {
         let store = BudgetStore.previewInstance()
 
-        let note = await store.fetchCategoryNote(categoryId: "cat-groceries")
+        let note = await store.fetchNote(id: "cat-groceries")
         #expect(!note.supported)
     }
 }

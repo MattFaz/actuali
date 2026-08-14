@@ -11,6 +11,14 @@ struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
 
+    /// Window width, measured here rather than deeper in the hierarchy so it
+    /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
+    @State private var windowWidth: CGFloat = 0
+
+    /// Below this the iPad's split views can't lay out real columns and the
+    /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
+    private static let wideLayoutThreshold: CGFloat = 1000
+
     /// Presents whenever the store publishes an error; dismissing clears it
     /// so the next failure can present again.
     private var errorAlertBinding: Binding<Bool> {
@@ -22,6 +30,8 @@ struct ContentView: View {
 
     var body: some View {
         MainTabView()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
+            .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}
             } message: {

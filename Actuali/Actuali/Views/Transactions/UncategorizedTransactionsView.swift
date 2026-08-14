@@ -22,6 +22,50 @@ struct UncategorizedTransactionsView: View {
         return transactions.filter { matcher.matches($0) }
     }
 
+    @ViewBuilder
+    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
+        Button {
+            pickedCategoryId = nil
+            categorizing = transaction
+        } label: {
+            // Split children keep an inert dot: their cleared state follows
+            // the parent's.
+            TransactionRow(
+                transaction: transaction,
+                showDate: showDate,
+                onToggleCleared: transaction.parentId == nil ? {
+                    Task {
+                        await budgetStore.toggleCleared(transaction)
+                        await reload()
+                    }
+                } : nil
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Split children only get the categorize tap: the edit form has no
+            // split support, and deleting one leg would break the parent's
+            // amount.
+            if transaction.parentId == nil {
+                Button(role: .destructive) {
+                    Task {
+                        await budgetStore.deleteTransaction(transaction)
+                        await reload()
+                    }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                Button {
+                    editingTransaction = transaction
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.yellow)
+            }
+        }
+    }
+
     var body: some View {
         Group {
             if transactions.isEmpty && loaded {
@@ -36,50 +80,23 @@ struct UncategorizedTransactionsView: View {
                         Text("No matching transactions")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(filteredTransactions) { transaction in
-                        Button {
-                            pickedCategoryId = nil
-                            categorizing = transaction
-                        } label: {
-                            // Split children keep an inert dot: their cleared
-                            // state follows the parent's.
-                            TransactionRow(
-                                transaction: transaction,
-                                onToggleCleared: transaction.parentId == nil ? {
-                                    Task {
-                                        await budgetStore.toggleCleared(transaction)
-                                        await reload()
-                                    }
-                                } : nil
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            // Split children only get the categorize tap: the
-                            // edit form has no split support, and deleting one
-                            // leg would break the parent's amount.
-                            if transaction.parentId == nil {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await budgetStore.deleteTransaction(transaction)
-                                        await reload()
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    if budgetStore.transactionDisplayMode == .groupedByDate {
+                        ForEach(filteredTransactions.groupedByDate()) { group in
+                            Section(group.title) {
+                                ForEach(group.transactions) { transaction in
+                                    transactionRow(transaction, showDate: false)
                                 }
-                                Button {
-                                    editingTransaction = transaction
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.yellow)
                             }
+                        }
+                    } else {
+                        ForEach(filteredTransactions) { transaction in
+                            transactionRow(transaction, showDate: true)
                         }
                     }
                 }
             }
         }
+        .readableWidth()
         .navigationTitle("Uncategorized")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")

@@ -30,6 +30,10 @@ struct Transaction: Identifiable, Hashable {
     // Set at creation time by the Wallet import; not read back by the fetch
     // paths, so it is nil on fetched rows — dedup queries the column directly.
     var financialId: String? = nil
+    // Marks the special "opening balance" transaction created alongside a
+    // new account (Actual's starting_balance_flag). Only ever set at
+    // creation, matching financialId's write-only shape below.
+    var startingBalanceFlag: Bool = false
     // Payee's transfer_acct: the account on the other side when the payee is a
     // transfer payee, nil otherwise. Populated by the display and reports
     // fetches so rows can render transfers as transfers and engines can
@@ -46,10 +50,10 @@ struct Transaction: Identifiable, Hashable {
         var amount: Int  // cents, signed like the parent
     }
 
-    var dateFormatted: String {
-        let year = date / 10000
-        let month = (date % 10000) / 100
-        let day = date % 100
+    static func formattedDate(from dateInt: Int, style: Date.FormatStyle.DateStyle = .abbreviated) -> String {
+        let year = dateInt / 10000
+        let month = (dateInt % 10000) / 100
+        let day = dateInt % 100
 
         var components = DateComponents()
         components.year = year
@@ -60,7 +64,11 @@ struct Transaction: Identifiable, Hashable {
             return "\(year)-\(month)-\(day)"
         }
 
-        return date.formatted(date: .abbreviated, time: .omitted)
+        return date.formatted(date: style, time: .omitted)
+    }
+
+    var dateFormatted: String {
+        Self.formattedDate(from: date, style: .abbreviated)
     }
 
     var isOutflow: Bool {
@@ -138,6 +146,42 @@ extension Transaction: CRDTSyncable {
         if let financialId {
             fields["financial_id"] = financialId
         }
+        if startingBalanceFlag {
+            fields["starting_balance_flag"] = 1
+        }
         return fields
+    }
+}
+
+// MARK: - Date Grouping
+
+struct TransactionDateGroup: Identifiable {
+    let date: Int
+    var id: Int { date }
+    var transactions: [Transaction]
+
+    /// Section header for the group. Spelled out in full because the rows
+    /// underneath drop their own date once they're grouped.
+    var title: String { Transaction.formattedDate(from: date, style: .long) }
+}
+
+extension Array where Element == Transaction {
+    /// Groups transactions by date, preserving the array's existing encounter
+    /// order. Every list that calls this fetches `ORDER BY date DESC`, so the
+    /// groups come out newest-first and each date appears exactly once.
+    func groupedByDate() -> [TransactionDateGroup] {
+        var groupDict: [Int: [Transaction]] = [:]
+        var order: [Int] = []
+        for tx in self {
+            if groupDict[tx.date] == nil {
+                order.append(tx.date)
+                groupDict[tx.date] = [tx]
+            } else {
+                groupDict[tx.date]?.append(tx)
+            }
+        }
+        return order.map { date in
+            TransactionDateGroup(date: date, transactions: groupDict[date] ?? [])
+        }
     }
 }

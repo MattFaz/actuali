@@ -11,7 +11,7 @@ import GRDB
 private final class RecordingActions: SchedulePostingActions {
     let database: BudgetDatabase
     var created: [Transaction] = []
-    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64)] = []
+    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] = []
     /// Schedule ids whose createTransaction should throw (schedule-level error).
     var failingScheduleIds: Set<String> = []
     /// Suspension before each create, simulating the network round-trip so
@@ -44,7 +44,7 @@ private final class RecordingActions: SchedulePostingActions {
         created.append(transaction)
     }
 
-    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws {
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws {
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
                 UPDATE schedules_next_date
@@ -95,6 +95,7 @@ struct SchedulePosterTests {
 
                 CREATE TABLE transactions (
                     id TEXT PRIMARY KEY,
+                    starting_balance_flag INTEGER DEFAULT 0,
                     isParent INTEGER DEFAULT 0,
                     isChild INTEGER DEFAULT 0,
                     acct TEXT,
@@ -185,7 +186,8 @@ struct SchedulePosterTests {
         id: String = "sched-1",
         conditions: String? = nil,
         actions: String = "[]",
-        nextDate: Int
+        nextDate: Int,
+        nextDateTs: Int64? = 1000
     ) throws {
         let conditionsJSON = conditions ?? """
             [{"op":"is","field":"acct","value":"acct-1"},
@@ -205,8 +207,8 @@ struct SchedulePosterTests {
             try conn.execute(sql: """
                 INSERT INTO schedules_next_date
                     (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES (?, ?, ?, 1000, ?, 1000)
-                """, arguments: ["nd-\(id)", id, nextDate, nextDate])
+                VALUES (?, ?, ?, ?, ?, ?)
+                """, arguments: ["nd-\(id)", id, nextDate, nextDateTs, nextDate, nextDateTs])
         }
     }
 
@@ -333,6 +335,52 @@ struct SchedulePosterTests {
         #expect(posted == 0)
         #expect(actions.created.isEmpty)
         #expect(actions.advances.isEmpty)
+    }
+
+    /// Web parity (GH #97 follow-up): a recurrence the port can't advance
+    /// still posts the stored due occurrence — upstream posts from the stored
+    /// next_date and only the advance throws (swallowed by the service). The
+    /// paid dedup then keeps every later pass from re-posting.
+    @Test func unsupportedDateConditionPostsStoredOccurrenceOnceAndNeverAdvances() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, conditions: """
+            [{"op":"is","field":"acct","value":"acct-1"},
+             {"op":"is","field":"date","value":{"frequency":"fortnightly","start":"2026-01-15"}}]
+            """, nextDate: 20260710)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+        #expect(posted == 1)
+        #expect(actions.created.map(\.date) == [20260710])
+        #expect(actions.advances.isEmpty)
+
+        // Next day: the posted transaction marks the occurrence paid, so
+        // nothing re-posts and the schedule still never advances.
+        let nextDay = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today.adding(days: 1))
+        #expect(nextDay == 0)
+        #expect(actions.created.count == 1)
+        #expect(actions.advances.isEmpty)
+    }
+
+    /// Web parity (GH #97 follow-up): NULL next-date timestamps mean the
+    /// v_schedules CASE falls through to base_next_date; posting proceeds and
+    /// the advance writes local_next_date_ts = base_next_date_ts (NULL), the
+    /// same cell values loot-core's setNextDate writes.
+    @Test func nullBaseNextDateTsPostsAndAdvancesWithNullTs() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try insertSchedule(db, nextDate: 20260715, nextDateTs: nil)
+        let (poster, actions, defaults, suite) = makePoster(db)
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
+
+        #expect(posted == 1)
+        #expect(actions.created.map(\.date) == [20260715])
+        #expect(actions.advances.map(\.newNextDate) == [20260815])
+        #expect(actions.advances.first?.baseTs == nil)
     }
 
     // MARK: - Gate

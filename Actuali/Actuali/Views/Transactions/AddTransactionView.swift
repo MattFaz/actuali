@@ -124,18 +124,19 @@ struct AddTransactionView: View {
         editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
     }
 
-    /// Cents still unassigned across the split lines, nil while the total or
-    /// any line doesn't parse yet.
+    /// Cents still unassigned across the split lines, nil while the total
+    /// doesn't parse yet. Blank lines count as zero so the remainder stays
+    /// visible while the user is still filling lines in.
     private var splitRemainingCents: Int? {
-        guard let dollars = Double(amount),
-              let total = Transaction.cents(fromDollars: dollars) else { return nil }
-        var assigned = 0
-        for line in splitLines {
-            guard let lineDollars = Double(line.amount),
-                  let cents = Transaction.cents(fromDollars: lineDollars) else { return nil }
-            assigned += cents
-        }
-        return total - assigned
+        // Opposite-direction lines hand their amount back to the remainder
+        // instead of consuming it (GH #216).
+        SplitEntryMath.remainingCents(total: amount, lineAmounts: splitLines.map { line in
+            line.isOpposite && !line.amount.isEmpty ? "-\(line.amount)" : line.amount
+        })
+    }
+
+    private var hasBlankSplitLine: Bool {
+        splitLines.contains { $0.amount.isEmpty }
     }
 
     /// Open accounts ordered to match the webapp's AccountAutocomplete:
@@ -450,8 +451,14 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
+                    // Hardware-keyboard commit, for the iPad case where the
+                    // form is filled without ever leaving the keys. Return on
+                    // its own belongs to the focused field; ⌘Return is the
+                    // whole form. Inert while the save is disabled.
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
+            .readableWidth()
             .navigationTitle(isEditing ? "Edit Transaction" : "Add Transaction")
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
@@ -461,7 +468,9 @@ struct AddTransactionView: View {
                 // to dismiss to, so it shows none.
                 if isEditing || isPresented {
                     ToolbarItem(placement: .cancellationAction) {
+                        // Esc closes the form on a hardware keyboard.
                         Button("Cancel") { dismiss() }
+                            .keyboardShortcut(.cancelAction)
                     }
                 }
                 ToolbarItemGroup(placement: .keyboard) {
@@ -496,7 +505,10 @@ struct AddTransactionView: View {
             BudgetStore.SplitLineForm(
                 childId: child.id,
                 categoryId: child.categoryId,
-                amount: String(format: "%.2f", Double(abs(child.amount)) / 100.0),
+                amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
+                // A child running against the parent's direction — a refund
+                // inside a spend split — keeps its flip on reload (GH #216).
+                isOpposite: (child.amount < 0) != (editing.amount < 0),
                 notes: child.notes ?? "",
                 payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
             )
@@ -508,7 +520,7 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(line: $line)
+                SplitLineRow(line: $line, txType: txType, remainingCents: splitRemainingCents)
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -557,6 +569,11 @@ struct AddTransactionView: View {
         } footer: {
             if let remaining = splitRemainingCents, remaining != 0 {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                    .foregroundStyle(.red)
+            } else if splitRemainingCents == 0 && hasBlankSplitLine {
+                // Nothing left to assign but a line is still blank — say why
+                // Save stays disabled instead of leaving it a mystery.
+                Text("Fill in or remove the empty line")
                     .foregroundStyle(.red)
             }
         }
@@ -613,7 +630,9 @@ struct AddTransactionView: View {
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
         if isTransfer && transferToAccountId == nil { return true }
-        if isSplitting && !isTransfer && splitRemainingCents != 0 { return true }
+        // A blank line reads as zero for the remainder display, but the store
+        // rejects zero-amount children — keep save blocked until it's filled.
+        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -671,11 +690,41 @@ struct AddTransactionView: View {
     }
 }
 
+/// Math for the split entry section, kept off the view for testability.
+enum SplitEntryMath {
+    /// Cents still unassigned across the split lines. Blank lines count as
+    /// zero so the remainder stays visible mid-entry; nil while the total or
+    /// a non-blank line doesn't parse.
+    static func remainingCents(total: String, lineAmounts: [String]) -> Int? {
+        guard let dollars = Double(total),
+              let totalCents = Transaction.cents(fromDollars: dollars) else { return nil }
+        var assigned = 0
+        for amount in lineAmounts where !amount.isEmpty {
+            guard let lineDollars = Double(amount),
+                  let cents = Transaction.cents(fromDollars: lineDollars) else { return nil }
+            assigned += cents
+        }
+        return totalCents - assigned
+    }
+
+    /// Plain dot-decimal string for non-negative cents, the format
+    /// AmountInputField keeps in its binding.
+    static func amountString(fromCents cents: Int) -> String {
+        "\(cents / 100).\(String(format: "%02d", cents % 100))"
+    }
+}
+
 /// One editable split line: a category picked through a sheet and an amount.
 /// Borderless button so the amount field keeps its own tap target in the row.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
+    /// The transaction's direction, so the line's sign glyph can show its
+    /// effective direction relative to it.
+    var txType: TransactionType
+    /// The section-wide unassigned remainder; a positive value on a line with
+    /// no amount yet offers one-tap fill instead of mental arithmetic.
+    var remainingCents: Int?
     @State private var showCategoryPicker = false
 
     private var categoryName: String {
@@ -686,6 +735,12 @@ private struct SplitLineRow: View {
             }
         }
         return "Category"
+    }
+
+    /// Whether the line runs as an outflow once the transaction's direction
+    /// and the line's flip are combined.
+    private var isOutflow: Bool {
+        (txType == .expense) != line.isOpposite
     }
 
     var body: some View {
@@ -699,8 +754,38 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 Spacer()
-                AmountInputField(text: $line.amount)
+                // Every line carries a sign like the total's, so direction is
+                // never implicit; tapping it flips the line — how a refund
+                // goes inside a spend split (GH #216).
+                Button {
+                    line.isOpposite.toggle()
+                } label: {
+                    Text(isOutflow ? "-" : "+")
+                        .foregroundStyle(isOutflow ? Color.red : Color.green)
+                        // Grow the tap target beyond the one-character glyph.
+                        .frame(width: 24, height: 24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
+                .accessibilityHint("Flips this line's direction")
+                AmountInputField(text: $line.amount, onToggleSign: { line.isOpposite.toggle() })
                     .frame(width: 110)
+            }
+            // No fill offer on a flipped line: the remainder is stated in the
+            // transaction's direction, and filling it here would double the
+            // gap instead of closing it.
+            if line.amount.isEmpty, !line.isOpposite, let remaining = remainingCents, remaining > 0 {
+                HStack {
+                    Spacer()
+                    Button {
+                        line.amount = SplitEntryMath.amountString(fromCents: remaining)
+                    } label: {
+                        Text("Use remaining \(budgetStore.formatCurrency(remaining))")
+                            .font(.subheadline)
+                    }
+                    .buttonStyle(.borderless)
+                }
             }
             // Empty payee inherits the transaction's payee
             TextField("Payee (optional)", text: $line.payeeName)
@@ -728,8 +813,11 @@ private struct SplitLineRow: View {
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar; sign is
-/// otherwise handled outside the field (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
+/// the text's own sign. With `onToggleSign`, the same button appears but the
+/// sign lives outside the field (a split line's direction flip) and the text
+/// stays unsigned. Neither set means sign is handled elsewhere entirely
+/// (e.g. the expense/income toggle).
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
@@ -746,6 +834,9 @@ struct AmountInputField: UIViewRepresentable {
     /// Bring up the keyboard as soon as the field lands on screen. For
     /// sheets whose whole purpose is entering an amount.
     var autofocus = false
+    /// Shows the ± toolbar button and delegates it here instead of signing
+    /// the text — for callers whose sign is separate state.
+    var onToggleSign: (() -> Void)? = nil
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -786,9 +877,9 @@ struct AmountInputField: UIViewRepresentable {
         // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
-        if allowsNegative {
+        if allowsNegative || onToggleSign != nil {
             // The decimal pad has no minus key, so this button is the only
-            // touchscreen affordance for entering a negative amount.
+            // keyboard affordance for flipping an amount's sign.
             items.append(UIBarButtonItem(
                 image: UIImage(systemName: "plus.forwardslash.minus"),
                 style: .plain,
@@ -967,6 +1058,12 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         @objc func toggleSign() {
+            // Delegated sign lives outside the text (a split line's flip);
+            // the field's own text stays unsigned.
+            if let onToggleSign = parent.onToggleSign {
+                onToggleSign()
+                return
+            }
             guard parent.allowsNegative else { return }
             isNegative.toggle()
             if let textField {

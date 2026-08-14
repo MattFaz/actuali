@@ -1,0 +1,159 @@
+---
+import Layout from "../../layouts/Layout.astro";
+
+const shortcutUrl = "https://www.icloud.com/shortcuts/f31b19e940284ac79742019f12aeb280";
+---
+
+<Layout
+  title="SMS Automation · Actuali"
+  description="Log bank & transaction alert SMS into Actuali automatically using iOS Shortcuts, Regex, and Apple Intelligence."
+>
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-3">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Log transactions from SMS automatically</h1>
+      <p class="text-neutral-500">
+        Every time you receive a transaction alert text message from your bank, a Shortcuts automation can log the purchase into Actuali in the background — supporting any currency in the world via Regex patterns or Apple Intelligence AI.
+      </p>
+      <div class="pt-2">
+        <a
+          href={shortcutUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-violet-700"
+        >
+          <svg class="h-4 w-4 fill-current" viewBox="0 0 24 24">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+          </svg>
+          Get the AI Shortcut
+        </a>
+      </div>
+    </header>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">How it works</h2>
+      <p class="text-neutral-700">
+        When an SMS notification arrives from your bank or card issuer, iOS triggers an automation. You can extract transaction details using regular expressions (Regex) or Apple Intelligence:
+      </p>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Universal Regex Extraction:</strong> Uses regex patterns that match any currency symbol (<code>$</code>, <code>€</code>, <code>£</code>, <code>₹</code>, <code>¥</code>, etc.) or 3-letter currency code (<code>USD</code>, <code>EUR</code>, <code>GBP</code>, <code>INR</code>, <code>CAD</code>, <code>AUD</code>, etc.) alongside the purchase amount and card digits.
+        </li>
+        <li>
+          <strong>Apple Intelligence (AI):</strong> Uses the <strong>Cloud model</strong> action to parse SMS text in any language or currency format into a JSON object containing amount and date automatically.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Before you start</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>Install Actuali and connect it to your Actual Budget server.</li>
+        <li>
+          Set a <strong>Default Account</strong> in Actuali's Settings, or pass a card/account hint in your action.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-6">
+      <h2 class="text-xl font-semibold">Setup Guides</h2>
+
+      <!-- Standard & Regex Flow -->
+      <div class="space-y-4 rounded-2xl border border-neutral-200 bg-white p-6 shadow-xs">
+        <h3 class="text-lg font-semibold text-neutral-900">Option 1: Universal Regex Flow</h3>
+        <p class="text-neutral-600 text-sm">
+          Extract amount and account digits from incoming SMS messages across any currency using Shortcuts regular expression matching actions.
+        </p>
+        <ol class="list-decimal space-y-3 pl-5 text-sm text-neutral-700">
+          <li>Open the <strong>Shortcuts</strong> app and go to the <strong>Automation</strong> tab.</li>
+          <li>Tap <strong>+</strong> (or <strong>New Automation</strong>) and select <strong>Message</strong>.</li>
+          <li>
+            Set <strong>Message Contains</strong> to keywords your bank uses (e.g. <em>spent</em>, <em>debited</em>, or <em>charged</em>), set <strong>Run Immediately</strong>, and tap <strong>Next</strong>.
+          </li>
+          <li>
+            Choose <strong>New Blank Automation</strong> and add a <strong>Match Text</strong> action for amount:
+            <div class="mt-2 rounded-xl bg-neutral-100/70 p-3 font-mono text-xs text-neutral-800 space-y-1">
+              <div><strong>Match:</strong> <code>(?i)(?:[\p&#123;Sc&#125;]|[A-Z]&#123;3&#125;|Rs\.?)?\s*([\d,]+(?:\.\d&#123;1,2&#125;)?)</code> in <code>Shortcut Input</code></div>
+              <div class="text-neutral-500 font-sans">
+                Universal pattern — matches any currency symbol ($ € £ ₹ ¥ A$ C$ S$ NZ$ kr R R$ etc.), 3-letter code (USD, EUR, GBP, INR, AUD, CAD, SGD, etc.), or plain numbers like <code>$45.50</code>, <code>€12,50</code>, <code>1500.00</code>, or <code>₹450</code>.
+              </div>
+            </div>
+          </li>
+          <li>
+            Add a second <strong>Match Text</strong> action to extract the account or card last 4 digits:
+            <div class="mt-2 rounded-xl bg-neutral-100/70 p-3 font-mono text-xs text-neutral-800 space-y-1">
+              <div><strong>Match:</strong> <code>(?i)(?:A/c|Card|XX|ending|account)\s*([\d]&#123;4&#125;)</code> in <code>Shortcut Input</code></div>
+              <div class="text-neutral-500 font-sans">Matches card/account numbers like "Card 1234", "A/c XX5678", or "account ending 9876"</div>
+            </div>
+          </li>
+          <li>
+            Add Actuali's <strong>Log Transaction</strong> action and map the variables:
+            <div class="mt-2 rounded-xl border border-neutral-200 bg-white p-3 space-y-1 font-sans text-xs">
+              <div>• <strong>Amount:</strong> Set to <code>Text Match (Amount)</code></div>
+              <div>• <strong>Card or Account Hint:</strong> Set to <code>Text Match (Account)</code></div>
+              <div>• <strong>Payee:</strong> Optional (or pass SMS text / Sender)</div>
+            </div>
+          </li>
+        </ol>
+      </div>
+
+      <!-- Advanced AI Flow -->
+      <div class="space-y-3 rounded-2xl border border-neutral-200 bg-white p-6 shadow-xs">
+        <h3 class="text-lg font-semibold text-neutral-900">Option 2: Advanced AI Flow (Apple Intelligence)</h3>
+        <p class="text-neutral-600 text-sm">
+          Uses AI to parse the exact amount and date from SMS text in any language or currency, routing it to your account automatically using card hints.
+        </p>
+        <ol class="list-decimal space-y-3 pl-5 text-sm text-neutral-700">
+          <li>
+            Download the <a href={shortcutUrl} class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">Log Transaction from SMS Shortcut</a>.
+          </li>
+          <li>
+            Go to <strong>Shortcuts &gt; Automation</strong>, tap <strong>+</strong>, and choose <strong>Message</strong>.
+          </li>
+          <li>
+            Set <strong>Message Contains</strong> to <em>spent</em> (or your keyword), set <strong>Run Immediately</strong>, and select the <strong>Log Transaction from SMS</strong> shortcut.
+          </li>
+          <li>
+            The shortcut uses the <strong>Cloud model</strong> (Apple Intelligence) to extract <code>amount</code> and <code>date</code> into JSON:
+            <img
+              src="/sms-automation/step-1.png"
+              alt="iOS SMS Automation - Step 1: Trigger and Cloud model action"
+              class="my-3 w-full max-w-sm rounded-2xl shadow-md border border-neutral-200"
+              loading="lazy"
+            />
+          </li>
+          <li>
+            It reads the <code>amount</code> and <code>date</code> variables and passes them straight to Actuali's <strong>Log Transaction</strong> action:
+            <img
+              src="/sms-automation/step-2.png"
+              alt="iOS SMS Automation - Step 2: Pass dictionary values to Actuali Log Transaction"
+              class="my-3 w-full max-w-sm rounded-2xl shadow-md border border-neutral-200"
+              loading="lazy"
+            />
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Troubleshooting</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Automation didn't trigger?</strong> Ensure <strong>Run Immediately</strong> is enabled and that the message contains the exact keyword filter you set.
+        </li>
+        <li>
+          <strong>"No account" error notification?</strong> Set a Default Account in Actuali's Settings, or set a <strong>Card or Account Hint</strong> (e.g. bank name like <code>HSBC</code> or card last 4 digits like <code>1234</code>) inside the action so Actuali matches it to your account.
+        </li>
+        <li>
+          <strong>Regex not matching?</strong> The universal pattern handles standard currency symbols and 3-letter ISO codes. If your bank uses custom text, adjust the prefix in the Regex pattern.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Questions?</h2>
+      <p class="text-neutral-700">
+        See the <a href="/support" class="underline hover:text-neutral-900">support page</a> or email <a href="mailto:actuali@mfazz.com" class="underline hover:text-neutral-900">actuali@mfazz.com</a>.
+      </p>
+    </section>
+  </article>
+</Layout>

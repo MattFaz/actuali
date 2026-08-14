@@ -366,6 +366,57 @@ actor SyncClient {
         // Note: Don't schedule sync here - let the transaction sync handle it
     }
 
+    /// Create a new account, its transfer payee (the empty-named payee every
+    /// transfer to or from the account resolves through — created here and
+    /// nowhere else, matching the PWA), and, if given, its opening-balance
+    /// transaction — atomically, so a failure on any row leaves nothing
+    /// orphaned. Rules are skipped, same as `createTransfer`/`createSplit`:
+    /// the caller (account creation) builds the transaction explicitly and
+    /// it's never user-editable rule input.
+    func createAccount(
+        _ account: Account,
+        transferPayee: Payee,
+        startingBalanceTransaction: Transaction?
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createAccount() - id: \(account.id, privacy: .private)")
+
+        // 1. Insert locally (optimistic)
+        try database.insertAccount(
+            account,
+            transferPayee: transferPayee,
+            startingBalanceTransaction: startingBalanceTransaction
+        )
+        logger.debug("Account inserted locally")
+
+        // 2. Generate CRDT messages for the account row
+        var messages = try await messageGenerator.messagesForInsert(account)
+
+        // 3. Generate CRDT messages for the transfer payee and its mapping,
+        //    same pair `createPayee` emits.
+        messages += try await messageGenerator.messagesForInsert(transferPayee)
+        messages += try await messageGenerator.messagesForInsert(
+            PayeeMapping(id: transferPayee.id, targetId: transferPayee.id)
+        )
+
+        // 4. Generate CRDT messages for the opening-balance transaction, if any
+        if let startingBalanceTransaction {
+            messages += try await messageGenerator.messagesForInsert(startingBalanceTransaction)
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for new account")
+
+        // 5. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 6. Sync to push the new account to the server (rate-limited)
+        await automaticSync()
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.
@@ -584,16 +635,18 @@ actor SyncClient {
     /// so the local override stays valid (per the v_schedules CASE rule) until
     /// another client resets the base. `base_next_date`/`base_next_date_ts`
     /// are never touched.
-    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64) async throws {
+    func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("advanceScheduleNextDate() - row: \(nextDateRowId, privacy: .private), newDate: \(newNextDate, privacy: .public)")
 
         // 1. Generate CRDT messages (before any DB write, so an HLC failure
         //    leaves nothing stranded)
+        // .map flattens Int64? into Any? so a NULL base ts serializes through
+        // CRDTValue's nil case ("0:"), the null loot-core's setNextDate writes.
         let fields: [(column: String, value: Any?)] = [
             ("local_next_date", newNextDate),
-            ("local_next_date_ts", baseNextDateTs),
+            ("local_next_date_ts", baseNextDateTs.map { $0 as Any }),
         ]
         let messages = try await messageGenerator.messages(dataset: "schedules_next_date", row: nextDateRowId, fields: fields)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")

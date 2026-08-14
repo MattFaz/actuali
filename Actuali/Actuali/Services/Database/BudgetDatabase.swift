@@ -297,6 +297,23 @@ class BudgetDatabase {
             )
         """)
     ]
+    
+    /// Migration ids Actuali mints itself, no upstream migration file has
+    /// them (split halves of upstream migrations, plus defensive backfills).
+    /// Actual's import validates a file's __migrations__ rows against its
+    /// migrations directory and rejects unknown ids (loot-core
+    /// migrations.ts, checkDatabaseValidity), so backups strip these before
+    /// archiving. Any id added to upstreamSchemaMigrations or
+    /// createTableMigrations that doesn't exist in upstream's migrations/
+    /// directory MUST also be listed here.
+    static let actualiOnlyMigrationIds: [Int64] = [
+        1765518577216, // ALTER half of upstream 1765518577215 (dashboard_page_id)
+        1770000000001, // defensive CREATE dashboard
+        1770000000002, // defensive CREATE custom_reports
+        1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
+        1780606214999, // locally minted transactions.schedule backfill
+        1780606215002, // second half of upstream index migration 1780606215001
+    ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
     /// guards of the write path below so a fully migrated file opens without
@@ -400,6 +417,15 @@ class BudgetDatabase {
                     rowId: rowId, value: CRDTValue.deserialize(value)
                 )
             }
+        }
+    }
+    
+    // MARK: - Backup Support
+
+    /// Writes a consistent single-file snapshot of the live database, regardless of journal mode.
+    func snapshotDatabase(to url: URL) async throws {
+        try await dbQueue.writeWithoutTransaction { db in
+            try db.execute(sql: "VACUUM INTO ?", arguments: [url.path])
         }
     }
 
@@ -1124,8 +1150,7 @@ class BudgetDatabase {
                 SELECT
                     (t.date / 100) AS month,
                     COALESCE(cm.transferId, t.category) AS category_id,
-                    SUM(t.amount) AS spent,
-                    SUM(CASE WHEN t.amount < 0 THEN t.amount ELSE 0 END) AS outflow
+                    SUM(t.amount) AS spent
                 FROM transactions t
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN accounts a ON a.id = t.acct
@@ -1139,18 +1164,11 @@ class BudgetDatabase {
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
             var spentByMonthCat: [Int: [String: Int]] = [:]
-            // Outflow-only spending (inflows like refunds excluded) for the
-            // target month. The leftover chain needs the net, but the summary
-            // "Spent" total shows money that actually went out.
-            var targetOutflowByCat: [String: Int] = [:]
             for row in spentRows {
                 let m: Int = row["month"] ?? 0
                 guard m > 0, let categoryId: String = row["category_id"] else { continue }
                 let spent: Int = row["spent"] ?? 0
                 spentByMonthCat[m, default: [:]][categoryId] = spent
-                if m == targetMonthInt {
-                    targetOutflowByCat[categoryId] = row["outflow"] ?? 0
-                }
             }
 
             // "Hold for next month" amounts, keyed by YYYYMM. Upstream writes
@@ -1301,7 +1319,6 @@ class BudgetDatabase {
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
-                    outflow: targetOutflowByCat[cat.id] ?? 0,
                     available: available,
                     carryover: priorContribution
                 )
@@ -1339,22 +1356,23 @@ class BudgetDatabase {
 
     // MARK: - Notes
 
-    /// The note stored for a category (GH #131). Actual's `notes` table is
-    /// keyed by the annotated row's own id, so a category's note lives at
-    /// `notes.id = <categoryId>`.
+    /// The note stored for one row of the budget — a category (GH #131) or an
+    /// account (GH #198). Actual's `notes` table is keyed by the annotated
+    /// row's own id, so the note lives at `notes.id = <the row's id>` whatever
+    /// kind of row it is.
     ///
     /// One read reports both whether the file has the table and what it holds,
     /// so the caller can distinguish "this file can't store notes" from "this
-    /// category has none" without a second round trip or a cached capability
-    /// flag that could go stale when the open file changes.
-    func fetchCategoryNote(categoryId: String) async throws -> CategoryNote {
+    /// row has none" without a second round trip or a cached capability flag
+    /// that could go stale when the open file changes.
+    func fetchNote(id: String) async throws -> EntityNote {
         try await dbQueue.read { db in
             guard try db.tableExists("notes") else { return .unsupported }
             // A row can exist with a NULL note (another client cleared it that
             // way); that reads as empty, same as no row at all.
             let note = try String.fetchOne(
-                db, sql: "SELECT note FROM notes WHERE id = ?", arguments: [categoryId])
-            return CategoryNote(supported: true, text: note ?? "")
+                db, sql: "SELECT note FROM notes WHERE id = ?", arguments: [id])
+            return EntityNote(supported: true, text: note ?? "")
         }
     }
 
@@ -1712,6 +1730,59 @@ class BudgetDatabase {
     }
 
     /// Synced pref controlling week bucketing (0 = Sunday … 6 = Saturday).
+    /// Budget rows for report engines from the live budgets table (see
+    /// budgetTable(_:)), plus whether that table is reflect_budgets so
+    /// callers can mirror upstream budgetType checks.
+    struct ReportBudgetData: Equatable {
+        var entries: [BudgetAnalysisBudgetEntry] = []
+        var isTracking = false
+    }
+
+    func fetchBudgetDataForReports() async throws -> ReportBudgetData {
+        try await dbQueue.read { db in
+            guard let table = try Self.budgetTable(db) else { return ReportBudgetData() }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT b.month, COALESCE(cm.transferId, b.category) AS category, b.amount
+                FROM \(table) b
+                LEFT JOIN category_mapping cm ON cm.id = b.category
+                WHERE b.category IS NOT NULL
+                """)
+            let entries = rows.compactMap { row -> BudgetAnalysisBudgetEntry? in
+                guard let month: Int = row["month"], let category: String = row["category"] else { return nil }
+                return BudgetAnalysisBudgetEntry(month: month, categoryId: category, amountCents: row["amount"] ?? 0)
+            }
+            return ReportBudgetData(entries: entries, isTracking: table == "reflect_budgets")
+        }
+    }
+
+    /// Per-month tracking-budget totals for the balance-forecast engine
+    /// (upstream forecast-tracking-budget.ts: income = budgeted amounts across
+    /// income categories, expenses = across the rest). Always reads
+    /// reflect_budgets; callers gate on the budget type.
+    func fetchTrackingBudgetMonths() async throws -> [BalanceForecastBudgetMonth] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("reflect_budgets") else { return [] }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT b.month AS month,
+                       SUM(CASE WHEN c.is_income = 1 THEN b.amount ELSE 0 END) AS income,
+                       SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE b.amount END) AS expenses
+                FROM reflect_budgets b
+                LEFT JOIN category_mapping cm ON cm.id = b.category
+                LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, b.category)
+                WHERE b.category IS NOT NULL
+                GROUP BY b.month
+                """)
+            return rows.compactMap { row in
+                guard let month: Int = row["month"] else { return nil }
+                return BalanceForecastBudgetMonth(
+                    month: month,
+                    budgetedIncomeCents: row["income"] ?? 0,
+                    budgetedExpensesCents: row["expenses"] ?? 0
+                )
+            }
+        }
+    }
+
     func fetchFirstDayOfWeekIdx() async throws -> Int {
         try await dbQueue.read { db in
             guard try db.tableExists("preferences") else { return 0 }
@@ -1935,6 +2006,50 @@ class BudgetDatabase {
         }
     }
 
+    /// Inserts a newly-created account, its transfer payee (plus the payee's
+    /// self-mapping row the transaction joins need), and its opening-balance
+    /// transaction (if any) in a single SQLite transaction, so a failure on
+    /// any row rolls back everything — mirrors `insertTransfer`'s
+    /// all-or-nothing shape.
+    func insertAccount(
+        _ account: Account,
+        transferPayee: Payee,
+        startingBalanceTransaction: Transaction?
+    ) throws {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, ?, ?, ?, ?, 0, ?)
+                """, arguments: [
+                    account.id,
+                    account.name,
+                    account.type.rawValue,
+                    account.offBudget ? 1 : 0,
+                    account.closed ? 1 : 0,
+                    account.sortOrder
+                ])
+            try db.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct, tombstone)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.name,
+                    transferPayee.transferAccountId,
+                    transferPayee.tombstone ? 1 : 0
+                ])
+            try db.execute(sql: """
+                INSERT INTO payee_mapping (id, targetId)
+                VALUES (?, ?)
+                """, arguments: [
+                    transferPayee.id,
+                    transferPayee.id
+                ])
+            if let startingBalanceTransaction {
+                try Self.insertTransactionRow(db, startingBalanceTransaction)
+            }
+        }
+    }
+
     /// Inserts both legs of a transfer and their CRDT messages in a single
     /// SQLite transaction, so a failure on either leg rolls back everything
     /// and no orphaned half-transfer can persist.
@@ -1975,8 +2090,8 @@ class BudgetDatabase {
         // children keep their entry order under the parent.
         let sortOrder = transaction.sortOrder ?? Date().timeIntervalSince1970 * 1000
         try db.execute(sql: """
-            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, schedule, financial_id)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO transactions (id, acct, date, description, category, amount, notes, cleared, reconciled, transferred_id, isParent, isChild, parent_id, tombstone, sort_order, imported_description, schedule, financial_id, starting_balance_flag)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, arguments: [
                 transaction.id,
                 transaction.accountId,
@@ -1995,7 +2110,8 @@ class BudgetDatabase {
                 sortOrder,
                 transaction.importedPayee,
                 transaction.schedule,
-                transaction.financialId
+                transaction.financialId,
+                transaction.startingBalanceFlag ? 1 : 0
             ])
     }
 
@@ -2079,11 +2195,23 @@ class BudgetDatabase {
     /// Fetch schedules eligible for auto-posting: alive, not completed, and
     /// flagged `posts_transaction = 1`, with their rule conditions extracted
     /// (port of loot-core `extractScheduleConds`). The poster writes to users'
-    /// real servers, so every doubt case is a logged skip — never a throw and
-    /// never a partially-understood schedule. Returns [] when the schedule
-    /// tables don't exist (older budget files).
+    /// real servers, so doubt about WHAT to post (conditions, account, next
+    /// date) is a logged skip — never a throw. Doubt about the recurrence
+    /// alone is `.unsupported`, not a skip: upstream posts the stored due
+    /// occurrence either way and only its advance fails. Returns [] when the
+    /// schedule tables don't exist (older budget files).
     func fetchPostableSchedules() throws -> [Schedule] {
-        try dbQueue.read { db in
+        try dbQueue.read { db in try Self.schedules(db, postableOnly: true) }
+    }
+
+    /// Schedules for the balance-forecast engine: same parsing as the poster,
+    /// but manual (posts_transaction = 0) schedules forecast too, matching
+    /// upstream forecast-schedules.ts.
+    func fetchForecastSchedules() async throws -> [Schedule] {
+        try await dbQueue.read { db in try Self.schedules(db, postableOnly: false) }
+    }
+
+    private static func schedules(_ db: Database, postableOnly: Bool) throws -> [Schedule] {
             guard try db.tableExists("schedules"),
                   try db.tableExists("schedules_next_date"),
                   try db.tableExists("rules")
@@ -2103,7 +2231,7 @@ class BudgetDatabase {
                 JOIN rules r ON r.id = s.rule
                 WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
                   AND (s.completed = 0 OR s.completed IS NULL)
-                  AND s.posts_transaction = 1
+                  AND (s.posts_transaction = 1 OR \(postableOnly ? 0 : 1))
                   AND (r.tombstone = 0 OR r.tombstone IS NULL)
                 ORDER BY s.id, nd.id
                 """)
@@ -2121,11 +2249,14 @@ class BudgetDatabase {
                     return nil
                 }
 
-                guard let nextDateRowId: String = row["nd_id"],
-                      let baseNextDateTs: Int64 = row["base_next_date_ts"] else {
+                guard let nextDateRowId: String = row["nd_id"] else {
                     logger.notice("Skipping schedule \(id, privacy: .public): incomplete schedules_next_date row")
                     return nil
                 }
+                // NULL is postable: the web's v_schedules CASE falls through
+                // to base_next_date for NULL timestamps, and its advance
+                // writes local_next_date_ts = NULL — so must ours.
+                let baseNextDateTs: Int64? = row["base_next_date_ts"]
 
                 guard let conditions = Self.parseConditionsArray(row["conditions"]) else {
                     logger.notice("Skipping schedule \(id, privacy: .public): unparseable rule conditions")
@@ -2144,11 +2275,14 @@ class BudgetDatabase {
                     return nil
                 }
 
-                // Date: required; unsupported recurrences mean we can't advance
-                // the schedule correctly after posting, so skip.
-                guard let dateCondition = Self.parseDateCondition(in: conditions) else {
-                    logger.notice("Skipping schedule \(id, privacy: .public): missing or unsupported date condition")
-                    return nil
+                // Date: informs only the ADVANCE. Upstream posting works off
+                // the stored next_date regardless of this condition (its
+                // setNextDate throws on unsupported shapes after posting and
+                // the service swallows it), so a missing or unparseable date
+                // condition still posts — once, without advancing.
+                let dateCondition = Self.parseDateCondition(in: conditions)
+                if case .unsupported = dateCondition {
+                    logger.notice("Schedule \(id, privacy: .public): date condition missing or unsupported - due occurrence will post without advancing")
                 }
 
                 // Effective next date, per loot-core's v_schedules view:
@@ -2190,7 +2324,6 @@ class BudgetDatabase {
                     dateCondition: dateCondition
                 )
             }
-        }
     }
     
     /// Every live schedule, for the schedules screen — including completed and
@@ -2441,10 +2574,10 @@ class BudgetDatabase {
         return nil
     }
 
-    private static func parseDateCondition(in conditions: [[String: Any]]) -> ScheduleDateCondition? {
+    private static func parseDateCondition(in conditions: [[String: Any]]) -> ScheduleDateCondition {
         guard let cond = firstCondition(
             in: conditions, ops: ["is", "isapprox"], fields: ["date"]
-        ) else { return nil }
+        ) else { return .unsupported }
         // Fixed dates inside conditions JSON are "YYYY-MM-DD" strings
         // (unlike the schedules_next_date columns, which are YYYYMMDD ints).
         if let iso = cond["value"] as? String, let day = DayDate(iso: iso) {
@@ -2453,7 +2586,7 @@ class BudgetDatabase {
         if let recur = cond["value"] as? [String: Any], let config = RecurConfig(json: recur) {
             return .recurring(config)
         }
-        return nil
+        return .unsupported
     }
     
     /// Transactions linked to a schedule, newest first. Powers the editor's

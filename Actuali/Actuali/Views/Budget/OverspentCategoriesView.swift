@@ -43,6 +43,7 @@ struct OverspentCategoriesView: View {
                 )
             }
         }
+        .readableWidth()
         .navigationTitle("Overspent Categories")
         .navigationBarTitleDisplayMode(.inline)
     }
