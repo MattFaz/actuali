@@ -830,6 +830,21 @@ actor SyncClient {
         try await commit(ScheduleWriteBuilder.scheduleColumnsPlan(
             scheduleId: scheduleId, fields: fields))
     }
+    
+    /// Write a synced preference. `preferences` is keyed by `id` with a
+    /// `value` column, so it fits the standard CRDT upsert.
+    func setPreference(id: String, value: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let messages = try await messageGenerator.messages(
+            dataset: "preferences", row: id, fields: [("value", value)])
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
 
     /// Millisecond epoch, the unit `schedules_next_date` timestamps use.
     private static func nowMilliseconds() -> Int64 {

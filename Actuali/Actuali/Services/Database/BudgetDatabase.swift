@@ -2552,6 +2552,19 @@ class BudgetDatabase {
             return row?["value"]
         }
     }
+    
+    /// Budget-wide upcoming-schedule window, as stored by Actual. Nil when
+    /// unset, so callers fall back to `ScheduleUpcomingLength.fallback`.
+    func fetchUpcomingScheduledTransactionLength() async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return nil }
+            let row = try Row.fetchOne(db, sql: """
+                SELECT value FROM preferences
+                WHERE id = 'upcomingScheduledTransactionLength'
+                """)
+            return row?["value"]
+        }
+    }
 
     // MARK: - Payee Insert
 

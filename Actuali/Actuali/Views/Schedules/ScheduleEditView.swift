@@ -84,6 +84,16 @@ struct ScheduleEditView: View {
 
     var body: some View {
         Form {
+            if editing?.isCustom == true {
+                Section {
+                    Label {
+                        Text("This schedule has extra rule conditions set up in Actual. They're preserved when you save, but can't be edited here.")
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                    .font(.footnote)
+                }
+            }
             Section {
                 TextField("Name", text: $name)
                 TextField("Payee", text: $payeeName)

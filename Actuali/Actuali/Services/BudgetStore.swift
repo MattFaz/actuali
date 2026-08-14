@@ -137,6 +137,7 @@ final class BudgetStore: ObservableObject {
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
     @Published var schedules: [ScheduleSummary] = []
+    @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Bumped every time the published data snapshot above is republished
@@ -1152,6 +1153,7 @@ final class BudgetStore: ObservableObject {
             // at a suspension point.
             // Currency code from preferences (use if non-empty, else keep UserDefaults value)
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
+            let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -2684,7 +2686,7 @@ final class BudgetStore: ObservableObject {
                     nextDate: schedule.nextDate,
                     completed: schedule.completed,
                     hasTransaction: paid.contains(schedule.id),
-                    upcomingLength: schedule.customUpcomingLength,
+                    upcomingLength: schedule.customUpcomingLength ?? upcomingScheduledTransactionLength,
                     today: today)
             }
 
