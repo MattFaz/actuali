@@ -109,6 +109,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "On Budget",
+                                    subtitle: "Cash included in your budget",
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded
                                 )
@@ -126,6 +127,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "Off Budget",
+                                    subtitle: "Assets and debts tracked outside your budget",
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded
                                 )
@@ -143,6 +145,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "Closed Accounts",
+                                    subtitle: "Inactive accounts kept for history",
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded
                                 )
@@ -188,6 +191,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "On Budget",
+                                    subtitle: "Cash included in your budget",
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -205,6 +209,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "Off Budget",
+                                    subtitle: "Assets and debts tracked outside your budget",
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -222,6 +227,7 @@ struct AccountsListView: View {
                             } header: {
                                 AccountSectionHeader(
                                     title: "Closed Accounts",
+                                    subtitle: "Inactive accounts kept for history",
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded,
                                     totalTrailingPadding: 0
@@ -490,6 +496,7 @@ struct AccountsSummaryCard: View {
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let title: String
+    let subtitle: String
     let total: Int
     @Binding var isExpanded: Bool
     /// Extra trailing inset lining the total up with row balances that sit
@@ -505,7 +512,14 @@ struct AccountSectionHeader: View {
             HStack(spacing: 8) {
                 DisclosureChevron(isExpanded: isExpanded)
                                     .frame(width: 12)
-                Text(title)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                    Text(subtitle)
+                        .font(.caption2)
+                        .fontWeight(.regular)
+                        .foregroundStyle(.secondary)
+                        .textCase(nil)
+                }
                 Spacer()
                 Text(totalText)
                     .fontWeight(.regular)
