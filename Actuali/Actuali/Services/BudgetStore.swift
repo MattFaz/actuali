@@ -712,6 +712,10 @@ final class BudgetStore: ObservableObject {
         fileManager = manager
         backupService = BackupService(fileManager: manager)
     }
+
+    /// Test-only: whether loadLocalBudget wired a sync client (it must not
+    /// for a budget detached by a backup restore).
+    var isSyncConfiguredForTesting: Bool { syncClient != nil }
     #endif
 
     private init() {
@@ -1201,15 +1205,6 @@ final class BudgetStore: ObservableObject {
             currentBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
 
-            // Configure sync client
-            let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
-                let id = HybridLogicalClock.generateNodeId()
-                UserDefaults.standard.set(id, forKey: "nodeId")
-                return id
-            }()
-
-            syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
-
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
@@ -1221,28 +1216,48 @@ final class BudgetStore: ObservableObject {
                let metadata = try? JSONDecoder().decode(BudgetMetadata.self, from: metadataData) {
                 fileId = metadata.cloudFileId ?? budgetId
                 groupId = metadata.groupId ?? ""
-                syncDetachedByRestore = (metadata.cloudFileId != nil && (metadata.groupId ?? "").isEmpty)
-                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                syncDetachedByRestore = (metadata.cloudFileId != nil && groupId.isEmpty)
             } else {
                 syncDetachedByRestore = false
                 logger.notice("Could not load metadata for budget \(budgetId, privacy: .private)")
             }
 
-            if let db = database {
-                let loadedKey = EncryptionKeyManager.load(fileId: fileId)
-                try await syncClient?.configure(
-                    database: db,
-                    fileId: fileId,
-                    groupId: groupId,
-                    encryptionKey: loadedKey?.key,
-                    keyId: loadedKey?.keyId
-                )
-                logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+            if syncDetachedByRestore {
+                // A restored backup: the server still has the old sync group,
+                // so any sync with our nulled groupId earns a 400
+                // file-has-reset and an endless retry loop. Leave sync
+                // unconfigured until a re-download writes a fresh groupId.
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                syncState = .idle
+                logger.notice("Budget detached by restore - sync not configured")
             } else {
-                logger.error("Database is nil, cannot configure sync")
-            }
+                logger.info("Configuring sync with fileId: \(fileId, privacy: .private), groupId: \(groupId, privacy: .private)")
+                let nodeId = UserDefaults.standard.string(forKey: "nodeId") ?? {
+                    let id = HybridLogicalClock.generateNodeId()
+                    UserDefaults.standard.set(id, forKey: "nodeId")
+                    return id
+                }()
 
-            subscribeToSyncState()
+                syncClient = SyncClient(serverClient: serverClient, nodeId: nodeId)
+
+                if let db = database {
+                    let loadedKey = EncryptionKeyManager.load(fileId: fileId)
+                    try await syncClient?.configure(
+                        database: db,
+                        fileId: fileId,
+                        groupId: groupId,
+                        encryptionKey: loadedKey?.key,
+                        keyId: loadedKey?.keyId
+                    )
+                    logger.info("Sync configuration successful (encrypted: \(loadedKey != nil, privacy: .public))")
+                } else {
+                    logger.error("Database is nil, cannot configure sync")
+                }
+
+                subscribeToSyncState()
+            }
 
             refreshPayeeLocationSupport()
 
@@ -1364,12 +1379,6 @@ final class BudgetStore: ObservableObject {
         }
     }
     
-    func deleteBackups(_ ids: [String]) async {
-        guard let budgetId = currentBudgetId else { return }
-        await backupService.deleteBackups(budgetId: budgetId, ids: ids)
-        await refreshBackups()
-    }
-
     /// Automatic backup on app-background. Skipped while viewing a backup.
     /// Backgrounding happens seconds after a restore (the user checks another app),
     /// and makeBackup's first step would destroy the revert baseline.
@@ -1391,19 +1400,24 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         error = nil
 
-        // Drop the sync client and database before loadBackup swaps files. Any
-        // sync still running inside the old actor writes to the now-unlinked
-        // old inode (harmlessly discarded) — it can't touch the new db.sqlite,
-        // which is a different inode. We deliberately do NOT flushPendingSync()
-        // here: that awaits the network push and would hang this local restore
-        // for the URLSession timeout when the server is unreachable.
+        // Drop the sync client and database references before loadBackup swaps
+        // files. Any sync still running inside the old actor keeps the old
+        // database open: its baseline snapshot goes through that queue's write
+        // serialization (VACUUM INTO, never a raw file copy racing a write),
+        // and post-swap writes land on the now-unlinked old inode (harmlessly
+        // discarded). We deliberately do NOT flushPendingSync() here: that
+        // awaits the network push and would hang this local restore for the
+        // URLSession timeout when the server is unreachable.
+        let openDatabase = database
         syncStateCancellable?.cancel()
         syncStateCancellable = nil
         syncClient = nil
         database = nil
 
         do {
-            try await backupService.loadBackup(budgetId: budgetId, backupId: backupId)
+            try await backupService.loadBackup(
+                budgetId: budgetId, backupId: backupId, database: openDatabase
+            )
         } catch {
             self.error = error.localizedDescription
         }

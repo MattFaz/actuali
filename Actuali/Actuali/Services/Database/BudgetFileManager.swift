@@ -197,6 +197,12 @@ class BudgetFileManager {
         var totalUncompressed = 0
         for entry in archive {
             try assertSafeEntryName(entry.path)
+            // fflate (upstream's extractor) can only materialize regular
+            // files; ZIPFoundation would also create symlinks, which a hostile
+            // archive could aim anywhere the sandbox reaches.
+            if entry.type == .symlink {
+                throw BudgetFileError.unsafeArchive("symlink entry: \(entry.path)")
+            }
             let entrySize = Int(entry.uncompressedSize)
             if entrySize > Self.maxArchiveBytes {
                 throw BudgetFileError.unsafeArchive("entry \(entry.path) exceeds \(Self.maxArchiveBytes) bytes")

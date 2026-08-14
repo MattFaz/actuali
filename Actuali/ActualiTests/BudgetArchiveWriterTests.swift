@@ -101,6 +101,30 @@ struct BudgetArchiveWriterTests {
         }
     }
 
+    // fflate (upstream) can only write regular files; ZIPFoundation would
+    // materialize a symlink entry as a real symlink, so extraction must
+    // reject them outright.
+    @Test func extractionRejectsSymlinkEntries() throws {
+        let dir = try makeTempDir()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let manager = BudgetFileManager(
+            rootDirectoryForTesting: dir.appendingPathComponent("root", isDirectory: true)
+        )
+
+        let archiveURL = dir.appendingPathComponent("symlink.zip")
+        let archive = try Archive(url: archiveURL, accessMode: .create)
+        let target = Data("/tmp/evil".utf8)
+        try archive.addEntry(
+            with: "db.sqlite", type: .symlink, uncompressedSize: Int64(target.count)
+        ) { position, size in
+            target.subdata(in: Int(position)..<(Int(position) + size))
+        }
+
+        #expect(throws: BudgetFileError.self) {
+            _ = try manager.extractBudgetArchive(at: archiveURL)
+        }
+    }
+
     @Test func extractionRequiresBothEntries() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -38,7 +38,7 @@ struct BackupRestoreRevertTests {
         )
     }
 
-    @Test func restoreDetachesAndRevertRestoresByteIdentity() async throws {
+    @Test func restoreDetachesAndRevertRestoresOriginal() async throws {
         let (manager, root) = makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(manager: manager, id: "b", note: "backup-state")
@@ -52,11 +52,10 @@ struct BackupRestoreRevertTests {
         // The budget moves on after the backup was taken.
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
         try await dbQueue.write { try $0.execute(sql: "UPDATE t SET note = 'current-state'") }
-        let preRestoreDbBytes = try Data(contentsOf: manager.databasePath(for: "b"))
         let preRestoreMetaBytes = try Data(contentsOf: manager.metadataPath(for: "b"))
 
         // Restore the archive.
-        try await service.loadBackup(budgetId: "b", backupId: archiveId)
+        try await service.loadBackup(budgetId: "b", backupId: archiveId, database: nil)
 
         #expect(try note(manager: manager, id: "b") == "backup-state")
         let restoredMeta = try metadata(manager: manager, id: "b")
@@ -70,9 +69,11 @@ struct BackupRestoreRevertTests {
         let listed = await service.availableBackups(budgetId: "b")
         #expect(listed.first?.isLatest == true)
 
-        // Revert: byte-identical original, baseline consumed, sync resumable.
-        try await service.loadBackup(budgetId: "b", backupId: Backup.latest.id)
-        #expect(try Data(contentsOf: manager.databasePath(for: "b")) == preRestoreDbBytes)
+        // Revert: original content back (the baseline is a VACUUM snapshot,
+        // so db equality is semantic, not byte-level), baseline consumed,
+        // sync resumable via the byte-identical metadata.
+        try await service.loadBackup(budgetId: "b", backupId: Backup.latest.id, database: nil)
+        #expect(try note(manager: manager, id: "b") == "current-state")
         #expect(try Data(contentsOf: manager.metadataPath(for: "b")) == preRestoreMetaBytes)
         #expect(try metadata(manager: manager, id: "b").groupId == "g-1")
         #expect(!FileManager.default.fileExists(atPath: manager.latestDatabasePath(for: "b").path))
@@ -96,11 +97,11 @@ struct BackupRestoreRevertTests {
 
         // Restore twice in a row: the baseline must stay the ORIGINAL (v3)
         // state — the snapshot happens once per viewing session.
-        try await service.loadBackup(budgetId: "b", backupId: archives[1].id) // oldest → v1
-        try await service.loadBackup(budgetId: "b", backupId: archives[0].id) // newer → v2
+        try await service.loadBackup(budgetId: "b", backupId: archives[1].id, database: nil) // oldest → v1
+        try await service.loadBackup(budgetId: "b", backupId: archives[0].id, database: nil) // newer → v2
         #expect(try note(manager: manager, id: "b") == "v2")
 
-        try await service.loadBackup(budgetId: "b", backupId: Backup.latest.id)
+        try await service.loadBackup(budgetId: "b", backupId: Backup.latest.id, database: nil)
         #expect(try note(manager: manager, id: "b") == "v3")
     }
 
@@ -111,8 +112,49 @@ struct BackupRestoreRevertTests {
 
         let service = BackupService(fileManager: manager)
         await #expect(throws: BackupError.self) {
-            try await service.loadBackup(budgetId: "b", backupId: "2026-01-01_00-00-00.zip")
+            try await service.loadBackup(
+                budgetId: "b", backupId: "2026-01-01_00-00-00.zip", database: nil
+            )
         }
+        // The failed restore must not have started a viewing session.
+        #expect(!FileManager.default.fileExists(atPath: manager.latestDatabasePath(for: "b").path))
+    }
+
+    @Test func revertWithoutBaselineThrows() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b", note: "v1")
+
+        let service = BackupService(fileManager: manager)
+        await #expect(throws: BackupError.self) {
+            try await service.loadBackup(
+                budgetId: "b", backupId: Backup.latest.id, database: nil
+            )
+        }
+        // Live files untouched.
+        #expect(try note(manager: manager, id: "b") == "v1")
+        #expect(try metadata(manager: manager, id: "b").groupId == "g-1")
+    }
+
+    // A crash between the baseline's two writes leaves only the metadata half
+    // (the db is written last as the marker). The next restore sweeps the
+    // orphan and builds a fresh, consistent pair.
+    @Test func restoreSweepsOrphanedBaselineMetadata() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b", note: "live")
+
+        let service = BackupService(fileManager: manager)
+        try await service.makeBackup(budgetId: "b", database: nil)
+        let archiveId = try #require(
+            await service.availableBackups(budgetId: "b").first(where: { !$0.isLatest })?.id
+        )
+        try Data("orphan".utf8).write(to: manager.latestMetadataPath(for: "b"))
+
+        try await service.loadBackup(budgetId: "b", backupId: archiveId, database: nil)
+        try await service.loadBackup(budgetId: "b", backupId: Backup.latest.id, database: nil)
+        #expect(try note(manager: manager, id: "b") == "live")
+        #expect(try metadata(manager: manager, id: "b").groupId == "g-1")
     }
 
     @Test func reimportPreservesBackupsAndClearsBaseline() async throws {

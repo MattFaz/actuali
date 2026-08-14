@@ -61,6 +61,40 @@ struct BudgetStoreBackupTests {
         #expect(zips.isEmpty)
     }
     
+    // A restored budget (cloud identity kept, groupId nulled) must not get a
+    // sync client: the server still has the old group, so any sync would earn
+    // a 400 file-has-reset and an endless retry loop.
+    @Test func loadSkipsSyncConfigurationWhenDetachedByRestore() async throws {
+        let (store, manager, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        // loadLocalBudget reads the full budget schema, not just one table.
+        let dir = manager.budgetDirectory(for: "b")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
+        try await dbQueue.write { try $0.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema) }
+        try JSONEncoder().encode(BudgetMetadata(
+            id: "b", budgetName: "Seed", cloudFileId: "cf-1", groupId: "g-1",
+            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )).write(to: manager.metadataPath(for: "b"))
+
+        // Attached metadata (groupId present): sync configures as usual.
+        await store.loadLocalBudget("b")
+        #expect(store.error == nil)
+        #expect(!store.syncDetachedByRestore)
+        #expect(store.isSyncConfiguredForTesting)
+
+        // Detached metadata, as restoredOver() writes it: reload must drop
+        // the stale client, not just skip creating a new one.
+        try JSONEncoder().encode(BudgetMetadata(
+            id: "b", budgetName: "Seed", cloudFileId: "cf-1", groupId: nil,
+            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )).write(to: manager.metadataPath(for: "b"))
+        await store.loadLocalBudget("b")
+        #expect(store.syncDetachedByRestore)
+        #expect(!store.isSyncConfiguredForTesting)
+    }
+
     @Test func backupFileURLPointsAtImportableArchive() async throws {
         let (store, manager, root) = try makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
