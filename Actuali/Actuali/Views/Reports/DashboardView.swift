@@ -104,6 +104,14 @@ struct DashboardView: View {
             accountNames: Dictionary(
                 budgetStore.accounts.map { ($0.id, $0.name) },
                 uniquingKeysWith: { first, _ in first }
+            ),
+            categoryGroupIds: Dictionary(
+                budgetStore.categoryGroups.flatMap(\.categories).map { ($0.id, $0.groupId) },
+                uniquingKeysWith: { first, _ in first }
+            ),
+            categoryGroupNames: Dictionary(
+                budgetStore.categoryGroups.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first }
             )
         )
     }
@@ -196,10 +204,11 @@ struct DashboardView: View {
     }
 
     private func comparisonLabel(for meta: SpendingMeta?) -> String {
-        switch meta?.mode {
-        case .budget?: return "vs budget"
-        case .singleMonth?: return "vs \(meta?.compareTo ?? "prior")"
-        case .average?, .none: return "vs avg"
+        // nil mode defaults to single-month upstream (SpendingCard.tsx).
+        switch meta?.mode ?? .singleMonth {
+        case .budget: return "vs budget"
+        case .singleMonth: return "vs \(meta?.compareTo ?? "prior")"
+        case .average: return "vs avg"
         }
     }
 }
