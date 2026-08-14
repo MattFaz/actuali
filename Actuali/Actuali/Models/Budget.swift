@@ -33,15 +33,11 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
 
+    /// Net activity across expense categories — inflows (refunds,
+    /// reimbursements) offset outflows, matching the Spent total in Actual's
+    /// web UI (GH #212).
     var totalSpent: Int {
         categoryBudgets.reduce(0) { $0 + $1.spent }
-    }
-
-    /// Money that actually left the budget this month — inflows (refunds,
-    /// reimbursements) are excluded so a positive-heavy month doesn't show
-    /// a misleading "Spent" total.
-    var totalOutflow: Int {
-        categoryBudgets.reduce(0) { $0 + $1.outflow }
     }
 
     var totalAvailable: Int {
@@ -75,7 +71,6 @@ struct CategoryBudget: Identifiable, Hashable {
     var categorySortOrder: Double
     var budgeted: Int // In cents
     var spent: Int // In cents (negative value, net of inflows)
-    var outflow: Int = 0 // In cents (negative transactions only)
     var available: Int // In cents (budgeted + spent + carryover)
     var carryover: Int
 

@@ -2830,11 +2830,14 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Budget Amounts
 
-    /// Parse the budget edit field ("25.50") into non-negative cents.
-    static func budgetAmountCents(from string: String) throws -> Int {
+    /// Parse the budget edit field ("25.50") into cents. Negative amounts
+    /// (intentional overdraw, as Actual's web client allows) are only valid
+    /// where the caller opts in — a transfer, for instance, must stay
+    /// non-negative or it would silently reverse direction.
+    static func budgetAmountCents(from string: String, allowNegative: Bool = false) throws -> Int {
         guard let dollars = Double(string),
               let cents = Transaction.cents(fromDollars: dollars),
-              cents >= 0 else {
+              allowNegative || cents >= 0 else {
             throw BudgetStoreError.invalidAmount
         }
         return cents
