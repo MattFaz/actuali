@@ -19,7 +19,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
@@ -63,10 +63,27 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
         XCTAssertFalse(budgetedCaption(in: app).exists,
                        "detailed rows show pill cells, not 'Budgeted:' captions")
+    }
+
+    @MainActor
+    func testCategoryNameOpensActionableDetailSheet() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
+        app.launch()
+
+        app.tabBars.buttons["Budget"].tap()
+        let groceries = app.buttons["Details for Groceries"].firstMatch
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10))
+        groceries.tap()
+
+        XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["Assign Money"].exists)
+        XCTAssertTrue(app.buttons["This Month's Transactions"].exists)
+        XCTAssertTrue(app.buttons["All Transactions"].exists)
     }
 }

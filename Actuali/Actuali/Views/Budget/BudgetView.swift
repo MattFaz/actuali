@@ -46,6 +46,7 @@ struct BudgetView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
+    @State private var selectedCategory: CategoryBudget?
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
     @State private var newBudgetItem: NewBudgetItem?
@@ -170,6 +171,7 @@ struct BudgetView: View {
                                             ForEach(group.categories) { category in
                                                 CleanCategoryBudgetRow(
                                                     category: category,
+                                                    onShowDetails: { selectedCategory = $0 },
                                                     onEditBudget: { editingCategory = $0 },
                                                     // Name shows all time, Spent shows
                                                     // the displayed month (GH #56).
@@ -205,6 +207,7 @@ struct BudgetView: View {
                                             ForEach(group.categories) { category in
                                                 CategoryBudgetRow(
                                                     category: category,
+                                                    onShowDetails: { selectedCategory = $0 },
                                                     onEditBudget: { editingCategory = $0 },
                                                     // Name shows all time, Spent shows
                                                     // the displayed month (GH #56).
@@ -404,6 +407,9 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            .sheet(item: $selectedCategory) { category in
+                CategoryBudgetDetailSheet(category: category)
+            }
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
             }
@@ -573,6 +579,7 @@ private struct TwoLineName: View {
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
@@ -587,7 +594,7 @@ struct CategoryBudgetRow: View {
             // action (our enhancement over the PWA's read-only cells).
             HStack(spacing: BudgetColumn.spacing) {
                 Button {
-                    onShowTransactions(category, nil)
+                    onShowDetails(category)
                 } label: {
                     TwoLineName(
                         text: category.categoryName,
@@ -596,7 +603,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("All transactions for \(category.categoryName)")
+                .accessibilityLabel("Details for \(category.categoryName)")
                 Spacer(minLength: 4)
                 Button {
                     onEditBudget(category)
@@ -637,7 +644,7 @@ struct CategoryBudgetRow: View {
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
                     fraction: category.progressFraction,
-                    isOverspent: category.isOverspent
+                    state: category.progressState
                 )
             }
         }
@@ -651,6 +658,7 @@ struct CategoryBudgetRow: View {
 struct CleanCategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
@@ -662,13 +670,13 @@ struct CleanCategoryBudgetRow: View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Button {
-                    onShowTransactions(category, nil)
+                    onShowDetails(category)
                 } label: {
                     Text(category.categoryName)
                         .font(.body)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("All transactions for \(category.categoryName)")
+                .accessibilityLabel("Details for \(category.categoryName)")
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -687,7 +695,7 @@ struct CleanCategoryBudgetRow: View {
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
                     fraction: category.progressFraction,
-                    isOverspent: category.isOverspent
+                    state: category.progressState
                 )
             }
             HStack {
@@ -1041,19 +1049,221 @@ struct IncomeCategoryRow: View {
     }
 }
 
+/// One YNAB-style place to understand and act on a category without losing
+/// the month context. Actual's tracking budgets keep their own terminology.
+struct CategoryBudgetDetailSheet: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+    let category: CategoryBudget
+
+    @State private var editingBudget = false
+    @State private var transferContext: BudgetTransferContext?
+    @State private var editingNote = false
+    @State private var note: EntityNote = .unsupported
+    @State private var recentTransactions: [Transaction] = []
+
+    private var isTracking: Bool {
+        budgetStore.currentBudgetMonth?.isTrackingBudget == true
+    }
+
+    private var statusTitle: String {
+        switch (isTracking, category.progressState) {
+        case (_, .overspent): isTracking ? "Over budget" : "Overspent"
+        case (true, .funded): "Budget set"
+        case (false, .funded): "Funded"
+        case (true, .spending): "Within budget"
+        case (false, .spending): "On track"
+        case (true, .spent): "Budget used"
+        case (false, .spent): "Fully spent"
+        case (true, .unassigned): "No budget set"
+        case (false, .unassigned): "Not funded"
+        }
+    }
+
+    private var statusColor: Color {
+        switch category.progressState {
+        case .overspent: .red
+        case .spent: .orange
+        case .spending: .blue
+        case .funded: .green
+        case .unassigned: .secondary
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Label(statusTitle, systemImage: category.isOverspent
+                                ? "exclamationmark.circle.fill"
+                                : "checkmark.circle.fill")
+                                .font(.headline)
+                                .foregroundStyle(statusColor)
+                            Spacer()
+                            Text(MonthPicker.title(for: category.month))
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        CategoryProgressBar(
+                            fraction: category.progressFraction,
+                            state: category.progressState
+                        )
+                        LabeledContent(isTracking ? "Budget" : "Assigned") {
+                            Text(budgetStore.displayBalance(category.budgeted))
+                        }
+                        LabeledContent("Activity") {
+                            Text(budgetStore.displayBalance(category.spent))
+                        }
+                        LabeledContent(isTracking ? "Balance" : "Available") {
+                            Text(budgetStore.displayBalance(category.available))
+                                .foregroundStyle(statusColor)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                }
+
+                Section("Actions") {
+                    Button {
+                        editingBudget = true
+                    } label: {
+                        Label(isTracking ? "Edit Budget" : "Assign Money", systemImage: "pencil")
+                    }
+
+                    if category.available != 0,
+                       let budget = budgetStore.currentBudgetMonth {
+                        Button {
+                            transferContext = BudgetTransferContext(category: category, budget: budget)
+                        } label: {
+                            Label(
+                                isTracking
+                                    ? "Reallocate Budget"
+                                    : (category.isOverspent ? "Cover Overspending" : "Move Money"),
+                                systemImage: "arrow.left.arrow.right"
+                            )
+                        }
+                    }
+
+                    NavigationLink {
+                        CategoryTransactionsView(destination: CategoryTransactionsDestination(
+                            categoryId: category.categoryId,
+                            categoryName: category.categoryName,
+                            month: category.month
+                        ))
+                    } label: {
+                        Label("This Month's Transactions", systemImage: "list.bullet.rectangle")
+                    }
+
+                    NavigationLink {
+                        CategoryTransactionsView(destination: CategoryTransactionsDestination(
+                            categoryId: category.categoryId,
+                            categoryName: category.categoryName,
+                            month: nil
+                        ))
+                    } label: {
+                        Label("All Transactions", systemImage: "clock.arrow.circlepath")
+                    }
+                }
+
+                if note.supported {
+                    Section("Note") {
+                        Button {
+                            editingNote = true
+                        } label: {
+                            if note.isEmpty {
+                                Label("Add Note", systemImage: "note.text.badge.plus")
+                            } else {
+                                Text(NoteLinkText.attributed(note.text))
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                        }
+                    }
+                }
+
+                if !recentTransactions.isEmpty {
+                    Section("Recent Activity") {
+                        ForEach(recentTransactions.prefix(3)) { transaction in
+                            TransactionRow(transaction: transaction)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(category.categoryName)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") { dismiss() }
+                }
+            }
+            .task { await reloadSupportingDetails() }
+            .sheet(isPresented: $editingBudget) {
+                EditBudgetAmountSheet(category: category)
+            }
+            .sheet(item: $transferContext) { context in
+                BudgetTransferSheet(context: context)
+            }
+            .sheet(isPresented: $editingNote, onDismiss: {
+                Task { note = await budgetStore.fetchNote(id: category.categoryId) }
+            }) {
+                NoteEditorView(
+                    noteId: category.categoryId,
+                    title: category.categoryName,
+                    note: note.text
+                )
+            }
+        }
+    }
+
+    private func reloadSupportingDetails() async {
+        async let fetchedTransactions = budgetStore.fetchCategoryTransactions(
+            categoryId: category.categoryId,
+            month: category.month
+        )
+        async let fetchedNote = budgetStore.fetchNote(id: category.categoryId)
+        recentTransactions = await fetchedTransactions
+        note = await fetchedNote
+    }
+}
+
 /// Spent-vs-available bar for a budget row. Fill and color mirror the row's
 /// Available amount: green while money remains, red once overspent.
 struct CategoryProgressBar: View {
     let fraction: Double
-    let isOverspent: Bool
+    let state: CategoryProgressState
+
+    private var tint: Color {
+        switch state {
+        case .overspent: .red
+        case .spent: .orange
+        case .spending: .blue
+        case .funded: .green
+        case .unassigned: .secondary
+        }
+    }
+
+    private var trackTint: Color {
+        state == .funded ? tint.opacity(0.25) : Color(.systemFill)
+    }
+
+    private var status: String {
+        switch state {
+        case .overspent: "Overspent"
+        case .spent: "Spent"
+        case .spending: "Spending"
+        case .funded: "Funded"
+        case .unassigned: "Unassigned"
+        }
+    }
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color(.systemFill))
+                    .fill(trackTint)
                 Capsule()
-                    .fill(isOverspent ? Color.red : Color.green)
+                    .fill(tint)
                     .frame(width: geometry.size.width * fraction)
             }
         }
@@ -1062,7 +1272,7 @@ struct CategoryProgressBar: View {
         // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
-        .accessibilityLabel("Spent \(Int((fraction * 100).rounded())) percent of available")
+        .accessibilityLabel("\(status), spent \(Int((fraction * 100).rounded())) percent")
     }
 }
 

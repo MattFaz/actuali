@@ -121,6 +121,24 @@ struct CategoryBudget: Identifiable, Hashable {
     var showsProgressBar: Bool {
         budgeted != 0 || spent != 0
     }
+
+    /// A compact, mode-neutral description of where this category stands.
+    /// Views translate it into envelope or tracking language as needed.
+    var progressState: CategoryProgressState {
+        if available < 0 { return .overspent }
+        if available == 0, spent != 0 { return .spent }
+        if available == 0, budgeted == 0, carryover == 0 { return .unassigned }
+        if spent != 0 { return .spending }
+        return .funded
+    }
+}
+
+enum CategoryProgressState: Equatable {
+    case unassigned
+    case funded
+    case spending
+    case spent
+    case overspent
 }
 
 /// Column sums for one category group, shown in the detailed style's group

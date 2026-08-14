@@ -72,4 +72,12 @@ struct CategoryBudgetProgressTests {
         let category = makeCategory(budgeted: 0, spent: -3000, available: -3000)
         #expect(category.showsProgressBar)
     }
+
+    @Test func progressStatesDistinguishActionableCategoryConditions() {
+        #expect(makeCategory(budgeted: 0, spent: 0, available: 0).progressState == .unassigned)
+        #expect(makeCategory(budgeted: 10000, spent: 0, available: 10000).progressState == .funded)
+        #expect(makeCategory(budgeted: 10000, spent: -4000, available: 6000).progressState == .spending)
+        #expect(makeCategory(budgeted: 10000, spent: -10000, available: 0).progressState == .spent)
+        #expect(makeCategory(budgeted: 10000, spent: -12000, available: -2000).progressState == .overspent)
+    }
 }
