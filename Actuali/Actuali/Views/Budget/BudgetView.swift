@@ -1196,6 +1196,8 @@ struct CategoryBudgetDetailSheet: View {
     @State private var quickAssignSuggestions: [QuickAssignSuggestion] = []
     @State private var isApplyingSuggestion = false
     @State private var quickAssignError: String?
+    @State private var actionsExpanded = true
+    @State private var quickAssignExpanded = true
 
     private var isTracking: Bool {
         budgetStore.currentBudgetMonth?.isTrackingBudget == true
@@ -1259,67 +1261,78 @@ struct CategoryBudgetDetailSheet: View {
                     .padding(.vertical, 4)
                 }
 
-                Section("Actions") {
-                    Button {
-                        editingBudget = true
-                    } label: {
-                        Label(isTracking ? "Edit Budget" : "Assign Money", systemImage: "pencil")
-                    }
-
-                    if category.available != 0,
-                       let budget = budgetStore.currentBudgetMonth {
+                Section {
+                    if actionsExpanded {
                         Button {
-                            transferContext = BudgetTransferContext(category: category, budget: budget)
+                            editingBudget = true
                         } label: {
-                            Label(
-                                isTracking
-                                    ? "Reallocate Budget"
-                                    : (category.isOverspent ? "Cover Overspending" : "Move Money"),
-                                systemImage: "arrow.left.arrow.right"
-                            )
+                            Label(isTracking ? "Edit Budget" : "Assign Money", systemImage: "pencil")
+                        }
+
+                        if category.available != 0,
+                           let budget = budgetStore.currentBudgetMonth {
+                            Button {
+                                transferContext = BudgetTransferContext(category: category, budget: budget)
+                            } label: {
+                                Label(
+                                    isTracking
+                                        ? "Reallocate Budget"
+                                        : (category.isOverspent ? "Cover Overspending" : "Move Money"),
+                                    systemImage: "arrow.left.arrow.right"
+                                )
+                            }
+                        }
+
+                        NavigationLink {
+                            CategoryTransactionsView(destination: CategoryTransactionsDestination(
+                                categoryId: category.categoryId,
+                                categoryName: category.categoryName,
+                                month: category.month
+                            ))
+                        } label: {
+                            Label("This Month's Transactions", systemImage: "list.bullet.rectangle")
+                        }
+
+                        NavigationLink {
+                            CategoryTransactionsView(destination: CategoryTransactionsDestination(
+                                categoryId: category.categoryId,
+                                categoryName: category.categoryName,
+                                month: nil
+                            ))
+                        } label: {
+                            Label("All Transactions", systemImage: "clock.arrow.circlepath")
                         }
                     }
-
-                    NavigationLink {
-                        CategoryTransactionsView(destination: CategoryTransactionsDestination(
-                            categoryId: category.categoryId,
-                            categoryName: category.categoryName,
-                            month: category.month
-                        ))
-                    } label: {
-                        Label("This Month's Transactions", systemImage: "list.bullet.rectangle")
-                    }
-
-                    NavigationLink {
-                        CategoryTransactionsView(destination: CategoryTransactionsDestination(
-                            categoryId: category.categoryId,
-                            categoryName: category.categoryName,
-                            month: nil
-                        ))
-                    } label: {
-                        Label("All Transactions", systemImage: "clock.arrow.circlepath")
-                    }
+                } header: {
+                    BudgetDetailSectionHeader(title: "Actions", isExpanded: $actionsExpanded)
                 }
 
                 if !quickAssignSuggestions.isEmpty {
                     Section {
-                        ForEach(quickAssignSuggestions) { suggestion in
-                            Button {
-                                Task { await apply(suggestion) }
-                            } label: {
-                                HStack {
-                                    Text(quickAssignTitle(for: suggestion.kind))
-                                    Spacer()
-                                    Text(budgetStore.displayBalance(suggestion.amount))
-                                        .foregroundStyle(.secondary)
+                        if quickAssignExpanded {
+                            ForEach(quickAssignSuggestions) { suggestion in
+                                Button {
+                                    Task { await apply(suggestion) }
+                                } label: {
+                                    HStack {
+                                        Text(quickAssignTitle(for: suggestion.kind))
+                                        Spacer()
+                                        Text(budgetStore.displayBalance(suggestion.amount))
+                                            .foregroundStyle(.secondary)
+                                    }
                                 }
+                                .disabled(isApplyingSuggestion)
                             }
-                            .disabled(isApplyingSuggestion)
                         }
                     } header: {
-                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                        BudgetDetailSectionHeader(
+                            title: isTracking ? "Quick Budget" : "Quick Assign",
+                            isExpanded: $quickAssignExpanded
+                        )
                     } footer: {
-                        Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
+                        if quickAssignExpanded {
+                            Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
+                        }
                     }
                 }
 
@@ -1416,6 +1429,36 @@ struct CategoryBudgetDetailSheet: View {
             quickAssignError = error.localizedDescription
             isApplyingSuggestion = false
         }
+    }
+}
+
+/// Tappable List section header used where a category detail can otherwise
+/// become action-heavy on a phone. The state is in the accessibility label so
+/// a collapsed section is distinguishable from an empty one.
+struct BudgetDetailSectionHeader: View {
+    let title: String
+    @Binding var isExpanded: Bool
+
+    var body: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.2)) {
+                isExpanded.toggle()
+            }
+        } label: {
+            HStack {
+                Text(title)
+                Spacer()
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.caption)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(.isHeader)
+        .accessibilityLabel("\(title), \(isExpanded ? "expanded" : "collapsed")")
+        .accessibilityIdentifier("\(title), \(isExpanded ? "expanded" : "collapsed")")
+        .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
     }
 }
 

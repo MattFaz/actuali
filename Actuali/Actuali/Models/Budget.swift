@@ -15,6 +15,10 @@ struct BudgetMonth: Identifiable, Hashable {
     /// for envelope budgets — nil for tracking budgets.
     var toBudget: Int?
 
+    var isTrackingBudget: Bool {
+        toBudget == nil
+    }
+
     /// Number of expense categories in the red — drives the Budget tab badge.
     var overspentCount: Int {
         categoryBudgets.count(where: \.isOverspent)
