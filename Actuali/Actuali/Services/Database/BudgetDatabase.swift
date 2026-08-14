@@ -2341,13 +2341,14 @@ class BudgetDatabase {
     /// schedule" pickers stay unambiguous.
     func scheduleNameExists(_ name: String, excluding scheduleId: String?) throws -> Bool {
         try dbQueue.read { db in
-            guard try db.tableExists("schedules") else { return false }
             let existingId = try String.fetchOne(db, sql: """
                 SELECT id FROM schedules
-                WHERE (tombstone = 0 OR tombstone IS NULL) AND name = ?
-                """, arguments: [name])
-            guard let existingId else { return false }
-            return existingId != scheduleId
+                WHERE (tombstone = 0 OR tombstone IS NULL)
+                  AND name = ?
+                  AND (? IS NULL OR id <> ?)
+                LIMIT 1
+                """, arguments: [name, scheduleId, scheduleId])
+            return existingId != nil
         }
     }
 
