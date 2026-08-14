@@ -609,7 +609,7 @@ struct CleanBudgetSummary: View {
             HStack(alignment: .top) {
                 SummaryStat(
                     label: "Spent",
-                    value: budgetStore.displayBalance(abs(budget.totalOutflow))
+                    value: budgetStore.displayBalance(-budget.totalSpent)
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
@@ -666,7 +666,7 @@ struct TableBudgetSummary: View {
             )
             SummaryColumn(
                 label: "Spent",
-                value: budgetStore.displayBudgetCell(budget.totalOutflow)
+                value: budgetStore.displayBudgetCell(budget.totalSpent)
             )
             SummaryColumn(
                 label: "Balance",
