@@ -15,6 +15,12 @@ struct DashboardView: View {
     @State private var customReportConfigs: [String: CustomReportConfig] = [:]
     @State private var firstDayOfWeekIdx = 0
 
+    /// Budget/schedule inputs some widgets need, fetched only when such a
+    /// widget is on the dashboard (same pattern as customReportConfigs).
+    @State private var reportBudgets = BudgetDatabase.ReportBudgetData()
+    @State private var trackingBudgetMonths: [BalanceForecastBudgetMonth] = []
+    @State private var forecastSchedules: [Schedule] = []
+
     /// Unsupported widgets never render as cards; a single top banner notes
     /// that only a limited set of reports is available.
     private var hasUnsupportedWidgets: Bool {
@@ -93,6 +99,24 @@ struct DashboardView: View {
         }
         customReportConfigs = (try? await database.fetchCustomReportConfigs(ids: reportIds)) ?? [:]
         firstDayOfWeekIdx = (try? await database.fetchFirstDayOfWeekIdx()) ?? 0
+        let needsBudgets = widgets.contains {
+            switch $0 {
+            case .budgetAnalysis, .sankey, .balanceForecast: return true
+            case .spending(_, let meta): return meta?.mode == .budget
+            default: return false
+            }
+        }
+        if needsBudgets {
+            reportBudgets = (try? await database.fetchBudgetDataForReports()) ?? BudgetDatabase.ReportBudgetData()
+        }
+        let needsForecast = widgets.contains {
+            if case .balanceForecast = $0 { return true }
+            return false
+        }
+        if needsForecast {
+            forecastSchedules = (try? await database.fetchForecastSchedules()) ?? []
+            trackingBudgetMonths = (try? await database.fetchTrackingBudgetMonths()) ?? []
+        }
         reportTransactions = (try? await database.fetchTransactionsForReports()) ?? []
     }
 
@@ -145,7 +169,11 @@ struct DashboardView: View {
             }
         case .spending(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 120) { transactions in
-                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions), today: Date(), context: conditionsContext)
+                SpendingEngine.compute(meta: meta, transactions: spendingScope(transactions),
+                                       budgets: reportBudgets.entries,
+                                       categories: budgetStore.categoryGroups.flatMap(\.categories),
+                                       categoryGroups: budgetStore.categoryGroups,
+                                       today: Date(), context: conditionsContext)
             } content: { data in
                 SpendingWidgetView(
                     displayName: widget.displayName,
@@ -184,10 +212,110 @@ struct DashboardView: View {
             } content: { data in
                 CustomReportWidgetView(data: data)
             }
+        case .calendar(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
+                CalendarEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    today: Date(),
+                    firstDayOfWeekIdx: firstDayOfWeekIdx,
+                    context: conditionsContext
+                )
+            } content: { data in
+                CalendarWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .crossover(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
+                CrossoverEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    categories: budgetStore.categoryGroups.flatMap(\.categories),
+                    accountIds: budgetStore.accounts.map(\.id),
+                    today: Date()
+                )
+            } content: { data in
+                CrossoverWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .budgetAnalysis(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
+                BudgetAnalysisEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    budgets: reportBudgets.entries,
+                    categories: budgetStore.categoryGroups.flatMap(\.categories),
+                    categoryGroups: budgetStore.categoryGroups,
+                    today: Date(),
+                    context: conditionsContext
+                )
+            } content: { data in
+                BudgetAnalysisWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .sankey(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 240) { transactions in
+                SankeyEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    categoryGroups: budgetStore.categoryGroups,
+                    // ponytail: budgeted-mode envelope aggregates (To Budget /
+                    // carryover flows) are omitted — wire per-month toBudget
+                    // math if those flows turn out to matter on the card.
+                    budget: SankeyBudgetInput(entries: reportBudgets.entries.map {
+                        SankeyBudgetInput.Entry(month: $0.month, categoryId: $0.categoryId, amountCents: $0.amountCents)
+                    }),
+                    today: Date(),
+                    context: conditionsContext
+                )
+            } content: { data in
+                SankeyWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .balanceForecast(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 200) { transactions in
+                BalanceForecastEngine.compute(
+                    meta: forecastMeta(meta),
+                    transactions: transactions,
+                    schedules: forecastSchedules,
+                    trackingBudgetMonths: trackingBudgetMonths,
+                    offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
+                    transferAccountsByPayeeId: Dictionary(
+                        budgetStore.payees.compactMap { payee in
+                            payee.transferAccountId.map { (payee.id, $0) }
+                        },
+                        uniquingKeysWith: { first, _ in first }
+                    ),
+                    today: Date(),
+                    context: conditionsContext
+                )
+            } content: { data in
+                BalanceForecastWidgetView(displayName: widget.displayName, data: data)
+            }
+        case .monteCarlo(_, let meta):
+            WidgetCard(transactions: reportTransactions, loadingHeight: 220) { _ in
+                MonteCarloEngine.compute(
+                    meta: meta,
+                    accountBalances: Dictionary(
+                        budgetStore.accounts.map { ($0.id, $0.balance) },
+                        uniquingKeysWith: { first, _ in first }
+                    )
+                )
+            } content: { data in
+                MonteCarloWidgetView(displayName: widget.displayName, data: data)
+            }
         case .unsupported:
             // Filtered out of visibleWidgets; listed in the top notice instead.
             EmptyView()
         }
+    }
+
+    /// Upstream's card falls back to the schedules source when the file
+    /// isn't a tracking budget (BalanceForecastCard.tsx budgetType check).
+    private func forecastMeta(_ meta: BalanceForecastMeta?) -> BalanceForecastMeta? {
+        guard let meta, meta.source == .trackingBudget, !reportBudgets.isTracking else { return meta }
+        return BalanceForecastMeta(
+            name: meta.name, startDate: meta.startDate, endDate: meta.endDate,
+            accounts: meta.accounts, conditions: meta.conditions,
+            conditionsOp: meta.conditionsOp, timeFrame: meta.timeFrame,
+            granularity: meta.granularity, source: .schedules
+        )
     }
 
     /// Match WebUI spending-spreadsheet.ts default exclusions: drop

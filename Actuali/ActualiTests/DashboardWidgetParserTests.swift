@@ -79,14 +79,93 @@ struct DashboardWidgetParserTests {
     @Test func unknownTypeBecomesUnsupported() throws {
         let widget = DashboardWidget.parse(
             id: "w6",
-            type: "sankey-card",
-            metaJSON: #"{"name":"Money Flow"}"#
+            type: "future-card",
+            metaJSON: #"{"name":"From The Future"}"#
         )
         if case .unsupported(let id, let type) = widget {
             #expect(id == "w6")
-            #expect(type == "sankey-card")
+            #expect(type == "future-card")
         } else {
             Issue.record("Expected .unsupported")
+        }
+    }
+
+    @Test func parsesCalendarCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w10", type: "calendar-card",
+            metaJSON: #"{"name":"Calendar","timeFrame":{"mode":"sliding-window","start":"2026-04","end":"2026-05"}}"#
+        )
+        if case .calendar(let id, let meta) = widget {
+            #expect(id == "w10")
+            #expect(meta?.name == "Calendar")
+            #expect(meta?.timeFrame?.mode == .slidingWindow)
+        } else {
+            Issue.record("Expected .calendar")
+        }
+    }
+
+    @Test func parsesCrossoverCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w11", type: "crossover-card",
+            metaJSON: #"{"name":"FI","safeWithdrawalRate":0.04,"projectionType":"hampel"}"#
+        )
+        if case .crossover(let id, let meta) = widget {
+            #expect(id == "w11")
+            #expect(meta?.safeWithdrawalRate == 0.04)
+        } else {
+            Issue.record("Expected .crossover")
+        }
+    }
+
+    @Test func parsesBudgetAnalysisCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w12", type: "budget-analysis-card",
+            metaJSON: #"{"name":"Budget vs Actual","graphType":"Bar","showBalance":true}"#
+        )
+        if case .budgetAnalysis(let id, let meta) = widget {
+            #expect(id == "w12")
+            #expect(meta?.name == "Budget vs Actual")
+        } else {
+            Issue.record("Expected .budgetAnalysis")
+        }
+    }
+
+    @Test func parsesSankeyCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w13", type: "sankey-card",
+            metaJSON: #"{"name":"Money Flow","mode":"spent","topNcategories":5}"#
+        )
+        if case .sankey(let id, let meta) = widget {
+            #expect(id == "w13")
+            #expect(meta?.topNcategories == 5)
+        } else {
+            Issue.record("Expected .sankey")
+        }
+    }
+
+    @Test func parsesBalanceForecastCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w14", type: "balance-forecast-card",
+            metaJSON: #"{"name":"Forecast","granularity":"Monthly","source":"tracking-budget"}"#
+        )
+        if case .balanceForecast(let id, let meta) = widget {
+            #expect(id == "w14")
+            #expect(meta?.source == .trackingBudget)
+        } else {
+            Issue.record("Expected .balanceForecast")
+        }
+    }
+
+    @Test func parsesMonteCarloCard() throws {
+        let widget = DashboardWidget.parse(
+            id: "w15", type: "monte-carlo-card",
+            metaJSON: #"{"name":"Retirement","currentAge":40,"targetAge":90,"simulationCount":1000}"#
+        )
+        if case .monteCarlo(let id, let meta) = widget {
+            #expect(id == "w15")
+            #expect(meta?.currentAge == 40)
+        } else {
+            Issue.record("Expected .monteCarlo")
         }
     }
 

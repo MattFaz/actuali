@@ -16,6 +16,9 @@ enum SpendingEngine {
     static func compute(
         meta: SpendingMeta?,
         transactions: [Transaction],
+        budgets: [BudgetAnalysisBudgetEntry] = [],
+        categories: [Category] = [],
+        categoryGroups: [CategoryGroup] = [],
         today: Date,
         context: ConditionsFilter.Context = .empty
     ) -> SpendingData {
@@ -57,9 +60,13 @@ enum SpendingEngine {
                                        calendar: cal,
                                        throughDay: sameDayCutoff)
         case .budget:
-            // Budget-mode target needs zero_budgets/reflect_budgets data that
-            // isn't plumbed into the engine yet; the widget shows spending only.
-            comparison = 0
+            comparison = budgetComparison(meta: meta,
+                                          budgets: budgets,
+                                          categories: categories,
+                                          categoryGroups: categoryGroups,
+                                          compareStart: compareStart,
+                                          throughDay: sameDayCutoff,
+                                          calendar: cal)
         case .average:
             comparison = averageSpending(transactions: filtered,
                                          allTransactions: live,
@@ -106,6 +113,44 @@ enum SpendingEngine {
         }
         let compare = stored ?? currentMonthStart
         return (compare, storedTo ?? prevMonth(compare))
+    }
+
+    /// Port of spending-spreadsheet.ts dailyBudget + getSpendingBudgetFilters:
+    /// the compare month's budgeted total — narrowed to categories matching
+    /// the widget's category/category_group conditions only when all of them
+    /// are supported, else unfiltered — spread evenly over the month's days
+    /// and accumulated through the same day bucket the card reads.
+    private static func budgetComparison(
+        meta: SpendingMeta?,
+        budgets: [BudgetAnalysisBudgetEntry],
+        categories: [Category],
+        categoryGroups: [CategoryGroup],
+        compareStart: Date,
+        throughDay: Int?,
+        calendar: Calendar
+    ) -> Int {
+        let c = calendar.dateComponents([.year, .month], from: compareStart)
+        let monthInt = (c.year ?? 0) * 100 + (c.month ?? 0)
+        var rows = budgets.filter { $0.month == monthInt }
+
+        let categoryConditions = (meta?.conditions ?? []).filter {
+            $0.customName == nil && ($0.field == "category" || $0.field == "category_group")
+        }
+        if !categoryConditions.isEmpty,
+           categoryConditions.allSatisfy(BudgetAnalysisEngine.isSupportedCategoryCondition) {
+            let allowed = Set(BudgetAnalysisEngine.filterCategoriesByConditions(
+                categories, groups: categoryGroups,
+                conditions: categoryConditions, conditionsOp: meta?.conditionsOp
+            ).map(\.id))
+            rows = rows.filter { allowed.contains($0.categoryId) }
+        }
+
+        let total = rows.reduce(0) { $0 + $1.amountCents }
+        guard total != 0,
+              let daysInMonth = calendar.range(of: .day, in: .month, for: compareStart)?.count,
+              daysInMonth > 0 else { return 0 }
+        let daysElapsed = throughDay ?? daysInMonth
+        return Int((Double(total) / Double(daysInMonth) * Double(daysElapsed)).rounded())
     }
 
     /// Net spending for one month as positive cents. `throughDay` limits to a
