@@ -3363,6 +3363,20 @@ final class BudgetStore: ObservableObject {
             }
         }
     }
+    
+    /// Names for everything a rule summary might reference.
+    var ruleSummary: RuleSummary {
+        let categories = categoryGroups.flatMap(\.categories)
+        return RuleSummary(
+            names: .init(
+                payees: Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                categories: Dictionary(categories.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                categoryGroups: Dictionary(categoryGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                accounts: Dictionary(accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            ),
+            formatAmount: { [weak self] cents in self?.formatCurrency(cents) ?? "\(cents)" }
+        )
+    }
 
     // MARK: - Currency Formatting
 
