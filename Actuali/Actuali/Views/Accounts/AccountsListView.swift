@@ -12,21 +12,29 @@ private enum AccountSelection: Hashable {
     case account(String)
 }
 
+/// A month's totals carried together with the month they were fetched for.
+/// The two travel as one so the summary card can't caption August's figures
+/// with September, which is exactly what happens when the calendar rolls over
+/// under a view that reads "now" afresh on every render.
+struct AccountsMonthTotals: Equatable {
+    let month: String
+    let totals: BudgetDatabase.AccountsMonthSummary
+}
+
 struct AccountsListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
+    @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
-    
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
-    
     /// This month's money in and out, for the summary card. nil until the
     /// first fetch lands.
-    @State private var monthSummary: BudgetDatabase.AccountsMonthSummary?
+    @State private var monthSummary: AccountsMonthTotals?
 
     /// Independent expand/collapse state per section, persisted so a
     /// collapsed section stays collapsed across launches — same contract as
@@ -257,7 +265,7 @@ struct AccountsListView: View {
     }
 
     private var allAccountsRow: some View {
-        AccountsSummaryCard(totalBalance: totalBalance, summary: monthSummary)
+        AccountsSummaryCard(totalBalance: totalBalance, monthTotals: monthSummary)
     }
 
     @ViewBuilder
@@ -321,12 +329,14 @@ struct AccountsListView: View {
             }
             // Keyed to dataVersion so the summary's month totals follow every
             // edit and sync, like the account balances beneath them.
-            .task(id: budgetStore.dataVersion) {
-                if let summary = await budgetStore.fetchAccountsMonthSummary(
-                    month: BudgetView.currentMonthString()
-                ) {
-                    monthSummary = summary
-                }
+            .task(id: budgetStore.dataVersion) { await loadMonthSummary() }
+            // Nothing above re-runs when only the date changes, so a phone
+            // left on this tab overnight would keep showing last month's
+            // totals. Foregrounding is when that becomes visible, and the
+            // tab's own .task covers coming back from another tab.
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else { return }
+                Task { await loadMonthSummary() }
             }
             .refreshable {
                 await budgetStore.sync()
@@ -336,6 +346,12 @@ struct AccountsListView: View {
                     ProgressView()
                 }
             }
+    }
+    
+    private func loadMonthSummary() async {
+        let month = BudgetView.currentMonthString()
+        guard let totals = await budgetStore.fetchAccountsMonthSummary(month: month) else { return }
+        monthSummary = AccountsMonthTotals(month: month, totals: totals)
     }
 
     /// Tapping a success notification lands here: jump the stack straight to
@@ -395,7 +411,11 @@ struct AccountsSummaryCard: View {
     let totalBalance: Int
     /// nil until the month's totals land; the stats read "—" until then
     /// rather than flashing zeroes that a moment later turn into real money.
-    let summary: BudgetDatabase.AccountsMonthSummary?
+    /// The month rides along with them so the caption always names the month
+    /// the figures were fetched for.
+    let monthTotals: AccountsMonthTotals?
+
+    private var summary: BudgetDatabase.AccountsMonthSummary? { monthTotals?.totals }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -410,7 +430,9 @@ struct AccountsSummaryCard: View {
                     .minimumScaleFactor(0.8)
             }
             Divider()
-            Text(MonthPicker.title(for: BudgetView.currentMonthString()))
+            // Falls back to today's month only while the figures are still
+            // dashes — there's nothing yet for the caption to disagree with.
+            Text(MonthPicker.title(for: monthTotals?.month ?? BudgetView.currentMonthString()))
                 .font(.caption)
                 .foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 8) {

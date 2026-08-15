@@ -508,7 +508,7 @@ class BudgetDatabase {
                 FROM transactions t
                 LEFT JOIN payee_mapping pm ON pm.id = t.description
                 LEFT JOIN payees p ON p.id = pm.targetId
-                LEFT JOIN accounts a ON a.id = t.acct
+                JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)

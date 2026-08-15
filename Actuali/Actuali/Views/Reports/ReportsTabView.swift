@@ -5,6 +5,11 @@ struct ReportsTabView: View {
     @State private var pages: [DashboardPage] = []
     @State private var selectedPageId: String?
     @State private var widgets: [DashboardWidget] = []
+    /// The page `widgets` actually came from, which is not `selectedPageId`:
+    /// that one flips the instant the picker is tapped, while the widgets
+    /// arrive a fetch later. See the dashboard's `.id` for what goes wrong
+    /// when the two are conflated.
+    @State private var loadedPageId: String?
     @State private var loadError: String?
     @State private var hasLoaded = false
 
@@ -35,9 +40,16 @@ struct ReportsTabView: View {
                             .padding(.top, 8)
                         // Keyed so per-widget @State (computed card values)
                         // resets when switching dashboards instead of showing
-                        // the previous dashboard's numbers.
+                        // the previous dashboard's numbers. Keyed to the page
+                        // the widgets came from, not the selection: keying on
+                        // the selection re-creates the dashboard around the
+                        // outgoing page's widgets, and DashboardView's load
+                        // runs once per identity — so it would fetch the
+                        // inputs that widget set needs (budgets, schedules,
+                        // custom report configs) and never re-run for the
+                        // widgets that actually land.
                         DashboardView(widgets: widgets)
-                            .id(selectedPageId)
+                            .id(loadedPageId)
                     }
                 }
             }
@@ -126,6 +138,9 @@ struct ReportsTabView: View {
             self.pages = fetchedPages
             self.selectedPageId = pageId
             self.widgets = fetched
+            // Same render pass as the widgets it identifies, so the dashboard
+            // is re-created around them rather than around their predecessor.
+            self.loadedPageId = pageId
             self.loadError = nil
         } catch is CancellationError {
             // The hosting task was torn down (tab switch, refresh gesture
