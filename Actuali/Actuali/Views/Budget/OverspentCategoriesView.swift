@@ -7,6 +7,7 @@ import SwiftUI
 struct OverspentCategoriesView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var transferContext: BudgetTransferContext?
+    @State private var editingCategory: CategoryBudget?
 
     var body: some View {
         Group {
@@ -15,10 +16,25 @@ struct OverspentCategoriesView: View {
                 List {
                     Section {
                         ForEach(budget.overspentCategories) { category in
-                            OverspentCategoryRow(category: category)
-                                // The fix, right where the problem is listed
-                                // (GH #128): swipe to cover the overspending
-                                // from To Budget or another category.
+                            VStack(alignment: .leading, spacing: 10) {
+                                OverspentCategoryRow(category: category)
+                                Button {
+                                    if budget.isTrackingBudget {
+                                        editingCategory = category
+                                    } else {
+                                        transferContext = BudgetTransferContext(category: category, budget: budget)
+                                    }
+                                } label: {
+                                    Label(
+                                        budget.isTrackingBudget ? "Increase Budget" : "Cover Overspending",
+                                        systemImage: budget.isTrackingBudget ? "plus.circle.fill" : "arrow.left.arrow.right"
+                                    )
+                                }
+                                .buttonStyle(.bordered)
+                                .accessibilityIdentifier("Resolve overspending for \(category.categoryName)")
+                            }
+                                // Keep the existing shortcut in addition to
+                                // the visible action for experienced users.
                                 .swipeActions(edge: .trailing) {
                                     Button {
                                         transferContext = BudgetTransferContext(category: category, budget: budget)
@@ -29,11 +45,14 @@ struct OverspentCategoriesView: View {
                                 }
                         }
                     } footer: {
-                        Text("Categories with a negative balance in \(MonthPicker.title(for: budget.month)). Balances include overspending rolled over from earlier months, which this month's transactions alone won't explain. Swipe a category to cover its overspending.")
+                        Text("Categories with a negative balance in \(MonthPicker.title(for: budget.month)). Balances include overspending rolled over from earlier months. Use the action under a category to resolve it, or open the category to review its transactions.")
                     }
                 }
                 .sheet(item: $transferContext) { context in
                     BudgetTransferSheet(context: context)
+                }
+                .sheet(item: $editingCategory) { category in
+                    EditBudgetAmountSheet(category: category)
                 }
             } else {
                 ContentUnavailableView(

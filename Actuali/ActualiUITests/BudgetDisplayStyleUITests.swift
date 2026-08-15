@@ -150,4 +150,43 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Resolve the important items before assigning the rest of the month."].exists)
     }
+
+    @MainActor
+    func testBudgetCheckInCanFundAnUnassignedCategory() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launch()
+
+        // Parking has no activity in the demo. Clearing its budget makes it
+        // a real Not Funded check-in result through the normal write path.
+        let editParking = app.buttons["Edit budgeted amount for Parking"]
+        var scrollsLeft = 8
+        while !editParking.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(editParking.isHittable)
+        editParking.tap()
+
+        let amount = app.textFields.firstMatch
+        XCTAssertTrue(amount.waitForExistence(timeout: 5))
+        amount.tap()
+        amount.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
+        app.buttons["Save"].tap()
+        XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
+
+        for _ in 0..<8 { app.swipeDown() }
+        let notFunded = app.buttons.matching(
+            NSPredicate(format: "label CONTAINS[c] 'not funded'")
+        ).firstMatch
+        XCTAssertTrue(notFunded.waitForExistence(timeout: 10))
+        notFunded.tap()
+
+        let fundParking = app.buttons["Fund Parking"]
+        XCTAssertTrue(fundParking.waitForExistence(timeout: 5),
+                      "check-in result should expose a direct funding action")
+        fundParking.tap()
+        XCTAssertTrue(app.navigationBars["Parking"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Save"].exists)
+    }
 }

@@ -622,7 +622,7 @@ struct BudgetCheckInSection: View {
                         message: budget.isTrackingBudget
                             ? "These categories have no budget or activity this month."
                             : "These categories have no assigned or carried money this month.",
-                        categories: budget.unassignedCategories
+                        kind: .unassigned
                     )
                 } label: {
                     Label(
@@ -639,7 +639,7 @@ struct BudgetCheckInSection: View {
                     BudgetGuidanceCategoryList(
                         title: budget.isTrackingBudget ? "Near Budget" : "Almost Spent",
                         message: "These categories have used at least 80% of their available amount.",
-                        categories: budget.approachingLimitCategories
+                        kind: .approachingLimit
                     )
                 } label: {
                     Label(
@@ -668,11 +668,31 @@ struct BudgetCheckInSection: View {
 /// detail sheet as the main budget table, so guidance always ends in a real
 /// resolution path rather than a dead-end status list.
 struct BudgetGuidanceCategoryList: View {
+    enum Kind {
+        case unassigned
+        case approachingLimit
+    }
+
     @EnvironmentObject var budgetStore: BudgetStore
     let title: String
     let message: String
-    let categories: [CategoryBudget]
+    let kind: Kind
     @State private var selectedCategory: CategoryBudget?
+    @State private var editingCategory: CategoryBudget?
+
+    private var categories: [CategoryBudget] {
+        guard let budget = budgetStore.currentBudgetMonth else { return [] }
+        switch kind {
+        case .unassigned:
+            return budget.unassignedCategories
+        case .approachingLimit:
+            return budget.approachingLimitCategories
+        }
+    }
+
+    private var isTracking: Bool {
+        budgetStore.currentBudgetMonth?.isTrackingBudget == true
+    }
 
     var body: some View {
         List {
@@ -681,32 +701,47 @@ struct BudgetGuidanceCategoryList: View {
                     .foregroundStyle(.secondary)
             }
             Section {
-                ForEach(categories) { category in
-                    Button {
-                        selectedCategory = category
-                    } label: {
-                        VStack(alignment: .leading, spacing: 4) {
-                            HStack {
-                                Text(category.categoryName)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Text(budgetStore.displayBalance(category.available))
-                                    .foregroundStyle(category.isOverspent ? .red : .secondary)
-                                    .monospacedDigit()
+                if categories.isEmpty {
+                    Label("No categories need attention", systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                } else {
+                    ForEach(categories) { category in
+                        VStack(alignment: .leading, spacing: 8) {
+                            Button {
+                                selectedCategory = category
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(category.categoryName)
+                                            .foregroundStyle(.primary)
+                                        Text(category.groupName)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Spacer()
+                                    Text(budgetStore.displayBalance(category.available))
+                                        .foregroundStyle(category.isOverspent ? .red : .secondary)
+                                        .monospacedDigit()
+                                }
+                                if category.showsProgressBar {
+                                    CategoryProgressBar(
+                                        fraction: category.progressFraction,
+                                        state: category.progressState
+                                    )
+                                }
                             }
-                            Text(category.groupName)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                            if category.showsProgressBar {
-                                CategoryProgressBar(
-                                    fraction: category.progressFraction,
-                                    state: category.progressState
-                                )
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("Details for \(category.categoryName)")
+
+                            Button {
+                                editingCategory = category
+                            } label: {
+                                Label(fundingActionTitle, systemImage: "plus.circle.fill")
                             }
+                            .buttonStyle(.bordered)
+                            .accessibilityIdentifier("Fund \(category.categoryName)")
                         }
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Details for \(category.categoryName)")
                 }
             }
         }
@@ -715,6 +750,18 @@ struct BudgetGuidanceCategoryList: View {
         .navigationBarTitleDisplayMode(.inline)
         .sheet(item: $selectedCategory) { category in
             CategoryBudgetDetailSheet(category: category)
+        }
+        .sheet(item: $editingCategory) { category in
+            EditBudgetAmountSheet(category: category)
+        }
+    }
+
+    private var fundingActionTitle: String {
+        switch (isTracking, kind) {
+        case (true, .unassigned): "Add Budget"
+        case (true, .approachingLimit): "Increase Budget"
+        case (false, .unassigned): "Assign Money"
+        case (false, .approachingLimit): "Assign More"
         }
     }
 }
