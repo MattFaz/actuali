@@ -35,6 +35,23 @@
 		AB0000000000000000000BDF /* ActualiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9B7C84E93030DBCA006201EB /* Exceptions for "ActualiTests" folder in "ActualiTests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				BudgetDatabaseAccountsSummaryTests.swift,
+			);
+			target = A79D4A9C2FA1F8F000D5A2DF /* ActualiTests */;
+		};
+		9B7C84EA3030DBCA006201EB /* Exceptions for "ActualiTests" folder in "ActualiUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				BudgetDatabaseAccountsSummaryTests.swift,
+			);
+			target = AB0000000000000000000CDF /* ActualiUITests */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A7550B882EE7B4F7007026DC /* Actuali */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
@@ -43,6 +60,10 @@
 		};
 		A79D4A9E2FA1F8F000D5A2DF /* ActualiTests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9B7C84E93030DBCA006201EB /* Exceptions for "ActualiTests" folder in "ActualiTests" target */,
+				9B7C84EA3030DBCA006201EB /* Exceptions for "ActualiTests" folder in "ActualiUITests" target */,
+			);
 			path = ActualiTests;
 			sourceTree = "<group>";
 		};
