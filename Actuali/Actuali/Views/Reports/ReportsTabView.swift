@@ -27,21 +27,24 @@ struct ReportsTabView: View {
                         description: Text("Open or sync a budget to see reports.")
                     )
                 } else {
-                    // Keyed so per-widget @State (computed card values) resets
-                    // when switching dashboards instead of showing the
-                    // previous dashboard's numbers.
-                    DashboardView(widgets: widgets)
-                        .id(selectedPageId)
-                }
-            }
-            .navigationTitle("Reports")
-            .toolbar {
-                if pages.count > 1 {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    VStack(spacing: 0) {
                         dashboardPicker
+                            // Lined up with the dashboard cards below, which
+                            // carry 6 pt of horizontal padding of their own.
+                            .padding(.horizontal, 6)
+                            .padding(.top, 8)
+                        // Keyed so per-widget @State (computed card values)
+                        // resets when switching dashboards instead of showing
+                        // the previous dashboard's numbers.
+                        DashboardView(widgets: widgets)
+                            .id(selectedPageId)
                     }
                 }
             }
+            // The dashboard picker is the page's header now, so the title
+            // stays out of its way in the compact bar.
+            .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
@@ -54,8 +57,10 @@ struct ReportsTabView: View {
         .initialSyncBanner()
     }
 
-    /// Menu listing every live dashboard page, shown only when the budget
-    /// actually has more than one (the web app's sidebar equivalent).
+    /// Full-width dropdown naming the dashboard on screen (the web app's
+    /// sidebar equivalent). Shown whatever the page count: with a single page
+    /// it still labels what you're looking at, and it's disabled only for the
+    /// pre-dashboard-pages budgets that have no pages to switch between.
     private var dashboardPicker: some View {
         Menu {
             Picker("Dashboard", selection: Binding(
@@ -70,12 +75,27 @@ struct ReportsTabView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? "Dashboard")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
                 Image(systemName: "chevron.up.chevron.down")
                     .imageScale(.small)
+                    .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            // Same fill and radius as the widget cards it sits above.
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
+        .disabled(pages.isEmpty)
         .accessibilityLabel("Switch dashboard")
     }
 

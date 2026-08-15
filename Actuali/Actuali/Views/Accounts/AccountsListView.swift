@@ -19,9 +19,14 @@ struct AccountsListView: View {
     @Environment(\.isWideLayout) private var isWideLayout
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
+    
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
+    
+    /// This month's money in and out, for the summary card. nil until the
+    /// first fetch lands.
+    @State private var monthSummary: BudgetDatabase.AccountsMonthSummary?
 
     /// Independent expand/collapse state per section, persisted so a
     /// collapsed section stays collapsed across launches — same contract as
@@ -252,14 +257,7 @@ struct AccountsListView: View {
     }
 
     private var allAccountsRow: some View {
-        HStack {
-            Text("All Accounts")
-                .font(.headline)
-            Spacer()
-            Text(budgetStore.displayBalance(totalBalance))
-                .font(.headline)
-                .foregroundStyle(balanceColor(for: totalBalance))
-        }
+        AccountsSummaryCard(totalBalance: totalBalance, summary: monthSummary)
     }
 
     @ViewBuilder
@@ -293,7 +291,7 @@ struct AccountsListView: View {
     private func withChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         Group(content: content)
             .contentMargins(.horizontal, 6, for: .scrollContent)
-            .navigationTitle("Accounts")
+//            .navigationTitle("Accounts")
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Button {
@@ -320,6 +318,15 @@ struct AccountsListView: View {
             }
             .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
                 if accountId != nil { consumePendingAccountNavigation() }
+            }
+            // Keyed to dataVersion so the summary's month totals follow every
+            // edit and sync, like the account balances beneath them.
+            .task(id: budgetStore.dataVersion) {
+                if let summary = await budgetStore.fetchAccountsMonthSummary(
+                    month: BudgetView.currentMonthString()
+                ) {
+                    monthSummary = summary
+                }
             }
             .refreshable {
                 await budgetStore.sync()
@@ -376,6 +383,61 @@ private extension Array where Element == Account {
     /// itself only lives in one place.
     var sumBalance: Int {
         reduce(0) { $0 + $1.balance }
+    }
+}
+
+/// The list's lead row: the all-accounts balance over this month's money in,
+/// money out, and the difference — the same at-a-glance group the budget tab
+/// opens with (GH #256). It's still the row that pushes the All Accounts
+/// transaction list, so the figures lead to the transactions behind them.
+struct AccountsSummaryCard: View {
+    @EnvironmentObject var budgetStore: BudgetStore
+    let totalBalance: Int
+    /// nil until the month's totals land; the stats read "—" until then
+    /// rather than flashing zeroes that a moment later turn into real money.
+    let summary: BudgetDatabase.AccountsMonthSummary?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("All Accounts")
+                    .font(.headline)
+                Spacer()
+                Text(budgetStore.displayBalance(totalBalance))
+                    .font(.headline)
+                    .foregroundStyle(balanceColor(for: totalBalance))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+            }
+            Divider()
+            Text(MonthPicker.title(for: BudgetView.currentMonthString()))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            HStack(alignment: .top, spacing: 8) {
+                SummaryStat(label: "Income", value: amount(summary?.incomeCents))
+                Spacer(minLength: 4)
+                SummaryStat(
+                    label: "Expenses",
+                    value: amount(summary?.expenseCents),
+                    alignment: .center
+                )
+                Spacer(minLength: 4)
+                SummaryStat(
+                    label: "Net",
+                    value: amount(summary?.netCents),
+                    // Same three-way treatment as the balances, and neutral
+                    // while there's only a placeholder to color.
+                    valueColor: summary.map { balanceColor(for: $0.netCents) } ?? .primary,
+                    alignment: .trailing
+                )
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func amount(_ cents: Int?) -> String {
+        guard let cents else { return "—" }
+        return budgetStore.displayBalance(cents)
     }
 }
 

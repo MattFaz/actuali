@@ -478,6 +478,52 @@ class BudgetDatabase {
             }
         }
     }
+    
+    /// Money in and out across every account for one month, for the accounts
+    /// tab's summary group (GH #256).
+    struct AccountsMonthSummary: Equatable {
+        var incomeCents = 0
+        /// Positive: what left the accounts, not a signed amount.
+        var expenseCents = 0
+
+        var netCents: Int { incomeCents - expenseCents }
+    }
+
+    /// Income and expenses across every account for one "yyyy-MM" month.
+    ///
+    /// Scoped to all accounts, off-budget and closed included, so it
+    /// reconciles with the all-accounts balance it sits under — unlike the
+    /// budget month's income/spent, which only counts categorised
+    /// transactions in on-budget accounts. Transfer legs are excluded: a
+    /// transfer moves money inside that set, so counting it would show up as
+    /// both income and an expense (same rule as the WebUI's cash flow card).
+    /// Split parents are excluded and their children counted, matching
+    /// `fetchAccounts()`'s balance query.
+    func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT
+                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS expense
+                FROM transactions t
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN accounts a ON a.id = t.acct
+                LEFT JOIN transactions par ON par.id = t.parent_id
+                WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
+                  AND p.transfer_acct IS NULL
+                  AND (t.date / 100) = ?
+                """, arguments: [Self.monthStringToInt(month)]) else {
+                return AccountsMonthSummary()
+            }
+            let income: Int = row["income"] ?? 0
+            let expense: Int = row["expense"] ?? 0
+            return AccountsMonthSummary(incomeCents: income, expenseCents: expense)
+        }
+    }
 
     // MARK: - Transactions
 

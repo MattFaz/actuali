@@ -1581,6 +1581,23 @@ final class BudgetStore: ObservableObject {
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
     }
+    
+    /// Money in and out across every account for one "yyyy-MM" month, for the
+    /// accounts tab's summary group (GH #256). Nil when there's no budget open
+    /// or the query failed, so the card keeps its last figures rather than
+    /// flashing zeroes.
+    func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
+        do {
+            return try await database?.fetchAccountsMonthSummary(month: month)
+        } catch is CancellationError {
+            // The caller's task was cancelled (tab switch, a superseded
+            // refresh). Nothing failed — never alarm the user.
+            return nil
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
+    }
 
     // MARK: - Transactions
 
