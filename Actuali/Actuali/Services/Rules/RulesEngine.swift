@@ -161,17 +161,21 @@ enum RulesEngine {
             return condition.op == "oneOf" ? hit : !hit
         case "matches":
             guard let fieldValue, let pattern = condition.value.stringValue else { return false }
-            // Lowercased, not case-insensitive: upstream's string parse does
-            // `value.toLowerCase()` on the pattern itself, so `\D` becomes `\d`
-            // there and inverts its meaning. Using a case-insensitive match on
-            // the raw pattern would be more correct and would make a rule that
-            // works on the web behave differently here, so we copy the quirk.
-            // Worth an upstream fix in condition.ts; not one to make client-side.
+            // Both sides lowercased, not a case-insensitive match: upstream
+            // lowercases the pattern in condition.ts's string parse and the
+            // field value at the top of eval. Copying both is what makes a
+            // rule written on the web behave identically here — including the
+            // quirk that `\D` becomes `\d` and inverts its meaning. Worth an
+            // upstream fix in condition.ts; not one to make client-side.
+            let haystack = fieldValue.lowercased()
             guard let regex = try? NSRegularExpression(pattern: pattern.lowercased()) else {
                 logger.debug("invalid regexp in matches condition")
                 return false
             }
-            return regex.firstMatch(in: fieldValue, range: NSRange(fieldValue.startIndex..., in: fieldValue)) != nil
+            return regex.firstMatch(
+                in: haystack,
+                range: NSRange(haystack.startIndex..., in: haystack)
+            ) != nil
         case "hasTags", "hasAnyTag":
             guard let fieldValue, let condValue = condition.value.stringValue else { return false }
             let tags = TagFilter.extractTags(condValue)
