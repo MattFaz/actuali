@@ -29,6 +29,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleEmptyValue(field: String)
     case ruleInvalidPattern(pattern: String)
     case ruleOwnedBySchedule
+    case ruleNotSerializable
 
     var errorDescription: String? {
         switch self {
@@ -76,6 +77,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "\"\(pattern)\" isn't a valid regular expression."
         case .ruleOwnedBySchedule: 
             return "This rule belongs to a schedule. Delete the schedule instead."
+        case .ruleNotSerializable:
+                    return "This rule contains a value that can't be saved. Check the amounts."
         }
     }
 }
@@ -1683,6 +1686,10 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         var existing = try database.existingFinancialIds(accountId: accountId)
+        
+        // One rules/context fetch for the whole import, not one per row.
+        let prepared = await syncClient.prepareRules()
+        
         var imported = 0
         var skipped = 0
         for candidate in candidates {
@@ -1713,7 +1720,7 @@ final class BudgetStore: ObservableObject {
                 importedPayee: payeeName,
                 financialId: candidate.id
             )
-            try await syncClient.createTransaction(transaction)
+            try await syncClient.createTransaction(transaction, prepared: prepared)
             imported += 1
         }
         await refreshDataOnly()
@@ -3103,6 +3110,7 @@ final class BudgetStore: ObservableObject {
     static func validate(_ rule: Rule) throws {
         guard !rule.conditions.isEmpty else { throw BudgetStoreError.ruleNeedsCondition }
         guard !rule.actions.isEmpty else { throw BudgetStoreError.ruleNeedsAction }
+        guard rule.isSerializable else { throw BudgetStoreError.ruleNotSerializable }
 
         for condition in rule.conditions {
             guard RuleSchema.isValidOp(field: condition.field, op: condition.op) else {
@@ -3124,6 +3132,17 @@ final class BudgetStore: ObservableObject {
                         throw BudgetStoreError.ruleEmptyValue(field: condition.field)
                     }
                 }
+                // A date condition needs a full YYYY-MM-DD for the comparison
+                // ops; `is` also accepts a month or a year, matching upstream's
+                // parseDateString.
+                if type == .date {
+                    let digits = (condition.value.stringValue ?? "")
+                        .replacingOccurrences(of: "-", with: "")
+                    let allowed = condition.op == "is" ? [4, 6, 8] : [8]
+                    guard allowed.contains(digits.count), Int(digits) != nil else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                }
                 if ["contains", "doesNotContain", "matches", "hasTags", "hasAnyTag"].contains(condition.op) {
                     guard let text = condition.value.stringValue, !text.isEmpty else {
                         throw BudgetStoreError.ruleEmptyValue(field: condition.field)
@@ -3132,9 +3151,18 @@ final class BudgetStore: ObservableObject {
                     // silently at apply time. Catching it here is the one place
                     // the user can still do something about it. Compile the
                     // lowercased pattern, which is what the engine will run.
-                    if condition.op == "matches",
-                       (try? NSRegularExpression(pattern: text.lowercased())) == nil {
-                        throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                    if condition.op == "matches" {
+                        // No timeout exists for NSRegularExpression, so a
+                        // pathological pattern would wedge the sync actor it
+                        // runs on. A length bound doesn't make that impossible,
+                        // but it rules out the pasted-blob case; the web app has
+                        // the same exposure.
+                        guard text.count <= 500 else {
+                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                        }
+                        guard (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
+                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                        }
                     }
                 }
             }
@@ -3163,36 +3191,6 @@ final class BudgetStore: ObservableObject {
             ),
             formatAmount: { [weak self] cents in self?.formatCurrency(cents) ?? "\(cents)" }
         )
-    }
-
-    /// Run every rule over the given transactions and save what changed —
-    /// upstream's "Run rules on selected transactions" (Account.tsx `onRunRules`).
-    /// Returns the number of transactions actually updated.
-    @discardableResult
-    func runRules(on transactions: [Transaction]) async throws -> Int {
-        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
-
-        let rules = try database.fetchRules()
-        let context = try database.ruleContext()
-        var updated = 0
-
-        for original in transactions {
-            let result = RulesEngine.apply(original, rules: rules, context: context)
-            guard !result.changedFields.isEmpty || result.pendingPayeeName != nil else { continue }
-
-            var transaction = result.transaction
-            if let name = result.pendingPayeeName {
-                transaction.payeeId = try await findOrCreatePayee(name: name).id
-            }
-            try await syncClient.updateTransaction(
-                transaction,
-                changedFields: Self.changedFields(original: original, updated: transaction)
-            )
-            updated += 1
-        }
-
-        await refreshData()
-        return updated
     }
 
     // MARK: - Currency Formatting

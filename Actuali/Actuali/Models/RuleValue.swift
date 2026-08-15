@@ -40,6 +40,10 @@ enum RuleValue: Equatable, Hashable {
         switch self {
         case .string(let value): return value
         case .number(let value):
+            // JSON has no NaN or infinity, so these can only arrive from code —
+            // but JSONSerialization refuses to encode them, and the whole rule
+            // would serialize to "[]".
+            guard value.isFinite else { return NSNull() }
             guard value.rounded() == value, abs(value) < 9_007_199_254_740_992 else { return value }
             return Int(value)
         case .bool(let value): return value

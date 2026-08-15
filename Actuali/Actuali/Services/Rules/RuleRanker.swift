@@ -38,11 +38,19 @@ enum RuleRanker {
     }
 
     static func rank(_ rules: [Rule]) -> [Rule] {
-        Rule.Stage.allCases.flatMap { stage in
+        // Score once per rule, not once per comparison — upstream keeps the same
+        // scores map for the same reason.
+        var scores: [String: Int] = [:]
+        for rule in rules where scores[rule.id] == nil {
+            scores[rule.id] = score(rule)
+        }
+
+        return Rule.Stage.allCases.flatMap { stage in
             rules
                 .filter { $0.stage == stage }
                 .sorted { lhs, rhs in
-                    let (left, right) = (score(lhs), score(rhs))
+                    let left = scores[lhs.id] ?? 0
+                    let right = scores[rhs.id] ?? 0
                     return left == right ? lhs.id < rhs.id : left < right
                 }
         }

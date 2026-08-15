@@ -52,4 +52,15 @@ struct RuleModelTests {
         #expect(rule.syncableFields["stage"] as? String == nil)
         #expect(rule.syncableFields["conditions_op"] as? String == "and")
     }
+    
+    /// Upstream drops a rule whose conditions don't parse rather than running a
+    /// weakened version of it.
+    @Test func rejectsRuleWithAMalformedCondition() {
+        #expect(throws: RuleParseError.self) {
+            try Rule.parse(
+                id: "r-1", stage: nil, conditionsOp: "and",
+                conditionsJSON: #"[{"op":"is","field":"description","value":"p"},{"value":"orphan"}]"#,
+                actionsJSON: #"[{"op":"set","field":"category","value":"cat-1"}]"#)
+        }
+    }
 }

@@ -21,13 +21,15 @@ struct RulesListView: View {
 
     var body: some View {
         Group {
-            if !budgetStore.rulesSupported && hasLoaded {
+            if !hasLoaded {
+                ProgressView()
+            } else if !budgetStore.rulesSupported {
                 ContentUnavailableView(
                     "Rules Unavailable",
                     systemImage: "slider.horizontal.3",
                     description: Text("This budget file has no rules table. Open it in Actual once to add one.")
                 )
-            } else if budgetStore.rules.isEmpty && hasLoaded {
+            } else if budgetStore.rules.isEmpty {
                 ContentUnavailableView {
                     Label("No Rules", systemImage: "slider.horizontal.3")
                 } description: {
@@ -35,30 +37,8 @@ struct RulesListView: View {
                 } actions: {
                     Button("Create Rule") { isCreating = true }
                 }
-            } else if hasLoaded {
-                List {
-                    Section {
-                        ForEach(filteredRules) { rule in
-                            Button {
-                                editingRule = rule
-                            } label: {
-                                RuleRow(rule: rule, summary: summary,
-                                        isOwnedBySchedule: budgetStore.scheduleOwnedRuleIds.contains(rule.id))
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing) {
-                                if !budgetStore.scheduleOwnedRuleIds.contains(rule.id) {
-                                    Button("Delete", role: .destructive) { delete(rule) }
-                                }
-                            }
-                        }
-                    } footer: {
-                        Text("Rules run in stage order: Pre, then Default, then Post, within a stage the most specific rule runs last.")
-                    }
-                }
-                .searchable(text: $searchText, prompt: "Search rules")
             } else {
-                ProgressView()
+                rulesList
             }
         }
         .navigationTitle("Rules")
@@ -95,6 +75,45 @@ struct RulesListView: View {
         .refreshable { await budgetStore.loadRules() }
     }
 
+    private var rulesList: some View {
+        List {
+            if filteredRules.isEmpty {
+                // Searching past every rule shouldn't leave a blank screen.
+                ContentUnavailableView.search(text: searchText)
+                    .listRowBackground(Color.clear)
+            } else {
+                Section {
+                    ForEach(filteredRules) { rule in
+                        Button {
+                            editingRule = rule
+                        } label: {
+                            RuleRow(
+                                rule: rule,
+                                summary: summary,
+                                isOwnedBySchedule: budgetStore.scheduleOwnedRuleIds.contains(rule.id)
+                            )
+                        }
+                        // Without an explicit shape, a plain-styled button only
+                        // takes taps on the text itself, not the empty width
+                        // beside it.
+                        .buttonStyle(.plain)
+                        .contentShape(Rectangle())
+                        .swipeActions(edge: .trailing) {
+                            // A schedule's rule can't be deleted — the schedule
+                            // owns it, same as upstream's `deleteRule`.
+                            if !budgetStore.scheduleOwnedRuleIds.contains(rule.id) {
+                                Button("Delete", role: .destructive) { delete(rule) }
+                            }
+                        }
+                    }
+                } footer: {
+                    Text("Rules run in stage order: Pre, then Default, then Post. Within a stage, the most specific rule runs last.")
+                }
+            }
+        }
+        .searchable(text: $searchText, prompt: "Search rules")
+    }
+
     private func delete(_ rule: Rule) {
         Task {
             do {
@@ -121,6 +140,7 @@ private struct RuleRow: View {
                     .padding(.vertical, 2)
                     .background(stageColor.opacity(0.18), in: RoundedRectangle(cornerRadius: 4))
                     .foregroundStyle(stageColor)
+
                 if isOwnedBySchedule {
                     Label("Schedule", systemImage: "calendar")
                         .font(.caption2)
@@ -150,11 +170,19 @@ private struct RuleRow: View {
             Text(title)
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
+
             ForEach(Array(lines.enumerated()), id: \.offset) { index, line in
                 Text(index > 0 ? "\(joiner.map { $0 + " " } ?? "")\(line)" : line)
                     .font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
             }
         }
+    }
+}
+
+#Preview {
+    NavigationStack {
+        RulesListView()
+            .environmentObject(BudgetStore.previewInstance())
     }
 }

@@ -1,5 +1,7 @@
 import Foundation
+import os
 
+private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Rule")
 /// Mirrors loot-core's rule model (`types/models/rule.ts`). Conditions and
 /// actions are stored as JSON blobs in the `rules` table using the *internal*
 /// schema names (`description` for payee, `acct` for account); `RuleSchema`
@@ -82,6 +84,8 @@ struct Rule: Identifiable, Equatable, Hashable {
 enum RuleParseError: Error {
     case invalidJSON
     case notArray
+    case invalidCondition
+    case invalidAction
 }
 
 extension Rule {
@@ -103,9 +107,15 @@ extension Rule {
     }
 
     private static func parseConditions(_ json: String?) throws -> [Condition] {
-        try parseArray(json).compactMap { item in
+        try parseArray(json).map { item in
+            // Upstream drops the *whole rule* when any condition fails to parse
+            // (`makeRule` returns null). Dropping just the bad condition would
+            // leave an `and` rule matching on fewer conditions than its author
+            // wrote — firing more broadly, not less.
             guard let op = item["op"] as? String,
-                  let field = item["field"] as? String else { return nil }
+                  let field = item["field"] as? String else {
+                throw RuleParseError.invalidCondition
+            }
             return Condition(
                 op: op,
                 field: RuleSchema.publicField(from: field),
@@ -116,8 +126,8 @@ extension Rule {
     }
 
     private static func parseActions(_ json: String?) throws -> [Action] {
-        try parseArray(json).compactMap { item in
-            guard let op = item["op"] as? String else { return nil }
+        try parseArray(json).map { item in
+            guard let op = item["op"] as? String else { throw RuleParseError.invalidAction }
             return Action(
                 op: op,
                 field: (item["field"] as? String).map(RuleSchema.publicField(from:)),
@@ -206,9 +216,24 @@ extension Rule {
         // .sortedKeys so a rule that round-trips through the editor unchanged
         // produces the same bytes, keeping CRDT writes idempotent-looking in
         // review and in tests.
-        guard let data = try? JSONSerialization.data(withJSONObject: array, options: [.sortedKeys]),
-              let json = String(data: data, encoding: .utf8) else { return "[]" }
-        return json
+        do {
+            let data = try JSONSerialization.data(withJSONObject: array, options: [.sortedKeys])
+            if let json = String(data: data, encoding: .utf8) { return json }
+        } catch {
+            logger.error("Rule serialization failed: \(error.localizedDescription, privacy: .public)")
+        }
+        // Unreachable once every RuleValue is JSON-legal (see RuleValue.jsonObject).
+        // Returning "[]" would sync a blanked rule to every device, so callers
+        // that write must check `isSerializable` first — see BudgetStore.validate.
+        logger.error("Rule serialization produced no JSON; refusing to blank the rule")
+        return "[]"
+    }
+    
+    /// Whether both blobs will survive a round trip to JSON. Checked before a
+    /// save so a rule can never be written to the server as an empty one.
+    var isSerializable: Bool {
+        JSONSerialization.isValidJSONObject(conditions.map(\.jsonObject))
+            && JSONSerialization.isValidJSONObject(actions.map(\.jsonObject))
     }
 }
 
