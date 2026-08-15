@@ -34,11 +34,21 @@ enum RuleDateMatcher {
         }
     }
 
+    /// Fixed UTC Gregorian calendar, not `Calendar.current`: the ±2 day window
+    /// has to be exactly 2 × 86,400s. A local calendar makes a DST day 23 or 25
+    /// hours long, which pushes a legitimately-two-days-apart pair over the
+    /// threshold, and makes results depend on the device's timezone.
+    private static let calendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(secondsFromGMT: 0) ?? .gmt
+        return calendar
+    }()
+
     private static func date(from yyyymmdd: Int) -> Date? {
         var components = DateComponents()
         components.year = yyyymmdd / 10000
         components.month = (yyyymmdd % 10000) / 100
         components.day = yyyymmdd % 100
-        return Calendar.current.date(from: components)
+        return calendar.date(from: components)
     }
 }

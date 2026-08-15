@@ -1,10 +1,41 @@
 import SwiftUI
 
+/// The pickable rows for an id-typed rule field. Transfer payees (the
+/// empty-named payee each account owns) and hidden categories are filtered out
+/// the same way the transaction form filters them — they aren't things a user
+/// writes a rule against.
+/// `@MainActor` because it reads `BudgetStore`, which is main-actor isolated;
+/// every caller is a View member and already on the main actor.
+@MainActor
+private func ruleChoices(for field: String, in store: BudgetStore) -> [(id: String, name: String)] {
+    switch field {
+    case "payee":
+        return store.payees
+            .filter { !$0.tombstone && $0.transferAccountId == nil }
+            .map { ($0.id, $0.name) }
+    case "category":
+        return store.categoryGroups
+            .filter { !$0.hidden }
+            .flatMap(\.categories)
+            .filter { !$0.hidden }
+            .map { ($0.id, $0.name) }
+    case "category_group":
+        return store.categoryGroups
+            .filter { !$0.hidden }
+            .map { ($0.id, $0.name) }
+    case "account":
+        return store.accounts
+            .filter { !$0.closed }
+            .map { ($0.id, $0.name) }
+    default:
+        return []
+    }
+}
+
 /// One condition row: field, operator, and a value editor chosen by the field's
 /// type. Field/op lists come from `RuleSchema`, which is the same metadata the
 /// engine validates against.
 struct RuleConditionEditor: View {
-    @EnvironmentObject var budgetStore: BudgetStore
     @Binding var condition: Rule.Condition
 
     var body: some View {
@@ -29,7 +60,8 @@ struct RuleConditionEditor: View {
                 value: $condition.value,
                 field: condition.field,
                 op: condition.op,
-                options: $condition.options
+                options: $condition.options,
+                showsDirection: true
             )
         }
     }
@@ -45,6 +77,10 @@ struct RuleConditionEditor: View {
                     condition.op = RuleSchema.validOps(for: field).first ?? "is"
                 }
                 condition.value = RuleValueEditor.defaultValue(field: field, op: condition.op)
+                // Inflow/outflow only means anything on an amount.
+                if RuleSchema.fieldType(field) != .number {
+                    condition.options = nil
+                }
             }
         )
     }
@@ -86,8 +122,15 @@ struct RuleActionEditor: View {
                 }
                 .labelsHidden()
 
-                RuleValueEditor(value: $action.value, field: action.field ?? "category",
-                                op: "is", options: $action.options)
+                // `op: "is"` because an action's value is always a single one —
+                // the multi-value and between shapes are condition-only. No
+                // direction either: a `set amount` has no inflow/outflow.
+                RuleValueEditor(
+                    value: $action.value,
+                    field: action.field ?? "category",
+                    op: "is",
+                    options: $action.options
+                )
             } else if action.op != "delete-transaction" {
                 TextField("Text", text: Binding(
                     get: { action.value.stringValue ?? "" },
@@ -135,6 +178,9 @@ struct RuleValueEditor: View {
     let field: String
     let op: String
     @Binding var options: [String: RuleValue]?
+    /// Inflow/outflow is a condition-only concept — a `set amount` action has no
+    /// direction. Defaults off so callers opt in.
+    var showsDirection: Bool = false
 
     /// The empty value for a freshly chosen field/op pair.
     static func defaultValue(field: String, op: String) -> RuleValue {
@@ -162,39 +208,73 @@ struct RuleValueEditor: View {
                 set: { value = .bool($0) }
             ))
         case .string, .none:
-            VStack(alignment: .leading, spacing: 4) {
+            textEditor
+        }
+    }
+
+    private var isMultiValue: Bool { ["oneOf", "notOneOf"].contains(op) }
+
+    private var choices: [(id: String, name: String)] {
+        ruleChoices(for: field, in: budgetStore)
+    }
+
+    private var placeholder: String {
+        if op == "matches" { return "Regular expression" }
+        return isMultiValue ? "Comma-separated values" : "Value"
+    }
+
+    // MARK: - Text
+
+    @ViewBuilder
+    private var textEditor: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if isMultiValue {
+                // oneOf/notOneOf carry a list, not a string. Editing it as
+                // comma-separated text keeps the row a single field while still
+                // producing the shape the engine matches on — a plain string
+                // here would never match and couldn't be saved.
+                TextField(placeholder, text: Binding(
+                    get: { (value.listValue ?? []).compactMap(\.stringValue).joined(separator: ", ") },
+                    set: { text in
+                        value = .list(
+                            text.split(separator: ",")
+                                .map { $0.trimmingCharacters(in: .whitespaces) }
+                                .filter { !$0.isEmpty }
+                                .map(RuleValue.string)
+                        )
+                    }
+                ))
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
+            } else {
                 TextField(placeholder, text: Binding(
                     get: { value.stringValue ?? "" },
                     set: { value = .string($0) }
                 ))
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.never)
+            }
 
-                if op == "matches" {
-                    // The engine lowercases the pattern to match upstream, which
-                    // silently turns `\D` into `\d`. We can't warn about that
-                    // without promising a fix we're not making, but saying the
-                    // match is case-insensitive is true, is the part that
-                    // actually surprises people, and is the reason `\D` behaves
-                    // the way it does.
-                    Text("Patterns are matched case-insensitively.")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
+            if op == "matches" {
+                // The engine lowercases the pattern to match upstream, which
+                // silently turns `\D` into `\d`. We can't warn about that
+                // without promising a fix we're not making, but saying the match
+                // is case-insensitive is true, is the part that actually
+                // surprises people, and is the reason `\D` behaves as it does.
+                Text("Patterns are matched case-insensitively.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
-    private var placeholder: String {
-        if op == "matches" { return "Regular expression" }
-        return ["oneOf", "notOneOf"].contains(op) ? "Comma-separated values" : "Value"
-    }
+    // MARK: - Ids
 
     /// Payee / category / category group / account. Multi-select ops keep a
     /// list; single ops keep a plain string.
     @ViewBuilder
     private var idPicker: some View {
-        if ["oneOf", "notOneOf"].contains(op) {
+        if isMultiValue {
             NavigationLink {
                 RuleIdMultiPicker(field: field, value: $value)
             } label: {
@@ -213,45 +293,22 @@ struct RuleValueEditor: View {
         }
     }
 
+    // MARK: - Amounts
+
     @ViewBuilder
     private var amountEditor: some View {
-        // `AmountInputField` (declared in AddTransactionView.swift) is the
-        // app's shared cents entry field; reuse it so rule amounts format and
-        // validate like every other amount in the app.
-        HStack {
-            Text("Amount")
-            Spacer()
-            AmountInputField(text: Binding(
-                get: { value.numberValue.map { String(format: "%.2f", $0 / 100) } ?? "" },
-                set: { text in
-                    value = .number(Double(Transaction.cents(fromDollars: Double(text) ?? 0) ?? 0))
-                }
-            ), allowsNegative: true)
-            .frame(maxWidth: 140)
-        }
-        // Upstream exposes amount (inflow) / amount (outflow) as separate
-        // fields; here they're a segmented direction on the amount row.
-        Picker("Direction", selection: directionBinding) {
-            Text("Any").tag("any")
-            Text("Inflow").tag("inflow")
-            Text("Outflow").tag("outflow")
-        }
-        .pickerStyle(.segmented)
-    }
+        RuleAmountField(value: $value)
 
-    private var datePicker: some View {
-        DatePicker("Date", selection: Binding(
-            get: {
-                guard let text = value.stringValue,
-                      let day = Int(text.replacingOccurrences(of: "-", with: "")), day > 9_999_999
-                else { return Date() }
-                return Transaction.date(fromYYYYMMDD: day)
-            },
-            set: { date in
-                let ymd = Transaction.yyyymmdd(from: date)
-                value = .string(String(format: "%04d-%02d-%02d", ymd / 10000, (ymd % 10000) / 100, ymd % 100))
+        if showsDirection {
+            // Upstream exposes amount (inflow) / amount (outflow) as separate
+            // fields; here they're a segmented direction on the amount row.
+            Picker("Direction", selection: directionBinding) {
+                Text("Any").tag("any")
+                Text("Inflow").tag("inflow")
+                Text("Outflow").tag("outflow")
             }
-        ), displayedComponents: .date)
+            .pickerStyle(.segmented)
+        }
     }
 
     private var directionBinding: Binding<String> {
@@ -271,13 +328,49 @@ struct RuleValueEditor: View {
         )
     }
 
-    private var choices: [(id: String, name: String)] {
-        switch field {
-        case "payee": return budgetStore.payees.map { ($0.id, $0.name) }
-        case "category": return budgetStore.categoryGroups.flatMap(\.categories).map { ($0.id, $0.name) }
-        case "category_group": return budgetStore.categoryGroups.map { ($0.id, $0.name) }
-        case "account": return budgetStore.accounts.filter { !$0.closed }.map { ($0.id, $0.name) }
-        default: return []
+    // MARK: - Dates
+
+    private var datePicker: some View {
+        DatePicker("Date", selection: Binding(
+            get: {
+                guard let text = value.stringValue,
+                      let day = Int(text.replacingOccurrences(of: "-", with: "")), day > 9_999_999
+                else { return Date() }
+                return Transaction.date(fromYYYYMMDD: day)
+            },
+            set: { date in
+                let ymd = Transaction.yyyymmdd(from: date)
+                value = .string(String(format: "%04d-%02d-%02d", ymd / 10000, (ymd % 10000) / 100, ymd % 100))
+            }
+        ), displayedComponents: .date)
+    }
+}
+
+/// Cents entry for a rule amount. Holds its own text the way the rest of the app
+/// does (`AddTransactionView`) and commits through `AmountParser`, so partial
+/// input ("10.", "1,50") isn't destroyed mid-keystroke — a binding that reparsed
+/// on every character would zero the value as the user typed.
+private struct RuleAmountField: View {
+    @Binding var value: RuleValue
+    @State private var text = ""
+
+    var body: some View {
+        HStack {
+            Text("Amount")
+            Spacer()
+            AmountInputField(text: $text, allowsNegative: true)
+                .frame(maxWidth: 140)
+        }
+        .onAppear {
+            guard text.isEmpty, let cents = value.numberValue else { return }
+            text = String(format: "%.2f", cents / 100)
+        }
+        .onChange(of: text) { _, newText in
+            // An unparseable partial entry leaves the stored value alone; Save
+            // is what ultimately validates it.
+            guard let dollars = AmountParser.parse(newText),
+                  let cents = Transaction.cents(fromDollars: dollars) else { return }
+            value = .number(Double(cents))
         }
     }
 }
@@ -290,6 +383,10 @@ struct RuleIdMultiPicker: View {
 
     private var selected: Set<String> {
         Set((value.listValue ?? []).compactMap(\.stringValue))
+    }
+
+    private var choices: [(id: String, name: String)] {
+        ruleChoices(for: field, in: budgetStore)
     }
 
     var body: some View {
@@ -314,18 +411,8 @@ struct RuleIdMultiPicker: View {
     private func toggle(_ id: String) {
         var ids = selected
         if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-        // Preserve the choice list's order so the rule reads the same every
-        // time it round-trips through the editor.
+        // Preserve the choice list's order so the rule reads the same every time
+        // it round-trips through the editor.
         value = .list(choices.map(\.id).filter(ids.contains).map(RuleValue.string))
-    }
-
-    private var choices: [(id: String, name: String)] {
-        switch field {
-        case "payee": return budgetStore.payees.map { ($0.id, $0.name) }
-        case "category": return budgetStore.categoryGroups.flatMap(\.categories).map { ($0.id, $0.name) }
-        case "category_group": return budgetStore.categoryGroups.map { ($0.id, $0.name) }
-        case "account": return budgetStore.accounts.filter { !$0.closed }.map { ($0.id, $0.name) }
-        default: return []
-        }
     }
 }

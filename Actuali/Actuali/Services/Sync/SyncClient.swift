@@ -170,13 +170,33 @@ actor SyncClient {
             }
         }
     }
+    
+    /// Everything a rules pass needs, fetched once. The import path builds this
+    /// before its loop instead of paying for a full categories/payees/accounts
+    /// scan per transaction.
+    struct PreparedRules {
+        let rules: [Rule]
+        let context: RuleContext
+    }
+
+    func prepareRules() -> PreparedRules {
+        guard let database else { return PreparedRules(rules: [], context: .empty) }
+        return PreparedRules(
+            rules: (try? database.fetchRules()) ?? [],
+            context: (try? database.ruleContext()) ?? .empty
+        )
+    }
 
     // MARK: - Public API
 
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
-    func createTransaction(_ transaction: Transaction, applyRules: Bool = true) async throws {
+    func createTransaction(
+        _ transaction: Transaction,
+        applyRules: Bool = true,
+        prepared: PreparedRules? = nil
+    ) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -187,9 +207,8 @@ actor SyncClient {
         //    rules rewriting the linked payee/account.
         var finalTransaction = transaction
         if applyRules, transaction.transferId == nil {
-            let rules = (try? database.fetchRules()) ?? []
-            let context = (try? database.ruleContext()) ?? .empty
-            let result = RulesEngine.apply(transaction, rules: rules, context: context)
+            let prepared = prepared ?? prepareRules()
+            let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
 
             if result.isDeleted {
                 // A `delete-transaction` rule matched. Upstream tombstones the
