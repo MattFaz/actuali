@@ -4,14 +4,16 @@ on:
   issue_comment:
     types: [created]
 
+permissions:
+  issues: write
+
 jobs:
   assign:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
       - uses: takanome-dev/assign-issue-action@v3.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
-          assign_command: "/assign-me"
-          unassign_command: "/unassign-me"
-          assigned_comment: "Thanks for taking this, issue has been assigned to you."
+          self_assign_cmd: "/assign-me"
+          self_unassign_cmd: "/unassign-me"
+          assigned_text: "Thanks for taking this, issue has been assigned to you."
