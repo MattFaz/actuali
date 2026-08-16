@@ -5,6 +5,11 @@ struct ReportsTabView: View {
     @State private var pages: [DashboardPage] = []
     @State private var selectedPageId: String?
     @State private var widgets: [DashboardWidget] = []
+    /// The page `widgets` actually came from, which is not `selectedPageId`:
+    /// that one flips the instant the picker is tapped, while the widgets
+    /// arrive a fetch later. See the dashboard's `.id` for what goes wrong
+    /// when the two are conflated.
+    @State private var loadedPageId: String?
     @State private var loadError: String?
     @State private var hasLoaded = false
 
@@ -27,21 +32,31 @@ struct ReportsTabView: View {
                         description: Text("Open or sync a budget to see reports.")
                     )
                 } else {
-                    // Keyed so per-widget @State (computed card values) resets
-                    // when switching dashboards instead of showing the
-                    // previous dashboard's numbers.
-                    DashboardView(widgets: widgets)
-                        .id(selectedPageId)
-                }
-            }
-            .navigationTitle("Reports")
-            .toolbar {
-                if pages.count > 1 {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    VStack(spacing: 0) {
                         dashboardPicker
+                            // Lined up with the dashboard cards below, which
+                            // carry 6 pt of horizontal padding of their own.
+                            .padding(.horizontal, 6)
+                            .padding(.top, 8)
+                        // Keyed so per-widget @State (computed card values)
+                        // resets when switching dashboards instead of showing
+                        // the previous dashboard's numbers. Keyed to the page
+                        // the widgets came from, not the selection: keying on
+                        // the selection re-creates the dashboard around the
+                        // outgoing page's widgets, and DashboardView's load
+                        // runs once per identity — so it would fetch the
+                        // inputs that widget set needs (budgets, schedules,
+                        // custom report configs) and never re-run for the
+                        // widgets that actually land.
+                        DashboardView(widgets: widgets)
+                            .id(loadedPageId)
                     }
                 }
             }
+            // The dashboard picker is the page's header now, so the title
+            // stays out of its way in the compact bar.
+            .navigationTitle("Reports")
+            .navigationBarTitleDisplayMode(.inline)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
@@ -54,8 +69,10 @@ struct ReportsTabView: View {
         .initialSyncBanner()
     }
 
-    /// Menu listing every live dashboard page, shown only when the budget
-    /// actually has more than one (the web app's sidebar equivalent).
+    /// Full-width dropdown naming the dashboard on screen (the web app's
+    /// sidebar equivalent). Shown whatever the page count: with a single page
+    /// it still labels what you're looking at, and it's disabled only for the
+    /// pre-dashboard-pages budgets that have no pages to switch between.
     private var dashboardPicker: some View {
         Menu {
             Picker("Dashboard", selection: Binding(
@@ -70,12 +87,27 @@ struct ReportsTabView: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: 8) {
                 Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? "Dashboard")
+                    .font(.headline)
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                Spacer()
                 Image(systemName: "chevron.up.chevron.down")
                     .imageScale(.small)
+                    .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
+            // Same fill and radius as the widget cards it sits above.
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(Color(.secondarySystemBackground))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 12))
         }
+        .disabled(pages.isEmpty)
         .accessibilityLabel("Switch dashboard")
     }
 
@@ -106,6 +138,9 @@ struct ReportsTabView: View {
             self.pages = fetchedPages
             self.selectedPageId = pageId
             self.widgets = fetched
+            // Same render pass as the widgets it identifies, so the dashboard
+            // is re-created around them rather than around their predecessor.
+            self.loadedPageId = pageId
             self.loadError = nil
         } catch is CancellationError {
             // The hosting task was torn down (tab switch, refresh gesture
