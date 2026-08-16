@@ -215,6 +215,14 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
+    
+    /// What tapping a row in the Uncategorized list opens.
+    /// Persisted to UserDefaults, defaults to the category picker.
+    @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {
+        didSet {
+            UserDefaults.standard.set(uncategorizedTapAction.rawValue, forKey: UncategorizedTapAction.defaultsKey)
+        }
+    }
 
     /// Whether Budget rows show a spent-vs-available progress bar.
     /// Persisted to UserDefaults, defaults to on.
@@ -766,6 +774,7 @@ final class BudgetStore: ObservableObject {
             _budgetDisplayStyle = Published(initialValue: style)
         }
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
+        _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard

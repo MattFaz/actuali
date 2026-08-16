@@ -381,6 +381,12 @@ struct SettingsView: View {
                             Text(mode.label).tag(mode)
                         }
                     }
+                    
+                    Picker("Uncategorized Tap Opens", selection: $budgetStore.uncategorizedTapAction) {
+                        ForEach(UncategorizedTapAction.allCases) { action in
+                            Text(action.label).tag(action)
+                        }
+                    }
 
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
