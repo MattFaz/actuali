@@ -9,7 +9,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: takanome-dev/assign-issue-action@v2
+      - uses: takanome-dev/assign-issue-action@v3.1.0
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           assign_command: "/assign-me"
