@@ -62,6 +62,30 @@ struct TransactionLogNotifierTests {
         #expect(bodyGBP == "£5.00 at Tesco")
     }
 
+    /// Expenses are negative cents (Actual's sign convention); the notification
+    /// must show that sign so outflows read distinctly from income (GH #258).
+    @Test func composeSuccessBodyShowsExpenseAsNegative() {
+        let body = TransactionLogNotifier.composeSuccessBody(
+            payee: "Starbucks",
+            amountCents: -1250,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            locale: enUS
+        )
+        #expect(body == "-$12.50 at Starbucks")
+    }
+
+    @Test func composeSuccessBodyShowsIncomeAsPositive() {
+        let body = TransactionLogNotifier.composeSuccessBody(
+            payee: "Employer",
+            amountCents: 1250,
+            currencyCode: "USD",
+            narrowSymbol: false,
+            locale: enUS
+        )
+        #expect(body == "$12.50 at Employer")
+    }
+
     /// A write that never reached the server must not read as a plain success —
     /// the transaction exists only on the phone until the next sync (issue #139).
     @Test func composeSuccessBodySaysWhenTheRowIsOnlyLocal() {

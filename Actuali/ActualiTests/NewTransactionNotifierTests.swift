@@ -31,6 +31,27 @@ struct NewTransactionNotifierTests {
         #expect(content?.body.localizedCaseInsensitiveContains("category") == false)
     }
 
+    /// Expenses are negative cents; the notification line must carry that
+    /// sign so outflows read distinctly from income (GH #258). Uses
+    /// narrowSymbol like narrowSymbolDropsCurrencyPrefixFromLines above —
+    /// locale-robust, since narrow presentation never carries the ISO prefix.
+    @Test func expenseLineShowsNegativeAmount() {
+        let content = NewTransactionNotifier.makeContent(
+            for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food", amount: -1250)],
+            currencyCode: "USD", narrowSymbol: true)
+
+        #expect(content?.body.contains("-$12.50") == true)
+    }
+
+    @Test func incomeLineShowsPositiveAmount() {
+        let content = NewTransactionNotifier.makeContent(
+            for: [makeTransaction(id: "t1", payeeName: "Employer", categoryId: "income", amount: 1250)],
+            currencyCode: "USD", narrowSymbol: true)
+
+        #expect(content?.body.contains("-") == false)
+        #expect(content?.body.contains("$12.50") == true)
+    }
+
     @Test func singleUncategorizedTransactionAsksForCategory() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks")],
