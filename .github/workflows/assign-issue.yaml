@@ -6,6 +6,7 @@ on:
 
 permissions:
   issues: write
+  pull-requests: read
 
 jobs:
   assign:
@@ -16,4 +17,5 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           self_assign_cmd: "/assign-me"
           self_unassign_cmd: "/unassign-me"
-          assigned_text: "Thanks for taking this, issue has been assigned to you."
+          assigned_text: "Thanks @{{ handle }} for taking this, issue has been assigned to you."
+          assigned_newcomer_text: "Thanks for jumping in @{{ handle }}, issue has been assigned to you. cc @MattFaz"
