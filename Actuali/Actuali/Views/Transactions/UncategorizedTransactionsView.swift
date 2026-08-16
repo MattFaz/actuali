@@ -26,9 +26,7 @@ struct UncategorizedTransactionsView: View {
     @ViewBuilder
     private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
         Button {
-            // Split children stay on the picker whatever the setting says:
-            // the edit form has no split support.
-            if budgetStore.uncategorizedTapAction == .transactionEditor, transaction.parentId == nil {
+            if budgetStore.uncategorizedTapAction.opensEditor(for: transaction) {
                 editingTransaction = transaction
             } else {
                 pickedCategoryId = nil

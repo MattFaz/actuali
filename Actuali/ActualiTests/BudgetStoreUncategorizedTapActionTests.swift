@@ -30,4 +30,19 @@ struct BudgetStoreUncategorizedTapActionTests {
         #expect(UncategorizedTapAction.resolved(from: "somethingElse") == .categoryPicker)
         #expect(UncategorizedTapAction.resolved(from: "transactionEditor") == .transactionEditor)
     }
+    
+    @Test func routingCoversDefaultEditorAndSplitChild() {
+        func transaction(parentId: String?) -> Transaction {
+            Transaction(id: "t1", accountId: "acct", date: 20260101, amount: -1000,
+                        cleared: false, reconciled: false, isParent: false,
+                        parentId: parentId, tombstone: false)
+        }
+
+        // Default: always the picker, split child or not.
+        #expect(!UncategorizedTapAction.categoryPicker.opensEditor(for: transaction(parentId: nil)))
+        #expect(!UncategorizedTapAction.categoryPicker.opensEditor(for: transaction(parentId: "p1")))
+        // Editor setting: plain rows open the editor, split children don't.
+        #expect(UncategorizedTapAction.transactionEditor.opensEditor(for: transaction(parentId: nil)))
+        #expect(!UncategorizedTapAction.transactionEditor.opensEditor(for: transaction(parentId: "p1")))
+    }
 }

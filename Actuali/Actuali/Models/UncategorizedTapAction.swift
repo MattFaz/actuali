@@ -16,6 +16,14 @@ enum UncategorizedTapAction: String, CaseIterable, Identifiable {
         case .transactionEditor: return "Transaction Editor"
         }
     }
+    
+    /// Whether tapping `transaction` in the Uncategorized list should open
+    /// the full editor. Split children never do, whatever the setting says:
+    /// the edit form has no split support, which is why they carry no Edit
+    /// swipe action either (GH #260).
+    func opensEditor(for transaction: Transaction) -> Bool {
+        self == .transactionEditor && transaction.parentId == nil
+    }
 
     static let defaultsKey = "uncategorizedTapAction"
 
