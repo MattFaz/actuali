@@ -254,6 +254,24 @@ struct BudgetView: View {
                         // 44 pt minimum; tap targets stay fine because the whole
                         // row is the button.
                         .environment(\.defaultMinListRowHeight, 32)
+                        // Rows leaving the table used to be chopped off flat
+                        // against the gutter under the summary, a hard grey
+                        // line across mid-row. Fade them into it instead. The
+                        // List's top content margin above is deeper than this
+                        // fade, so at rest it covers empty background and
+                        // nothing on screen looks washed out.
+                        .overlay(alignment: .top) {
+                            LinearGradient(
+                                colors: [
+                                    Color(.systemGroupedBackground),
+                                    Color(.systemGroupedBackground).opacity(0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 12)
+                            .allowsHitTesting(false)
+                        }
                         .gesture(
                             DragGesture(minimumDistance: 30)
                                 .onEnded { value in
@@ -292,6 +310,14 @@ struct BudgetView: View {
                 }
             }
             .navigationTitle("Budget")
+            // The summary bar is pinned outside the List (GH #155), so it
+            // can't move with an overscroll the way list content does. A
+            // large title stretches on that overscroll and draws straight
+            // over the card, and collapses on scroll-up, jolting it (GH
+            // #253). Inline keeps the bar a fixed height; the month stepper
+            // below already occupies the centre, and the tab bar says
+            // "Budget" anyway.
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 // Both arrows flank the month in the center, so nothing sits in
                 // the leading "back button" position where the previous-month
