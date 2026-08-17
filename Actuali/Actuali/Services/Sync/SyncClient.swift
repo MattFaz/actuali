@@ -274,6 +274,39 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Turn an existing transaction into one leg of a transfer and create its
+    /// partner atomically (optimistic local-first). Like `createTransfer`,
+    /// both rows and their CRDT messages commit in one SQLite transaction —
+    /// an update that landed without its partner would leave `transferred_id`
+    /// dangling, and push that dangling reference to every other device.
+    /// Rules are skipped for the same reason as `createTransfer`: the caller
+    /// builds both legs explicitly.
+    func convertToTransfer(
+        leg: Transaction,
+        changedFields: Set<String>,
+        partner: Transaction
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("convertToTransfer() - leg: \(leg.id, privacy: .private), partner: \(partner.id, privacy: .private)")
+
+        // 1. Generate CRDT messages for both legs up front
+        var messages = try await messageGenerator.messagesForUpdate(leg, changedFields: changedFields)
+        messages += try await messageGenerator.messagesForInsert(partner)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for conversion")
+
+        // 2. Persist rows + messages in one DB transaction, then update merkle
+        for msg in try database.convertToTransfer(leg: leg, partner: partner, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Conversion stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 3. Push both legs to the server in the background
+        scheduleAutomaticSync()
+    }
+
     /// Create a split parent and its children atomically (optimistic
     /// local-first). Like transfers, all rows and their CRDT messages commit
     /// in one SQLite transaction and rules are skipped — the caller builds

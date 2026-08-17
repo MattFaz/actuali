@@ -52,7 +52,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .transferPartnerMissing:
             return "The other side of this transfer no longer exists"
         case .cannotConvertToTransfer:
-            return "Can't convert an existing transaction into a transfer"
+            return "Can't turn a split transaction into a transfer"
         case .cannotConvertToSplit:
             return "Can't convert an existing transaction into a split"
         case .splitNeedsTwoLines:
@@ -2264,13 +2264,15 @@ final class BudgetStore: ObservableObject {
         switch try Self.plan(for: form) {
         case .transfer(let toAccountId, let amountCents):
             if let original {
-                // Only an existing transfer can be re-saved as one. Converting
-                // a plain transaction would create a new transfer pair and
-                // orphan the original (the UI hides the Transfer option for
-                // those; this guards the path against state edge cases).
-                // Refuse rather than silently corrupt. See actios-7u6.
+                // An existing transfer re-saves both of its legs; an ordinary
+                // row is converted in place (GH #259) — pairing it into a
+                // brand new transfer would orphan it (actios-7u6).
                 guard original.transferId != nil else {
-                    throw BudgetStoreError.cannotConvertToTransfer
+                    try await convertToTransfer(
+                        original: original, form: form, otherAccountId: toAccountId,
+                        amountCents: amountCents, date: date, notes: notes
+                    )
+                    return
                 }
                 try await updateTransfer(
                     original: original,
@@ -2580,6 +2582,96 @@ final class BudgetStore: ObservableObject {
         if form.recordLocation, let payeeId {
             recordPayeeLocationIfAppropriate(payeeId: payeeId)
         }
+    }
+
+    /// Convert an ordinary transaction into one leg of a transfer (GH #259):
+    /// the row keeps its id and history (reconciled, sort order, imported
+    /// payee), its payee becomes the other account's transfer payee, and a
+    /// new partner leg is created in that account for the opposite amount.
+    /// Mirrors upstream `addTransfer` (packages/loot-core/src/server/
+    /// transactions/transfer.ts), where converting is likewise "point the
+    /// payee at another account" — the edited row itself is never replaced.
+    ///
+    /// The row keeps its direction too: an imported outflow stays an outflow,
+    /// so the amount the bank reported can't flip sign under the user. Split
+    /// parents and children are refused, matching upstream's `is_parent`
+    /// bail-out (a parent's amount is its children's, and a child has no row
+    /// of its own to pair).
+    private func convertToTransfer(
+        original: Transaction,
+        form: TransactionForm,
+        otherAccountId: String,
+        amountCents: Int,
+        date: Int,
+        notes: String?
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard !original.isParent, original.parentId == nil else {
+            throw BudgetStoreError.cannotConvertToTransfer
+        }
+        guard form.accountId != otherAccountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        guard let legTransferPayee = transferPayee(forAccountId: form.accountId),
+              let otherTransferPayee = transferPayee(forAccountId: otherAccountId) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+
+        let signedAmount = original.amount < 0 ? -amountCents : amountCents
+        // Actual's rule: a transfer leg takes a category only when it sits in
+        // an on-budget account and the other side is off-budget. The new
+        // partner leg has no category of its own to keep either way.
+        let offBudgetIds = offBudgetAccountIds
+        let legCategoryId = !offBudgetIds.contains(form.accountId)
+            && offBudgetIds.contains(otherAccountId) ? form.categoryId : nil
+
+        let partnerId = UUID().uuidString
+        var leg = original
+        leg.accountId = form.accountId
+        leg.amount = signedAmount
+        leg.payeeId = otherTransferPayee.id
+        leg.categoryId = legCategoryId
+        leg.date = date
+        leg.notes = notes
+        leg.cleared = form.cleared
+        leg.transferId = partnerId
+
+        let partner = Transaction(
+            id: partnerId,
+            accountId: otherAccountId,
+            date: date,
+            amount: -signedAmount,
+            payeeId: legTransferPayee.id,
+            payeeName: nil,
+            categoryId: nil,
+            categoryName: nil,
+            notes: notes,
+            // Upstream's addTransfer inserts the partner uncleared: it's a row
+            // the bank never reported, whatever the imported side says.
+            cleared: false,
+            reconciled: false,
+            transferId: original.id,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil
+        )
+
+        // Both rows commit together: an edited row whose transferred_id
+        // outlived a failed partner insert would be a half-transfer, already
+        // on its way to the server.
+        try await syncClient.convertToTransfer(
+            leg: leg,
+            changedFields: Self.changedFields(original: original, updated: leg),
+            partner: partner
+        )
+        await refreshDataOnly()
     }
 
     /// Convert an ordinary (non-split) transaction into a split: the
