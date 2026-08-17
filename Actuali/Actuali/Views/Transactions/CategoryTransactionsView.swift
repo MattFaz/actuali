@@ -50,7 +50,7 @@ struct CategoryTransactionsView: View {
                 } label: {
                     // Tinted: an empty note row is an invitation to act, where
                     // an existing note is content to read.
-                    Label("Add Note", systemImage: "note.text.badge.plus")
+                    Label(String(localized: "common.addNote"), systemImage: "note.text.badge.plus")
                         .foregroundStyle(Color.accentColor)
                 }
                 // Plain: a tinted List button would tint the label twice over.
@@ -86,9 +86,9 @@ struct CategoryTransactionsView: View {
     /// category with no transactions yet still shows (and can add) its note.
     private var emptyTransactionsRow: some View {
         ContentUnavailableView(
-            "No Transactions",
+            String(localized: "No Transactions"),
             systemImage: "list.bullet.rectangle",
-            description: Text("Nothing in \(destination.categoryName) for \(scopeTitle.lowercased() == "all time" ? "any month" : scopeTitle)")
+            description: Text(String(format: String(localized: "Nothing in %@ for %@"), destination.categoryName, scopeTitle.lowercased() == "all time" ? String(localized: "any month") : scopeTitle))
         )
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
@@ -125,12 +125,12 @@ struct CategoryTransactionsView: View {
                         await reload()
                     }
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
                 Button {
                     editingTransaction = transaction
                 } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Label(String(localized: "common.edit"), systemImage: "pencil")
                 }
                 .tint(.yellow)
             }
@@ -143,7 +143,7 @@ struct CategoryTransactionsView: View {
             Spacer()
             // Sums the filtered rows so the total matches what's on screen
             // while searching.
-            Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
+            Text(String(format: String(localized: "Total %@"), budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount })))
         }
     }
 
@@ -154,7 +154,7 @@ struct CategoryTransactionsView: View {
             // header of its own above the date sections.
             Section {
                 if !transactions.isEmpty && filteredTransactions.isEmpty {
-                    Text("No matching transactions")
+                    Text(String(localized: "No matching transactions"))
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -170,7 +170,7 @@ struct CategoryTransactionsView: View {
         } else {
             Section {
                 if !transactions.isEmpty && filteredTransactions.isEmpty {
-                    Text("No matching transactions")
+                    Text(String(localized: "No matching transactions"))
                         .foregroundStyle(.secondary)
                 }
                 ForEach(filteredTransactions) { transaction in

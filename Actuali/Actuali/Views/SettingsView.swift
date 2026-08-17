@@ -369,11 +369,11 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Currency", selection: currencyPickerBinding) {
+                    Picker(String(localized: "Currency"), selection: currencyPickerBinding) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
                         // plain numbers.
-                        Text("None").tag("")
+                        Text(String(localized: "None")).tag("")
                         ForEach(Self.currencyOptions, id: \.code) { option in
                             Text("\(option.symbol) \(option.code)").tag(option.code)
                         }
@@ -381,40 +381,40 @@ struct SettingsView: View {
 
                     // Meaningless with no currency selected, so hidden there.
                     if !budgetStore.currencyCode.isEmpty {
-                        Toggle("Symbol Only", isOn: $budgetStore.useNarrowCurrencySymbol)
+                        Toggle(String(localized: "Symbol Only"), isOn: $budgetStore.useNarrowCurrencySymbol)
                     }
 
-                    Picker("Appearance", selection: $budgetStore.appearanceMode) {
+                    Picker(String(localized: "Appearance"), selection: $budgetStore.appearanceMode) {
                         ForEach(AppearanceMode.allCases) { mode in
                             Text(mode.label).tag(mode)
                         }
                     }
 
-                    Picker("Start Page", selection: $budgetStore.startTab) {
+                    Picker(String(localized: "Start Page"), selection: $budgetStore.startTab) {
                         ForEach(StartTab.allCases) { tab in
                             Text(tab.label).tag(tab)
                         }
                     }
 
-                    Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                    Picker(String(localized: "View Transactions As"), selection: $budgetStore.transactionDisplayMode) {
                         ForEach(TransactionDisplayMode.allCases) { mode in
                             Text(mode.label).tag(mode)
                         }
                     }
-                    
+
                     Picker("Uncategorized Action", selection: $budgetStore.uncategorizedTapAction) {
                         ForEach(UncategorizedTapAction.allCases) { action in
                             Text(action.label).tag(action)
                         }
                     }
 
-                    Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
+                    Toggle(String(localized: "Budget Progress Bars"), isOn: $budgetStore.showBudgetProgressBars)
 
-                    Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
+                    Toggle(String(localized: "Overspent Badge"), isOn: $budgetStore.showOverspentBadge)
 
                     Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
 
-                    Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
+                    Toggle(String(localized: "Hide Balances"), isOn: $budgetStore.hideBalances)
 
                     // Meaningless against servers that predate payee
                     // locations (< 26.4.0), so hidden there.
@@ -426,7 +426,7 @@ struct SettingsView: View {
                         NavigationLink {
                             PayeeLocationsView()
                         } label: {
-                            Text("Payee Locations")
+                                Text(String(localized: "Payee Locations"))
                         }
                     }
 
@@ -435,7 +435,7 @@ struct SettingsView: View {
                             CardAccountMappingsView()
                         } label: {
                             HStack {
-                                Text("Card & Account Mappings")
+                                Text(String(localized: "Card & Account Mappings"))
                                 Spacer()
                                 if !budgetStore.cardAccountMappings.isEmpty {
                                     Text("\(budgetStore.cardAccountMappings.count)")
@@ -453,7 +453,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Preferences")
+                    Text(String(localized: "Preferences"))
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
                         Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
@@ -461,7 +461,7 @@ struct SettingsView: View {
                         Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
-                
+
                 Section {
                     NavigationLink {
                         SchedulesListView()
@@ -469,7 +469,7 @@ struct SettingsView: View {
                         Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                     }
 
-                    Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
+                    Toggle(String(localized: "Post Scheduled Transactions"), isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
                 }
@@ -505,7 +505,7 @@ struct SettingsView: View {
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
                         }
-                        
+
                         if budgetStore.syncDetachedByRestore {
                             Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
                                 .font(.footnote)
@@ -563,7 +563,7 @@ struct SettingsView: View {
                         }
                     }
                 }
-                
+
                 if budgetStore.currentBudgetId != nil {
                     Section {
                         NavigationLink {

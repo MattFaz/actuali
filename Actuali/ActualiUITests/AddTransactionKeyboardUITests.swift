@@ -35,7 +35,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
 
         // With the keyboard gone the tab bar is reachable again — the
         // reporter's actual goal was backing out to another tab.
-        XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
+        XCTAssertTrue(app.tabBars.buttons["tab.accounts"].isHittable,
                       "tab bar not reachable after dismissing the keyboard")
     }
 

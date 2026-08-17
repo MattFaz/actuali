@@ -65,14 +65,14 @@ struct AccountDetailView: View {
     /// guidance — and on files with no `notes` table, where an edit could never
     /// save.
     private var noteSection: some View {
-        Section("Note") {
+        Section(String(localized: "common.note")) {
             if note.isEmpty {
                 Button {
                     editingNote = true
                 } label: {
                     // Tinted: an empty note row is an invitation to act, where
                     // an existing note is content to read.
-                    Label("Add Note", systemImage: "note.text.badge.plus")
+                    Label(String(localized: "common.addNote"), systemImage: "note.text.badge.plus")
                         .foregroundStyle(Color.accentColor)
                 }
                 // Plain: a tinted List button would tint the label twice over.
@@ -115,6 +115,7 @@ struct AccountDetailView: View {
                 .animatedAmount(text)
         }
         .font(.subheadline)
+        .accessibilityIdentifier("account.breakdown.\(title.lowercased())")
     }
 
     var body: some View {
@@ -127,7 +128,7 @@ struct AccountDetailView: View {
                     withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
                 } label: {
                     HStack {
-                        Text("Current Balance")
+                        Text(String(localized: "Current Balance"))
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
@@ -142,13 +143,16 @@ struct AccountDetailView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Current Balance, \(budgetStore.displayBalance(currentBalance))")
-                .accessibilityHint(showingBreakdown ? "Hides the balance breakdown" : "Shows cleared, uncleared, and reconciled balances")
+                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+                .accessibilityIdentifier("account.currentBalance")
+                .accessibilityHint(showingBreakdown
+                    ? String(localized: "Hides the balance breakdown")
+                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
 
                 if showingBreakdown, let breakdown {
-                    breakdownRow("Cleared", amount: breakdown.cleared)
-                    breakdownRow("Uncleared", amount: breakdown.uncleared)
-                    breakdownRow("Reconciled", amount: breakdown.reconciled)
+                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
+                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
+                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
                 }
             }
 
@@ -176,7 +180,7 @@ struct AccountDetailView: View {
                         }
                     }
                 } else {
-                    Section("Recent Transactions") {
+                    Section(String(localized: "Recent Transactions")) {
                         ForEach(pager.transactions) { transaction in
                             TransactionListRow(transaction: transaction,
                                                showAccount: false,
@@ -190,13 +194,13 @@ struct AccountDetailView: View {
             } else {
                 // Header stays put while the first page is still loading, so
                 // the screen doesn't reflow once the rows land.
-                Section("Recent Transactions") {
+                Section(String(localized: "Recent Transactions")) {
                     if pager != nil {
                         Text(searchQuery != nil
-                            ? "No matching transactions"
+                            ? String(localized: "No matching transactions")
                             : budgetStore.hideClearedTransactions
-                                ? "No uncleared transactions"
-                                : "No transactions")
+                                ? String(localized: "No uncleared transactions")
+                                : String(localized: "No transactions"))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -205,14 +209,14 @@ struct AccountDetailView: View {
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
         .navigationTitle(account.name)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search transactions"))
         .toolbar {
             if WalletImportView.isSupported {
                 ToolbarItem(placement: .secondaryAction) {
                     Button {
                         showingWalletImport = true
                     } label: {
-                        Label("Import from Wallet", systemImage: "wallet.pass")
+                        Label(String(localized: "Import from Wallet"), systemImage: "wallet.pass")
                     }
                 }
             }
@@ -220,14 +224,15 @@ struct AccountDetailView: View {
                 TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
-                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
+                Toggle(String(localized: "Hide Cleared Transactions"), isOn: $budgetStore.hideClearedTransactions)
             }
-            ToolbarItem(placement: .secondaryAction) {
+            ToolbarItem(placement: .primaryAction) {
                 Button {
                     showingReconcile = true
                 } label: {
-                    Label("Reconcile", systemImage: "checkmark.seal")
+                    Label(String(localized: "Reconcile"), systemImage: "checkmark.seal")
                 }
+                .accessibilityIdentifier("account.reconcile")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {

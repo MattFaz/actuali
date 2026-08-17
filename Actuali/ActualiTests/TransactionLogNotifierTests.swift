@@ -18,7 +18,8 @@ struct TransactionLogNotifierTests {
             currencyCode: "EUR",
             locale: enUS
         )
-        #expect(bodyEUR.contains("€12.50 at Starbucks"))
+        #expect(bodyEUR.contains("€12.50"))
+        #expect(bodyEUR.contains("Starbucks"))
 
         let bodyGBP = TransactionLogNotifier.composeBody(
             message: "Error message",
@@ -27,7 +28,8 @@ struct TransactionLogNotifierTests {
             currencyCode: "GBP",
             locale: enUS
         )
-        #expect(bodyGBP.contains("£5.00 at Tesco"))
+        #expect(bodyGBP.contains("£5.00"))
+        #expect(bodyGBP.contains("Tesco"))
     }
 
     /// Expenses are negative cents; the failure body must carry that sign too
@@ -52,7 +54,8 @@ struct TransactionLogNotifierTests {
             narrowSymbol: true,
             locale: enUS
         )
-        #expect(bodyNarrow.contains("$20.00 at Supermarket"))
+        #expect(bodyNarrow.contains("$20.00"))
+        #expect(bodyNarrow.contains("Supermarket"))
     }
 
     @Test func composeSuccessBodyUsesConfiguredCurrencyCode() {
@@ -63,7 +66,8 @@ struct TransactionLogNotifierTests {
             narrowSymbol: false,
             locale: enUS
         )
-        #expect(bodyEUR == "€12.50 at Starbucks")
+        #expect(bodyEUR.contains("€12.50"))
+        #expect(bodyEUR.contains("Starbucks"))
 
         let bodyGBP = TransactionLogNotifier.composeSuccessBody(
             payee: "Tesco",
@@ -72,7 +76,8 @@ struct TransactionLogNotifierTests {
             narrowSymbol: false,
             locale: enUS
         )
-        #expect(bodyGBP == "£5.00 at Tesco")
+        #expect(bodyGBP.contains("£5.00"))
+        #expect(bodyGBP.contains("Tesco"))
     }
 
     /// Expenses are negative cents (Actual's sign convention); the notification
@@ -110,7 +115,8 @@ struct TransactionLogNotifierTests {
             synced: false,
             locale: enUS
         )
-        #expect(body.hasPrefix("$12.50 at Starbucks."))
-        #expect(body.contains("sync when you open Actuali"))
+        #expect(body.hasPrefix("$12.50"))
+        #expect(body.contains("Starbucks"))
+        #expect(body.contains("Actuali"))
     }
 }

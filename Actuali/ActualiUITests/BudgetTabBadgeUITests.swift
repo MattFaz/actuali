@@ -15,7 +15,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        let budgetTab = app.tabBars.buttons["Budget"]
+        let budgetTab = app.tabBars.buttons["tab.budget"]
         XCTAssertTrue(budgetTab.waitForExistence(timeout: 10), "Budget tab not found")
 
         // Demo data is within budget everywhere: no badge at launch.
@@ -31,7 +31,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
-        app.tabBars.buttons["Settings"].tap()
+        app.tabBars.buttons["tab.settings"].tap()
         let toggle = app.switches["Overspent Badge"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
         tapSwitch(toggle)

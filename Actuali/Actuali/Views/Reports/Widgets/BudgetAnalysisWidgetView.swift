@@ -68,7 +68,7 @@ struct BudgetAnalysisWidgetView: View {
             }
 
             if data.intervalData.isEmpty {
-                Text("No data")
+                Text(String(localized: "No data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)

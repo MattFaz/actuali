@@ -31,7 +31,7 @@ struct CashFlowWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(displayName).font(.headline)
             if data.points.isEmpty || allEmpty {
-                Text("No data")
+                Text(String(localized: "No data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)

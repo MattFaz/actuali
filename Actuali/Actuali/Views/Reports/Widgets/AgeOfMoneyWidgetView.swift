@@ -24,7 +24,7 @@ struct AgeOfMoneyWidgetView: View {
                             Image(systemName: trendSymbol.name)
                                 .foregroundStyle(trendSymbol.color)
                         }
-                        Text("\(age) days")
+                        Text(String(localized: "^[\(age) day](inflect: true)"))
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                     }
@@ -52,14 +52,14 @@ struct AgeOfMoneyWidgetView: View {
                 }
                 .frame(height: 140)
             } else {
-                Text(data.currentAge == nil ? "Not enough data" : "")
+                Text(data.currentAge == nil ? String(localized: "Not enough data") : "")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             }
 
             if data.insufficientData {
-                Text("Some expenses predate the income history; ages are approximate.")
+                Text(String(localized: "Some expenses predate the income history; ages are approximate."))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -17,7 +17,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
         let groceries = app.buttons["All transactions for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
@@ -36,7 +36,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "starts in the clean layout")
 
@@ -61,7 +61,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "detailed"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
         let groceries = app.buttons["All transactions for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),

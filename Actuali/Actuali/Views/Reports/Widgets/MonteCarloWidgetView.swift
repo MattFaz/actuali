@@ -27,7 +27,7 @@ struct MonteCarloWidgetView: View {
                     Text(successPercent.formatted(.number.precision(.fractionLength(0...1))) + "%")
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
-                    Text("Success rate to age \(endAge.formatted(.number.precision(.fractionLength(0...1))))")
+                    Text(String(format: String(localized: "Success rate to age %@"), endAge.formatted(.number.precision(.fractionLength(0...1)))))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

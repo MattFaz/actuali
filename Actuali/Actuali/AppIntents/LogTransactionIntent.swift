@@ -137,10 +137,16 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol
             )
-            let verb = written.synced ? "Logged" : "Saved locally:"
-            let dialogText = displayPayee.isEmpty
-                ? "\(verb) \(amountString)"
-                : "\(verb) \(amountString) at \(displayPayee)"
+            let dialogText: String
+            if written.synced {
+                dialogText = displayPayee.isEmpty
+                    ? String(format: String(localized: "Logged %@"), amountString)
+                    : String(format: String(localized: "Logged %@ at %@"), amountString, displayPayee)
+            } else {
+                dialogText = displayPayee.isEmpty
+                    ? String(format: String(localized: "Saved locally: %@"), amountString)
+                    : String(format: String(localized: "Saved locally: %@ at %@"), amountString, displayPayee)
+            }
             return .result(dialog: IntentDialog(stringLiteral: dialogText))
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)

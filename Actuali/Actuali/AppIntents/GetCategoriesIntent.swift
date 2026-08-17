@@ -18,7 +18,7 @@ struct GetCategoriesIntent: AppIntent {
         let entities = categories.map { CategoryEntity(id: $0.id, name: $0.name) }
 
         let count = entities.count
-        let dialogText = "Found \(count) \(count == 1 ? "category" : "categories") in Actuali."
+        let dialogText = String(format: String(localized: count == 1 ? "Found %lld category in Actuali." : "Found %lld categories in Actuali."), count)
         return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

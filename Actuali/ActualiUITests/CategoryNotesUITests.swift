@@ -14,7 +14,7 @@ final class CategoryNotesUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.tabBars.buttons["tab.budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
         // Groceries is the demo category that ships annotated.
@@ -70,7 +70,7 @@ final class CategoryNotesUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.tabBars.buttons["tab.budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
         let rent = app.buttons["All transactions for Rent"]

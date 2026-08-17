@@ -54,7 +54,7 @@ struct ReconcileView: View {
             Form {
                 Section {
                     HStack {
-                        Text("Cleared Balance")
+                        Text(String(localized: "reconcile.clearedBalance"))
                         Spacer()
                         if let clearedBalance {
                             // Deliberately bypasses the hide-balances mask:
@@ -69,7 +69,7 @@ struct ReconcileView: View {
                         }
                     }
                     HStack {
-                        Text("Bank Balance")
+                        Text(String(localized: "reconcile.bankBalance"))
                         Spacer()
                         // Credit-card and overdrawn accounts reconcile against
                         // a negative bank balance, so the sign toggle is needed.
@@ -82,19 +82,19 @@ struct ReconcileView: View {
                         )
                     }
                 } footer: {
-                    Text("Enter the current balance of the bank account you want to reconcile with.")
+                    Text(String(localized: "Reconcile Balance"))
                 }
 
                 if let difference {
                     if difference == 0 {
                         Section {
-                            Label("All reconciled!", systemImage: "checkmark.circle.fill")
+                            Label(String(localized: "reconcile.allReconciled"), systemImage: "checkmark.circle.fill")
                                 .foregroundStyle(.green)
                             Button {
                                 Task { await lock() }
                             } label: {
                                 HStack {
-                                    Text("Lock Cleared Transactions")
+                                    Text(String(localized: "reconcile.lockCleared"))
                                     if isWorking {
                                         Spacer()
                                         ProgressView()
@@ -102,13 +102,14 @@ struct ReconcileView: View {
                                 }
                             }
                             .disabled(isWorking)
+                            .accessibilityIdentifier("reconcile.lockCleared")
                         } footer: {
-                            Text("Locking marks every cleared transaction as reconciled so it can't be changed by accident.")
+                            Text(String(localized: "reconcile.lockHelp"))
                         }
                     } else {
                         Section {
                             HStack {
-                                Text("Difference")
+                                Text(String(localized: "reconcile.difference"))
                                 Spacer()
                                 let text = differenceText(difference)
                                 Text(text)
@@ -119,16 +120,16 @@ struct ReconcileView: View {
                             Button {
                                 Task { await createAdjustment(difference) }
                             } label: {
-                                Text("Create Adjustment Transaction")
+                                Text(String(localized: "reconcile.createAdjustment"))
                             }
                             .disabled(isWorking)
                         } footer: {
-                            Text("Your cleared balance needs \(budgetStore.formatCurrency(difference)) to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards.")
+                            Text(String(format: String(localized: "reconcile.adjustmentHelp"), budgetStore.formatCurrency(difference)))
                         }
                     }
                 } else if clearedBalance != nil && !balanceText.isEmpty {
                     Section {
-                        Text("Enter a valid amount to compare balances.")
+                        Text(String(localized: "reconcile.invalidAmount"))
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -138,11 +139,11 @@ struct ReconcileView: View {
             // show. The difference figure itself rolls on its own curve via
             // `animatedAmount`, so this only has to cover the swap.
             .animation(AppAnimation.appearance, value: comparisonSection)
-            .navigationTitle("Reconcile")
+            .navigationTitle(String(localized: "reconcile.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
             }
             .task { await loadClearedBalance(prefill: true) }

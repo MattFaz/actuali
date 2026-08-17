@@ -12,7 +12,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
         let groceries = app.buttons["All transactions for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
@@ -38,7 +38,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
         let nextMonth = app.buttons["Next month"]
         XCTAssertTrue(nextMonth.waitForExistence(timeout: 10),

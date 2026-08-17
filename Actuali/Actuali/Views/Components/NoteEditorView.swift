@@ -44,7 +44,7 @@ struct NoteEditorView: View {
                         Text(saveError)
                             .foregroundStyle(.red)
                     } else {
-                        Text("Syncs back to Actual, so it shows on every device on this budget. Clearing the text removes the note.")
+                        Text(String(localized: "Syncs back to Actual, so it shows on every device on this budget. Clearing the text removes the note."))
                     }
                 }
             }
@@ -52,14 +52,14 @@ struct NoteEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                         .disabled(isSaving)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if isSaving {
                         ProgressView()
                     } else {
-                        Button("Save") {
+                        Button(String(localized: "common.save")) {
                             Task { await save() }
                         }
                         .accessibilityIdentifier("saveNote")

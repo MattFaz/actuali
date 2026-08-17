@@ -38,35 +38,35 @@ enum BudgetStoreError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .syncNotConfigured:
-            return "Sync not configured"
+            return String(localized: "error.syncNotConfigured")
         case .transferAccountsMatch:
-            return "Transfer source and destination must differ"
+            return String(localized: "error.transferAccountsMatch")
         case .transferAmountNotPositive:
-            return "Transfer amount must be positive"
+            return String(localized: "error.transferAmountNotPositive")
         case .transferPayeeMissing:
-            return "Transfer payee not found for selected accounts"
+            return String(localized: "error.transferPayeeMissing")
         case .transferCategoriesMatch:
-            return "Money must move between two different categories"
+            return String(localized: "error.transferCategoriesMatch")
         case .invalidAmount:
-            return "Invalid amount"
+            return String(localized: "error.invalidAmount")
         case .missingTransferDestination:
-            return "Select a destination account"
+            return String(localized: "error.missingTransferDestination")
         case .payeeCreationFailed(let message):
-            return "Failed to create payee: \(message)"
+            return String(format: String(localized: "error.payeeCreationFailed %@"), message)
         case .transferPartnerMissing:
-            return "The other side of this transfer no longer exists"
+            return String(localized: "error.transferPartnerMissing")
         case .cannotConvertToTransfer:
-            return "Can't turn a split transaction into a transfer"
+            return String(localized: "error.cannotConvertToTransfer")
         case .cannotConvertToSplit:
-            return "Can't convert an existing transaction into a split"
+            return String(localized: "error.cannotConvertToSplit")
         case .splitNeedsTwoLines:
-            return "A split needs at least two lines"
+            return String(localized: "error.splitNeedsTwoLines")
         case .splitAmountMismatch:
-            return "Split amounts must add up to the total"
+            return String(localized: "error.splitAmountMismatch")
         case .invalidAccountName:
-            return "Enter an account name"
+            return String(localized: "error.invalidAccountName")
         case .accountCreationFailed(let message):
-            return "Failed to create account: \(message)"
+            return String(format: String(localized: "error.accountCreationFailed %@"), message)
         case .invalidCategoryName:
             return "Enter a category name"
         case .invalidCategoryGroupName:
@@ -274,7 +274,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
-    
+
     /// What tapping a row in the Uncategorized list opens.
     /// Persisted to UserDefaults, defaults to the category picker.
     @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {
@@ -748,7 +748,7 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
-    
+
     // MARK: - Backups
 
     @Published private(set) var backups: [Backup] = []
@@ -1127,7 +1127,7 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
-        
+
         backups = []
         syncDetachedByRestore = false
 
@@ -1322,9 +1322,9 @@ final class BudgetStore: ObservableObject {
             if let code = fetchedCurrencyCode, !code.isEmpty {
                 currencyCode = code
             }
-            
+
             upcomingScheduledTransactionLength = fetchedUpcomingLength
-            
+
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
@@ -1492,7 +1492,7 @@ final class BudgetStore: ObservableObject {
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
     }
-    
+
     // MARK: - Backup Actions
 
     func refreshBackups() async {
@@ -1512,7 +1512,7 @@ final class BudgetStore: ObservableObject {
             self.error = error.localizedDescription
         }
     }
-    
+
     /// Automatic backup on app-background. Skipped while viewing a backup.
     /// Backgrounding happens seconds after a restore (the user checks another app),
     /// and makeBackup's first step would destroy the revert baseline.
@@ -1562,7 +1562,7 @@ final class BudgetStore: ObservableObject {
         await refreshBackups()
         isLoading = false
     }
-    
+
     /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
     /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
     func backupFileURL(_ backupId: String) -> URL? {
@@ -1706,7 +1706,7 @@ final class BudgetStore: ObservableObject {
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
     }
-    
+
     /// Create a category group, mirroring the web UI's "Add group": it lands
     /// after every existing group and starts out empty. Duplicate names are
     /// refused the way upstream refuses them.
@@ -1768,7 +1768,7 @@ final class BudgetStore: ObservableObject {
 
         return category
     }
-    
+
     /// Money in and out across every account for one "yyyy-MM" month, for the
     /// accounts tab's summary group (GH #256). Nil when there's no budget open
     /// or the query failed, so the card keeps its last figures rather than
@@ -1866,10 +1866,10 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         var existing = try database.existingFinancialIds(accountId: accountId)
-        
+
         // One rules/context fetch for the whole import, not one per row.
         let prepared = await syncClient.prepareRules()
-        
+
         var imported = 0
         var skipped = 0
         for candidate in candidates {
@@ -3234,9 +3234,9 @@ final class BudgetStore: ObservableObject {
         }
         return count
     }
-    
+
     // MARK: - Scheduled Transactions
-    
+
     /// Refresh the schedules cache and recompute every status. Statuses depend
     /// on today's date as well as on transactions, so they are derived here on
     /// every refresh rather than cached against a schedule row.
@@ -3288,7 +3288,7 @@ final class BudgetStore: ObservableObject {
         }
         return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
     }
-    
+
     @discardableResult
     func createSchedule(fields: ScheduleFormFields) async throws -> String {
         try await createSchedules([fields])[0]
@@ -3332,7 +3332,7 @@ final class BudgetStore: ObservableObject {
         try await syncClient.deleteSchedule(schedule)
         await refreshDataOnly()
     }
-    
+
     func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.skipScheduleNextDate(schedule)
@@ -3374,7 +3374,7 @@ final class BudgetStore: ObservableObject {
         try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
         await refreshDataOnly()
     }
-    
+
     /// Scan transaction history for repeating payments.
     func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
         guard let database else { return [] }
@@ -3497,7 +3497,7 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setNote(id: id, note: note)
     }
-    
+
     // MARK: - Rules
 
     /// Live rules in engine order (GH #222). Loaded on demand by the Rules
@@ -3626,7 +3626,7 @@ final class BudgetStore: ObservableObject {
             }
         }
     }
-    
+
     /// Names for everything a rule summary might reference.
     var ruleSummary: RuleSummary {
         let categories = categoryGroups.flatMap(\.categories)
@@ -3670,4 +3670,3 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
-

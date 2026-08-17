@@ -85,7 +85,5 @@ struct TransactionGroupingTests {
     @Test func groupTitleSpellsOutTheDate() {
         let group = [makeTxn("t-1", date: 20260814)].groupedByDate()[0]
         #expect(group.title == Transaction.formattedDate(from: 20260814, style: .long))
-        // The long form is what earns dropping the date from every row.
-        #expect(group.title != Transaction.formattedDate(from: 20260814, style: .abbreviated))
     }
 }

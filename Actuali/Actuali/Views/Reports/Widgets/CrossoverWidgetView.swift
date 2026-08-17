@@ -7,8 +7,8 @@ struct CrossoverWidgetView: View {
     let data: CrossoverData
 
     private var yearsToRetireText: String {
-        guard let years = data.yearsToRetire else { return "N/A" }
-        return "\(years.formatted(.number.precision(.fractionLength(0...2)))) years"
+        guard let years = data.yearsToRetire else { return String(localized: "N/A") }
+        return String(format: String(localized: "%@ years"), years.formatted(.number.precision(.fractionLength(0...2))))
     }
 
     var body: some View {
@@ -20,7 +20,7 @@ struct CrossoverWidgetView: View {
                     Text(yearsToRetireText)
                         .font(.subheadline)
                         .monospacedDigit()
-                    Text("Years to Retire")
+                    Text(String(localized: "Years to Retire"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -67,7 +67,7 @@ struct CrossoverWidgetView: View {
                 .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
-                Text("Not enough data")
+                Text(String(localized: "Not enough data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

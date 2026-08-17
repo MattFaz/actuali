@@ -11,7 +11,7 @@ struct InitialSyncBanner: View {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text("Syncing — amounts may not be up to date yet")
+            Text(String(localized: "Syncing — amounts may not be up to date yet"))
                 .font(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -25,7 +25,7 @@ struct InitialSyncBanner: View {
         }
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("initialSyncBanner")
-        .accessibilityLabel("Syncing. Amounts may not be up to date yet.")
+        .accessibilityLabel(String(localized: "Syncing. Amounts may not be up to date yet."))
         .accessibilityAddTraits(.updatesFrequently)
         .transition(.move(edge: .top).combined(with: .opacity))
     }

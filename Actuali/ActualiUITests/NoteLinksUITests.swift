@@ -14,7 +14,7 @@ final class NoteLinksUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.tabBars.buttons["tab.budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
         let dining = app.buttons["All transactions for Dining Out"]

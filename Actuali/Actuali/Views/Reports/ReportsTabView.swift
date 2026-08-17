@@ -21,15 +21,15 @@ struct ReportsTabView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let loadError {
                     ContentUnavailableView(
-                        "Could not load reports",
+                        String(localized: "reports.error.load"),
                         systemImage: "exclamationmark.triangle",
                         description: Text(loadError)
                     )
                 } else if budgetStore.databaseForLogger == nil {
                     ContentUnavailableView(
-                        "No budget open",
+                        String(localized: "reports.empty.title"),
                         systemImage: "chart.bar.xaxis",
-                        description: Text("Open or sync a budget to see reports.")
+                        description: Text(String(localized: "reports.empty.description"))
                     )
                 } else {
                     VStack(spacing: 0) {
@@ -55,7 +55,7 @@ struct ReportsTabView: View {
             }
             // The dashboard picker is the page's header now, so the title
             // stays out of its way in the compact bar.
-            .navigationTitle("Reports")
+            .navigationTitle(String(localized: "reports.title"))
             .navigationBarTitleDisplayMode(.inline)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
@@ -75,7 +75,7 @@ struct ReportsTabView: View {
     /// pre-dashboard-pages budgets that have no pages to switch between.
     private var dashboardPicker: some View {
         Menu {
-            Picker("Dashboard", selection: Binding(
+            Picker(String(localized: "Dashboard"), selection: Binding(
                 get: { selectedPageId ?? "" },
                 set: { newId in
                     selectedPageId = newId
@@ -88,7 +88,7 @@ struct ReportsTabView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? "Dashboard")
+                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? String(localized: "Dashboard"))
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -108,11 +108,11 @@ struct ReportsTabView: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(pages.isEmpty)
-        .accessibilityLabel("Switch dashboard")
+        .accessibilityLabel(String(localized: "Switch dashboard"))
     }
 
     private func displayName(for page: DashboardPage) -> String {
-        page.name.isEmpty ? "Untitled" : page.name
+        page.name.isEmpty ? String(localized: "Untitled") : page.name
     }
 
     /// Which page to show: a still-live explicit selection wins, otherwise

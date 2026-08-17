@@ -242,18 +242,18 @@ struct AccountsListView: View {
                         AccountDetailView(account: account)
                     } else {
                         ContentUnavailableView(
-                            "Account Unavailable",
+                            String(localized: "Account Unavailable"),
                             systemImage: "banknote",
-                            description: Text("Pick another account from the list.")
+                            description: Text(String(localized: "Pick another account from the list."))
                         )
                     }
                 case .allAccounts:
                     TransactionsListView()
                 case nil:
                     ContentUnavailableView(
-                        "No Account Selected",
+                        String(localized: "No Account Selected"),
                         systemImage: "banknote",
-                        description: Text("Pick an account from the list.")
+                        description: Text(String(localized: "Pick an account from the list."))
                     )
                 }
             }
@@ -274,21 +274,21 @@ struct AccountsListView: View {
             // A budget is loaded, it just has no accounts (yet) —
             // "go connect a server" would be wrong advice here (GH #122).
             ContentUnavailableView(
-                "No Accounts",
+                String(localized: "No Accounts"),
                 systemImage: "dollarsign.circle",
-                description: Text("This budget doesn't have any accounts yet. Create one in Actual Budget, then sync.")
+                description: Text(String(localized: "This budget doesn't have any accounts yet. Create one in Actual Budget, then sync."))
             )
         } else if budgetStore.isConnected {
             ContentUnavailableView(
-                "Select a Budget",
+                String(localized: "Select a Budget"),
                 systemImage: "dollarsign.circle",
-                description: Text("You're connected. Choose a budget in Settings to load it here.")
+                description: Text(String(localized: "You're connected. Choose a budget in Settings to load it here."))
             )
         } else {
             ContentUnavailableView(
-                "No Budget Loaded",
+                String(localized: "No Budget Loaded"),
                 systemImage: "dollarsign.circle",
-                description: Text("Go to Settings to connect to your Actual Budget server")
+                description: Text(String(localized: "Go to Settings to connect to your Actual Budget server"))
             )
         }
     }
@@ -314,7 +314,7 @@ struct AccountsListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .accessibilityLabel("Add Account")
+                    .accessibilityLabel(String(localized: "accounts.add.title"))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -440,7 +440,7 @@ struct AccountsSummaryCard: View {
         let balance = budgetStore.displayBalance(totalBalance)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("All Accounts")
+                Text(String(localized: "All Accounts"))
                     .font(.headline)
                 Spacer()
                 Text(balance)
@@ -529,8 +529,8 @@ struct AccountSectionHeader: View {
         // be disabled outright, and a collapsed section is otherwise
         // indistinguishable from an empty one. Same convention as the budget
         // tab's group headers ("Essentials, collapsed").
-        .accessibilityLabel("\(title), \(expandedState), \(totalText)")
-        .accessibilityIdentifier("\(title), \(expandedState)")
+        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), title, expandedState, totalText))
+        .accessibilityIdentifier("account.group.\(accessibilityKey)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
         .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
@@ -538,6 +538,12 @@ struct AccountSectionHeader: View {
 
     private var expandedState: String {
         isExpanded ? "expanded" : "collapsed"
+    }
+
+    private var accessibilityKey: String {
+        title.lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
     }
 }
 

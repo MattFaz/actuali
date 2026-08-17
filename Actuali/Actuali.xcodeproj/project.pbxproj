@@ -38,6 +38,9 @@
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A7550B882EE7B4F7007026DC /* Actuali */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				A7550BE72EE7BDFE007026DC /* Exceptions for "Actuali" folder in "Actuali" target */,
+			);
 			path = Actuali;
 			sourceTree = "<group>";
 		};
@@ -52,6 +55,16 @@
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		A7550BE72EE7BDFE007026DC /* Exceptions for "Actuali" folder in "Actuali" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/sync.proto,
+			);
+			target = A7550B852EE7B4F7007026DC /* Actuali */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		A7550B832EE7B4F7007026DC /* Frameworks */ = {
@@ -204,6 +217,12 @@
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
+				fr,
+				es,
+				"pt-BR",
+				de,
+				it,
+				nl,
 				Base,
 			);
 			mainGroup = A7550B7D2EE7B4F7007026DC;
@@ -252,7 +271,6 @@
 /* Begin PBXShellScriptBuildPhase section */
 		A7550BC02EE7B600007026DC /* Stamp Build Number */ = {
 			isa = PBXShellScriptBuildPhase;
-			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
 			files = (
 			);
@@ -265,10 +283,11 @@
 			outputFileListPaths = (
 			);
 			outputPaths = (
+				"$(DERIVED_FILE_DIR)/build-number.stamp",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# Auto-number builds: CFBundleVersion = 100 + git commit count, stamped into\n# the built product so archives number themselves and PRs never touch\n# CURRENT_PROJECT_VERSION (which remains the fallback when git is absent).\n# Archive from main so the count only moves forward.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
+			shellScript = "# Auto-number builds: CFBundleVersion = 100 + git commit count, stamped into\n# the built product so archives number themselves and PRs never touch\n# CURRENT_PROJECT_VERSION (which remains the fallback when git is absent).\n# Archive from main so the count only moves forward.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\ntouch \"${DERIVED_FILE_DIR}/build-number.stamp\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

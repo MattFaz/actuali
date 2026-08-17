@@ -40,23 +40,23 @@ struct PayeeLocationsView: View {
                             }
                         }
                     } footer: {
-                        Text("Locations are recorded when you save a transaction with Save Location on, and are used to suggest nearby payees. Turn recording off under Preferences.")
+                        Text(String(localized: "payeeLocations.explanation"))
                     }
                 }
             } else if hasLoaded {
                 ContentUnavailableView(
                     "No Recorded Locations",
                     systemImage: "mappin.slash",
-                    description: Text("No payee has a location recorded against it.")
+                    description: Text(String(localized: "No payee has a location recorded against it."))
                 )
             } else {
                 ProgressView()
             }
         }
-        .navigationTitle("Payee Locations")
+        .navigationTitle(String(localized: "Payee Locations"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
-        .task { await reload() }
+
     }
 
     private func reload() async {
@@ -81,7 +81,7 @@ struct PayeeLocationDetailView: View {
         List {
             if locations.isEmpty {
                 Section {
-                    Text("No locations recorded.")
+                    Text(String(localized: "No locations recorded."))
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -93,11 +93,11 @@ struct PayeeLocationDetailView: View {
                         delete(offsets.map { locations[$0] })
                     }
                 } footer: {
-                    Text("Swipe a location to remove it. Removing every location stops \(payee.name) being suggested when you're nearby.")
+                    Text(String(format: String(localized: "payeeLocations.detailFooter %@"), payee.name))
                 }
 
                 Section {
-                    Button("Clear All Locations", role: .destructive) {
+                    Button(String(localized: "Clear All Locations"), role: .destructive) {
                         confirmingClearAll = true
                     }
                 }
@@ -107,19 +107,19 @@ struct PayeeLocationDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task { locations = await budgetStore.fetchPayeeLocations(payeeId: payee.id) }
         .confirmationDialog(
-            "Clear all \(locations.count) recorded locations for \(payee.name)?",
+            String(format: String(localized: "Clear all %lld recorded locations for %@?"), locations.count, payee.name),
             isPresented: $confirmingClearAll,
             titleVisibility: .visible
         ) {
-            Button("Clear All Locations", role: .destructive) {
+            Button(String(localized: "Clear All Locations"), role: .destructive) {
                 delete(locations)
             }
         }
-        .alert("Couldn't Clear Location", isPresented: Binding(
+        .alert(String(localized: "Couldn't Clear Location"), isPresented: Binding(
             get: { failureMessage != nil },
             set: { presented in if !presented { failureMessage = nil } }
         )) {
-            Button("OK", role: .cancel) { failureMessage = nil }
+            Button(String(localized: "OK"), role: .cancel) { failureMessage = nil }
         } message: {
             Text(failureMessage ?? "")
         }
@@ -134,7 +134,7 @@ struct PayeeLocationDetailView: View {
                 ? await budgetStore.deletePayeeLocation(doomed[0])
                 : await budgetStore.deletePayeeLocations(doomed)
             guard cleared else {
-                failureMessage = "The location couldn't be removed. Check your connection and try again."
+                failureMessage = String(localized: "The location couldn't be removed. Check your connection and try again.")
                 return
             }
             locations = await budgetStore.fetchPayeeLocations(payeeId: payee.id)
@@ -176,7 +176,7 @@ struct PayeeLocationRow: View {
                     .buttonStyle(.borderless)
                 }
             }
-            Text("Recorded \(recordedText)")
+                Text(String(format: String(localized: "Recorded %@"), recordedText))
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }

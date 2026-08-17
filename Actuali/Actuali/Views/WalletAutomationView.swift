@@ -9,20 +9,20 @@ private let shortcutsAppURL = URL(string: "shortcuts://")!
 /// app as an App Intent; each Wallet card needs its own automation.
 struct WalletAutomationView: View {
     private static let steps = [
-        "Open the Shortcuts app and go to the Automation tab.",
-        "Tap New Automation, then search for and choose Wallet.",
-        "Select the Wallet card you want to track, keep Run Immediately, and tap Next.",
-        "Choose Create New Shortcut.",
-        "Tap Add Action and search for Log Transaction from Actuali.",
-        "Tap the action's Amount field, tap Select Variable, then choose Shortcut Input. Tap the Shortcut Input variable and change it to Amount.",
-        "Repeat for Payee: tap the Shortcut Input variable and change it to Merchant (or Name).",
-        "Tap Account and select the account that matches this card."
+        String(localized: "wallet.automation.step1"),
+        String(localized: "wallet.automation.step2"),
+        String(localized: "wallet.automation.step3"),
+        String(localized: "wallet.automation.step4"),
+        String(localized: "wallet.automation.step5"),
+        String(localized: "wallet.automation.step6"),
+        String(localized: "wallet.automation.step7"),
+        String(localized: "wallet.automation.step8")
     ]
 
     var body: some View {
         List {
             Section {
-                Text("Log tap-to-pay purchases automatically. When you pay with a card in Apple Wallet, a Shortcuts automation runs Actuali's Log Transaction action in the background — no need to open the app.")
+                Text(String(localized: "wallet.automation.intro"))
             }
 
             Section {
@@ -35,21 +35,21 @@ struct WalletAutomationView: View {
                     }
                 }
             } header: {
-                Text("Set It Up")
+                Text(String(localized: "Set It Up"))
             } footer: {
-                Text("Repeat for each card you want to track. If you skip the Account step, transactions go to your Default Account. Actuali confirms each logged purchase with a notification.")
+                Text(String(localized: "wallet.automation.footer"))
             }
 
             Section {
                 Link(destination: shortcutsAppURL) {
-                    Label("Open Shortcuts", systemImage: "arrow.up.forward.app")
+                    Label(String(localized: "Open Shortcuts"), systemImage: "arrow.up.forward.app")
                 }
                 Link(destination: webGuideURL) {
-                    Label("View Guide with Screenshots", systemImage: "safari")
+                    Label(String(localized: "View Guide with Screenshots"), systemImage: "safari")
                 }
             }
         }
-        .navigationTitle("Wallet Automation")
+        .navigationTitle(String(localized: "Wallet Automation"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

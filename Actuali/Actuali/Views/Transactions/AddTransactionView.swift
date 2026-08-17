@@ -276,11 +276,11 @@ struct AddTransactionView: View {
             Form {
                 Section {
                     HStack {
-                        Picker("Type", selection: $txType) {
-                            Text("Expense").tag(TransactionType.expense)
-                            Text("Income").tag(TransactionType.income)
+                        Picker(String(localized: "Type"), selection: $txType) {
+                            Text(String(localized: "Expense")).tag(TransactionType.expense)
+                            Text(String(localized: "Income")).tag(TransactionType.income)
                             if !isEditing || isEditingTransfer || canConvertToTransfer {
-                                Text("Transfer").tag(TransactionType.transfer)
+                                Text(String(localized: "Transfer")).tag(TransactionType.transfer)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -320,7 +320,7 @@ struct AddTransactionView: View {
 
                     if isTransfer {
                         Picker(transferPartnerLabel, selection: $transferToAccountId) {
-                            Text("Select account").tag(String?.none)
+                            Text(String(localized: "Select account")).tag(String?.none)
                             ForEach(transferEligibleAccounts) { account in
                                 Text(account.name).tag(String?.some(account.id))
                             }
@@ -332,7 +332,7 @@ struct AddTransactionView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Text("Category")
+                                    Text(String(localized: "Category"))
                                     Spacer()
                                     Text(selectedCategoryName)
                                         .foregroundStyle(.secondary)
@@ -340,7 +340,7 @@ struct AddTransactionView: View {
                             }
                         }
                     } else {
-                        TextField("Payee", text: $payeeName)
+                        TextField(String(localized: "Payee"), text: $payeeName)
                             .focused($payeeFocused)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.words)
@@ -404,7 +404,7 @@ struct AddTransactionView: View {
                                     Button(role: .destructive) {
                                         deleteNearbySuggestion(nearby)
                                     } label: {
-                                        Label("Delete", systemImage: "trash")
+                                        Label(String(localized: "common.delete"), systemImage: "trash")
                                     }
                                 }
                             }
@@ -414,9 +414,9 @@ struct AddTransactionView: View {
                             // Placeholder while the children load into the
                             // editable split lines below.
                             HStack {
-                                Text("Category")
+                                Text(String(localized: "Category"))
                                 Spacer()
-                                Text("Split")
+                                Text(String(localized: "Split"))
                                     .foregroundStyle(.secondary)
                             }
                         } else if !isSplitting {
@@ -426,7 +426,7 @@ struct AddTransactionView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Text("Category")
+                                    Text(String(localized: "Category"))
                                     Spacer()
                                     Text(selectedCategoryName)
                                         .foregroundStyle(.secondary)
@@ -436,13 +436,13 @@ struct AddTransactionView: View {
                                 Button {
                                     startSplit()
                                 } label: {
-                                    Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
+                                    Label(String(localized: "Split into multiple categories"), systemImage: "arrow.triangle.branch")
                                 }
                             }
                         }
                     }
 
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    DatePicker(String(localized: "Date"), selection: $date, displayedComponents: .date)
                 }
 
                 if isSplitting && !isTransfer {
@@ -453,7 +453,7 @@ struct AddTransactionView: View {
                     // One line while the note is short — an empty three-line
                     // box only pushes Cleared and the save button off screen —
                     // growing as the text needs it, up to six.
-                    TextField("Notes", text: $notes, axis: .vertical)
+                    TextField(String(localized: "Notes"), text: $notes, axis: .vertical)
                         .lineLimit(1...6)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
@@ -462,14 +462,14 @@ struct AddTransactionView: View {
                 }
 
                 Section {
-                    Toggle("Cleared", isOn: $cleared)
+                    Toggle(String(localized: "Cleared"), isOn: $cleared)
                     // Only the paths that record locations (adds and split
                     // edits) get the per-save opt-out; standard edits never
                     // record, so the toggle would be a no-op there.
                     if (!isEditing || isEditingSplitParent) && !isTransfer
                         && budgetStore.payeeLocationWritesEnabled
                         && budgetStore.recordPayeeLocations {
-                        Toggle("Save Location", isOn: $saveLocation)
+                        Toggle(String(localized: "Save Location"), isOn: $saveLocation)
                     }
                 }
 
@@ -525,14 +525,14 @@ struct AddTransactionView: View {
             .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
-            .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
+            .navigationTitle(canDismiss ? (isEditing ? String(localized: "Edit Transaction") : String(localized: "Add Transaction")) : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") { dismissKeyboard() }
+                    Button(String(localized: "common.done")) { dismissKeyboard() }
                         .fontWeight(.semibold)
                 }
             }
@@ -609,7 +609,7 @@ struct AddTransactionView: View {
             Button {
                 splitLines.append(.init())
             } label: {
-                Label("Add Line", systemImage: "plus")
+                Label(String(localized: "Add Line"), systemImage: "plus")
             }
             // Tapping "Remove Split" on an existing parent switches the form
             // to single-transaction mode: keep the lines in memory for an
@@ -626,18 +626,18 @@ struct AddTransactionView: View {
                     splitLines = []
                 }
             } label: {
-                Text("Remove Split")
+                Text(String(localized: "Remove Split"))
             }
         } header: {
-            Text("Split")
+            Text(String(localized: "Split"))
         } footer: {
             if let remaining = splitRemainingCents, remaining != 0 {
-                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                Text(String(format: String(localized: "%@ left to assign"), budgetStore.formatCurrency(remaining)))
                     .foregroundStyle(.red)
             } else if splitRemainingCents == 0 && hasBlankSplitLine {
                 // Nothing left to assign but a line is still blank — say why
                 // Save stays disabled instead of leaving it a mystery.
-                Text("Fill in or remove the empty line")
+                Text(String(localized: "Fill in or remove the empty line"))
                     .foregroundStyle(.red)
             }
         }
@@ -847,7 +847,7 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
-                .accessibilityHint("Flips this line's direction")
+                .accessibilityHint(String(localized: "transaction.split.flipDirectionHint"))
                 AmountInputField(
                     text: $line.amount,
                     conventionalAmountEntry: budgetStore.conventionalAmountEntry,
@@ -864,18 +864,18 @@ private struct SplitLineRow: View {
                     Button {
                         line.amount = SplitEntryMath.amountString(fromCents: remaining)
                     } label: {
-                        Text("Use remaining \(budgetStore.formatCurrency(remaining))")
+                        Text(String(format: String(localized: "Use remaining %@"), budgetStore.formatCurrency(remaining)))
                             .font(.subheadline)
                     }
                     .buttonStyle(.borderless)
                 }
             }
             // Empty payee inherits the transaction's payee
-            TextField("Payee (optional)", text: $line.payeeName)
+            TextField(String(localized: "Payee (optional)"), text: $line.payeeName)
                 .font(.subheadline)
                 .autocorrectionDisabled()
                 .textInputAutocapitalization(.words)
-            TextField("Notes (optional)", text: $line.notes)
+            TextField(String(localized: "Notes (optional)"), text: $line.notes)
                 .font(.subheadline)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
@@ -989,7 +989,7 @@ struct AmountInputField: UIViewRepresentable {
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         items.append(UIBarButtonItem(
-            title: "Done", style: .done,
+            title: String(localized: "common.done"), style: .prominent,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items
@@ -1362,7 +1362,7 @@ struct CategoryPickerView: View {
                     dismiss()
                 } label: {
                     HStack {
-                        Text("None")
+                        Text(String(localized: "None"))
                             .foregroundStyle(.primary)
                         Spacer()
                         if selectedCategoryId == nil {
@@ -1395,9 +1395,9 @@ struct CategoryPickerView: View {
                 }
             }
         }
-        .navigationTitle("Category")
+        .navigationTitle(String(localized: "Category"))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search categories")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search categories"))
     }
 
     private var filteredGroups: [CategoryGroup] {
