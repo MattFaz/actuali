@@ -126,6 +126,18 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
 
+    /// Routes the picker's selection through `setCurrencyCode`, which
+    /// persists the choice into the budget's own `preferences` table (not
+    /// just UserDefaults) so it survives a relaunch (GH #59).
+    private var currencyPickerBinding: Binding<String> {
+        Binding(
+            get: { budgetStore.currencyCode },
+            set: { newValue in
+                Task { await budgetStore.setCurrencyCode(newValue) }
+            }
+        )
+    }
+
     private var budgetPickerBinding: Binding<String?> {
         Binding(
             get: {
@@ -349,7 +361,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Currency", selection: $budgetStore.currencyCode) {
+                    Picker("Currency", selection: currencyPickerBinding) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
                         // plain numbers.
@@ -386,8 +398,6 @@ struct SettingsView: View {
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
 
-                    Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
-
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
                     // Meaningless against servers that predate payee
@@ -422,9 +432,9 @@ struct SettingsView: View {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
 
