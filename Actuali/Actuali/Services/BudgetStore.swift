@@ -142,6 +142,9 @@ final class BudgetStore: ObservableObject {
     @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
+    @Published var schedules: [ScheduleSummary] = []
+    @Published var upcomingScheduledTransactionLength: String?
+    @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Bumped every time the published data snapshot above is republished
     /// (budget load, local mutation, sync). Views that cache their own
@@ -223,6 +226,14 @@ final class BudgetStore: ObservableObject {
     @Published var transactionDisplayMode: TransactionDisplayMode = .flat {
         didSet {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
+        }
+    }
+    
+    /// What tapping a row in the Uncategorized list opens.
+    /// Persisted to UserDefaults, defaults to the category picker.
+    @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {
+        didSet {
+            UserDefaults.standard.set(uncategorizedTapAction.rawValue, forKey: UncategorizedTapAction.defaultsKey)
         }
     }
 
@@ -768,6 +779,7 @@ final class BudgetStore: ObservableObject {
             _budgetDisplayStyle = Published(initialValue: style)
         }
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
+        _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
@@ -1202,6 +1214,7 @@ final class BudgetStore: ObservableObject {
             // at a suspension point.
             // Currency code from preferences (use if non-empty, else keep UserDefaults value)
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
+            let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -1219,6 +1232,9 @@ final class BudgetStore: ObservableObject {
             if let code = fetchedCurrencyCode, !code.isEmpty {
                 currencyCode = code
             }
+            
+            upcomingScheduledTransactionLength = fetchedUpcomingLength
+            
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
@@ -1358,6 +1374,9 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+            // Re-read here as well as on load: a sync can bring in a changed
+            // upcoming window, and the status badges below are computed from it.
+            let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -1369,7 +1388,10 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            upcomingScheduledTransactionLength = fetchedUpcomingLength
             dataVersion += 1
+
+            await loadSchedules()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
@@ -2942,6 +2964,170 @@ final class BudgetStore: ObservableObject {
             self?.schedulePostNotice = nil
         }
         return count
+    }
+    
+    // MARK: - Scheduled Transactions
+    
+    /// Refresh the schedules cache and recompute every status. Statuses depend
+    /// on today's date as well as on transactions, so they are derived here on
+    /// every refresh rather than cached against a schedule row.
+    func loadSchedules() async {
+        guard let database else {
+            schedules = []
+            scheduleStatuses = [:]
+            return
+        }
+        do {
+            let loaded = try await database.fetchSchedules()
+            let paid = try await database.fetchPaidScheduleIds(for: loaded)
+            let today = DayDate.today()
+
+            var statuses: [String: ScheduleStatus] = [:]
+            for schedule in loaded {
+                statuses[schedule.id] = ScheduleStatusCalculator.status(
+                    nextDate: schedule.nextDate,
+                    completed: schedule.completed,
+                    hasTransaction: paid.contains(schedule.id),
+                    upcomingLength: schedule.customUpcomingLength ?? upcomingScheduledTransactionLength,
+                    today: today)
+            }
+
+            schedules = loaded.sorted(by: Self.scheduleOrder)
+            scheduleStatuses = statuses
+        } catch {
+            logger.error("Failed to load schedules: \(error, privacy: .public)")
+            schedules = []
+            scheduleStatuses = [:]
+        }
+    }
+
+    /// Explicit `sort_order` first (the web's manual ordering), then soonest
+    /// next date, then name — so a budget that has never been reordered still
+    /// reads sensibly.
+    private static func scheduleOrder(_ a: ScheduleSummary, _ b: ScheduleSummary) -> Bool {
+        switch (a.sortOrder, b.sortOrder) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: break
+        }
+        switch (a.nextDate, b.nextDate) {
+        case let (x?, y?) where x != y: return x < y
+        case (nil, _?): return false
+        case (_?, nil): return true
+        default: break
+        }
+        return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
+    }
+    
+    @discardableResult
+    func createSchedule(fields: ScheduleFormFields) async throws -> String {
+        try await createSchedules([fields])[0]
+    }
+
+    /// Create one or more schedules, refreshing once at the end. "Find
+    /// schedules" creates a whole selection at a time, and a full refresh per
+    /// schedule re-reads every account, transaction and payee for nothing.
+    @discardableResult
+    func createSchedules(_ fields: [ScheduleFormFields]) async throws -> [String] {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+
+        var ids: [String] = []
+        do {
+            for field in fields {
+                ids.append(try await syncClient.createSchedule(fields: field))
+            }
+        } catch {
+            // Whatever got through is already on the server; show it before
+            // surfacing the failure.
+            await refreshDataOnly()
+            throw error
+        }
+        await refreshDataOnly()
+        return ids
+    }
+
+    func updateSchedule(
+        _ schedule: ScheduleSummary,
+        fields: ScheduleFormFields,
+        resetNextDate: Bool = false
+    ) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.updateSchedule(
+            schedule, fields: fields, resetNextDate: resetNextDate)
+        await refreshDataOnly()
+    }
+
+    func deleteSchedule(_ schedule: ScheduleSummary) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.deleteSchedule(schedule)
+        await refreshDataOnly()
+    }
+    
+    func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.skipScheduleNextDate(schedule)
+        await refreshDataOnly()
+    }
+
+    func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.postScheduleTransaction(schedule, today: today)
+        await refreshDataOnly()
+    }
+
+    func setScheduleCompleted(_ schedule: ScheduleSummary, completed: Bool) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setScheduleCompleted(schedule, completed: completed)
+        await refreshDataOnly()
+    }
+
+    func fetchScheduleTransactions(_ scheduleId: String) async -> [Transaction] {
+        guard let database else { return [] }
+        return (try? database.fetchTransactions(scheduleId: scheduleId)) ?? []
+    }
+
+    /// Link transactions to a schedule, or unlink them by passing nil.
+    /// `transactions.schedule` is already a syncable field, so this needs no
+    /// new write path.
+    func linkTransactions(_ transactions: [Transaction], to scheduleId: String?) async throws {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !transactions.isEmpty else { return }
+
+        try database.setTransactionSchedule(
+            transactionIds: transactions.map(\.id), scheduleId: scheduleId)
+
+        let updated = transactions.map { transaction -> Transaction in
+            var copy = transaction
+            copy.schedule = scheduleId
+            return copy
+        }
+        try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
+        await refreshDataOnly()
+    }
+    
+    /// Scan transaction history for repeating payments.
+    func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
+        guard let database else { return [] }
+        return await Self.runDiscovery(accounts: accounts, database: database)
+    }
+
+    /// The sweep is CPU-bound and would stutter the UI on the main actor.
+    /// `nonisolated async` runs it on the generic executor without an ad-hoc
+    /// detached-task hop; `BudgetDatabase` serialises its own reads through
+    /// GRDB's queue, so calling it from here is safe.
+    nonisolated private static func runDiscovery(
+        accounts: [Account],
+        database: BudgetDatabase
+    ) async -> [ScheduleDiscovery.Proposal] {
+        (try? ScheduleDiscovery.discover(
+            accounts: accounts,
+            loadCandidates: { accountId, notBefore in
+                try database.fetchDiscoveryTransactions(
+                    accountId: accountId, notBefore: notBefore)
+            },
+            latestDate: { try database.latestTransactionDate(accountId: $0) }))
+            ?? []
     }
 
     // MARK: - Budget

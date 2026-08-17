@@ -698,6 +698,202 @@ actor SyncClient {
         // 4. Push to the server in the background
         scheduleAutomaticSync()
     }
+    
+    /// Skip the current occurrence. Port of loot-core `skipNextDate`: search
+    /// for the next occurrence starting the day AFTER the current one, and
+    /// move only the local override.
+    func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
+        guard let currentNextDate = schedule.nextDate,
+              case .recurring(let config)? = schedule.dateCondition
+        else { throw ScheduleWriteError.notRecurring }
+
+        guard let next = ScheduleRecurrence.nextOccurrence(
+            config: config,
+            onOrAfter: ScheduleRecurrence.skipSearchStart(from: currentNextDate, config: config)),
+            next != currentNextDate
+        else { return }
+
+        try await setScheduleNextDate(schedule, to: next, reset: false)
+    }
+
+    /// Post a transaction for a schedule now. Port of loot-core
+    /// `postTransactionForSchedule`.
+    ///
+    /// Deliberately does NOT advance the next date — upstream leaves that to
+    /// the advance service, which will see the posted transaction through the
+    /// same dedup guard the auto-poster uses and move the schedule on.
+    func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
+        guard let accountId = schedule.accountId else { throw ScheduleWriteError.noAccount }
+        let date = today ? DayDate.today() : (schedule.nextDate ?? DayDate.today())
+
+        var transaction = Transaction(
+            id: UUID().uuidString.lowercased(),
+            accountId: accountId,
+            date: date.yyyymmdd,
+            amount: schedule.postAmount,
+            payeeId: schedule.payeeId,
+            payeeName: nil,
+            categoryId: schedule.categoryId,
+            categoryName: nil,
+            notes: nil,
+            cleared: false,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil)
+        transaction.schedule = schedule.id
+
+        try await createTransaction(transaction, applyRules: true)
+    }
+
+    /// Mark a schedule finished, or restart it. Restarting also resets the
+    /// next date, matching the web's "restart" menu item
+    /// (`resetNextDate: true`) — a schedule resumed without that would still
+    /// be sitting on a date in the past.
+    func setScheduleCompleted(
+        _ schedule: ScheduleSummary,
+        completed: Bool,
+        today: DayDate = .today()
+    ) async throws {
+        try await updateScheduleColumns(
+            scheduleId: schedule.id,
+            fields: [("completed", completed ? 1 : 0)])
+
+        guard !completed,
+              let date = schedule.dateCondition,
+              let next = ScheduleConditions.nextDate(for: date, from: today)
+        else { return }
+        try await setScheduleNextDate(schedule, to: next, reset: true)
+    }
+
+    /// Apply one schedule write plan: local rows, CRDT messages, JSON-path
+    /// cache, push.
+    ///
+    /// All of a plan's rows go out in a single message batch, so a failure
+    /// can't leave a schedule with a rule but no next date — the state that
+    /// makes a schedule invisible to the web.
+    private func commit(_ plan: ScheduleWritePlan) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        // 1. Generate every message first, before any DB write, so an HLC
+        //    failure leaves nothing stranded.
+        var messages: [CRDTMessage] = []
+        for write in plan.writes {
+            messages += try await messageGenerator.messages(
+                dataset: write.dataset, row: write.row, fields: write.fields)
+        }
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Local-only derived cache; never synced (see BudgetDatabase).
+        if let conditions = plan.conditions {
+            try database.writeScheduleJSONPaths(
+                scheduleId: plan.scheduleId, conditions: conditions)
+        }
+
+        // 5. Push in the background — the save button awaits this write, and
+        //    an unreachable server must not hold the editor open (issue #125).
+        scheduleAutomaticSync()
+    }
+
+    /// Create a schedule and its linked rule (optimistic local-first).
+    /// Mirrors loot-core `createSchedule`.
+    @discardableResult
+    func createSchedule(fields: ScheduleFormFields, today: DayDate = .today()) async throws -> String {
+        guard let database else { throw SyncError.notConfigured }
+
+        if let name = fields.normalizedName,
+           try database.scheduleNameExists(name, excluding: nil) {
+            throw ScheduleWriteError.duplicateName(name)
+        }
+
+        let plan = try ScheduleWriteBuilder.createPlan(
+            fields: fields,
+            scheduleId: UUID().uuidString.lowercased(),
+            ruleId: UUID().uuidString.lowercased(),
+            nextDateRowId: UUID().uuidString.lowercased(),
+            now: Self.nowMilliseconds(),
+            today: today)
+
+        logger.debug("createSchedule() - id: \(plan.scheduleId, privacy: .private)")
+        try await commit(plan)
+        return plan.scheduleId
+    }
+
+    /// Update a schedule's fields, merging into its existing rule.
+    /// Mirrors loot-core `updateSchedule`.
+    func updateSchedule(
+        _ schedule: ScheduleSummary,
+        fields: ScheduleFormFields,
+        resetNextDate: Bool = false,
+        today: DayDate = .today()
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        if let name = fields.normalizedName,
+           try database.scheduleNameExists(name, excluding: schedule.id) {
+            throw ScheduleWriteError.duplicateName(name)
+        }
+
+        let plan = try ScheduleWriteBuilder.updatePlan(
+            schedule: schedule,
+            fields: fields,
+            now: Self.nowMilliseconds(),
+            today: today,
+            resetRequested: resetNextDate)
+
+        logger.debug("updateSchedule() - id: \(schedule.id, privacy: .private)")
+        try await commit(plan)
+    }
+
+    /// Tombstone a schedule and its rule. Mirrors loot-core `deleteSchedule`.
+    func deleteSchedule(_ schedule: ScheduleSummary) async throws {
+        logger.debug("deleteSchedule() - id: \(schedule.id, privacy: .private)")
+        try await commit(ScheduleWriteBuilder.deletePlan(schedule: schedule))
+    }
+
+    /// Move a schedule's next date. `reset` bumps the canonical base; the
+    /// non-reset branch moves only the local override.
+    func setScheduleNextDate(
+        _ schedule: ScheduleSummary,
+        to newNextDate: DayDate,
+        reset: Bool
+    ) async throws {
+        guard let plan = ScheduleWriteBuilder.nextDatePlan(
+            schedule: schedule,
+            newNextDate: newNextDate,
+            reset: reset,
+            now: Self.nowMilliseconds())
+        else { return }
+        try await commit(plan)
+    }
+
+    /// Write plain columns on the schedule row (complete, restart).
+    func updateScheduleColumns(
+        scheduleId: String,
+        fields: [(column: String, value: Any?)]
+    ) async throws {
+        try await commit(ScheduleWriteBuilder.scheduleColumnsPlan(
+            scheduleId: scheduleId, fields: fields))
+    }
+
+    /// Millisecond epoch, the unit `schedules_next_date` timestamps use.
+    private static func nowMilliseconds() -> Int64 {
+        Int64(Date().timeIntervalSince1970 * 1000)
+    }
 
     /// Force immediate sync (pull-to-refresh)
     func syncNow() async {

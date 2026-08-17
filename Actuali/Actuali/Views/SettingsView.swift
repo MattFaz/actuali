@@ -13,7 +13,7 @@ struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     /// Every currency in Actual's loot-core currencies list, plus a few
-    /// user-requested extras Actual lacks (AMD, NOK, NZD, ZAR). Sorted by
+    /// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
     /// code. Display-only — all budget math is currency-agnostic integer
     /// cents, and rendering uses the system formatter for the ISO code.
     private static let currencyOptions: [(symbol: String, code: String)] = [
@@ -21,6 +21,7 @@ struct SettingsView: View {
         ("֏", "AMD"),
         ("Arg$", "ARS"),
         ("A$", "AUD"),
+        ("৳", "BDT"),
         ("R$", "BRL"),
         ("Br", "BYN"),
         ("C$", "CAD"),
@@ -393,6 +394,12 @@ struct SettingsView: View {
                             Text(mode.label).tag(mode)
                         }
                     }
+                    
+                    Picker("Uncategorized Tap Opens", selection: $budgetStore.uncategorizedTapAction) {
+                        ForEach(UncategorizedTapAction.allCases) { action in
+                            Text(action.label).tag(action)
+                        }
+                    }
 
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
@@ -437,8 +444,14 @@ struct SettingsView: View {
                         Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
-
+                
                 Section {
+                    NavigationLink {
+                        SchedulesListView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
                     Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
