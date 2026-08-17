@@ -101,7 +101,7 @@ enum TransactionLogNotifier {
                             locale: Locale = .autoupdatingCurrent) -> String {
         var parts: [String] = []
         if let amountCents {
-            let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
+            let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                            currencyCode: currencyCode,
                                                            narrowSymbol: narrowSymbol,
                                                            locale: locale)
@@ -117,7 +117,7 @@ enum TransactionLogNotifier {
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
                                    narrowSymbol: Bool, synced: Bool = true,
                                    locale: Locale = .autoupdatingCurrent) -> String {
-        let amountString = CurrencyAmountFormat.string(cents: abs(amountCents),
+        let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,
                                                        locale: locale)

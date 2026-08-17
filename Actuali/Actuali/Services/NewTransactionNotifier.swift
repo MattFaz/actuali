@@ -113,7 +113,7 @@ enum NewTransactionNotifier {
                              narrowSymbol: Bool,
                              accountNames: [String: String],
                              offBudgetAccountIds: Set<String>) -> String {
-        var line = CurrencyAmountFormat.string(cents: abs(transaction.amount),
+        var line = CurrencyAmountFormat.string(cents: transaction.amount,
                                                currencyCode: currencyCode,
                                                narrowSymbol: narrowSymbol)
         if let payee = transaction.payeeName, !payee.isEmpty {
