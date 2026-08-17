@@ -2112,6 +2112,23 @@ class BudgetDatabase {
         }
     }
 
+    /// Repoints an existing transaction at a new partner leg and inserts that
+    /// leg, with both rows' CRDT messages, in a single SQLite transaction —
+    /// a partial write would leave the edited row's `transferred_id` pointing
+    /// at a partner that was never created.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func convertToTransfer(
+        leg: Transaction,
+        partner: Transaction,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.updateTransactionRow(db, leg)
+            try Self.insertTransactionRow(db, partner)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     /// Inserts a split parent, its children and their CRDT messages in a
     /// single SQLite transaction, so a failure on any row rolls back
     /// everything and no partial split can persist.
@@ -2180,59 +2197,134 @@ class BudgetDatabase {
     /// Caller is responsible for emitting CRDT messages for the same fields.
     func updateTransaction(_ transaction: Transaction) throws {
         try dbQueue.write { db in
-            try db.execute(sql: """
-                UPDATE transactions
-                SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
-                    notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
-                    isParent = ?, parent_id = ?, tombstone = ?
-                WHERE id = ?
-                """, arguments: [
-                    transaction.accountId,
-                    transaction.date,
-                    transaction.payeeId,
-                    transaction.categoryId,
-                    transaction.amount,
-                    transaction.notes,
-                    transaction.cleared ? 1 : 0,
-                    transaction.reconciled ? 1 : 0,
-                    transaction.transferId,
-                    transaction.isParent ? 1 : 0,
-                    transaction.parentId,
-                    transaction.tombstone ? 1 : 0,
-                    transaction.id
-                ])
+            try Self.updateTransactionRow(db, transaction)
         }
+    }
+
+    private static func updateTransactionRow(_ db: Database, _ transaction: Transaction) throws {
+        try db.execute(sql: """
+            UPDATE transactions
+            SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
+                notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
+                isParent = ?, parent_id = ?, tombstone = ?
+            WHERE id = ?
+            """, arguments: [
+                transaction.accountId,
+                transaction.date,
+                transaction.payeeId,
+                transaction.categoryId,
+                transaction.amount,
+                transaction.notes,
+                transaction.cleared ? 1 : 0,
+                transaction.reconciled ? 1 : 0,
+                transaction.transferId,
+                transaction.isParent ? 1 : 0,
+                transaction.parentId,
+                transaction.tombstone ? 1 : 0,
+                transaction.id
+            ])
     }
 
     // MARK: - Rules
 
-    /// Fetch all non-tombstoned rules from the rules table.
-    /// Returns an empty array if the rules table doesn't exist.
-    func fetchRules() throws -> [Rule] {
+    func rulesTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("rules") }
+    }
+    
+    /// Budget-level context the rules engine needs for conditions it can't
+    /// answer from the transaction row (upstream `prepareTransactionForRules`).
+    func ruleContext() throws -> RuleContext {
         try dbQueue.read { db in
-            guard try db.tableExists("rules") else { return [] }
+            let offBudget = try Set(String.fetchAll(
+                db, sql: "SELECT id FROM accounts WHERE offbudget = 1"
+            ))
 
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, stage, conditions_op, conditions, actions
-                FROM rules
+            var groups: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, cat_group FROM categories
                 WHERE tombstone = 0 OR tombstone IS NULL
-                """)
-
-            return rows.compactMap { row in
-                let id: String? = row["id"]
-                guard let id else { return nil }
-                do {
-                    return try Rule.parse(
-                        id: id,
-                        stage: row["stage"],
-                        conditionsOp: row["conditions_op"],
-                        conditionsJSON: row["conditions"],
-                        actionsJSON: row["actions"]
-                    )
-                } catch {
-                    return nil
+                """) {
+                if let id: String = row["id"], let group: String = row["cat_group"] {
+                    groups[id] = group
                 }
             }
+
+            var payeeNames: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, name FROM payees
+                WHERE tombstone = 0 OR tombstone IS NULL
+                """) {
+                if let id: String = row["id"], let name: String = row["name"] {
+                    payeeNames[id] = name
+                }
+            }
+
+            return RuleContext(
+                offBudgetAccountIds: offBudget,
+                categoryGroupIds: groups,
+                payeeNames: payeeNames
+            )
+        }
+    }
+
+    /// The live payee with this name, case-insensitively — how a `payee_name`
+    /// action resolves to an id before we fall back to creating one.
+    func payee(named name: String) throws -> Payee? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT id, name, transfer_acct FROM payees
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND name = ? COLLATE NOCASE
+                LIMIT 1
+                """, arguments: [name])
+            guard let row, let id: String = row["id"] else { return nil }
+            return Payee(id: id, name: row["name"] ?? name, transferAccountId: row["transfer_acct"])
+        }
+    }
+
+    /// All live rules. Returns [] when the budget file has no `rules` table.
+    func fetchRules() throws -> [Rule] {
+        try dbQueue.read { db in try Self.liveRules(db) }
+    }
+
+    /// Live rules in the order the engine runs them — what the Rules screen shows,
+    /// matching upstream's `rules-get` (which returns `rankRules(...)`).
+    func fetchRulesRanked() async throws -> [Rule] {
+        try await dbQueue.read { db in RuleRanker.rank(try Self.liveRules(db)) }
+    }
+
+    private static func liveRules(_ db: Database) throws -> [Rule] {
+        guard try db.tableExists("rules") else { return [] }
+
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT id, stage, conditions_op, conditions, actions
+            FROM rules
+            WHERE tombstone = 0 OR tombstone IS NULL
+            """)
+
+        return rows.compactMap { row in
+            guard let id: String = row["id"] else { return nil }
+            // A rule we can't parse is a rule we must not silently half-apply:
+            // upstream drops invalid rules on load too (`makeRule` returns null).
+            return try? Rule.parse(
+                id: id,
+                stage: row["stage"],
+                conditionsOp: row["conditions_op"],
+                conditionsJSON: row["conditions"],
+                actionsJSON: row["actions"]
+            )
+        }
+    }
+
+    /// Rule ids a schedule owns. Upstream refuses to delete these
+    /// (`deleteRule` returns false when a schedule points at the rule), and the
+    /// list badges them so it's clear why.
+    func scheduleOwnedRuleIds() throws -> Set<String> {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules") else { return [] }
+            return try Set(String.fetchAll(db, sql: """
+                SELECT rule FROM schedules
+                WHERE rule IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
+                """))
         }
     }
 

@@ -22,6 +22,14 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case splitAmountMismatch
     case invalidAccountName
     case accountCreationFailed(String)
+    case ruleNeedsCondition
+    case ruleNeedsAction
+    case ruleInvalidCondition(field: String, op: String)
+    case ruleInvalidAction
+    case ruleEmptyValue(field: String)
+    case ruleInvalidPattern(pattern: String)
+    case ruleOwnedBySchedule
+    case ruleNotSerializable
 
     var errorDescription: String? {
         switch self {
@@ -44,7 +52,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .transferPartnerMissing:
             return "The other side of this transfer no longer exists"
         case .cannotConvertToTransfer:
-            return "Can't convert an existing transaction into a transfer"
+            return "Can't turn a split transaction into a transfer"
         case .cannotConvertToSplit:
             return "Can't convert an existing transaction into a split"
         case .splitNeedsTwoLines:
@@ -55,6 +63,22 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter an account name"
         case .accountCreationFailed(let message):
             return "Failed to create account: \(message)"
+        case .ruleNeedsCondition:
+            return "Add at least one condition."
+        case .ruleNeedsAction:
+            return "Add at least one action."
+        case .ruleInvalidCondition(let field, let op):
+            return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
+        case .ruleInvalidAction:
+            return "Choose a field for every action."
+        case .ruleEmptyValue(let field):
+            return "\(RuleSchema.label(field: field).capitalized) needs a value."
+        case .ruleInvalidPattern(let pattern):
+            return "\"\(pattern)\" isn't a valid regular expression."
+        case .ruleOwnedBySchedule:
+            return "This rule belongs to a schedule. Delete the schedule instead."
+        case .ruleNotSerializable:
+            return "This rule contains a value that can't be saved. Check the amounts."
         }
     }
 }
@@ -1728,6 +1752,10 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         var existing = try database.existingFinancialIds(accountId: accountId)
+        
+        // One rules/context fetch for the whole import, not one per row.
+        let prepared = await syncClient.prepareRules()
+        
         var imported = 0
         var skipped = 0
         for candidate in candidates {
@@ -1758,7 +1786,7 @@ final class BudgetStore: ObservableObject {
                 importedPayee: payeeName,
                 financialId: candidate.id
             )
-            try await syncClient.createTransaction(transaction)
+            try await syncClient.createTransaction(transaction, prepared: prepared)
             imported += 1
         }
         await refreshDataOnly()
@@ -2253,13 +2281,15 @@ final class BudgetStore: ObservableObject {
         switch try Self.plan(for: form) {
         case .transfer(let toAccountId, let amountCents):
             if let original {
-                // Only an existing transfer can be re-saved as one. Converting
-                // a plain transaction would create a new transfer pair and
-                // orphan the original (the UI hides the Transfer option for
-                // those; this guards the path against state edge cases).
-                // Refuse rather than silently corrupt. See actios-7u6.
+                // An existing transfer re-saves both of its legs; an ordinary
+                // row is converted in place (GH #259) — pairing it into a
+                // brand new transfer would orphan it (actios-7u6).
                 guard original.transferId != nil else {
-                    throw BudgetStoreError.cannotConvertToTransfer
+                    try await convertToTransfer(
+                        original: original, form: form, otherAccountId: toAccountId,
+                        amountCents: amountCents, date: date, notes: notes
+                    )
+                    return
                 }
                 try await updateTransfer(
                     original: original,
@@ -2569,6 +2599,96 @@ final class BudgetStore: ObservableObject {
         if form.recordLocation, let payeeId {
             recordPayeeLocationIfAppropriate(payeeId: payeeId)
         }
+    }
+
+    /// Convert an ordinary transaction into one leg of a transfer (GH #259):
+    /// the row keeps its id and history (reconciled, sort order, imported
+    /// payee), its payee becomes the other account's transfer payee, and a
+    /// new partner leg is created in that account for the opposite amount.
+    /// Mirrors upstream `addTransfer` (packages/loot-core/src/server/
+    /// transactions/transfer.ts), where converting is likewise "point the
+    /// payee at another account" — the edited row itself is never replaced.
+    ///
+    /// The row keeps its direction too: an imported outflow stays an outflow,
+    /// so the amount the bank reported can't flip sign under the user. Split
+    /// parents and children are refused, matching upstream's `is_parent`
+    /// bail-out (a parent's amount is its children's, and a child has no row
+    /// of its own to pair).
+    private func convertToTransfer(
+        original: Transaction,
+        form: TransactionForm,
+        otherAccountId: String,
+        amountCents: Int,
+        date: Int,
+        notes: String?
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard !original.isParent, original.parentId == nil else {
+            throw BudgetStoreError.cannotConvertToTransfer
+        }
+        guard form.accountId != otherAccountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard amountCents > 0 else {
+            throw BudgetStoreError.transferAmountNotPositive
+        }
+        guard let legTransferPayee = transferPayee(forAccountId: form.accountId),
+              let otherTransferPayee = transferPayee(forAccountId: otherAccountId) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+
+        let signedAmount = original.amount < 0 ? -amountCents : amountCents
+        // Actual's rule: a transfer leg takes a category only when it sits in
+        // an on-budget account and the other side is off-budget. The new
+        // partner leg has no category of its own to keep either way.
+        let offBudgetIds = offBudgetAccountIds
+        let legCategoryId = !offBudgetIds.contains(form.accountId)
+            && offBudgetIds.contains(otherAccountId) ? form.categoryId : nil
+
+        let partnerId = UUID().uuidString
+        var leg = original
+        leg.accountId = form.accountId
+        leg.amount = signedAmount
+        leg.payeeId = otherTransferPayee.id
+        leg.categoryId = legCategoryId
+        leg.date = date
+        leg.notes = notes
+        leg.cleared = form.cleared
+        leg.transferId = partnerId
+
+        let partner = Transaction(
+            id: partnerId,
+            accountId: otherAccountId,
+            date: date,
+            amount: -signedAmount,
+            payeeId: legTransferPayee.id,
+            payeeName: nil,
+            categoryId: nil,
+            categoryName: nil,
+            notes: notes,
+            // Upstream's addTransfer inserts the partner uncleared: it's a row
+            // the bank never reported, whatever the imported side says.
+            cleared: false,
+            reconciled: false,
+            transferId: original.id,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil
+        )
+
+        // Both rows commit together: an edited row whose transferred_id
+        // outlived a failed partner insert would be a half-transfer, already
+        // on its way to the server.
+        try await syncClient.convertToTransfer(
+            leg: leg,
+            changedFields: Self.changedFields(original: original, updated: leg),
+            partner: partner
+        )
+        await refreshDataOnly()
     }
 
     /// Convert an ordinary (non-split) transaction into a split: the
@@ -3259,6 +3379,149 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setNote(id: id, note: note)
     }
+    
+    // MARK: - Rules
+
+    /// Live rules in engine order (GH #222). Loaded on demand by the Rules
+    /// screen rather than at budget load — most sessions never open it.
+    @Published private(set) var rules: [Rule] = []
+    /// Rules a schedule owns: editable, but not deletable, same as upstream.
+    @Published private(set) var scheduleOwnedRuleIds: Set<String> = []
+    /// False when the open budget file predates the `rules` table, which hides
+    /// the whole feature rather than failing at save time.
+    @Published private(set) var rulesSupported = false
+
+    func loadRules() async {
+        guard let database else {
+            rules = []
+            scheduleOwnedRuleIds = []
+            rulesSupported = false
+            return
+        }
+        do {
+            rulesSupported = try database.rulesTableExists()
+            rules = rulesSupported ? try await database.fetchRulesRanked() : []
+            scheduleOwnedRuleIds = (try? database.scheduleOwnedRuleIds()) ?? []
+        } catch {
+            logger.error("loadRules failed: \(error.localizedDescription, privacy: .public)")
+            rules = []
+            scheduleOwnedRuleIds = []
+        }
+    }
+
+    /// Create or update a rule. Validation mirrors upstream `rule-validate`:
+    /// a rule needs at least one condition and one action, and every condition
+    /// must use an operator its field supports.
+    func saveRule(_ rule: Rule) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try Self.validate(rule)
+        try await syncClient.saveRule(rule)
+        await loadRules()
+    }
+
+    /// Delete a rule. Refuses when a schedule owns it, like upstream's
+    /// `deleteRule`, which returns false rather than orphaning the schedule.
+    func deleteRule(_ rule: Rule) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard !scheduleOwnedRuleIds.contains(rule.id) else {
+            throw BudgetStoreError.ruleOwnedBySchedule
+        }
+        try await syncClient.deleteRule(rule)
+        await loadRules()
+    }
+
+    static func validate(_ rule: Rule) throws {
+        guard !rule.conditions.isEmpty else { throw BudgetStoreError.ruleNeedsCondition }
+        guard !rule.actions.isEmpty else { throw BudgetStoreError.ruleNeedsAction }
+        guard rule.isSerializable else { throw BudgetStoreError.ruleNotSerializable }
+
+        for condition in rule.conditions {
+            guard RuleSchema.isValidOp(field: condition.field, op: condition.op) else {
+                throw BudgetStoreError.ruleInvalidCondition(field: condition.field, op: condition.op)
+            }
+            // Upstream's Condition constructor rejects empty values for
+            // non-nullable types, and empty arrays for oneOf/notOneOf.
+            switch condition.op {
+            case "oneOf", "notOneOf":
+                guard condition.value.listValue?.isEmpty == false else {
+                    throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                }
+            case "onBudget", "offBudget":
+                break
+            case "isbetween":
+                // Upstream's parse asserts a `{num1, num2}` payload; anything
+                // else makes `makeRule` return null and the whole rule vanish
+                // from the web client.
+                guard condition.value.betweenValue != nil else {
+                    throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                }
+            default:
+                let type = RuleSchema.fieldType(condition.field)
+                if type == .number || type == .date || type == .boolean {
+                    guard !condition.value.isNull else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                }
+                // A date condition needs a full YYYY-MM-DD for the comparison
+                // ops; `is` also accepts a month or a year, matching upstream's
+                // parseDateString.
+                if type == .date {
+                    let digits = (condition.value.stringValue ?? "")
+                        .replacingOccurrences(of: "-", with: "")
+                    let allowed = condition.op == "is" ? [4, 6, 8] : [8]
+                    guard allowed.contains(digits.count), Int(digits) != nil else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                }
+                if ["contains", "doesNotContain", "matches", "hasTags", "hasAnyTag"].contains(condition.op) {
+                    guard let text = condition.value.stringValue, !text.isEmpty else {
+                        throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                    }
+                    // Upstream doesn't check this — a bad pattern just fails
+                    // silently at apply time. Catching it here is the one place
+                    // the user can still do something about it. Compile the
+                    // lowercased pattern, which is what the engine will run.
+                    if condition.op == "matches" {
+                        // No timeout exists for NSRegularExpression, so a
+                        // pathological pattern would wedge the sync actor it
+                        // runs on. A length bound doesn't make that impossible,
+                        // but it rules out the pasted-blob case; the web app has
+                        // the same exposure.
+                        guard text.count <= 500 else {
+                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                        }
+                        guard (try? NSRegularExpression(pattern: text.lowercased())) != nil else {
+                            throw BudgetStoreError.ruleInvalidPattern(pattern: text)
+                        }
+                    }
+                }
+            }
+        }
+
+        for action in rule.actions where action.op == "set" {
+            guard let field = action.field, RuleSchema.fieldType(field) != nil else {
+                throw BudgetStoreError.ruleInvalidAction
+            }
+            // Upstream: `account` may never be set to nothing.
+            if field == "account", action.value.stringValue?.isEmpty != false {
+                throw BudgetStoreError.ruleEmptyValue(field: field)
+            }
+        }
+    }
+    
+    /// Names for everything a rule summary might reference.
+    var ruleSummary: RuleSummary {
+        let categories = categoryGroups.flatMap(\.categories)
+        return RuleSummary(
+            names: .init(
+                payees: Dictionary(payees.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                categories: Dictionary(categories.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                categoryGroups: Dictionary(categoryGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
+                accounts: Dictionary(accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+            ),
+            formatAmount: { [weak self] cents in self?.formatCurrency(cents) ?? "\(cents)" }
+        )
+    }
 
     // MARK: - Currency Formatting
 
@@ -3289,3 +3552,4 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
+

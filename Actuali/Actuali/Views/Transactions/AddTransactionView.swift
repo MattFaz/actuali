@@ -99,14 +99,28 @@ struct AddTransactionView: View {
     private var isEditingSplitParent: Bool { editing?.isParent == true }
     private var isEditingTransfer: Bool { editing?.transferId != nil }
 
+    /// Whether the edit form may offer turning this transaction into a
+    /// transfer (GH #259). Split parents and children are excluded — the
+    /// store refuses them, since a parent's amount is its children's and a
+    /// child has no row of its own to pair.
+    private var canConvertToTransfer: Bool {
+        guard let editing else { return false }
+        return editing.transferId == nil && !editing.isParent && editing.parentId == nil
+    }
+    private var isConvertingToTransfer: Bool { isTransfer && canConvertToTransfer }
+
     /// A transfer leg takes a category only when it sits in an on-budget
     /// account and the other side is off-budget — money leaving the budget
     /// still needs one (Actual's rule). Tracks the live picker selections so
     /// re-targeting the accounts shows/hides the row immediately.
     private var editedTransferLegIsCategorizable: Bool {
-        guard let editing, editing.transferId != nil else { return false }
-        let legAccountId = editing.amount < 0 ? selectedAccountId : transferToAccountId
-        let otherAccountId = editing.amount < 0 ? transferToAccountId : selectedAccountId
+        guard let editing, isTransfer else { return false }
+        // The edited row's own account is the one in the account picker,
+        // except on an existing transfer opened from its receiving leg —
+        // there the form shows the pair as From/To and the opened row is To.
+        let openedOnDestinationLeg = editing.transferId != nil && editing.amount >= 0
+        let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
+        let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
         guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
               let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
             return false
@@ -148,6 +162,20 @@ struct AddTransactionView: View {
                 if lhs.offBudget != rhs.offBudget { return !lhs.offBudget }
                 return lhs.sortOrder < rhs.sortOrder
             }
+    }
+
+    /// Converting keeps the edited row on its own side of the transfer, so
+    /// the form asks for one account — the other one — instead of the From/To
+    /// pair a new transfer needs. The account row stays editable and keeps
+    /// its usual label: moving a transaction between accounts is an ordinary
+    /// edit, and converting doesn't take that away.
+    private var accountPickerLabel: String {
+        isTransfer && !isConvertingToTransfer ? "From" : "Account"
+    }
+
+    private var transferPartnerLabel: String {
+        guard isConvertingToTransfer else { return "To" }
+        return (editing?.amount ?? 0) < 0 ? "Transfer to" : "Transfer from"
     }
 
     private var transferEligibleAccounts: [Account] {
@@ -247,15 +275,15 @@ struct AddTransactionView: View {
                         Picker("Type", selection: $txType) {
                             Text("Expense").tag(TransactionType.expense)
                             Text("Income").tag(TransactionType.income)
-                            if !isEditing || isEditingTransfer {
+                            if !isEditing || isEditingTransfer || canConvertToTransfer {
                                 Text("Transfer").tag(TransactionType.transfer)
                             }
                         }
                         .pickerStyle(.segmented)
                         // A split parent's sign is the children's; flipping
                         // it would have to flip every line, so it stays fixed.
-                        // A transfer stays a transfer: converting would orphan
-                        // the partner leg (the store refuses it).
+                        // A transfer stays a transfer: converting one back
+                        // would orphan the partner leg (the store refuses it).
                         .disabled(isEditingSplitParent || isEditingTransfer)
                     }
 
@@ -275,7 +303,7 @@ struct AddTransactionView: View {
                 }
 
                 Section {
-                    Picker(isTransfer ? "From" : "Account", selection: $selectedAccountId) {
+                    Picker(accountPickerLabel, selection: $selectedAccountId) {
                         ForEach(orderedOpenAccounts) { account in
                             Text(account.name).tag(account.id)
                         }
@@ -287,7 +315,7 @@ struct AddTransactionView: View {
                     }
 
                     if isTransfer {
-                        Picker("To", selection: $transferToAccountId) {
+                        Picker(transferPartnerLabel, selection: $transferToAccountId) {
                             Text("Select account").tag(String?.none)
                             ForEach(transferEligibleAccounts) { account in
                                 Text(account.name).tag(String?.some(account.id))
