@@ -42,5 +42,11 @@ jobs:
             Post a single concise review covering: real bugs, security issues, and
             significant design problems. Skip style nits. If the PR looks fine, say
             so briefly.
+
+            Write the review to review.md, then post it with
+            `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
+          # Read/Write are safe here: checkout stays on the base ref, so PR-head
+          # code is never on disk. --body-file avoids heredocs/$() in the comment
+          # command, which would fail the Bash prefix match and get denied.
           claude_args: |
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*),mcp__github_comment__*"
+            --allowedTools "Read,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
