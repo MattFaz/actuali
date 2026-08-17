@@ -427,8 +427,14 @@ struct SettingsView: View {
                         Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
-
+                
                 Section {
+                    NavigationLink {
+                        SchedulesListView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
                     Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
