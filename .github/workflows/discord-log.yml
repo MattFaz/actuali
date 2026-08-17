@@ -23,6 +23,7 @@ permissions: {}
 
 jobs:
   notify:
+    if: github.repository == 'MattFaz/actuali'
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord message

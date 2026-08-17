@@ -19,6 +19,7 @@ on:
 
 jobs:
   trigger-build:
+    if: github.repository == 'MattFaz/actuali'
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Cloudflare deploy hook
