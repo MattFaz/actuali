@@ -198,6 +198,23 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// User-initiated currency changes (the Settings picker) go through
+    /// here, not a direct `currencyCode = ...` assignment: it also persists
+    /// the choice into the budget's own `preferences` table via sync, so it
+    /// survives a relaunch instead of being silently overwritten by whatever
+    /// value the DB load path finds there (GH #59). Every DB load already
+    /// assigns `currencyCode` directly (bypassing this method), which is
+    /// exactly what keeps this from looping back on itself.
+    func setCurrencyCode(_ code: String) async {
+        currencyCode = code
+        guard let syncClient else { return }
+        do {
+            try await syncClient.updateCurrencyCode(code)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     /// Show just the narrow currency symbol ("$" instead of "NZ$"/"US$"),
     /// for users who find the disambiguation prefix noisy (GH #83).
     /// Persisted to UserDefaults, defaults to off (standard symbols).

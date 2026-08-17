@@ -127,6 +127,18 @@ struct SettingsView: View {
         return "\(version) (\(build))"
     }
 
+    /// Routes the picker's selection through `setCurrencyCode`, which
+    /// persists the choice into the budget's own `preferences` table (not
+    /// just UserDefaults) so it survives a relaunch (GH #59).
+    private var currencyPickerBinding: Binding<String> {
+        Binding(
+            get: { budgetStore.currencyCode },
+            set: { newValue in
+                Task { await budgetStore.setCurrencyCode(newValue) }
+            }
+        )
+    }
+
     private var budgetPickerBinding: Binding<String?> {
         Binding(
             get: {
@@ -350,7 +362,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Currency", selection: $budgetStore.currencyCode) {
+                    Picker("Currency", selection: currencyPickerBinding) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
                         // plain numbers.
