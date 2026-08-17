@@ -171,6 +171,19 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// User-initiated currency changes (the Settings picker) go through
+    /// here, not a direct `currencyCode = ...` assignment: it also persists
+    /// the choice into the budget's own `preferences` table via sync, so it
+    /// survives a relaunch instead of being silently overwritten by whatever
+    /// value the DB load path finds there (GH #59). Every DB load already
+    /// assigns `currencyCode` directly (bypassing this method), which is
+    /// exactly what keeps this from looping back on itself.
+    func setCurrencyCode(_ code: String) async {
+        currencyCode = code
+        guard let syncClient else { return }
+        try? await syncClient.updateCurrencyCode(code)
+    }
+
     /// Show just the narrow currency symbol ("$" instead of "NZ$"/"US$"),
     /// for users who find the disambiguation prefix noisy (GH #83).
     /// Persisted to UserDefaults, defaults to off (standard symbols).
@@ -236,14 +249,6 @@ final class BudgetStore: ObservableObject {
     @Published var showOverspentBadge: Bool = true {
         didSet {
             UserDefaults.standard.set(showOverspentBadge, forKey: "showOverspentBadge")
-        }
-    }
-
-    /// Whether amount fields accept conventional decimal entry. Persisted to
-    /// UserDefaults and defaults to the established calculator-style entry.
-    @Published var conventionalAmountEntry: Bool = false {
-        didSet {
-            UserDefaults.standard.set(conventionalAmountEntry, forKey: "conventionalAmountEntry")
         }
     }
 
@@ -769,8 +774,6 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
-        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
-            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
@@ -1590,23 +1593,6 @@ final class BudgetStore: ObservableObject {
         let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
-    }
-    
-    /// Money in and out across every account for one "yyyy-MM" month, for the
-    /// accounts tab's summary group (GH #256). Nil when there's no budget open
-    /// or the query failed, so the card keeps its last figures rather than
-    /// flashing zeroes.
-    func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
-        do {
-            return try await database?.fetchAccountsMonthSummary(month: month)
-        } catch is CancellationError {
-            // The caller's task was cancelled (tab switch, a superseded
-            // refresh). Nothing failed — never alarm the user.
-            return nil
-        } catch {
-            self.error = error.localizedDescription
-            return nil
-        }
     }
 
     // MARK: - Transactions
