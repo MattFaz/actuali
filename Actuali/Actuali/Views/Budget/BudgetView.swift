@@ -20,7 +20,10 @@ private let monthTitleFormatter: DateFormatter = {
 /// like the PWA's table.
 enum BudgetColumn {
     static let width: CGFloat = 70
-    static let spacing: CGFloat = 6
+    // Tight: every point between the columns comes out of the category
+    // name, which wraps early on a phone ("Caravan Parks 🏕" drops its
+    // emoji to a second line).
+    static let spacing: CGFloat = 4
 
     /// Cell text for the budget table: a plain grouped number without the
     /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
@@ -196,7 +199,7 @@ struct BudgetView: View {
                                             reservesTwoLines: true
                                         )
                                         .listRowBackground(Color(.tertiarySystemFill))
-                                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
                                         if !isCollapsed {
                                             ForEach(group.categories) { category in
                                                 CategoryBudgetRow(
@@ -554,7 +557,7 @@ struct CategoryBudgetRow: View {
                 )
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
     }
 }
 
@@ -930,7 +933,7 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
