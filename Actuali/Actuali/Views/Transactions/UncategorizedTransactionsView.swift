@@ -3,7 +3,8 @@ import SwiftUI
 /// Every transaction still needing a category, for triage (GH #26). Mirrors
 /// the WebUI's "uncategorized" pseudo-account: on-budget accounts only, split
 /// children included, transfers excluded unless the other side is off-budget.
-/// Tapping a row opens a category picker; picking one saves immediately.
+/// Tapping a row opens a category picker; picking one saves immediately. The
+/// `uncategorizedTapAction` setting swaps that for the full editor (GH #260).
 struct UncategorizedTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
 
@@ -25,8 +26,12 @@ struct UncategorizedTransactionsView: View {
     @ViewBuilder
     private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
         Button {
-            pickedCategoryId = nil
-            categorizing = transaction
+            if budgetStore.uncategorizedTapAction.opensEditor(for: transaction) {
+                editingTransaction = transaction
+            } else {
+                pickedCategoryId = nil
+                categorizing = transaction
+            }
         } label: {
             // Split children keep an inert dot: their cleared state follows
             // the parent's.
