@@ -386,6 +386,8 @@ struct SettingsView: View {
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
 
+                    Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
+
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
                     // Meaningless against servers that predate payee
@@ -420,9 +422,9 @@ struct SettingsView: View {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
                 

@@ -7,9 +7,10 @@ name: Mark stale awaiting-response issues
 # awaiting-response workflow as soon as anyone comments again, which resets
 # the clock.
 
+# 2026-08-17: Disabling Workflow as it no longer relevant
 on:
   schedule:
-    - cron: '17 6 * * *'
+    - cron: "17 6 * * *"
   workflow_dispatch: {}
 
 permissions:

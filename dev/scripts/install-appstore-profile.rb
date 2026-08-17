@@ -3,27 +3,14 @@
 # installs it where xcodebuild looks up profiles for manually-signed exports.
 # Auth: ASC_KEY_ID, ASC_ISSUER_ID, ASC_KEY_PATH (path to the .p8); optional
 # PROFILE_NAME (defaults to "Actuali App Store").
-require "openssl"
 require "base64"
 require "json"
 require "net/http"
 require "fileutils"
+require_relative "asc_jwt"
 
-key_id = ENV.fetch("ASC_KEY_ID")
-issuer = ENV.fetch("ASC_ISSUER_ID")
-key_path = ENV.fetch("ASC_KEY_PATH")
 profile_name = ENV.fetch("PROFILE_NAME", "Actuali App Store")
-
-b64 = ->(s) { Base64.urlsafe_encode64(s).delete("=") }
-key = OpenSSL::PKey.read(File.read(File.expand_path(key_path)))
-now = Time.now.to_i
-header = b64.({ alg: "ES256", kid: key_id, typ: "JWT" }.to_json)
-payload = b64.({ iss: issuer, iat: now, exp: now + 600, aud: "appstoreconnect-v1" }.to_json)
-signing_input = "#{header}.#{payload}"
-der = key.sign(OpenSSL::Digest::SHA256.new, signing_input)
-# JWT ES256 wants the raw 64-byte r||s signature, not DER.
-r, s = OpenSSL::ASN1.decode(der).value.map { |i| i.value.to_s(2).rjust(32, "\x00")[-32..] }
-jwt = "#{signing_input}.#{b64.(r + s)}"
+jwt = asc_jwt
 
 uri = URI("https://api.appstoreconnect.apple.com/v1/profiles?" \
           "filter[profileType]=IOS_APP_STORE" \
