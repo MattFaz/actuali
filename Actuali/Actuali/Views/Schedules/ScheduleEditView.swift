@@ -82,9 +82,30 @@ struct ScheduleEditView: View {
 
     private var isEditing: Bool { editing != nil }
 
+    /// The rule carries a date condition we couldn't parse — `dateOp` is set
+    /// but `RecurConfig` rejected the value (a legacy string interval, an
+    /// out-of-range pattern, a bounded end mode with no bound).
+    ///
+    /// The form has nothing to show for it, so it falls back to a one-off
+    /// today; saving that would overwrite the stored recurrence and push the
+    /// loss to the server. Refuse instead. A schedule with NO date condition
+    /// (`dateOp == nil`) is the broken-rule repair case and still saves.
+    private var hasUnreadableDate: Bool {
+        editing?.dateCondition == .unsupported && editing?.dateOp != nil
+    }
+
     var body: some View {
         Form {
-            if editing?.isCustom == true {
+            if hasUnreadableDate {
+                Section {
+                    Label {
+                        Text("This schedule repeats on a pattern Actuali can't read, so it can't be edited here — saving would replace the pattern. Edit it in Actual instead.")
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle")
+                    }
+                    .font(.footnote)
+                }
+            } else if editing?.isCustom == true {
                 Section {
                     Label {
                         Text("This schedule has extra rule conditions set up in Actual. They're preserved when you save, but can't be edited here.")
@@ -168,7 +189,7 @@ struct ScheduleEditView: View {
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { Task { await save() } }
-                    .disabled(isSaving || accountId == nil)
+                    .disabled(isSaving || accountId == nil || hasUnreadableDate)
             }
         }
         .overlay {

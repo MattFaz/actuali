@@ -48,7 +48,10 @@ struct SchedulesListView: View {
                                     Label("Delete", systemImage: "trash")
                                 }
 
-                                if !schedule.completed {
+                                // Only a recurrence has a next occurrence to
+                                // skip to; skipScheduleNextDate throws on
+                                // anything else.
+                                if !schedule.completed, schedule.isRecurring {
                                     Button {
                                         run { try await budgetStore.skipScheduleNextDate(schedule) }
                                     } label: {
@@ -69,10 +72,12 @@ struct SchedulesListView: View {
                                     } label: {
                                         Label("Post Transaction Today", systemImage: "calendar.badge.plus")
                                     }
-                                    Button {
-                                        run { try await budgetStore.skipScheduleNextDate(schedule) }
-                                    } label: {
-                                        Label("Skip Next Date", systemImage: "forward.end")
+                                    if schedule.isRecurring {
+                                        Button {
+                                            run { try await budgetStore.skipScheduleNextDate(schedule) }
+                                        } label: {
+                                            Label("Skip Next Date", systemImage: "forward.end")
+                                        }
                                     }
                                 }
 
@@ -117,7 +122,8 @@ struct SchedulesListView: View {
                     }
                 } label: {
                     Label("Options", systemImage: "ellipsis.circle")
-                }            }
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isAddingSchedule = true

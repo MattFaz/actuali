@@ -190,6 +190,23 @@ enum ScheduleRecurrence {
         }
     }
 
+    /// Where a skip starts searching, port of loot-core `skipNextDate`'s
+    /// `start` callback plus its `skipRequested` weekend branch.
+    ///
+    /// The weekend special case is upstream's and is load-bearing. With
+    /// `weekendSolveMode: "before"`, an occurrence that lands on a weekend has
+    /// already been pulled back to the Friday, so searching from "Friday + 1"
+    /// finds the same occurrence again and the skip does nothing. Jumping to
+    /// the following Monday first steps clear of it.
+    static func skipSearchStart(from nextDate: DayDate, config: RecurConfig) -> DayDate {
+        var from = nextDate
+        if config.skipWeekend, config.weekendSolveMode == "before",
+           from.weekday == 6 || from.isWeekend {
+            from = nextMonday(from: from)
+        }
+        return from.adding(days: 1)
+    }
+
     static func nextMonday(from d: DayDate) -> DayDate {
         var x = d
         while x.weekday != 2 { x = x.adding(days: 1) }

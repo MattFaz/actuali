@@ -17,7 +17,12 @@ enum ScheduledAmount: Equatable {
     }
 }
 
-/// The rule's date condition: either a one-off day or a recurrence.
+/// The rule's date condition: a one-off day, a recurrence, or a shape the
+/// port can't advance. Upstream posting never consults this — getStatus works
+/// off the stored next_date, and only the ADVANCE needs the recurrence
+/// (setNextDate throws on shapes it can't handle and the schedule service
+/// swallows it) — so `.unsupported` posts the stored due occurrence once and
+/// never advances, exactly like `.fixed`.
 enum ScheduleDateCondition: Equatable {
     case fixed(DayDate)
     case recurring(RecurConfig)

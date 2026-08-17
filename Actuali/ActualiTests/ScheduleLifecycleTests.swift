@@ -13,14 +13,10 @@ struct ScheduleLifecycleTests {
         return RecurConfig(json: merged)!
     }
 
-    /// The date a skip should search from, mirroring `skipScheduleNextDate`.
+    /// The production rule `skipScheduleNextDate` searches from — not a copy
+    /// of it, so a change to the rule breaks these tests.
     private func searchStart(next: DayDate, config: RecurConfig) -> DayDate {
-        var from = next
-        if config.skipWeekend, config.weekendSolveMode == "before",
-           from.weekday == 6 || from.isWeekend {
-            from = ScheduleRecurrence.nextMonday(from: from)
-        }
-        return from.adding(days: 1)
+        ScheduleRecurrence.skipSearchStart(from: next, config: config)
     }
 
     @Test func ordinarySkipSearchesFromTheDayAfter() {

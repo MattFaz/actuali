@@ -671,25 +671,14 @@ actor SyncClient {
     /// Skip the current occurrence. Port of loot-core `skipNextDate`: search
     /// for the next occurrence starting the day AFTER the current one, and
     /// move only the local override.
-    ///
-    /// The weekend special case is upstream's and is load-bearing. With
-    /// `weekendSolveMode: "before"`, an occurrence that lands on a weekend has
-    /// already been pulled back to the Friday, so searching from "Friday + 1"
-    /// finds the same occurrence again and the skip does nothing. Jumping to
-    /// the following Monday first steps clear of it.
     func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
         guard let currentNextDate = schedule.nextDate,
               case .recurring(let config)? = schedule.dateCondition
         else { throw ScheduleWriteError.notRecurring }
 
-        var searchFrom = currentNextDate
-        if config.skipWeekend, config.weekendSolveMode == "before",
-           searchFrom.weekday == 6 || searchFrom.isWeekend {
-            searchFrom = ScheduleRecurrence.nextMonday(from: searchFrom)
-        }
-
         guard let next = ScheduleRecurrence.nextOccurrence(
-            config: config, onOrAfter: searchFrom.adding(days: 1)),
+            config: config,
+            onOrAfter: ScheduleRecurrence.skipSearchStart(from: currentNextDate, config: config)),
             next != currentNextDate
         else { return }
 
@@ -749,20 +738,6 @@ actor SyncClient {
         try await setScheduleNextDate(schedule, to: next, reset: true)
     }
 
-    /// Persist a manual ordering.
-    ///
-    /// Upstream inserts a fractional `sort_order` between neighbours; this
-    /// restamps the whole list instead. With schedules numbering in the tens
-    /// that is a handful of extra cells, and it avoids the precision drift a
-    /// repeatedly-halved fraction accumulates.
-    func reorderSchedules(_ ordered: [ScheduleSummary]) async throws {
-        for (index, schedule) in ordered.enumerated() {
-            try await updateScheduleColumns(
-                scheduleId: schedule.id,
-                fields: [("sort_order", Double((index + 1) * 1000))])
-        }
-    }
-    
     /// Apply one schedule write plan: local rows, CRDT messages, JSON-path
     /// cache, push.
     ///
@@ -875,28 +850,13 @@ actor SyncClient {
         try await commit(plan)
     }
 
-    /// Write plain columns on the schedule row (complete, restart, reorder).
+    /// Write plain columns on the schedule row (complete, restart).
     func updateScheduleColumns(
         scheduleId: String,
         fields: [(column: String, value: Any?)]
     ) async throws {
         try await commit(ScheduleWriteBuilder.scheduleColumnsPlan(
             scheduleId: scheduleId, fields: fields))
-    }
-    
-    /// Write a synced preference. `preferences` is keyed by `id` with a
-    /// `value` column, so it fits the standard CRDT upsert.
-    func setPreference(id: String, value: String) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        let messages = try await messageGenerator.messages(
-            dataset: "preferences", row: id, fields: [("value", value)])
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-        scheduleAutomaticSync()
     }
 
     /// Millisecond epoch, the unit `schedules_next_date` timestamps use.

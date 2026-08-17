@@ -78,9 +78,8 @@ struct DiscoverSchedulesView: View {
         isCreating = true
         defer { isCreating = false }
         do {
-            for proposal in proposals where selected.contains(proposal.id) {
-                try await budgetStore.createSchedule(fields: proposal.formFields)
-            }
+            try await budgetStore.createSchedules(
+                proposals.filter { selected.contains($0.id) }.map(\.formFields))
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

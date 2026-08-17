@@ -1362,6 +1362,9 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+            // Re-read here as well as on load: a sync can bring in a changed
+            // upcoming window, and the status badges below are computed from it.
+            let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -1373,6 +1376,7 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            upcomingScheduledTransactionLength = fetchedUpcomingLength
             dataVersion += 1
 
             await loadSchedules()
@@ -3023,10 +3027,29 @@ final class BudgetStore: ObservableObject {
     
     @discardableResult
     func createSchedule(fields: ScheduleFormFields) async throws -> String {
+        try await createSchedules([fields])[0]
+    }
+
+    /// Create one or more schedules, refreshing once at the end. "Find
+    /// schedules" creates a whole selection at a time, and a full refresh per
+    /// schedule re-reads every account, transaction and payee for nothing.
+    @discardableResult
+    func createSchedules(_ fields: [ScheduleFormFields]) async throws -> [String] {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        let id = try await syncClient.createSchedule(fields: fields)
+
+        var ids: [String] = []
+        do {
+            for field in fields {
+                ids.append(try await syncClient.createSchedule(fields: field))
+            }
+        } catch {
+            // Whatever got through is already on the server; show it before
+            // surfacing the failure.
+            await refreshDataOnly()
+            throw error
+        }
         await refreshDataOnly()
-        return id
+        return ids
     }
 
     func updateSchedule(
@@ -3088,21 +3111,28 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
     
-    /// Scan transaction history for repeating payments. Runs off the main
-    /// actor — the sweep is CPU-bound and would otherwise stutter the UI.
+    /// Scan transaction history for repeating payments.
     func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
         guard let database else { return [] }
-        let accounts = self.accounts
-        return await Task.detached(priority: .userInitiated) {
-            (try? ScheduleDiscovery.discover(
-                accounts: accounts,
-                loadCandidates: { accountId, notBefore in
-                    try database.fetchDiscoveryTransactions(
-                        accountId: accountId, notBefore: notBefore)
-                },
-                latestDate: { try database.latestTransactionDate(accountId: $0) }))
-                ?? []
-        }.value
+        return await Self.runDiscovery(accounts: accounts, database: database)
+    }
+
+    /// The sweep is CPU-bound and would stutter the UI on the main actor.
+    /// `nonisolated async` runs it on the generic executor without an ad-hoc
+    /// detached-task hop; `BudgetDatabase` serialises its own reads through
+    /// GRDB's queue, so calling it from here is safe.
+    nonisolated private static func runDiscovery(
+        accounts: [Account],
+        database: BudgetDatabase
+    ) async -> [ScheduleDiscovery.Proposal] {
+        (try? ScheduleDiscovery.discover(
+            accounts: accounts,
+            loadCandidates: { accountId, notBefore in
+                try database.fetchDiscoveryTransactions(
+                    accountId: accountId, notBefore: notBefore)
+            },
+            latestDate: { try database.latestTransactionDate(accountId: $0) }))
+            ?? []
     }
 
     // MARK: - Budget

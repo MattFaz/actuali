@@ -197,6 +197,39 @@ struct ScheduleListFetchTests {
         #expect(schedule.postAmount == -1100)
     }
 
+    /// The editor tells "we couldn't read this recurrence" apart from "there is
+    /// no date condition" by `dateOp`, and refuses to save the former — saving
+    /// would replace the stored pattern with a one-off. Both read as
+    /// `.unsupported`, so the distinction has to survive the fetch.
+    @Test func anUnreadableRecurrenceKeepsItsDateOp() async throws {
+        let (database, url) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: url) }
+        // A legacy config with a string interval: RecurConfig rejects it.
+        try insertSchedule(database, id: "sched-1", conditions: """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"isapprox","field":"date","value":
+               {"frequency":"monthly","start":"2026-01-15","interval":"2"}},
+             {"op":"is","field":"amount","value":-500}]
+            """)
+
+        let schedule = try #require(try await database.fetchSchedules().first)
+        #expect(schedule.dateCondition == .unsupported)
+        #expect(schedule.dateOp == "isapprox")
+    }
+
+    @Test func aMissingDateConditionHasNoDateOp() async throws {
+        let (database, url) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try insertSchedule(database, id: "sched-1", conditions: """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"is","field":"amount","value":-500}]
+            """)
+
+        let schedule = try #require(try await database.fetchSchedules().first)
+        #expect(schedule.dateCondition == .unsupported)
+        #expect(schedule.dateOp == nil)
+    }
+
     @Test func extraConditionsMarkTheScheduleCustom() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
