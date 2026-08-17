@@ -529,6 +529,7 @@ actor SyncClient {
         // 4. Push to the server in the background
         scheduleAutomaticSync()
     }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the

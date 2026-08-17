@@ -184,7 +184,11 @@ final class BudgetStore: ObservableObject {
     func setCurrencyCode(_ code: String) async {
         currencyCode = code
         guard let syncClient else { return }
-        try? await syncClient.updateCurrencyCode(code)
+        do {
+            try await syncClient.updateCurrencyCode(code)
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     /// Show just the narrow currency symbol ("$" instead of "NZ$"/"US$"),
@@ -260,6 +264,14 @@ final class BudgetStore: ObservableObject {
     @Published var showOverspentBadge: Bool = true {
         didSet {
             UserDefaults.standard.set(showOverspentBadge, forKey: "showOverspentBadge")
+        }
+    }
+
+    /// Whether amount fields accept conventional decimal entry. Persisted to
+    /// UserDefaults and defaults to the established calculator-style entry.
+    @Published var conventionalAmountEntry: Bool = false {
+        didSet {
+            UserDefaults.standard.set(conventionalAmountEntry, forKey: "conventionalAmountEntry")
         }
     }
 
@@ -786,6 +798,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
+        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
+            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
@@ -1615,6 +1629,23 @@ final class BudgetStore: ObservableObject {
         let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
+    }
+    
+    /// Money in and out across every account for one "yyyy-MM" month, for the
+    /// accounts tab's summary group (GH #256). Nil when there's no budget open
+    /// or the query failed, so the card keeps its last figures rather than
+    /// flashing zeroes.
+    func fetchAccountsMonthSummary(month: String) async -> BudgetDatabase.AccountsMonthSummary? {
+        do {
+            return try await database?.fetchAccountsMonthSummary(month: month)
+        } catch is CancellationError {
+            // The caller's task was cancelled (tab switch, a superseded
+            // refresh). Nothing failed — never alarm the user.
+            return nil
+        } catch {
+            self.error = error.localizedDescription
+            return nil
+        }
     }
 
     // MARK: - Transactions
