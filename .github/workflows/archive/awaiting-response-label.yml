@@ -12,6 +12,7 @@ name: Manage awaiting-response label
 #
 # Labels are created automatically on first use — no setup required.
 
+# 2026-08-17: Disabling Workflow as it no longer relevant
 on:
   issue_comment:
     types: [created]

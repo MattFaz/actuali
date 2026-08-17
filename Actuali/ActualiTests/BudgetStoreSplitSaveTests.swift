@@ -173,6 +173,29 @@ struct BudgetStoreSplitSaveTests {
         #expect(messageRows == 3)
     }
 
+    @Test func savingAMixedDirectionSplitPersistsSignedChildren() async throws {
+        // A refund/credit line inside a spend split (GH #216): the flipped
+        // line lands positive while the rest stay negative, netting the
+        // parent's total.
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.saveTransaction(form(
+            type: .expense, amount: "20.00", payeeName: "Hardware Store",
+            splits: [
+                .init(categoryId: "cat-home", amount: "30.00"),
+                .init(categoryId: "cat-home", amount: "10.00", isOpposite: true)
+            ]
+        ))
+
+        let all = try rows(path: path)
+        #expect(all.count == 3)
+        #expect(all[0]["amount"] == -2000)  // parent
+        #expect(all[1]["amount"] == -3000)  // spend line
+        #expect(all[2]["amount"] == 1000)   // refund line
+    }
+
     @Test func splitLinePayeeOverrideCreatesDistinctChildPayee() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

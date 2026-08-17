@@ -62,59 +62,45 @@ struct TransactionsListView: View {
                 }
             } else if let pager {
                 List {
-                    ForEach(pager.transactions) { transaction in
-                        Button {
-                            if isSelecting {
-                                toggleSelection(for: transaction.id)
-                            } else {
-                                editingTransaction = transaction
+                    if budgetStore.transactionDisplayMode == .groupedByDate {
+                        let groups = pager.transactions.groupedByDate()
+                        ForEach(groups) { group in
+                            Section(group.title) {
+                                ForEach(group.transactions) { transaction in
+                                    TransactionListRow(
+                                        transaction: transaction,
+                                        showDate: false,
+                                        isSelectionMode: isSelecting,
+                                        isSelected: selectedTransactionIds.contains(transaction.id),
+                                        editing: $editingTransaction,
+                                        onToggleSelect: {
+                                            toggleSelection(for: transaction.id)
+                                        }
+                                    )
+                                }
+                                // The sentinel rides in the last date section
+                                // so grouped mode doesn't grow a headerless
+                                // section (and its gap) of its own.
+                                if pager.hasMore, group.id == groups.last?.id {
+                                    TransactionPagingSentinel(pager: pager)
+                                }
                             }
-                        } label: {
-                            TransactionRow(
+                        }
+                    } else {
+                        ForEach(pager.transactions) { transaction in
+                            TransactionListRow(
                                 transaction: transaction,
                                 isSelectionMode: isSelecting,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
-                                onToggleCleared: {
-                                    Task { await budgetStore.toggleCleared(transaction) }
-                                },
+                                editing: $editingTransaction,
                                 onToggleSelect: {
                                     toggleSelection(for: transaction.id)
                                 }
                             )
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            if !isSelecting {
-                                Button(role: .destructive) {
-                                    Task { await budgetStore.deleteTransaction(transaction) }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
-                                }
-                                Button {
-                                    Task { await budgetStore.duplicateTransaction(transaction) }
-                                } label: {
-                                    Label("Duplicate", systemImage: "plus.square.on.square")
-                                }
-                                .tint(.blue)
-                                Button {
-                                    editingTransaction = transaction
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.yellow)
-                            }
+                        if pager.hasMore {
+                            TransactionPagingSentinel(pager: pager)
                         }
-                    }
-                    if pager.hasMore {
-                        // Sentinel row: appearing near the bottom of the list
-                        // pulls in the next page.
-                        HStack {
-                            Spacer()
-                            ProgressView()
-                            Spacer()
-                        }
-                        .task { await pager.loadNextPage() }
                     }
                 }
             }
@@ -133,6 +119,9 @@ struct TransactionsListView: View {
                         }
                     }
                 }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
@@ -212,10 +201,102 @@ struct TransactionsListView: View {
     }
 }
 
+/// Tappable `TransactionRow` with the standard edit/delete swipe actions,
+/// shared by the all-accounts and account-detail lists. The category and
+/// uncategorized lists build their own rows: they suppress tap and swipe on
+/// split children and reload after every mutation.
+struct TransactionListRow: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    let transaction: Transaction
+    var showAccount: Bool = true
+    var showDate: Bool = true
+    var isSelectionMode: Bool = false
+    var isSelected: Bool = false
+    @Binding var editing: Transaction?
+    var onToggleSelect: (() -> Void)? = nil
+
+    var body: some View {
+        Button {
+            if isSelectionMode {
+                onToggleSelect?()
+            } else {
+                editing = transaction
+            }
+        } label: {
+            TransactionRow(
+                transaction: transaction,
+                showAccount: showAccount,
+                showDate: showDate,
+                isSelectionMode: isSelectionMode,
+                isSelected: isSelected,
+                onToggleCleared: {
+                    Task { await budgetStore.toggleCleared(transaction) }
+                },
+                onToggleSelect: onToggleSelect
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if !isSelectionMode {
+                Button(role: .destructive) {
+                    Task { await budgetStore.deleteTransaction(transaction) }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                Button {
+                    Task { await budgetStore.duplicateTransaction(transaction) }
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                .tint(.blue)
+                Button {
+                    editing = transaction
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.yellow)
+            }
+        }
+    }
+}
+
+/// Sentinel row: appearing near the bottom of the list pulls in the next page.
+struct TransactionPagingSentinel: View {
+    let pager: TransactionPager
+
+    var body: some View {
+        HStack {
+            Spacer()
+            ProgressView()
+            Spacer()
+        }
+        .task { await pager.loadNextPage() }
+    }
+}
+
+/// Flat-vs-grouped switch for the transaction list toolbars.
+///
+/// A Toggle rather than the Picker Settings uses: `.secondaryAction` silently
+/// drops a Picker when it collapses into the `…` menu (inline or not), while a
+/// Toggle renders — same as the "Hide Cleared Transactions" switch beside it.
+/// The mode only has two cases, so nothing is lost.
+struct TransactionGroupingToggle: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    var body: some View {
+        Toggle("Group by Date", isOn: Binding(
+            get: { budgetStore.transactionDisplayMode == .groupedByDate },
+            set: { budgetStore.transactionDisplayMode = $0 ? .groupedByDate : .flat }
+        ))
+    }
+}
+
 struct TransactionRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let transaction: Transaction
     var showAccount: Bool = true
+    var showDate: Bool = true
     var isSelectionMode: Bool = false
     var isSelected: Bool = false
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
@@ -240,9 +321,10 @@ struct TransactionRow: View {
 
     /// Caption under the payee. Off-budget accounts aren't categorized at all
     /// ("Off budget", GH #123); split parents show their children's breakdown
-    /// ("Food $6.00, Fun $4.00" — amounts unsigned because the row's total
-    /// already carries the sign); transfers that can't take a category show
-    /// "Transfer" instead of nagging "Uncategorized" (GH #104).
+    /// ("Food $6.00, Refund +$4.00" — outflows unsigned, inflows keep a "+"
+    /// so a credit line inside a spend split stays distinguishable, GH #216);
+    /// transfers that can't take a category show "Transfer" instead of
+    /// nagging "Uncategorized" (GH #104).
     private var categoryLabel: String {
         if isInOffBudgetAccount {
             return "Off budget"
@@ -250,7 +332,7 @@ struct TransactionRow: View {
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
                 let name = portion.categoryName ?? "Uncategorized"
-                return "\(name) \(budgetStore.displayBalance(abs(portion.amount)))"
+                return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
             }.joined(separator: ", ")
         }
         if transaction.categoryName == nil, isTransfer,
@@ -341,9 +423,11 @@ struct TransactionRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
-                Text(transaction.dateFormatted)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                if showDate {
+                    Text(transaction.dateFormatted)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 2)

@@ -3,7 +3,8 @@ import SwiftUI
 /// Every transaction still needing a category, for triage (GH #26). Mirrors
 /// the WebUI's "uncategorized" pseudo-account: on-budget accounts only, split
 /// children included, transfers excluded unless the other side is off-budget.
-/// Tapping a row opens a category picker; picking one saves immediately.
+/// Tapping a row opens a category picker; picking one saves immediately. The
+/// `uncategorizedTapAction` setting swaps that for the full editor (GH #260).
 struct UncategorizedTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
 
@@ -22,6 +23,54 @@ struct UncategorizedTransactionsView: View {
         return transactions.filter { matcher.matches($0) }
     }
 
+    @ViewBuilder
+    private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
+        Button {
+            if budgetStore.uncategorizedTapAction.opensEditor(for: transaction) {
+                editingTransaction = transaction
+            } else {
+                pickedCategoryId = nil
+                categorizing = transaction
+            }
+        } label: {
+            // Split children keep an inert dot: their cleared state follows
+            // the parent's.
+            TransactionRow(
+                transaction: transaction,
+                showDate: showDate,
+                onToggleCleared: transaction.parentId == nil ? {
+                    Task {
+                        await budgetStore.toggleCleared(transaction)
+                        await reload()
+                    }
+                } : nil
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            // Split children only get the categorize tap: the edit form has no
+            // split support, and deleting one leg would break the parent's
+            // amount.
+            if transaction.parentId == nil {
+                Button(role: .destructive) {
+                    Task {
+                        await budgetStore.deleteTransaction(transaction)
+                        await reload()
+                    }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                Button {
+                    editingTransaction = transaction
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.yellow)
+            }
+        }
+    }
+
     var body: some View {
         Group {
             if transactions.isEmpty && loaded {
@@ -36,45 +85,17 @@ struct UncategorizedTransactionsView: View {
                         Text("No matching transactions")
                             .foregroundStyle(.secondary)
                     }
-                    ForEach(filteredTransactions) { transaction in
-                        Button {
-                            pickedCategoryId = nil
-                            categorizing = transaction
-                        } label: {
-                            // Split children keep an inert dot: their cleared
-                            // state follows the parent's.
-                            TransactionRow(
-                                transaction: transaction,
-                                onToggleCleared: transaction.parentId == nil ? {
-                                    Task {
-                                        await budgetStore.toggleCleared(transaction)
-                                        await reload()
-                                    }
-                                } : nil
-                            )
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            // Split children only get the categorize tap: the
-                            // edit form has no split support, and deleting one
-                            // leg would break the parent's amount.
-                            if transaction.parentId == nil {
-                                Button(role: .destructive) {
-                                    Task {
-                                        await budgetStore.deleteTransaction(transaction)
-                                        await reload()
-                                    }
-                                } label: {
-                                    Label("Delete", systemImage: "trash")
+                    if budgetStore.transactionDisplayMode == .groupedByDate {
+                        ForEach(filteredTransactions.groupedByDate()) { group in
+                            Section(group.title) {
+                                ForEach(group.transactions) { transaction in
+                                    transactionRow(transaction, showDate: false)
                                 }
-                                Button {
-                                    editingTransaction = transaction
-                                } label: {
-                                    Label("Edit", systemImage: "pencil")
-                                }
-                                .tint(.yellow)
                             }
+                        }
+                    } else {
+                        ForEach(filteredTransactions) { transaction in
+                            transactionRow(transaction, showDate: true)
                         }
                     }
                 }

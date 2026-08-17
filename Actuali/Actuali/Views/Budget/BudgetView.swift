@@ -20,7 +20,10 @@ private let monthTitleFormatter: DateFormatter = {
 /// like the PWA's table.
 enum BudgetColumn {
     static let width: CGFloat = 70
-    static let spacing: CGFloat = 6
+    // Tight: every point between the columns comes out of the category
+    // name, which wraps early on a phone ("Caravan Parks 🏕" drops its
+    // emoji to a second line).
+    static let spacing: CGFloat = 4
 
     /// Cell text for the budget table: a plain grouped number without the
     /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
@@ -192,10 +195,11 @@ struct BudgetView: View {
                                             name: group.name,
                                             isCollapsed: isCollapsed,
                                             totals: budgetStore.showGroupTotals ? group.totals : nil,
-                                            onToggleCollapse: { toggleCollapsed(group.id) }
+                                            onToggleCollapse: { toggleCollapsed(group.id) },
+                                            reservesTwoLines: true
                                         )
                                         .listRowBackground(Color(.tertiarySystemFill))
-                                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
                                         if !isCollapsed {
                                             ForEach(group.categories) { category in
                                                 CategoryBudgetRow(
@@ -254,6 +258,24 @@ struct BudgetView: View {
                         // 44 pt minimum; tap targets stay fine because the whole
                         // row is the button.
                         .environment(\.defaultMinListRowHeight, 32)
+                        // Rows leaving the table used to be chopped off flat
+                        // against the gutter under the summary, a hard grey
+                        // line across mid-row. Fade them into it instead. The
+                        // List's top content margin above is deeper than this
+                        // fade, so at rest it covers empty background and
+                        // nothing on screen looks washed out.
+                        .overlay(alignment: .top) {
+                            LinearGradient(
+                                colors: [
+                                    Color(.systemGroupedBackground),
+                                    Color(.systemGroupedBackground).opacity(0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 12)
+                            .allowsHitTesting(false)
+                        }
                         .gesture(
                             DragGesture(minimumDistance: 30)
                                 .onEnded { value in
@@ -292,26 +314,39 @@ struct BudgetView: View {
                 }
             }
             .navigationTitle("Budget")
+            // The summary bar is pinned outside the List (GH #155), so it
+            // can't move with an overscroll the way list content does. A
+            // large title stretches on that overscroll and draws straight
+            // over the card, and collapses on scroll-up, jolting it (GH
+            // #253). Inline keeps the bar a fixed height; the month stepper
+            // below already occupies the centre, and the tab bar says
+            // "Budget" anyway.
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
-                    } label: {
-                        Image(systemName: "chevron.left")
-                    }
-                    .accessibilityLabel("Previous month")
-                }
+                // Both arrows flank the month in the center, so nothing sits in
+                // the leading "back button" position where the previous-month
+                // chevron used to be mistaken for one (it steps the month, not
+                // the navigation stack).
                 ToolbarItem(placement: .principal) {
-                    MonthPicker(selectedMonth: $selectedMonth)
-                }
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    Button {
-                        selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
-                    } label: {
-                        Image(systemName: "chevron.right")
-                    }
-                    .accessibilityLabel("Next month")
+                    HStack(spacing: 8) {
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel("Previous month")
 
+                        MonthPicker(selectedMonth: $selectedMonth)
+
+                        Button {
+                            selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .accessibilityLabel("Next month")
+                    }
+                }
+                ToolbarItem(placement: .topBarTrailing) {
                     // Every "how should this look" control lives here (GH
                     // #157). Whole-table expand/collapse is a menu rather
                     // than a long-press on the group headers: SwiftUI context
@@ -426,6 +461,31 @@ struct BudgetView: View {
     }
 }
 
+/// A name that always occupies two lines' height, so short and wrapping
+/// names produce equal-height rows and the amount columns line up (GH
+/// #252). A hidden copy reserves the space and the visible copy centers
+/// within it — `reservesSpace` alone pins the text to the top.
+private struct TwoLineName: View {
+    let text: String
+    let font: Font
+    var minimumScaleFactor: CGFloat = 1
+
+    var body: some View {
+        ZStack {
+            Text(text)
+                .font(font)
+                .lineLimit(2, reservesSpace: true)
+                .minimumScaleFactor(minimumScaleFactor)
+                .hidden()
+
+            Text(text)
+                .font(font)
+                .lineLimit(2)
+                .minimumScaleFactor(minimumScaleFactor)
+        }
+    }
+}
+
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
@@ -445,10 +505,11 @@ struct CategoryBudgetRow: View {
                 Button {
                     onShowTransactions(category, nil)
                 } label: {
-                    Text(category.categoryName)
-                        .font(.subheadline)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
+                    TwoLineName(
+                        text: category.categoryName,
+                        font: .subheadline,
+                        minimumScaleFactor: 0.85
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(category.categoryName)")
@@ -496,7 +557,7 @@ struct CategoryBudgetRow: View {
                 )
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
     }
 }
 
@@ -585,6 +646,24 @@ struct CleanCategoryBudgetRow: View {
     }
 }
 
+/// Whether `month` ("YYYY-MM") is before the current calendar month. The
+/// strings are zero-padded, so a plain lexicographic compare is exact.
+private func isPastMonth(_ month: String) -> Bool {
+    month < BudgetView.currentMonthString()
+}
+
+/// The tracking-budget result figure for the summary bar: actual savings once
+/// a month is finished, projected savings while it's still current or ahead.
+/// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
+/// the month rolls over.
+private func trackingSavings(_ budget: BudgetMonth) -> Int {
+    isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
+}
+
+private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
+    isPastMonth(budget.month) ? "Saved" : "Projected"
+}
+
 /// Clean-style summary card: a 2x2 grid whose reading order follows the
 /// money — came in, allocated, went out, left over. Two rows because four
 /// currency amounts don't fit across narrow devices.
@@ -609,12 +688,12 @@ struct CleanBudgetSummary: View {
             HStack(alignment: .top) {
                 SummaryStat(
                     label: "Spent",
-                    value: budgetStore.displayBalance(abs(budget.totalOutflow))
+                    value: budgetStore.displayBalance(-budget.totalSpent)
                 )
                 Spacer()
                 // Envelope budgets lead with unallocated funds; tracking
-                // budgets have no to-budget concept, so fall back to the
-                // total of category balances.
+                // budgets report savings instead — actual for a finished month,
+                // projected for the current/future month.
                 if let toBudget = budget.toBudget {
                     SummaryStat(
                         label: "To Budget",
@@ -623,10 +702,11 @@ struct CleanBudgetSummary: View {
                         alignment: .trailing
                     )
                 } else {
+                    let value = trackingSavings(budget)
                     SummaryStat(
-                        label: "Available",
-                        value: budgetStore.displayBalance(budget.totalAvailable),
-                        valueColor: budget.totalAvailable >= 0 ? .green : .red,
+                        label: trackingSavingsLabel(budget),
+                        value: budgetStore.displayBalance(value),
+                        valueColor: value >= 0 ? .green : .red,
                         alignment: .trailing
                     )
                 }
@@ -666,13 +746,25 @@ struct TableBudgetSummary: View {
             )
             SummaryColumn(
                 label: "Spent",
-                value: budgetStore.displayBudgetCell(budget.totalOutflow)
+                value: budgetStore.displayBudgetCell(budget.totalSpent)
             )
-            SummaryColumn(
-                label: "Balance",
-                value: budgetStore.displayBudgetCell(budget.totalAvailable),
-                valueColor: budget.totalAvailable >= 0 ? .green : .red
-            )
+            // Envelope budgets total the category balances; tracking budgets
+            // report savings instead — actual for a finished month, projected
+            // for the current/future month.
+            if budget.toBudget != nil {
+                SummaryColumn(
+                    label: "Balance",
+                    value: budgetStore.displayBudgetCell(budget.totalAvailable),
+                    valueColor: budget.totalAvailable >= 0 ? .green : .red
+                )
+            } else {
+                let value = trackingSavings(budget)
+                SummaryColumn(
+                    label: trackingSavingsLabel(budget),
+                    value: budgetStore.displayBudgetCell(value),
+                    valueColor: value >= 0 ? .green : .red
+                )
+            }
         }
     }
 }
@@ -760,6 +852,10 @@ struct BudgetGroupHeader: View {
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
     let onToggleCollapse: () -> Void
+    /// The detailed style reserves two lines so group rows stay equal-height
+    /// whether names wrap or not (GH #252); the clean style's plain section
+    /// titles keep their natural height.
+    var reservesTwoLines = false
 
     var body: some View {
         Button(action: onToggleCollapse) {
@@ -767,11 +863,20 @@ struct BudgetGroupHeader: View {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(name)
-                    .font(.subheadline.weight(.semibold))
+                if reservesTwoLines {
+                    TwoLineName(
+                        text: name,
+                        font: .subheadline.weight(.semibold),
+                        minimumScaleFactor: 0.85
+                    )
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                } else {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                }
                 Spacer(minLength: 4)
                 if let totals {
                     BudgetAmountPill(
@@ -817,8 +922,7 @@ struct IncomeCategoryRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(income.categoryName)
-                    .font(.body)
+                TwoLineName(text: income.categoryName, font: .body)
                 Spacer()
                 Text(budgetStore.displayBalance(income.received))
                     .foregroundColor(income.received > 0 ? .green : .secondary)
@@ -829,7 +933,7 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -878,7 +982,12 @@ struct EditBudgetAmountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    AmountInputField(text: $amountText, autofocus: true)
+                    AmountInputField(
+                        text: $amountText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                        allowsNegative: true,
+                        autofocus: true
+                    )
                 } header: {
                     Text("Budgeted in \(MonthPicker.title(for: category.month))")
                 } footer: {
@@ -911,7 +1020,8 @@ struct EditBudgetAmountSheet: View {
             do {
                 // An emptied field means "no longer budgeted", i.e. zero.
                 let cents = try BudgetStore.budgetAmountCents(
-                    from: amountText.isEmpty ? "0" : amountText
+                    from: amountText.isEmpty ? "0" : amountText,
+                    allowNegative: true
                 )
                 try await budgetStore.setBudgetAmount(
                     month: category.month,

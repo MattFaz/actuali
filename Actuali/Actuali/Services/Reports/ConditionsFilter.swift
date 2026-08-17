@@ -7,6 +7,8 @@ enum ConditionsFilter {
     struct Context {
         var offBudgetAccountIds: Set<String> = []
         var accountNames: [String: String] = [:]  // account id -> name
+        var categoryGroupIds: [String: String] = [:]  // category id -> group id
+        var categoryGroupNames: [String: String] = [:]  // group id -> name
 
         static let empty = Context()
     }
@@ -45,7 +47,7 @@ enum ConditionsFilter {
 
     private static func fieldType(_ field: String) -> FieldType? {
         switch field {
-        case "category", "account", "payee", "description": return .id
+        case "category", "category_group", "account", "payee", "description": return .id
         case "notes", "imported_payee": return .string
         case "amount", "amount-inflow", "amount-outflow": return .number
         case "date": return .date
@@ -137,26 +139,10 @@ enum ConditionsFilter {
     /// Transactions store dates as YYYYMMDD ints. Recurring-date conditions
     /// (objects with a frequency) are not supported and pass through.
     private static func matchDate(_ tx: Transaction, _ c: WidgetRuleCondition) -> Bool {
-        guard let s = decodeString(c.value) else { return true }
-        let digits = s.replacingOccurrences(of: "-", with: "")
-        guard let value = Int(digits) else { return true }
-
-        switch (c.op, digits.count) {
-        case ("is", 8): return tx.date == value
-        case ("is", 6): return tx.date / 100 == value      // month
-        case ("is", 4): return tx.date / 10000 == value    // year
-        case ("isapprox", 8):
-            guard let target = ymdToDate(value), let txDate = ymdToDate(tx.date) else { return false }
-            return abs(txDate.timeIntervalSince(target)) <= 2 * 86_400 + 1
-        case ("gt", 8): return tx.date > value
-        case ("gte", 8): return tx.date >= value
-        case ("lt", 8): return tx.date < value
-        case ("lte", 8): return tx.date <= value
-        default:
-            // Upstream rejects month/year values for comparison ops at parse
-            // time, dropping the condition entirely.
-            return true
-        }
+        guard let value = decodeString(c.value) else { return true }
+        // An unevaluable date condition is a dropped condition here, matching
+        // upstream's filter builder — the report shows everything else.
+        return RuleDateMatcher.matches(transactionDate: tx.date, op: c.op, value: value) ?? true
     }
 
     // MARK: - Id conditions (category / account / payee)
@@ -165,6 +151,8 @@ enum ConditionsFilter {
         let txId: String?
         switch c.field {
         case "category": txId = tx.categoryId
+        // Upstream rewrites category_group to category.group (transaction-rules.ts).
+        case "category_group": txId = tx.categoryId.flatMap { context.categoryGroupIds[$0] }
         case "account": txId = tx.accountId
         default: txId = tx.payeeId  // "payee" / legacy "description"
         }
@@ -204,6 +192,7 @@ enum ConditionsFilter {
             let name: String?
             switch c.field {
             case "category": name = tx.categoryName
+            case "category_group": name = txId.flatMap { context.categoryGroupNames[$0] }
             case "account": name = context.accountNames[tx.accountId]
             default: name = tx.payeeName
             }
@@ -319,11 +308,5 @@ enum ConditionsFilter {
             return AmountOptions(inflow: nil, outflow: nil)
         }
         return opts
-    }
-
-    private static func ymdToDate(_ ymd: Int) -> Date? {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal.date(from: DateComponents(year: ymd / 10000, month: (ymd % 10000) / 100, day: ymd % 100))
     }
 }

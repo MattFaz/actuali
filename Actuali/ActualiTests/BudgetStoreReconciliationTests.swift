@@ -349,7 +349,7 @@ struct BudgetStoreReconciliationTests {
         #expect(try await database.clearedBalance(accountId: "acct-1") == -10000)
 
         let queue = try DatabaseQueue(path: url.path)
-        let adjustment = try #require(try queue.read { db in
+        let adjustment = try await #require(try queue.read { db in
             try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM transactions WHERE notes = ?",

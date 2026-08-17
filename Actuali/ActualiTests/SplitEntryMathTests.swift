@@ -27,6 +27,13 @@ struct SplitEntryMathTests {
         #expect(SplitEntryMath.remainingCents(total: "100", lineAmounts: ["1.2.3"]) == nil)
     }
 
+    @Test func negativeLinesGiveBackTheirAmount() {
+        // A flipped (refund) line inside an expense split enlarges the
+        // remainder instead of consuming it — the view maps `isOpposite`
+        // lines to negative strings before calling this (GH #216).
+        #expect(SplitEntryMath.remainingCents(total: "20", lineAmounts: ["30", "-10"]) == 0)
+    }
+
     @Test func amountStringMatchesFieldFormat() {
         #expect(SplitEntryMath.amountString(fromCents: 4950) == "49.50")
         #expect(SplitEntryMath.amountString(fromCents: 5) == "0.05")

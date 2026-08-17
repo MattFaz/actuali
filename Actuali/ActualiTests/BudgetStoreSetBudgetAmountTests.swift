@@ -121,6 +121,10 @@ struct BudgetStoreSetBudgetAmountTests {
         }
     }
 
+    @Test func parsesNegativeAmountWhenAllowed() throws {
+        #expect(try BudgetStore.budgetAmountCents(from: "-100", allowNegative: true) == -10000)
+    }
+
     // MARK: - End-to-end save
 
     @Test func settingBudgetPersistsAndRefreshesMonth() async throws {
@@ -144,6 +148,24 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(month.month == "2026-07")
         let groceries = try #require(month.categoryBudgets.first { $0.categoryId == "cat-groceries" })
         #expect(groceries.budgeted == 2550)
+    }
+
+    @Test func settingNegativeBudgetPersists() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: -10000)
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amount = try await queue.read { db in
+            try Int.fetchOne(db, sql: "SELECT amount FROM zero_budgets WHERE id = '202607-cat-groceries'")
+        }
+        #expect(amount == -10000)
+
+        let month = try #require(store.currentBudgetMonth)
+        let groceries = try #require(month.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(groceries.budgeted == -10000)
     }
 
     @Test func withoutSyncClientThrowsSyncNotConfigured() async throws {

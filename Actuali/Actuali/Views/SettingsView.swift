@@ -13,7 +13,7 @@ struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     /// Every currency in Actual's loot-core currencies list, plus a few
-    /// user-requested extras Actual lacks (AMD, NOK, NZD, ZAR). Sorted by
+    /// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
     /// code. Display-only — all budget math is currency-agnostic integer
     /// cents, and rendering uses the system formatter for the ISO code.
     private static let currencyOptions: [(symbol: String, code: String)] = [
@@ -21,6 +21,7 @@ struct SettingsView: View {
         ("֏", "AMD"),
         ("Arg$", "ARS"),
         ("A$", "AUD"),
+        ("৳", "BDT"),
         ("R$", "BRL"),
         ("Br", "BYN"),
         ("C$", "CAD"),
@@ -80,6 +81,7 @@ struct SettingsView: View {
     @State private var notificationPermissionDenied = false
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
+    @State private var confirmBackupOverBaseline = false
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -123,6 +125,18 @@ struct SettingsView: View {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         return "\(version) (\(build))"
+    }
+
+    /// Routes the picker's selection through `setCurrencyCode`, which
+    /// persists the choice into the budget's own `preferences` table (not
+    /// just UserDefaults) so it survives a relaunch (GH #59).
+    private var currencyPickerBinding: Binding<String> {
+        Binding(
+            get: { budgetStore.currencyCode },
+            set: { newValue in
+                Task { await budgetStore.setCurrencyCode(newValue) }
+            }
+        )
     }
 
     private var budgetPickerBinding: Binding<String?> {
@@ -219,8 +233,13 @@ struct SettingsView: View {
                                 || (budgetStore.requiresServerPassword && password.isEmpty))
                         }
 
-                        Button("Try the demo budget") {
-                            Task { await budgetStore.loadDemoData() }
+                        Menu("Try the demo budget") {
+                            Button("Envelope budget") {
+                                Task { await budgetStore.loadDemoData() }
+                            }
+                            Button("Tracking budget") {
+                                Task { await budgetStore.loadDemoData(tracking: true) }
+                            }
                         }
                         .disabled(budgetStore.isLoading)
 
@@ -343,7 +362,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Currency", selection: $budgetStore.currencyCode) {
+                    Picker("Currency", selection: currencyPickerBinding) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
                         // plain numbers.
@@ -370,9 +389,23 @@ struct SettingsView: View {
                         }
                     }
 
+                    Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                        ForEach(TransactionDisplayMode.allCases) { mode in
+                            Text(mode.label).tag(mode)
+                        }
+                    }
+                    
+                    Picker("Uncategorized Tap Opens", selection: $budgetStore.uncategorizedTapAction) {
+                        ForEach(UncategorizedTapAction.allCases) { action in
+                            Text(action.label).tag(action)
+                        }
+                    }
+
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
+
+                    Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
 
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
@@ -404,17 +437,31 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            RulesListView()
+                        } label: {
+                            Text("Rules")
+                        }
+                    }
                 } header: {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
-
+                
                 Section {
+                    NavigationLink {
+                        SchedulesListView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
                     Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
@@ -450,6 +497,12 @@ struct SettingsView: View {
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                                 .textSelection(.enabled)
+                        }
+                        
+                        if budgetStore.syncDetachedByRestore {
+                            Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
                         }
 
                         if let lastSync = budgetStore.lastSyncTime {
@@ -502,6 +555,50 @@ struct SettingsView: View {
                             .disabled(budgetStore.syncState == .syncing)
                         }
                     }
+                }
+                
+                if budgetStore.currentBudgetId != nil {
+                    Section {
+                        NavigationLink {
+                            BackupListView()
+                        } label: {
+                            HStack {
+                                Text("Backups")
+                                Spacer()
+                                if !budgetStore.backups.isEmpty {
+                                    Text("\(budgetStore.backups.count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+
+                        Button("Back Up Now") {
+                            if budgetStore.isViewingBackup {
+                                confirmBackupOverBaseline = true
+                            } else {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                        }
+                        .confirmationDialog(
+                            "Back up the restored data?",
+                            isPresented: $confirmBackupOverBaseline,
+                            titleVisibility: .visible
+                        ) {
+                            Button("Back Up", role: .destructive) {
+                                Task { await budgetStore.makeBackupNow() }
+                            }
+                            Button("Cancel", role: .cancel) {}
+                        } message: {
+                            Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
+                        }
+                    } header: {
+                        Text("Backups")
+                    } footer: {
+                        // No cadence promise — iOS can't run a 15-minute
+                        // background timer (plan D2).
+                        Text("Backups are stored on this device. One is taken automatically when you leave the app.")
+                    }
+                    .task { await budgetStore.refreshBackups() }
                 }
 
                 Section {

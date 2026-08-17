@@ -94,6 +94,7 @@ struct ActualiApp: App {
                     }
                     if newPhase == .background {
                         BackgroundRefresh.schedule()
+                        budgetStore.backupOnBackground()
                         #if DEBUG
                         // Stands in for a real background-refresh fire, which
                         // can't be triggered from a UI test: writes the same

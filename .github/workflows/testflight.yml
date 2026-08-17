@@ -22,6 +22,8 @@ concurrency:
 
 jobs:
   upload:
+    # Forks don't get secrets, so runs there always fail at cert import.
+    if: github.repository == 'MattFaz/actuali'
     runs-on: macos-26
     timeout-minutes: 60
     steps:
