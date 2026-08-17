@@ -45,6 +45,25 @@ struct BudgetStoreRulesTests {
         }
     }
 
+    @Test func rejectsIsBetweenWithoutARange() {
+        // A scalar here makes upstream's parse assert and the whole rule
+        // vanish from the web client — it must never save.
+        let scalar = rule(conditions: [
+            .init(op: "isbetween", field: "amount", value: .number(500), options: nil)
+        ])
+        #expect(throws: BudgetStoreError.ruleEmptyValue(field: "amount")) {
+            try BudgetStore.validate(scalar)
+        }
+    }
+
+    @Test func acceptsIsBetweenWithARange() throws {
+        let ranged = rule(conditions: [
+            .init(op: "isbetween", field: "amount",
+                  value: .object(["num1": .number(1000), "num2": .number(2000)]), options: nil)
+        ])
+        try BudgetStore.validate(ranged)
+    }
+
     @Test func rejectsEmptyMultiValue() {
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "payee")) {
             try BudgetStore.validate(rule(conditions: [

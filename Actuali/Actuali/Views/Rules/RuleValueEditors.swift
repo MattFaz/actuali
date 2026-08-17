@@ -56,15 +56,21 @@ struct RuleConditionEditor: View {
                 .labelsHidden()
             }
 
-            RuleValueEditor(
-                value: $condition.value,
-                field: condition.field,
-                op: condition.op,
-                options: $condition.options,
-                showsDirection: true
-            )
+            // onBudget/offBudget read the account, not a value; upstream hides
+            // the value input for them.
+            if !Self.valuelessOps.contains(condition.op) {
+                RuleValueEditor(
+                    value: $condition.value,
+                    field: condition.field,
+                    op: condition.op,
+                    options: $condition.options,
+                    showsDirection: true
+                )
+            }
         }
     }
+
+    private static let valuelessOps: Set<String> = ["onBudget", "offBudget"]
 
     /// Changing the field can invalidate the operator and the value shape, so
     /// both reset the way the web editor does.
@@ -92,8 +98,12 @@ struct RuleConditionEditor: View {
                 let wasMulti = ["oneOf", "notOneOf"].contains(condition.op)
                 let isMulti = ["oneOf", "notOneOf"].contains(op)
                 let wasBetween = condition.op == "isbetween"
+                let wasValueless = Self.valuelessOps.contains(condition.op)
+                let isValueless = Self.valuelessOps.contains(op)
                 condition.op = op
-                if wasMulti != isMulti || wasBetween != (op == "isbetween") {
+                if isValueless {
+                    condition.value = .null
+                } else if wasMulti != isMulti || wasBetween != (op == "isbetween") || wasValueless {
                     condition.value = RuleValueEditor.defaultValue(field: condition.field, op: op)
                 }
             }
@@ -297,7 +307,15 @@ struct RuleValueEditor: View {
 
     @ViewBuilder
     private var amountEditor: some View {
-        RuleAmountField(value: $value)
+        if op == "isbetween" {
+            // A between value is a `{num1, num2}` object; feeding it to the
+            // single-amount field would clobber it with a scalar the engine
+            // can't evaluate and the web client refuses to load.
+            RuleAmountField(label: "From", value: betweenBinding("num1"))
+            RuleAmountField(label: "To", value: betweenBinding("num2"))
+        } else {
+            RuleAmountField(value: $value)
+        }
 
         if showsDirection {
             // Upstream exposes amount (inflow) / amount (outflow) as separate
@@ -309,6 +327,26 @@ struct RuleValueEditor: View {
             }
             .pickerStyle(.segmented)
         }
+    }
+
+    /// One endpoint of a `{num1, num2}` between value. Writing an endpoint
+    /// rebuilds the object so a malformed value self-heals into the shape the
+    /// engine and the web client require.
+    private func betweenBinding(_ key: String) -> Binding<RuleValue> {
+        Binding(
+            get: {
+                guard case .object(let dict) = value, let endpoint = dict[key] else { return .null }
+                return endpoint
+            },
+            set: { newValue in
+                var dict: [String: RuleValue] = [:]
+                if case .object(let existing) = value { dict = existing }
+                dict[key] = newValue
+                if dict["num1"] == nil { dict["num1"] = .number(0) }
+                if dict["num2"] == nil { dict["num2"] = .number(0) }
+                value = .object(dict)
+            }
+        )
     }
 
     private var directionBinding: Binding<String> {
@@ -351,12 +389,13 @@ struct RuleValueEditor: View {
 /// input ("10.", "1,50") isn't destroyed mid-keystroke — a binding that reparsed
 /// on every character would zero the value as the user typed.
 private struct RuleAmountField: View {
+    var label = "Amount"
     @Binding var value: RuleValue
     @State private var text = ""
 
     var body: some View {
         HStack {
-            Text("Amount")
+            Text(label)
             Spacer()
             AmountInputField(text: $text, allowsNegative: true)
                 .frame(maxWidth: 140)
@@ -409,10 +448,20 @@ struct RuleIdMultiPicker: View {
     }
 
     private func toggle(_ id: String) {
-        var ids = selected
+        value = Self.toggling(id, in: value, visibleIds: choices.map(\.id))
+    }
+
+    /// Toggle `id`, keeping visible ids in the choice list's order so the rule
+    /// reads the same every time it round-trips through the editor — and
+    /// keeping ids the picker can't display (hidden categories, closed
+    /// accounts, rules authored on another client), which toggling an
+    /// unrelated item must not silently drop.
+    static func toggling(_ id: String, in value: RuleValue, visibleIds: [String]) -> RuleValue {
+        var ids = Set((value.listValue ?? []).compactMap(\.stringValue))
         if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
-        // Preserve the choice list's order so the rule reads the same every time
-        // it round-trips through the editor.
-        value = .list(choices.map(\.id).filter(ids.contains).map(RuleValue.string))
+        let visible = visibleIds.filter(ids.contains)
+        let hidden = (value.listValue ?? []).compactMap(\.stringValue)
+            .filter { ids.contains($0) && !visibleIds.contains($0) }
+        return .list((visible + hidden).map(RuleValue.string))
     }
 }

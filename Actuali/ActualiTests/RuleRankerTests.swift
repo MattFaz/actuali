@@ -25,10 +25,11 @@ struct RuleRankerTests {
         #expect(RuleRanker.score(rule(id: "r", ops: ["is", "contains"])) == 10)
     }
 
-    /// Upstream bails to 0 for a rule containing an operator it doesn't know,
-    /// which sends the rule to the front (least specific).
-    @Test func unknownOperatorScoresZero() {
+    /// Upstream's reducer returns 0 for an unknown operator, resetting the
+    /// running total — but conditions after it still accumulate.
+    @Test func unknownOperatorResetsScoreAndKeepsAccumulating() {
         #expect(RuleRanker.score(rule(id: "r", ops: ["is", "bogus"])) == 0)
+        #expect(RuleRanker.score(rule(id: "r", ops: ["bogus", "is", "gt"])) == 11)
     }
 
     @Test func ordersByStageThenScoreThenId() {

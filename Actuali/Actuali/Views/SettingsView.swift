@@ -425,7 +425,7 @@ struct SettingsView: View {
                             }
                         }
                     }
-                    
+
                     if budgetStore.currentBudgetId != nil {
                         NavigationLink {
                             RulesListView()

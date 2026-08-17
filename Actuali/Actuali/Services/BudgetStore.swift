@@ -63,22 +63,22 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter an account name"
         case .accountCreationFailed(let message):
             return "Failed to create account: \(message)"
-        case .ruleNeedsCondition: 
+        case .ruleNeedsCondition:
             return "Add at least one condition."
-        case .ruleNeedsAction: 
+        case .ruleNeedsAction:
             return "Add at least one action."
         case .ruleInvalidCondition(let field, let op):
             return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
-        case .ruleInvalidAction: 
+        case .ruleInvalidAction:
             return "Choose a field for every action."
-        case .ruleEmptyValue(let field): 
+        case .ruleEmptyValue(let field):
             return "\(RuleSchema.label(field: field).capitalized) needs a value."
-        case .ruleInvalidPattern(let pattern): 
+        case .ruleInvalidPattern(let pattern):
             return "\"\(pattern)\" isn't a valid regular expression."
-        case .ruleOwnedBySchedule: 
+        case .ruleOwnedBySchedule:
             return "This rule belongs to a schedule. Delete the schedule instead."
         case .ruleNotSerializable:
-                    return "This rule contains a value that can't be saved. Check the amounts."
+            return "This rule contains a value that can't be saved. Check the amounts."
         }
     }
 }
@@ -3296,6 +3296,7 @@ final class BudgetStore: ObservableObject {
         } catch {
             logger.error("loadRules failed: \(error.localizedDescription, privacy: .public)")
             rules = []
+            scheduleOwnedRuleIds = []
         }
     }
 
@@ -3338,6 +3339,13 @@ final class BudgetStore: ObservableObject {
                 }
             case "onBudget", "offBudget":
                 break
+            case "isbetween":
+                // Upstream's parse asserts a `{num1, num2}` payload; anything
+                // else makes `makeRule` return null and the whole rule vanish
+                // from the web client.
+                guard condition.value.betweenValue != nil else {
+                    throw BudgetStoreError.ruleEmptyValue(field: condition.field)
+                }
             default:
                 let type = RuleSchema.fieldType(condition.field)
                 if type == .number || type == .date || type == .boolean {

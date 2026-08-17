@@ -25,8 +25,11 @@ enum RuleRanker {
         var total = 0
         for condition in rule.conditions {
             guard let score = opScores[condition.op] else {
+                // Upstream's reducer returns 0 for the unknown op, which resets
+                // the running total but keeps accumulating later conditions.
                 logger.debug("Found invalid operation while ranking: \(condition.op, privacy: .public)")
-                return 0
+                total = 0
+                continue
             }
             total += score
         }
