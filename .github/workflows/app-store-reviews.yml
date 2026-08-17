@@ -26,6 +26,7 @@ concurrency:
 
 jobs:
   poll:
+    if: github.repository == 'MattFaz/actuali'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
