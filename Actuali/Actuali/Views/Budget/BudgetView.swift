@@ -940,7 +940,12 @@ struct EditBudgetAmountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    AmountInputField(text: $amountText, allowsNegative: true, autofocus: true)
+                    AmountInputField(
+                        text: $amountText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                        allowsNegative: true,
+                        autofocus: true
+                    )
                 } header: {
                     Text("Budgeted in \(MonthPicker.title(for: category.month))")
                 } footer: {

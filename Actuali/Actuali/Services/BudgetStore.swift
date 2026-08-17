@@ -239,6 +239,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether amount fields accept conventional decimal entry. Persisted to
+    /// UserDefaults and defaults to the established calculator-style entry.
+    @Published var conventionalAmountEntry: Bool = false {
+        didSet {
+            UserDefaults.standard.set(conventionalAmountEntry, forKey: "conventionalAmountEntry")
+        }
+    }
+
     /// Whether monetary values are obscured wherever the app displays them:
     /// account balances, the budget table, reports, and transaction lists.
     /// Screens where the user is actively working with an amount (entering a
@@ -761,6 +769,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
+        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
+            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard

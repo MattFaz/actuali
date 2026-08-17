@@ -75,6 +75,7 @@ struct CreateLocalAccountView: View {
                     Spacer()
                     AmountInputField(
                         text: $balanceText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                         alignment: .right,
                         allowsNegative: true
                     )
