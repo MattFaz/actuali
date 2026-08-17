@@ -30,6 +30,19 @@ struct TransactionLogNotifierTests {
         #expect(bodyGBP.contains("£5.00 at Tesco"))
     }
 
+    /// Expenses are negative cents; the failure body must carry that sign too
+    /// (composeSuccessBody is covered separately below, GH #258).
+    @Test func composeFailureBodyShowsExpenseAsNegative() {
+        let body = TransactionLogNotifier.composeBody(
+            message: "Error message",
+            payee: "Starbucks",
+            amountCents: -1250,
+            currencyCode: "USD",
+            locale: enUS
+        )
+        #expect(body == "-$12.50 at Starbucks. Error message")
+    }
+
     @Test func composeFailureBodyHonorsNarrowSymbol() {
         let bodyNarrow = TransactionLogNotifier.composeBody(
             message: "Error message",
