@@ -813,13 +813,19 @@ private struct SplitLineRow: View {
     }
 }
 
-/// Currency amount field with two input modes.
+/// Currency amount field with two digit-entry modes, picked by the
+/// `conventionalAmountEntry` setting.
 ///
-/// Default (calculator) mode: digits shift right-to-left into the cents
+/// Calculator entry (the default): digits shift right-to-left into the cents
 /// position — typing 1, 2, 0 produces 0.01, 0.12, 1.20. As soon as the user
-/// taps `.` (or `,` in comma-decimal locales), the field switches to standard
+/// taps `.` (or `,` in comma-decimal locales), the field switches to explicit
 /// decimal entry where prior digits are reinterpreted as the integer part —
 /// so 1, ., 0 produces 1.0.
+///
+/// Conventional entry: digits stand for whole units and the decimal separator
+/// is always typed — 1, 2, 0 produces 120, and 1, ., 0 produces 1.0. Nothing
+/// gains a fraction the user didn't type, so zero-decimal currencies never
+/// need a trailing ".00" (GH #211).
 ///
 /// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
 /// the text's own sign. With `onToggleSign`, the same button appears but the
@@ -868,7 +874,7 @@ struct AmountInputField: UIViewRepresentable {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
         field.keyboardType = .decimalPad
-        field.placeholder = "0.00"
+        field.placeholder = conventionalAmountEntry ? "0" : "0.00"
         field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
@@ -1152,8 +1158,10 @@ struct AmountInputField: UIViewRepresentable {
             let cents = Int((abs(rounded) * 100).rounded())
             isNegative = parent.allowsNegative && rounded < 0
             integerDigits = String(cents / 100)
-            hasDecimalPoint = true
-            fractionDigits = String(format: "%02d", cents % 100)
+            // Conventional entry never adds a fraction the user didn't type,
+            // so a whole result comes back as a whole number.
+            hasDecimalPoint = !(parent.conventionalAmountEntry && cents % 100 == 0)
+            fractionDigits = hasDecimalPoint ? String(format: "%02d", cents % 100) : ""
         }
 
         private func handleCharacter(_ character: Character) {
@@ -1210,13 +1218,20 @@ struct AmountInputField: UIViewRepresentable {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
                 return sign + whole + "." + fractionDigits
             }
-            if !parent.conventionalAmountEntry {
-                let cents = Int(integerDigits) ?? 0
-                let dollars = cents / 100
-                let pennies = cents % 100
-                return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            if parent.conventionalAmountEntry {
+                return sign + integerDigits
             }
-            return sign + integerDigits
+            let cents = Int(integerDigits) ?? 0
+            let dollars = cents / 100
+            let pennies = cents % 100
+            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+        }
+
+        /// An evaluated value as the field shows it: two decimals, except in
+        /// conventional entry where a whole result stays whole.
+        private func displayValue(_ value: Double) -> String {
+            let whole = parent.conventionalAmountEntry && value == value.rounded()
+            return String(format: whole ? "%.0f" : "%.2f", value)
         }
 
         /// What the field shows: the running total and armed operator, if any,
@@ -1226,7 +1241,7 @@ struct AmountInputField: UIViewRepresentable {
             guard let pending = pendingOperator, let acc = accumulatedValue else {
                 return operandText
             }
-            let accText = String(format: "%.2f", acc)
+            let accText = displayValue(acc)
             return operandText.isEmpty
                 ? "\(accText) \(pending.rawValue) "
                 : "\(accText) \(pending.rawValue) \(operandText)"
@@ -1238,7 +1253,7 @@ struct AmountInputField: UIViewRepresentable {
             guard pendingOperator != nil, accumulatedValue != nil else {
                 return computeOperandDisplay()
             }
-            return String(format: "%.2f", normalized(resolvedValue()))
+            return displayValue(normalized(resolvedValue()))
         }
 
         private func applyDisplay(to textField: UITextField) {
