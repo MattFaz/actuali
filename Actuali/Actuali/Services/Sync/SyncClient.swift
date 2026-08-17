@@ -498,6 +498,37 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Persist the currency code to the budget's `preferences` table (Actual's
+    /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
+    /// other clients. Without this, the picker only ever wrote to
+    /// UserDefaults — the value the app treats as authoritative on every DB
+    /// load was never updated, so it silently reverted to whatever the
+    /// server/PWA last set (GH #59).
+    func updateCurrencyCode(_ code: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("updateCurrencyCode() - code: \(code, privacy: .public)")
+
+        let fields: [(column: String, value: Any?)] = [("value", code)]
+        let messages = try await messageGenerator.messages(dataset: "preferences", row: "defaultCurrencyCode", fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
+
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
+    }
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the
