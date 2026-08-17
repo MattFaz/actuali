@@ -258,6 +258,29 @@ struct BudgetStoreConvertToTransferTests {
         #expect(partner["notes"] == "fixed up")
     }
 
+    @Test func convertingHonoursAnAccountChangeMadeInTheSameEdit() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let imported = try seedImported(into: database)
+
+        // Moving a transaction between accounts is an ordinary edit, and the
+        // account picker stays live while Transfer is selected — a save that
+        // does both lands the leg in the account the form names.
+        try await store.saveTransaction(
+            form(accountId: "acct-brokerage", transferToAccountId: "acct-card"),
+            editing: imported)
+
+        let all = try rows(path: path)
+        let leg = try #require(all.first { $0["id"] as String == "tx-imported" })
+        let partner = try #require(all.first { $0["id"] as String != "tx-imported" })
+        #expect(leg["acct"] == "acct-brokerage")
+        #expect(leg["amount"] == -25000)
+        #expect(partner["acct"] == "acct-card")
+        #expect(leg["description"] == "payee-card")
+        #expect(partner["description"] == "payee-brokerage")
+    }
+
     @Test func convertingClearsTheCategoryBetweenTwoOnBudgetAccounts() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

@@ -164,9 +164,11 @@ struct AddTransactionView: View {
             }
     }
 
-    /// Converting keeps the edited row in its own account and on its own side
-    /// of the transfer, so the form asks for one account — the other one —
-    /// instead of the From/To pair a new transfer needs.
+    /// Converting keeps the edited row on its own side of the transfer, so
+    /// the form asks for one account — the other one — instead of the From/To
+    /// pair a new transfer needs. The account row stays editable and keeps
+    /// its usual label: moving a transaction between accounts is an ordinary
+    /// edit, and converting doesn't take that away.
     private var accountPickerLabel: String {
         isTransfer && !isConvertingToTransfer ? "From" : "Account"
     }

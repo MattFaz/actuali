@@ -2635,13 +2635,14 @@ final class BudgetStore: ObservableObject {
             importedPayee: nil
         )
 
-        let legChanges = Self.changedFields(original: original, updated: leg)
-        if !legChanges.isEmpty {
-            try await syncClient.updateTransaction(leg, changedFields: legChanges)
-        }
-        // Rules are skipped like every other transfer write — both legs are
-        // fully specified here.
-        try await syncClient.createTransaction(partner, applyRules: false)
+        // Both rows commit together: an edited row whose transferred_id
+        // outlived a failed partner insert would be a half-transfer, already
+        // on its way to the server.
+        try await syncClient.convertToTransfer(
+            leg: leg,
+            changedFields: Self.changedFields(original: original, updated: leg),
+            partner: partner
+        )
         await refreshDataOnly()
     }
 

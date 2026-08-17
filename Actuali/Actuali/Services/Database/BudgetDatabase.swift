@@ -2112,6 +2112,23 @@ class BudgetDatabase {
         }
     }
 
+    /// Repoints an existing transaction at a new partner leg and inserts that
+    /// leg, with both rows' CRDT messages, in a single SQLite transaction —
+    /// a partial write would leave the edited row's `transferred_id` pointing
+    /// at a partner that was never created.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func convertToTransfer(
+        leg: Transaction,
+        partner: Transaction,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.updateTransactionRow(db, leg)
+            try Self.insertTransactionRow(db, partner)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     /// Inserts a split parent, its children and their CRDT messages in a
     /// single SQLite transaction, so a failure on any row rolls back
     /// everything and no partial split can persist.
@@ -2180,28 +2197,32 @@ class BudgetDatabase {
     /// Caller is responsible for emitting CRDT messages for the same fields.
     func updateTransaction(_ transaction: Transaction) throws {
         try dbQueue.write { db in
-            try db.execute(sql: """
-                UPDATE transactions
-                SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
-                    notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
-                    isParent = ?, parent_id = ?, tombstone = ?
-                WHERE id = ?
-                """, arguments: [
-                    transaction.accountId,
-                    transaction.date,
-                    transaction.payeeId,
-                    transaction.categoryId,
-                    transaction.amount,
-                    transaction.notes,
-                    transaction.cleared ? 1 : 0,
-                    transaction.reconciled ? 1 : 0,
-                    transaction.transferId,
-                    transaction.isParent ? 1 : 0,
-                    transaction.parentId,
-                    transaction.tombstone ? 1 : 0,
-                    transaction.id
-                ])
+            try Self.updateTransactionRow(db, transaction)
         }
+    }
+
+    private static func updateTransactionRow(_ db: Database, _ transaction: Transaction) throws {
+        try db.execute(sql: """
+            UPDATE transactions
+            SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
+                notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
+                isParent = ?, parent_id = ?, tombstone = ?
+            WHERE id = ?
+            """, arguments: [
+                transaction.accountId,
+                transaction.date,
+                transaction.payeeId,
+                transaction.categoryId,
+                transaction.amount,
+                transaction.notes,
+                transaction.cleared ? 1 : 0,
+                transaction.reconciled ? 1 : 0,
+                transaction.transferId,
+                transaction.isParent ? 1 : 0,
+                transaction.parentId,
+                transaction.tombstone ? 1 : 0,
+                transaction.id
+            ])
     }
 
     // MARK: - Rules
