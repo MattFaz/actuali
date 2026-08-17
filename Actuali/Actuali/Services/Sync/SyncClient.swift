@@ -15,6 +15,7 @@ enum SyncError: LocalizedError, Equatable {
     case serverError(String)
     case budgetTableMissing
     case notesTableMissing
+    case rulesTableMissing
 
     var errorDescription: String? {
         switch self {
@@ -32,6 +33,8 @@ enum SyncError: LocalizedError, Equatable {
             return "This budget file has no budget table to write to."
         case .notesTableMissing:
             return "This budget file has no notes table to write to."
+        case .rulesTableMissing:
+            return "This budget file has no rules table to write to."
         }
     }
 }
@@ -167,13 +170,33 @@ actor SyncClient {
             }
         }
     }
+    
+    /// Everything a rules pass needs, fetched once. The import path builds this
+    /// before its loop instead of paying for a full categories/payees/accounts
+    /// scan per transaction.
+    struct PreparedRules {
+        let rules: [Rule]
+        let context: RuleContext
+    }
+
+    func prepareRules() -> PreparedRules {
+        guard let database else { return PreparedRules(rules: [], context: .empty) }
+        return PreparedRules(
+            rules: (try? database.fetchRules()) ?? [],
+            context: (try? database.ruleContext()) ?? .empty
+        )
+    }
 
     // MARK: - Public API
 
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
-    func createTransaction(_ transaction: Transaction, applyRules: Bool = true) async throws {
+    func createTransaction(
+        _ transaction: Transaction,
+        applyRules: Bool = true,
+        prepared: PreparedRules? = nil
+    ) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -182,16 +205,26 @@ actor SyncClient {
         //    Skip for transfers — upstream runs rules on the transfer leg, but our
         //    transfer flow already builds both legs explicitly and we don't want
         //    rules rewriting the linked payee/account.
-        let finalTransaction: Transaction
+        var finalTransaction = transaction
         if applyRules, transaction.transferId == nil {
-            let rules = (try? database.fetchRules()) ?? []
-            let (updated, changed) = RulesEngine.apply(transaction, rules: rules)
-            if !changed.isEmpty {
-                logger.info("Rules updated \(changed.count, privacy: .public) field(s) on new transaction")
+            let prepared = prepared ?? prepareRules()
+            let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
+
+            if result.isDeleted {
+                // A `delete-transaction` rule matched. Upstream tombstones the
+                // row; for a transaction that doesn't exist yet, not creating it
+                // is the same outcome with less to sync.
+                logger.notice("Rules deleted the incoming transaction — skipping insert")
+                return
             }
-            finalTransaction = updated
-        } else {
-            finalTransaction = transaction
+
+            finalTransaction = result.transaction
+            if let name = result.pendingPayeeName {
+                finalTransaction.payeeId = try await resolvePayee(named: name)
+            }
+            if !result.changedFields.isEmpty {
+                logger.info("Rules updated \(result.changedFields.count, privacy: .public) field(s) on new transaction")
+            }
         }
 
         // 1. Insert locally (optimistic)
@@ -364,6 +397,20 @@ actor SyncClient {
         try saveClock()
 
         // Note: Don't schedule sync here - let the transaction sync handle it
+    }
+    
+    /// Turn a `payee_name` a rule set into a payee id, creating the payee when
+    /// it's new — upstream `resolvePayeeNameForRules`.
+    private func resolvePayee(named name: String) async throws -> String? {
+        guard let database else { throw SyncError.notConfigured }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+
+        if let existing = try database.payee(named: trimmed) { return existing.id }
+
+        let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
+        try await createPayee(payee)
+        return payee.id
     }
 
     /// Create a new account, its transfer payee (the empty-named payee every
@@ -626,6 +673,62 @@ actor SyncClient {
 
         // 4. Push in the background — the Save button awaits this write, and
         //    an unreachable server must not hold the sheet open (issue #125).
+        scheduleAutomaticSync()
+    }
+    
+    /// Create or update a rule (optimistic local-first). Mirrors upstream
+    /// `rule-add` / `rule-update` (loot-core server/rules/app.ts): the whole row
+    /// is written every time — stage, conditionsOp, conditions and actions — so
+    /// a rule edited on two devices converges on one client's complete rule
+    /// rather than an interleaving of both, which is what upstream's `db.update`
+    /// of the same four columns produces.
+    ///
+    /// Requires the `rules` table: without it `applyMessages` would skip the
+    /// local apply as unknown schema and the save would look like it worked.
+    func saveRule(_ rule: Rule) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard try database.rulesTableExists() else { throw SyncError.rulesTableMissing }
+
+        logger.debug("saveRule() - id: \(rule.id, privacy: .private), conditions: \(rule.conditions.count, privacy: .public), actions: \(rule.actions.count, privacy: .public)")
+
+        // 1. Generate CRDT messages (before any DB write, so an HLC failure
+        //    leaves nothing stranded)
+        let messages = try await messageGenerator.messagesForInsert(rule)
+
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving from
+        //    another device converge byte-for-byte.
+        try database.applyMessages(messages)
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Push to the server in the background
+        scheduleAutomaticSync()
+    }
+
+    /// Tombstone a rule (optimistic local-first), upstream `rule-delete`.
+    /// The caller is responsible for refusing to delete a schedule's rule —
+    /// see `BudgetStore.deleteRule`.
+    func deleteRule(_ rule: Rule) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard try database.rulesTableExists() else { throw SyncError.rulesTableMissing }
+
+        logger.debug("deleteRule() - id: \(rule.id, privacy: .private)")
+
+        let message = try await messageGenerator.messageForDelete(rule)
+        try database.applyMessages([message])
+
+        for msg in try database.insertMessages([message]) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
         scheduleAutomaticSync()
     }
 
