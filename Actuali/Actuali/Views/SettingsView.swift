@@ -13,7 +13,7 @@ struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     /// Every currency in Actual's loot-core currencies list, plus a few
-    /// user-requested extras Actual lacks (AMD, NOK, NZD, ZAR). Sorted by
+    /// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
     /// code. Display-only — all budget math is currency-agnostic integer
     /// cents, and rendering uses the system formatter for the ISO code.
     private static let currencyOptions: [(symbol: String, code: String)] = [
@@ -21,6 +21,7 @@ struct SettingsView: View {
         ("֏", "AMD"),
         ("Arg$", "ARS"),
         ("A$", "AUD"),
+        ("৳", "BDT"),
         ("R$", "BRL"),
         ("Br", "BYN"),
         ("C$", "CAD"),
