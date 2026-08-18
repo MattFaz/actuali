@@ -487,7 +487,9 @@ struct BudgetView: View {
             }
         // A group you just made has no categories, so the month's rows above
         // can't know about it. Draw it anyway — otherwise creating a group
-        // looks like it did nothing (GH #284).
+        // looks like it did nothing (GH #284). Income groups stay out: this
+        // list is the expense table, and income has its own section below,
+        // which likewise only appears once it has categories.
         sections += budgetStore.categoryGroups
             .filter { !$0.isIncome && !$0.hidden && $0.categories.isEmpty }
             .map { group -> (Double, CategoryGroupSection) in
