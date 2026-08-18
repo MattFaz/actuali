@@ -317,6 +317,29 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
+    func deleteSingleTransferDoesNotDeletePartner() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        try await store.createTransfer(
+            fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
+            date: 20260810, notes: "Transfer funds", cleared: true
+        )
+
+        let initialTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(initialTxs.count == 2)
+        guard let firstLeg = initialTxs.first else { return }
+
+        // Deleting a single leg via deleteTransaction must not delete the partner leg
+        await store.deleteTransaction(firstLeg)
+
+        let activeTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(activeTxs.count == 1)
+        #expect(activeTxs.first?.id != firstLeg.id)
+    }
+
+    @Test
     func bulkDeleteTransferBothLegsSelected() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -336,5 +359,80 @@ struct BudgetStoreDuplicationTests {
         let remainingTxs = try await database.fetchTransactions(limit: 1000)
         #expect(remainingTxs.isEmpty)
         #expect(store.error == nil)
+    }
+
+    @Test
+    func bulkSetClearedStatusSplitParent() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        let parent = Transaction(
+            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            payeeId: "payee-1", payeeName: "Store", categoryId: nil, categoryName: nil,
+            notes: "Split purchase", cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        let child1 = Transaction(
+            id: "child-1", accountId: "acct-1", date: 20260810, amount: -2000,
+            payeeId: "payee-1", payeeName: "Store", categoryId: "cat-1", categoryName: "Groceries",
+            notes: "Food", cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
+        )
+        let child2 = Transaction(
+            id: "child-2", accountId: "acct-1", date: 20260810, amount: -1000,
+            payeeId: "payee-1", payeeName: "Store", categoryId: "cat-2", categoryName: "Household",
+            notes: "Cleaning", cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 98
+        )
+
+        try await syncClient.createSplit(parent: parent, children: [child1, child2])
+
+        // Bulk mark parent cleared
+        await store.setClearedStatus(transactions: [parent], cleared: true)
+
+        var children = try await database.fetchChildTransactions(parentId: "parent-1")
+        #expect(children.count == 2)
+        #expect(children.allSatisfy { $0.cleared == true })
+
+        // Bulk mark parent uncleared
+        var updatedParent = parent
+        updatedParent.cleared = true
+        await store.setClearedStatus(transactions: [updatedParent], cleared: false)
+
+        children = try await database.fetchChildTransactions(parentId: "parent-1")
+        #expect(children.count == 2)
+        #expect(children.allSatisfy { $0.cleared == false })
+    }
+
+    @Test
+    func bulkDuplicateSortOrderDifferentiation() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        var originalTxs: [Transaction] = []
+        for i in 1...5 {
+            let tx = Transaction(
+                id: "tx-\(i)", accountId: "acct-1", date: 20260810, amount: -1000 * i,
+                payeeId: nil, payeeName: "Item \(i)", categoryId: nil, categoryName: nil,
+                notes: nil, cleared: false, reconciled: false, transferId: nil,
+                isParent: false, parentId: nil, tombstone: false, sortOrder: Double(i * 100)
+            )
+            try await store.createTransaction(tx)
+            originalTxs.append(tx)
+        }
+
+        await store.duplicateTransactions(originalTxs)
+
+        let allTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(allTxs.count == 10)
+
+        let duplicates = allTxs.filter { !originalTxs.map(\.id).contains($0.id) }
+        #expect(duplicates.count == 5)
+
+        let sortOrders = duplicates.compactMap(\.sortOrder)
+        #expect(sortOrders.count == 5)
+        #expect(Set(sortOrders).count == 5)
     }
 }

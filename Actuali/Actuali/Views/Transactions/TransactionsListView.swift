@@ -33,14 +33,6 @@ struct TransactionsListView: View {
         await currentPager().loadFirstPage(search: searchQuery)
     }
 
-    private func toggleSelection(for id: String) {
-        if selectedTransactionIds.contains(id) {
-            selectedTransactionIds.remove(id)
-        } else {
-            selectedTransactionIds.insert(id)
-        }
-    }
-
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
@@ -73,7 +65,7 @@ struct TransactionsListView: View {
                                         isSelected: selectedTransactionIds.contains(transaction.id),
                                         editing: $editingTransaction,
                                         onToggleSelect: {
-                                            toggleSelection(for: transaction.id)
+                                            selectedTransactionIds.formSymmetricDifference([transaction.id])
                                         }
                                     )
                                 }
@@ -93,7 +85,7 @@ struct TransactionsListView: View {
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
-                                    toggleSelection(for: transaction.id)
+                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
                                 }
                             )
                         }
@@ -129,36 +121,9 @@ struct TransactionsListView: View {
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
                 TransactionBulkActionBar(
-                    totalCount: pager.transactions.count,
-                    selectedCount: selectedTransactionIds.count,
-                    onSelectAll: {
-                        selectedTransactionIds = Set(pager.transactions.map(\.id))
-                    },
-                    onDeselectAll: {
-                        selectedTransactionIds.removeAll()
-                    },
-                    onMarkCleared: { cleared in
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.setClearedStatus(transactions: selectedTxs, cleared: cleared)
-                        }
-                    },
-                    onDuplicate: {
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.duplicateTransactions(selectedTxs)
-                            selectedTransactionIds.removeAll()
-                            withAnimation { isSelecting = false }
-                        }
-                    },
-                    onDelete: {
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.deleteTransactions(selectedTxs)
-                            selectedTransactionIds.removeAll()
-                            withAnimation { isSelecting = false }
-                        }
-                    }
+                    transactions: pager.transactions,
+                    selectedIds: $selectedTransactionIds,
+                    isSelecting: $isSelecting
                 )
             }
         }

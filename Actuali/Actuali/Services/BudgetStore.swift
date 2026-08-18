@@ -2050,14 +2050,7 @@ final class BudgetStore: ObservableObject {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
-        var handledTransferIds = Set<String>()
         for tx in transactions {
-            if let transferId = tx.transferId, !transferId.isEmpty {
-                if handledTransferIds.contains(tx.id) {
-                    continue
-                }
-                handledTransferIds.insert(transferId)
-            }
             do {
                 try await deleteSingleTransaction(tx)
             } catch {
@@ -2076,12 +2069,6 @@ final class BudgetStore: ObservableObject {
                 var deletedChild = child
                 deletedChild.tombstone = true
                 try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
-            }
-        }
-        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
-            if var partner = try await database.fetchTransaction(id: transferId) {
-                partner.tombstone = true
-                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
             }
         }
         var deleted = transaction
@@ -2106,8 +2093,9 @@ final class BudgetStore: ObservableObject {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
+        let baseSortOrder = Date().timeIntervalSince1970 * 1000
         var handledTransferIds = Set<String>()
-        for tx in transactions {
+        for (index, tx) in transactions.enumerated() {
             if let transferId = tx.transferId, !transferId.isEmpty {
                 if handledTransferIds.contains(tx.id) {
                     continue
@@ -2115,7 +2103,7 @@ final class BudgetStore: ObservableObject {
                 handledTransferIds.insert(transferId)
             }
             do {
-                try await duplicateSingleTransaction(tx)
+                try await duplicateSingleTransaction(tx, sortOrder: baseSortOrder + Double(index))
             } catch {
                 self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
             }
@@ -2150,11 +2138,13 @@ final class BudgetStore: ObservableObject {
         )
     }
 
-    private func duplicateSingleTransaction(_ transaction: Transaction) async throws {
+    private func duplicateSingleTransaction(
+        _ transaction: Transaction,
+        sortOrder: Double = Date().timeIntervalSince1970 * 1000
+    ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        let nowMs = Date().timeIntervalSince1970 * 1000
 
         // Handle transfers: duplicate both legs if partner found, otherwise clear transfer mapping
         if let transferId = transaction.transferId, !transferId.isEmpty {
@@ -2162,10 +2152,10 @@ final class BudgetStore: ObservableObject {
                 let newSourceId = UUID().uuidString
                 let newTargetId = UUID().uuidString
 
-                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: nowMs)
+                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
                 newSource.transferId = newTargetId
 
-                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: nowMs)
+                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
                 newTarget.transferId = newSourceId
 
                 try await syncClient.createTransfer(source: newSource, target: newTarget)
@@ -2177,12 +2167,12 @@ final class BudgetStore: ObservableObject {
         if transaction.isParent, let database {
             let newParentId = UUID().uuidString
             let children = try await database.fetchChildTransactions(parentId: transaction.id)
-            let newChildren = children.map { child in
-                var newChild = makeDuplicateTransaction(from: child, sortOrder: nowMs)
+            let newChildren = children.enumerated().map { index, child in
+                var newChild = makeDuplicateTransaction(from: child, sortOrder: sortOrder - Double(index + 1))
                 newChild.parentId = newParentId
                 return newChild
             }
-            var newParent = makeDuplicateTransaction(from: transaction, id: newParentId, sortOrder: nowMs)
+            var newParent = makeDuplicateTransaction(from: transaction, id: newParentId, sortOrder: sortOrder)
             newParent.isParent = true
             try await syncClient.createSplit(parent: newParent, children: newChildren)
             return
@@ -2190,7 +2180,7 @@ final class BudgetStore: ObservableObject {
 
         // Standard transaction (ensure transfer payee is cleared if transaction has no transferId)
         let isTransfer = payees.first { $0.id == transaction.payeeId && $0.transferAccountId != nil } != nil
-        var newTx = makeDuplicateTransaction(from: transaction, sortOrder: nowMs)
+        var newTx = makeDuplicateTransaction(from: transaction, sortOrder: sortOrder)
         if isTransfer {
             newTx.payeeId = nil
             newTx.payeeName = nil
@@ -2216,6 +2206,9 @@ final class BudgetStore: ObservableObject {
                     updated,
                     changedFields: updated.reconciled != tx.reconciled ? ["cleared", "reconciled"] : ["cleared"]
                 )
+                if updated.isParent {
+                    try await cascadeSharedFieldsToChildren(of: updated, originalPayeeId: tx.payeeId)
+                }
             } catch {
                 self.error = "Failed to update cleared status: \(error.localizedDescription)"
             }

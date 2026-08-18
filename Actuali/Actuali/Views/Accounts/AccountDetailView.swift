@@ -106,14 +106,6 @@ struct AccountDetailView: View {
         }
     }
 
-    private func toggleSelection(for id: String) {
-        if selectedTransactionIds.contains(id) {
-            selectedTransactionIds.remove(id)
-        } else {
-            selectedTransactionIds.insert(id)
-        }
-    }
-
     private func breakdownRow(_ title: String, amount: Int) -> some View {
         HStack {
             Text(title)
@@ -177,7 +169,7 @@ struct AccountDetailView: View {
                                     isSelected: selectedTransactionIds.contains(transaction.id),
                                     editing: $editingTransaction,
                                     onToggleSelect: {
-                                        toggleSelection(for: transaction.id)
+                                        selectedTransactionIds.formSymmetricDifference([transaction.id])
                                     }
                                 )
                             }
@@ -199,7 +191,7 @@ struct AccountDetailView: View {
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
-                                    toggleSelection(for: transaction.id)
+                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
                                 }
                             )
                         }
@@ -229,12 +221,28 @@ struct AccountDetailView: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button(isSelecting ? "Done" : "Select") {
-                    withAnimation {
-                        isSelecting.toggle()
-                        if !isSelecting {
+                if isSelecting {
+                    Button("Done") {
+                        withAnimation {
+                            isSelecting = false
                             selectedTransactionIds.removeAll()
                         }
+                    }
+                } else {
+                    Button {
+                        showingAddTransaction = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add Transaction")
+                }
+            }
+            if !isSelecting {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        withAnimation { isSelecting = true }
+                    } label: {
+                        Label("Select Transactions", systemImage: "checkmark.circle")
                     }
                 }
             }
@@ -260,47 +268,13 @@ struct AccountDetailView: View {
                     Label("Reconcile", systemImage: "checkmark.seal")
                 }
             }
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingAddTransaction = true
-                } label: {
-                    Label("Add Transaction", systemImage: "plus")
-                }
-            }
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
                 TransactionBulkActionBar(
-                    totalCount: pager.transactions.count,
-                    selectedCount: selectedTransactionIds.count,
-                    onSelectAll: {
-                        selectedTransactionIds = Set(pager.transactions.map(\.id))
-                    },
-                    onDeselectAll: {
-                        selectedTransactionIds.removeAll()
-                    },
-                    onMarkCleared: { cleared in
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.setClearedStatus(transactions: selectedTxs, cleared: cleared)
-                        }
-                    },
-                    onDuplicate: {
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.duplicateTransactions(selectedTxs)
-                            selectedTransactionIds.removeAll()
-                            withAnimation { isSelecting = false }
-                        }
-                    },
-                    onDelete: {
-                        let selectedTxs = pager.transactions.filter { selectedTransactionIds.contains($0.id) }
-                        Task {
-                            await budgetStore.deleteTransactions(selectedTxs)
-                            selectedTransactionIds.removeAll()
-                            withAnimation { isSelecting = false }
-                        }
-                    }
+                    transactions: pager.transactions,
+                    selectedIds: $selectedTransactionIds,
+                    isSelecting: $isSelecting
                 )
             }
         }
