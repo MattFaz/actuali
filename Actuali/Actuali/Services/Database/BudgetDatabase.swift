@@ -463,7 +463,7 @@ class BudgetDatabase {
                 WHERE t.acct IS NOT NULL
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 GROUP BY t.acct
                 """)
@@ -533,7 +533,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "par"))
                   AND (c.tombstone = 0 OR c.tombstone IS NULL)
                   AND (c.hidden = 0 OR c.hidden IS NULL)
                   AND (g.tombstone = 0 OR g.tombstone IS NULL)
@@ -551,6 +551,15 @@ class BudgetDatabase {
     }
 
     // MARK: - Transactions
+
+    /// Alive-child filter for every query that counts split children:
+    /// mirrors upstream v_transactions_internal_alive, which joins the
+    /// parent row of every is_child = 1 row and requires it to exist with
+    /// tombstone = 0, so children of tombstoned or never-materialized
+    /// parents count nowhere. `parent` is the joined parent row's alias.
+    private static func aliveChildPredicate(parent: String) -> String {
+        "(t.isChild = 0 OR t.isChild IS NULL OR (\(parent).id IS NOT NULL AND (\(parent).tombstone = 0 OR \(parent).tombstone IS NULL)))"
+    }
 
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
@@ -832,7 +841,7 @@ class BudgetDatabase {
                   AND t.cleared = 1
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId]) ?? 0
         }
@@ -856,7 +865,7 @@ class BudgetDatabase {
                 WHERE t.acct = ?
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId])
             return AccountBalanceBreakdown(
@@ -887,7 +896,7 @@ class BudgetDatabase {
                   AND t.date IS NOT NULL
                   AND (t.reconciled = 0 OR t.reconciled IS NULL)
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                 ORDER BY t.date DESC, t.sort_order DESC
                 """, arguments: [accountId])
 
@@ -936,7 +945,7 @@ class BudgetDatabase {
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND t.date IS NOT NULL
           AND (t.isParent = 0 OR t.isParent IS NULL)
-          AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
+          AND \(aliveChildPredicate(parent: "par"))
           AND t.category IS NULL
           AND (a.offbudget = 0 OR a.offbudget IS NULL)
           AND (a.tombstone = 0 OR a.tombstone IS NULL)
@@ -1041,7 +1050,7 @@ class BudgetDatabase {
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "par"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND COALESCE(cm.transferId, t.category) = ?
                   AND a.offbudget = 0
@@ -1240,7 +1249,7 @@ class BudgetDatabase {
                 LEFT JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
@@ -1647,7 +1656,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
+                  AND \(Self.aliveChildPredicate(parent: "par"))
                   AND t.date IS NOT NULL
                   AND t.acct IS NOT NULL
                 """)
@@ -2786,6 +2795,8 @@ class BudgetDatabase {
                 LEFT JOIN categories c ON c.id = t.category
                 WHERE t.schedule = ?
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 ORDER BY t.date DESC, t.sort_order DESC
                 LIMIT ?
                 """, arguments: [scheduleId, limit])

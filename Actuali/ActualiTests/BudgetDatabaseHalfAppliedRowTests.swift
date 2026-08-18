@@ -172,4 +172,20 @@ struct BudgetDatabaseHalfAppliedRowTests {
         let reportRows = try await db.fetchTransactionsForReports()
         #expect(reportRows.map(\.id) == ["t-real"])
     }
+
+    @Test func scheduleLinkedListHidesHalfAppliedRows() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seed(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                UPDATE transactions SET schedule = 'sched-1'
+                WHERE id IN ('t-real', 't-phantom');
+            """)
+        }
+
+        let rows = try db.fetchTransactions(scheduleId: "sched-1")
+        #expect(rows.map(\.id) == ["t-real"])
+    }
 }
