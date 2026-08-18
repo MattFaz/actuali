@@ -4,8 +4,7 @@ import Testing
 
 private final class FallbackTransport: URLProtocol {
     nonisolated(unsafe) static var requestedURLs: [URL] = []
-    nonisolated(unsafe) static var primaryFailure = URLError(.cannotConnectToHost)
-    nonisolated(unsafe) static var fallbackFailure: URLError?
+    nonisolated(unsafe) static var primaryFailure: URLError? = URLError(.cannotConnectToHost)
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -14,12 +13,8 @@ private final class FallbackTransport: URLProtocol {
         let host = request.url?.host ?? ""
         Self.requestedURLs.append(request.url!)
 
-        if host == "primary.example.com" {
-            client?.urlProtocol(self, didFailWithError: Self.primaryFailure)
-            return
-        }
-        if let fallbackFailure = Self.fallbackFailure {
-            client?.urlProtocol(self, didFailWithError: fallbackFailure)
+        if host == "primary.example.com", let primaryFailure = Self.primaryFailure {
+            client?.urlProtocol(self, didFailWithError: primaryFailure)
             return
         }
 
@@ -46,7 +41,6 @@ struct ActualServerClientFallbackTests {
         -> ActualServerClient {
         FallbackTransport.requestedURLs = []
         FallbackTransport.primaryFailure = URLError(.cannotConnectToHost)
-        FallbackTransport.fallbackFailure = nil
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FallbackTransport.self]
         let client = ActualServerClient(session: URLSession(configuration: configuration))
@@ -65,7 +59,8 @@ struct ActualServerClientFallbackTests {
 
         #expect(token == "fallback-token")
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
-            "primary.example.com", "fallback.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com",
+            "primary.example.com", "fallback.example.com"
         ])
     }
 
@@ -88,17 +83,15 @@ struct ActualServerClientFallbackTests {
         #expect(FallbackTransport.requestedURLs.last?.path == "/actual/account/login")
     }
 
-    @Test func doesNotRetryFallbackAgainstItselfAfterFailover() async throws {
+    @Test func triesPrimaryAgainAfterUsingFallback() async throws {
         let client = try await makeClient()
         _ = try await client.login(password: "password")
-        FallbackTransport.fallbackFailure = URLError(.cannotConnectToHost)
+        FallbackTransport.primaryFailure = nil
     
-        await #expect(throws: ActualServerError.self) {
-            _ = try await client.login(password: "password")
-        }
+        _ = try await client.login(password: "password")
     
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
-            "primary.example.com", "fallback.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com", "primary.example.com"
         ])
     }
     
@@ -111,5 +104,19 @@ struct ActualServerClientFallbackTests {
         }
     
         #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
+    }
+
+    @Test func malformedFallbackHasSpecificError() async {
+        let client = ActualServerClient()
+    
+        do {
+            try await client.configure(
+                serverURL: "https://primary.example.com",
+                fallbackServerURL: "https://"
+            )
+            Issue.record("Expected malformed fallback URL to be rejected")
+        } catch {
+            #expect(error.localizedDescription == "Invalid fallback server URL")
+        }
     }
 }
