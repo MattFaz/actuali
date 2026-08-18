@@ -225,7 +225,8 @@ struct BudgetView: View {
                                             income: income,
                                             // Only tracking budgets budget income;
                                             // envelope budgets just receive it.
-                                            showsBudgeted: budget.toBudget == nil
+                                            showsBudgeted: budget.toBudget == nil,
+                                            onShowTransactions: showTransactions
                                         )
                                     }
                                 } header: {
@@ -406,6 +407,14 @@ struct BudgetView: View {
         transactionsDestination = CategoryTransactionsDestination(
             categoryId: category.categoryId,
             categoryName: category.categoryName,
+            month: month
+        )
+    }
+
+    private func showTransactions(_ income: IncomeCategory, month: String?) {
+        transactionsDestination = CategoryTransactionsDestination(
+            categoryId: income.categoryId,
+            categoryName: income.categoryName,
             month: month
         )
     }
@@ -928,14 +937,29 @@ struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
     var showsBudgeted = false
+    var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                TwoLineName(text: income.categoryName, font: .body)
+                Button {
+                    onShowTransactions(income, nil)
+                } label: {
+                    TwoLineName(text: income.categoryName, font: .body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("All transactions for \(income.categoryName)")
+
                 Spacer()
-                Text(budgetStore.displayBalance(income.received))
-                    .foregroundColor(income.received > 0 ? .green : .secondary)
+
+                Button {
+                    onShowTransactions(income, income.month)
+                } label: {
+                    Text(budgetStore.displayBalance(income.received))
+                        .foregroundColor(income.received > 0 ? .green : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
             }
             if showsBudgeted {
                 Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
