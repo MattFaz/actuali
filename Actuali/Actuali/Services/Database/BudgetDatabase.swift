@@ -444,11 +444,13 @@ class BudgetDatabase {
             // to the parent. We must exclude parents (isParent = 0) or every
             // split would be counted twice — matching Actual's own aggregate
             // semantics and fetchTransactionsForReports(). We must also exclude
-            // children whose parent is tombstoned: deleting a split tombstones
-            // the parent but leaves the child rows with tombstone = 0, so a
-            // per-row tombstone check alone would still count those orphans
-            // (matching Actual's alive view). Transfer legs still count;
-            // accounts with no transactions get 0.
+            // children whose parent is tombstoned or missing: deleting a split
+            // tombstones the parent but leaves the child rows with tombstone =
+            // 0, so a per-row tombstone check alone would still count those
+            // orphans, and upstream's alive view joins the parent row itself,
+            // so a child whose parent row never materialized doesn't count
+            // either. Transfer legs still count; accounts with no transactions
+            // get 0.
             //
             // date IS NOT NULL mirrors upstream v_transactions_internal: a
             // CRDT update for a row whose insert messages are gone (e.g.
@@ -461,7 +463,7 @@ class BudgetDatabase {
                 WHERE t.acct IS NOT NULL
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 GROUP BY t.acct
                 """)
@@ -531,7 +533,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
                   AND (c.tombstone = 0 OR c.tombstone IS NULL)
                   AND (c.hidden = 0 OR c.hidden IS NULL)
                   AND (g.tombstone = 0 OR g.tombstone IS NULL)
@@ -830,7 +832,7 @@ class BudgetDatabase {
                   AND t.cleared = 1
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId]) ?? 0
         }
@@ -854,7 +856,7 @@ class BudgetDatabase {
                 WHERE t.acct = ?
                   AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId])
             return AccountBalanceBreakdown(
@@ -885,7 +887,7 @@ class BudgetDatabase {
                   AND t.date IS NOT NULL
                   AND (t.reconciled = 0 OR t.reconciled IS NULL)
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
                 ORDER BY t.date DESC, t.sort_order DESC
                 """, arguments: [accountId])
 
@@ -934,7 +936,7 @@ class BudgetDatabase {
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND t.date IS NOT NULL
           AND (t.isParent = 0 OR t.isParent IS NULL)
-          AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+          AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
           AND t.category IS NULL
           AND (a.offbudget = 0 OR a.offbudget IS NULL)
           AND (a.tombstone = 0 OR a.tombstone IS NULL)
@@ -1039,7 +1041,7 @@ class BudgetDatabase {
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND COALESCE(cm.transferId, t.category) = ?
                   AND a.offbudget = 0
@@ -1238,7 +1240,7 @@ class BudgetDatabase {
                 LEFT JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (p.id IS NOT NULL AND (p.tombstone = 0 OR p.tombstone IS NULL)))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
@@ -1645,7 +1647,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL OR (par.id IS NOT NULL AND (par.tombstone = 0 OR par.tombstone IS NULL)))
                   AND t.date IS NOT NULL
                   AND t.acct IS NOT NULL
                 """)

@@ -134,6 +134,33 @@ struct BudgetDatabaseHalfAppliedRowTests {
         #expect(breakdown.uncleared == 0)
     }
 
+    /// Upstream's alive view joins the parent row of every child (is_child =
+    /// 1) and requires it to exist with tombstone = 0, so a child whose
+    /// parent row never materialized — or that lost its parent_id cell —
+    /// counts nowhere.
+    @Test func balancesExcludeChildrenOfMissingParents() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seed(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, amount, date, isChild, parent_id, cleared) VALUES
+                    ('c-missing-parent', 'acct-a', -1000, 20251102, 1, 'never-arrived', 1),
+                    ('c-null-parent',    'acct-a', -2000, 20251103, 1, NULL,            1);
+            """)
+        }
+
+        let account = try #require(try await db.fetchAccounts().first { $0.id == "acct-a" })
+        #expect(account.balance == -275425)
+
+        let breakdown = try await db.balanceBreakdown(accountId: "acct-a")
+        #expect(breakdown.cleared == -275425)
+
+        let reportRows = try await db.fetchTransactionsForReports()
+        #expect(reportRows.map(\.id) == ["t-real"])
+    }
+
     @Test func singleFetchAndReportsHideHalfAppliedRows() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
