@@ -1,7 +1,11 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "ServerNetwork")
 
 enum ActualServerError: LocalizedError {
     case invalidURL
+    case invalidFallbackURL
     case invalidResponse
     case httpError(statusCode: Int, message: String?)
     case unauthorized
@@ -14,6 +18,8 @@ enum ActualServerError: LocalizedError {
         switch self {
         case .invalidURL:
             return "Invalid server URL"
+        case .invalidFallbackURL:
+            return "Invalid fallback server URL"
         case .invalidResponse:
             return "Invalid response from server"
         case .authProxyBlocked:
@@ -227,8 +233,10 @@ actor ActualServerClient {
         if fallbackServerURL.isEmpty {
             fallbackURL = nil
         } else {
-            guard let url = URL(string: fallbackServerURL) else {
-                throw ActualServerError.invalidURL
+            guard let url = URL(string: fallbackServerURL),
+                  url.scheme != nil,
+                  url.host != nil else {
+                throw ActualServerError.invalidFallbackURL
             }
             fallbackURL = url
         }
@@ -280,9 +288,9 @@ actor ActualServerClient {
                 fallbackRequest.url = fallbackURL
                 do {
                     let result = try await session.data(for: fallbackRequest)
-                    // Keep using the reachable address for the rest of this
-                    // session instead of waiting for the primary on every request.
-                    self.serverURL = fallbackServerURL
+                    logger.notice(
+                        "Primary server was unreachable; used the configured fallback for this request"
+                    )
                     return result
                 } catch let fallbackError as URLError where fallbackError.code != .cancelled {
                     throw ActualServerError.networkError(fallbackError)
