@@ -264,19 +264,19 @@ actor ActualServerClient {
         } catch let urlError as URLError where urlError.code != .cancelled {
             if let fallbackServerURL,
                let requestURL = request.url,
-               let serverURL,
-               requestURL.host == serverURL.host {
+               let primaryServerURL = serverURL,
+               requestURL.host == primaryServerURL.host {
                 var fallbackRequest = request
                 fallbackRequest.url = Self.fallbackRequestURL(
                     requestURL: requestURL,
-                    primaryServerURL: serverURL,
+                    primaryServerURL: primaryServerURL,
                     fallbackServerURL: fallbackServerURL
                 )
                 do {
                     let result = try await session.data(for: fallbackRequest)
                     // Keep using the reachable address for the rest of this
                     // session instead of waiting for the primary on every request.
-                    serverURL = fallbackServerURL
+                    self.serverURL = fallbackServerURL
                     return result
                 } catch let fallbackError as URLError where fallbackError.code != .cancelled {
                     throw ActualServerError.networkError(fallbackError)
