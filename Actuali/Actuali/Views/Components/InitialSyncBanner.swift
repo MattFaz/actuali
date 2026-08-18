@@ -49,7 +49,7 @@ private struct InitialSyncBannerModifier: ViewModifier {
             }
             content
         }
-        .animation(.easeInOut(duration: 0.2), value: budgetStore.isInitialSyncing)
+        .animation(AppAnimation.appearance, value: budgetStore.isInitialSyncing)
     }
 }
 

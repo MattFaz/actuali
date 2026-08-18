@@ -298,6 +298,13 @@ struct AccountsListView: View {
     /// Shared so the two layouts can't drift apart.
     private func withChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         Group(content: content)
+            // Both layouts' section state lives in @AppStorage, and a write to
+            // that lands outside any withAnimation transaction — so the rows
+            // have to be animated from here, off the stored flags.
+            .animation(
+                AppAnimation.disclosure,
+                value: [isOnBudgetExpanded, isOffBudgetExpanded, isClosedExpanded]
+            )
             .contentMargins(.horizontal, 6, for: .scrollContent)
 //            .navigationTitle("Accounts")
             .toolbar {
@@ -430,16 +437,18 @@ struct AccountsSummaryCard: View {
     private var summary: BudgetDatabase.AccountsMonthSummary? { monthTotals?.totals }
 
     var body: some View {
+        let balance = budgetStore.displayBalance(totalBalance)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("All Accounts")
                     .font(.headline)
                 Spacer()
-                Text(budgetStore.displayBalance(totalBalance))
+                Text(balance)
                     .font(.headline)
                     .foregroundStyle(balanceColor(for: totalBalance))
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
+                    .animatedAmount(balance)
             }
             Divider()
             // Falls back to today's month only while the figures are still
@@ -489,24 +498,19 @@ struct AccountSectionHeader: View {
     var totalTrailingPadding: CGFloat = 24
 
     var body: some View {
+        let totalText = budgetStore.displayBalance(total)
         Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isExpanded.toggle()
-            }
+            isExpanded.toggle()
         } label: {
             HStack(spacing: 8) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption)
-                    .frame(width: 12)
-                    // Decorative: the expanded/collapsed state is already
-                    // conveyed through the accessibility hint below, so this
-                    // icon would otherwise just add noise before the title.
-                    .accessibilityHidden(true)
+                DisclosureChevron(isExpanded: isExpanded)
+                                    .frame(width: 12)
                 Text(title)
                 Spacer()
-                Text(budgetStore.displayBalance(total))
+                Text(totalText)
                     .fontWeight(.regular)
                     .foregroundStyle(balanceColor(for: total))
+                    .animatedAmount(totalText)
                     // Grouped-list headers uppercase their content; fine for
                     // the title (string headers always rendered that way) but
                     // it would mangle alphabetic currency symbols ("kr"→"KR").
@@ -525,7 +529,7 @@ struct AccountSectionHeader: View {
         // be disabled outright, and a collapsed section is otherwise
         // indistinguishable from an empty one. Same convention as the budget
         // tab's group headers ("Essentials, collapsed").
-        .accessibilityLabel("\(title), \(expandedState), \(budgetStore.displayBalance(total))")
+        .accessibilityLabel("\(title), \(expandedState), \(totalText)")
         .accessibilityIdentifier("\(title), \(expandedState)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
@@ -542,12 +546,14 @@ struct AccountRow: View {
     let account: Account
 
     var body: some View {
+        let balance = budgetStore.displayBalance(account.balance)
         HStack {
             Text(account.name)
                 .font(.body)
             Spacer()
-            Text(budgetStore.displayBalance(account.balance))
+            Text(balance)
                 .foregroundStyle(balanceColor(for: account.balance))
+                .animatedAmount(balance)
         }
     }
 }
