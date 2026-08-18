@@ -50,6 +50,7 @@ struct ReconcileView: View {
                         // a negative bank balance, so the sign toggle is needed.
                         AmountInputField(
                             text: $balanceText,
+                            conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                             alignment: .right,
                             allowsNegative: true,
                             weight: .semibold

@@ -56,4 +56,23 @@ struct DayDate: Comparable, Hashable {
         let c = calendar.dateComponents([.year, .month, .day], from: now)
         return DayDate(year: c.year!, month: c.month!, day: c.day!)
     }
+    
+    /// Whole calendar days from this day to `other`; negative when `other` is
+    /// earlier. Both ends are anchored at UTC noon, so no DST transition can
+    /// round the difference off by one.
+    func days(until other: DayDate) -> Int {
+        DayDate.utcCalendar.dateComponents([.day], from: utcDate, to: other.utcDate).day ?? 0
+    }
+
+    /// Shifted by whole months, clamped to the target month's length
+    /// (Jan 31 + 1 month = Feb 28), matching date-fns `addMonths` — which is
+    /// what upstream's upcoming-window math is built on.
+    func adding(months: Int) -> DayDate {
+        let total = year * 12 + (month - 1) + months
+        // Swift integer division truncates toward zero; floor it so a negative
+        // shift doesn't land a month late.
+        let y = total >= 0 ? total / 12 : (total - 11) / 12
+        let m = total - y * 12 + 1
+        return DayDate(year: y, month: m, day: min(day, DayDate.lastDay(year: y, month: m)))
+    }
 }

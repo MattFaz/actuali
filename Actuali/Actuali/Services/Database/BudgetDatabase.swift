@@ -444,18 +444,26 @@ class BudgetDatabase {
             // to the parent. We must exclude parents (isParent = 0) or every
             // split would be counted twice — matching Actual's own aggregate
             // semantics and fetchTransactionsForReports(). We must also exclude
-            // children whose parent is tombstoned: deleting a split tombstones
-            // the parent but leaves the child rows with tombstone = 0, so a
-            // per-row tombstone check alone would still count those orphans
-            // (matching Actual's alive view). Transfer legs still count;
-            // accounts with no transactions get 0.
+            // children whose parent is tombstoned or missing: deleting a split
+            // tombstones the parent but leaves the child rows with tombstone =
+            // 0, so a per-row tombstone check alone would still count those
+            // orphans, and upstream's alive view joins the parent row itself,
+            // so a child whose parent row never materialized doesn't count
+            // either. Transfer legs still count; accounts with no transactions
+            // get 0.
+            //
+            // date IS NOT NULL mirrors upstream v_transactions_internal: a
+            // CRDT update for a row whose insert messages are gone (e.g.
+            // after a sync reset) materializes a half-applied row with no
+            // date, which official clients never show or count (GH #275).
             let balanceRows = try Row.fetchAll(db, sql: """
                 SELECT t.acct AS acct, COALESCE(SUM(t.amount), 0) AS balance
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct IS NOT NULL
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 GROUP BY t.acct
                 """)
@@ -479,42 +487,59 @@ class BudgetDatabase {
         }
     }
     
-    /// Money in and out across every account for one month, for the accounts
-    /// tab's summary group (GH #256).
+    /// A month's income and spending for the accounts tab's summary group
+    /// (GH #256), on the same footing as the budget tab's Income and Spent.
     struct AccountsMonthSummary: Equatable {
         var incomeCents = 0
-        /// Positive: what left the accounts, not a signed amount.
+        /// Spending sign-flipped to read as money out, so a normal month is
+        /// positive. Net activity, like the budget tab's Spent (GH #212):
+        /// refunds offset spending, and a month whose refunds outweigh it
+        /// goes negative — the same figure the budget tab shows, so both
+        /// tabs stay in step.
         var expenseCents = 0
 
+        /// What the month kept: income less what actually went out. A net
+        /// refund makes `expenseCents` negative and so adds here, which is
+        /// the cash that stayed.
         var netCents: Int { incomeCents - expenseCents }
     }
 
-    /// Income and expenses across every account for one "yyyy-MM" month.
+    /// Income and expenses for one "yyyy-MM" month.
     ///
-    /// Scoped to all accounts, off-budget and closed included, so it
-    /// reconciles with the all-accounts balance it sits under — unlike the
-    /// budget month's income/spent, which only counts categorised
-    /// transactions in on-budget accounts. Transfer legs are excluded: a
-    /// transfer moves money inside that set, so counting it would show up as
-    /// both income and an expense (same rule as the WebUI's cash flow card).
-    /// Split parents are excluded and their children counted, matching
-    /// `fetchAccounts()`'s balance query.
+    /// Same scope as the budget month's income/spent so the two tabs agree
+    /// (GH #256): categorised transactions in on-budget accounts only, with
+    /// hidden categories and hidden groups left out the way the budget tab's
+    /// Income/Spent totals leave them out. Income is the income categories'
+    /// activity, expenses the rest — so an off-budget account's spending
+    /// doesn't land in either, and transfers need no special-casing (an
+    /// on-budget↔on-budget transfer carries no category; a categorised leg
+    /// into an off-budget account is spending, as upstream counts it).
+    /// Split parents are excluded and their children counted, matching the
+    /// budget's spent query. Deleted accounts are excluded as well: upstream
+    /// tombstones an account's transactions along with it, so a live
+    /// transaction left on a tombstoned account is a sync-race orphan the
+    /// all-accounts balance above the card doesn't count either.
     func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT
-                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS expense
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
                 FROM transactions t
-                LEFT JOIN payee_mapping pm ON pm.id = t.description
-                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                JOIN category_groups g ON g.id = c.cat_group
                 JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "par"))
+                  AND (c.tombstone = 0 OR c.tombstone IS NULL)
+                  AND (c.hidden = 0 OR c.hidden IS NULL)
+                  AND (g.tombstone = 0 OR g.tombstone IS NULL)
+                  AND (g.hidden = 0 OR g.hidden IS NULL)
+                  AND a.offbudget = 0
                   AND (a.tombstone = 0 OR a.tombstone IS NULL)
-                  AND p.transfer_acct IS NULL
                   AND (t.date / 100) = ?
                 """, arguments: [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
@@ -526,6 +551,15 @@ class BudgetDatabase {
     }
 
     // MARK: - Transactions
+
+    /// Alive-child filter for every query that counts split children:
+    /// mirrors upstream v_transactions_internal_alive, which joins the
+    /// parent row of every is_child = 1 row and requires it to exist with
+    /// tombstone = 0, so children of tombstoned or never-materialized
+    /// parents count nowhere. `parent` is the joined parent row's alias.
+    private static func aliveChildPredicate(parent: String) -> String {
+        "(t.isChild = 0 OR t.isChild IS NULL OR (\(parent).id IS NOT NULL AND (\(parent).tombstone = 0 OR \(parent).tombstone IS NULL)))"
+    }
 
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
@@ -551,6 +585,8 @@ class BudgetDatabase {
         LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND (t.isChild = 0 OR t.isChild IS NULL)
+          AND t.date IS NOT NULL
+          AND t.acct IS NOT NULL
         """
 
     private static func mapTransaction(_ row: Row) -> Transaction {
@@ -650,6 +686,8 @@ class BudgetDatabase {
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isChild = 0 OR t.isChild IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """
 
             var arguments: [(any DatabaseValueConvertible)?] = []
@@ -801,8 +839,9 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId]) ?? 0
         }
@@ -824,8 +863,9 @@ class BudgetDatabase {
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId])
             return AccountBalanceBreakdown(
@@ -853,9 +893,10 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.reconciled = 0 OR t.reconciled IS NULL)
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                 ORDER BY t.date DESC, t.sort_order DESC
                 """, arguments: [accountId])
 
@@ -902,8 +943,9 @@ class BudgetDatabase {
 
     private static let uncategorizedWhere = """
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND t.date IS NOT NULL
           AND (t.isParent = 0 OR t.isParent IS NULL)
-          AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+          AND \(aliveChildPredicate(parent: "par"))
           AND t.category IS NULL
           AND (a.offbudget = 0 OR a.offbudget IS NULL)
           AND (a.tombstone = 0 OR a.tombstone IS NULL)
@@ -1008,7 +1050,8 @@ class BudgetDatabase {
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND \(Self.aliveChildPredicate(parent: "par"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND COALESCE(cm.transferId, t.category) = ?
                   AND a.offbudget = 0
@@ -1316,6 +1359,11 @@ class BudgetDatabase {
             //   * Only count on-budget accounts (accounts.offbudget = 0). A
             //     categorised transaction in an off-budget account is not budget
             //     spending.
+            //   * Also skip deleted accounts (accounts.tombstone = 1). Upstream
+            //     doesn't check this, because deleteAccount() tombstones or
+            //     reassigns every transaction on its way out; a live transaction
+            //     left on a deleted account is a sync-race orphan (upstream's own
+            //     TODO in accounts/app.ts) that nothing else in the app counts.
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
@@ -1340,10 +1388,11 @@ class BudgetDatabase {
                 LEFT JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
                   AND (t.date / 100) <= ?
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
@@ -1746,7 +1795,9 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "par"))
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """)
 
             return rows.map { row in
@@ -2250,6 +2301,23 @@ class BudgetDatabase {
         }
     }
 
+    /// Repoints an existing transaction at a new partner leg and inserts that
+    /// leg, with both rows' CRDT messages, in a single SQLite transaction —
+    /// a partial write would leave the edited row's `transferred_id` pointing
+    /// at a partner that was never created.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func convertToTransfer(
+        leg: Transaction,
+        partner: Transaction,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.updateTransactionRow(db, leg)
+            try Self.insertTransactionRow(db, partner)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
     /// Inserts a split parent, its children and their CRDT messages in a
     /// single SQLite transaction, so a failure on any row rolls back
     /// everything and no partial split can persist.
@@ -2318,59 +2386,134 @@ class BudgetDatabase {
     /// Caller is responsible for emitting CRDT messages for the same fields.
     func updateTransaction(_ transaction: Transaction) throws {
         try dbQueue.write { db in
-            try db.execute(sql: """
-                UPDATE transactions
-                SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
-                    notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
-                    isParent = ?, parent_id = ?, tombstone = ?
-                WHERE id = ?
-                """, arguments: [
-                    transaction.accountId,
-                    transaction.date,
-                    transaction.payeeId,
-                    transaction.categoryId,
-                    transaction.amount,
-                    transaction.notes,
-                    transaction.cleared ? 1 : 0,
-                    transaction.reconciled ? 1 : 0,
-                    transaction.transferId,
-                    transaction.isParent ? 1 : 0,
-                    transaction.parentId,
-                    transaction.tombstone ? 1 : 0,
-                    transaction.id
-                ])
+            try Self.updateTransactionRow(db, transaction)
         }
+    }
+
+    private static func updateTransactionRow(_ db: Database, _ transaction: Transaction) throws {
+        try db.execute(sql: """
+            UPDATE transactions
+            SET acct = ?, date = ?, description = ?, category = ?, amount = ?,
+                notes = ?, cleared = ?, reconciled = ?, transferred_id = ?,
+                isParent = ?, parent_id = ?, tombstone = ?
+            WHERE id = ?
+            """, arguments: [
+                transaction.accountId,
+                transaction.date,
+                transaction.payeeId,
+                transaction.categoryId,
+                transaction.amount,
+                transaction.notes,
+                transaction.cleared ? 1 : 0,
+                transaction.reconciled ? 1 : 0,
+                transaction.transferId,
+                transaction.isParent ? 1 : 0,
+                transaction.parentId,
+                transaction.tombstone ? 1 : 0,
+                transaction.id
+            ])
     }
 
     // MARK: - Rules
 
-    /// Fetch all non-tombstoned rules from the rules table.
-    /// Returns an empty array if the rules table doesn't exist.
-    func fetchRules() throws -> [Rule] {
+    func rulesTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("rules") }
+    }
+    
+    /// Budget-level context the rules engine needs for conditions it can't
+    /// answer from the transaction row (upstream `prepareTransactionForRules`).
+    func ruleContext() throws -> RuleContext {
         try dbQueue.read { db in
-            guard try db.tableExists("rules") else { return [] }
+            let offBudget = try Set(String.fetchAll(
+                db, sql: "SELECT id FROM accounts WHERE offbudget = 1"
+            ))
 
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, stage, conditions_op, conditions, actions
-                FROM rules
+            var groups: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, cat_group FROM categories
                 WHERE tombstone = 0 OR tombstone IS NULL
-                """)
-
-            return rows.compactMap { row in
-                let id: String? = row["id"]
-                guard let id else { return nil }
-                do {
-                    return try Rule.parse(
-                        id: id,
-                        stage: row["stage"],
-                        conditionsOp: row["conditions_op"],
-                        conditionsJSON: row["conditions"],
-                        actionsJSON: row["actions"]
-                    )
-                } catch {
-                    return nil
+                """) {
+                if let id: String = row["id"], let group: String = row["cat_group"] {
+                    groups[id] = group
                 }
             }
+
+            var payeeNames: [String: String] = [:]
+            for row in try Row.fetchAll(db, sql: """
+                SELECT id, name FROM payees
+                WHERE tombstone = 0 OR tombstone IS NULL
+                """) {
+                if let id: String = row["id"], let name: String = row["name"] {
+                    payeeNames[id] = name
+                }
+            }
+
+            return RuleContext(
+                offBudgetAccountIds: offBudget,
+                categoryGroupIds: groups,
+                payeeNames: payeeNames
+            )
+        }
+    }
+
+    /// The live payee with this name, case-insensitively — how a `payee_name`
+    /// action resolves to an id before we fall back to creating one.
+    func payee(named name: String) throws -> Payee? {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT id, name, transfer_acct FROM payees
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND name = ? COLLATE NOCASE
+                LIMIT 1
+                """, arguments: [name])
+            guard let row, let id: String = row["id"] else { return nil }
+            return Payee(id: id, name: row["name"] ?? name, transferAccountId: row["transfer_acct"])
+        }
+    }
+
+    /// All live rules. Returns [] when the budget file has no `rules` table.
+    func fetchRules() throws -> [Rule] {
+        try dbQueue.read { db in try Self.liveRules(db) }
+    }
+
+    /// Live rules in the order the engine runs them — what the Rules screen shows,
+    /// matching upstream's `rules-get` (which returns `rankRules(...)`).
+    func fetchRulesRanked() async throws -> [Rule] {
+        try await dbQueue.read { db in RuleRanker.rank(try Self.liveRules(db)) }
+    }
+
+    private static func liveRules(_ db: Database) throws -> [Rule] {
+        guard try db.tableExists("rules") else { return [] }
+
+        let rows = try Row.fetchAll(db, sql: """
+            SELECT id, stage, conditions_op, conditions, actions
+            FROM rules
+            WHERE tombstone = 0 OR tombstone IS NULL
+            """)
+
+        return rows.compactMap { row in
+            guard let id: String = row["id"] else { return nil }
+            // A rule we can't parse is a rule we must not silently half-apply:
+            // upstream drops invalid rules on load too (`makeRule` returns null).
+            return try? Rule.parse(
+                id: id,
+                stage: row["stage"],
+                conditionsOp: row["conditions_op"],
+                conditionsJSON: row["conditions"],
+                actionsJSON: row["actions"]
+            )
+        }
+    }
+
+    /// Rule ids a schedule owns. Upstream refuses to delete these
+    /// (`deleteRule` returns false when a schedule points at the rule), and the
+    /// list badges them so it's clear why.
+    func scheduleOwnedRuleIds() throws -> Set<String> {
+        try dbQueue.read { db in
+            guard try db.tableExists("schedules") else { return [] }
+            return try Set(String.fetchAll(db, sql: """
+                SELECT rule FROM schedules
+                WHERE rule IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
+                """))
         }
     }
 
@@ -2509,6 +2652,188 @@ class BudgetDatabase {
                 )
             }
     }
+    
+    /// Every live schedule, for the schedules screen — including completed and
+    /// manual ones, which `fetchPostableSchedules` deliberately excludes.
+    ///
+    /// Unlike the poster's fetch, the rule and next-date joins are LEFT joins.
+    /// The poster is right to skip a schedule it can't fully understand; the
+    /// list is not — a schedule whose rule or next-date row went missing must
+    /// still appear so it can be fixed or deleted, rather than becoming an
+    /// invisible row only the web app can reach.
+    func fetchSchedules() async throws -> [ScheduleSummary] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("schedules"),
+                  try db.tableExists("schedules_next_date"),
+                  try db.tableExists("rules")
+            else { return [] }
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT s.*,
+                       nd.id AS nd_id,
+                       nd.local_next_date, nd.local_next_date_ts,
+                       nd.base_next_date, nd.base_next_date_ts,
+                       r.id AS rule_id, r.conditions, r.actions
+                FROM schedules s
+                LEFT JOIN schedules_next_date nd ON nd.schedule_id = s.id
+                LEFT JOIN rules r ON r.id = s.rule
+                    AND (r.tombstone = 0 OR r.tombstone IS NULL)
+                WHERE (s.tombstone = 0 OR s.tombstone IS NULL)
+                ORDER BY s.id, nd.id
+                """)
+
+            // A duplicated schedules_next_date row (bad sync) would list the
+            // same schedule twice. First row wins, deterministically via the
+            // ORDER BY above — same rule the poster uses.
+            var seen = Set<String>()
+
+            return try rows.compactMap { row -> ScheduleSummary? in
+                guard let id: String = row["id"], seen.insert(id).inserted else { return nil }
+
+                let conditions = Self.parseConditionsArray(row["conditions"]) ?? []
+                let actions = Self.parseConditionsArray(row["actions"]) ?? []
+
+                let accountCond = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["account", "acct"])
+                let payeeCond = Self.firstCondition(
+                    in: conditions, ops: ["is"], fields: ["payee", "description"])
+                let amountCond = Self.firstCondition(
+                    in: conditions, ops: ["is", "isapprox", "isbetween"], fields: ["amount"])
+                let dateCond = Self.firstCondition(
+                    in: conditions, ops: ["is", "isapprox"], fields: ["date"])
+
+                // Effective next date, per loot-core's v_schedules view:
+                // local when the timestamps agree, else base.
+                let localTs: Int64? = row["local_next_date_ts"]
+                let baseTs: Int64? = row["base_next_date_ts"]
+                let effectiveRaw: Int? = (localTs != nil && localTs == baseTs)
+                    ? row["local_next_date"]
+                    : row["base_next_date"]
+
+                // Payee ids resolve through payee_mapping, so a merged payee
+                // reads as its surviving target — same as the v_schedules
+                // LEFT JOIN.
+                var payeeId = payeeCond?["value"] as? String
+                if let raw = payeeId {
+                    payeeId = try String.fetchOne(
+                        db,
+                        sql: "SELECT targetId FROM payee_mapping WHERE id = ?",
+                        arguments: [raw])
+                }
+
+                // "Custom" = the rule says more than the four conditions a
+                // schedule owns, or does something other than link itself.
+                let recognised = [accountCond, payeeCond, amountCond, dateCond]
+                    .compactMap { $0 }.count
+                let isCustom = conditions.count > recognised
+                    || actions.contains { ($0["op"] as? String) != "link-schedule" }
+
+                return ScheduleSummary(
+                    id: id,
+                    name: row["name"],
+                    ruleId: row["rule_id"],
+                    nextDate: effectiveRaw.flatMap { DayDate(yyyymmdd: $0) },
+                    nextDateRowId: row["nd_id"],
+                    baseNextDateTs: baseTs,
+                    accountId: accountCond?["value"] as? String,
+                    payeeId: payeeId,
+                    amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
+                    amountOp: (amountCond?["op"] as? String)
+                        .flatMap(ScheduleAmountOp.init(rawValue:)) ?? .isApprox,
+                    dateOp: dateCond?["op"] as? String,
+                    dateCondition: Self.parseDateCondition(in: conditions),
+                    postsTransaction: row["posts_transaction"] == 1,
+                    completed: row["completed"] == 1,
+                    customUpcomingLength: row["custom_upcoming_length"],
+                    sortOrder: row["sort_order"],
+                    isCustom: isCustom,
+                    conditionsJSON: row["conditions"],
+                    actionsJSON: row["actions"],
+                    categoryId: Self.parseCategoryAction(row["actions"])
+                )
+            }
+        }
+    }
+
+    /// Schedules that already have a transaction covering their current
+    /// occurrence — the `paid` input to the status calculator. Port of
+    /// loot-core `getHasTransactionsQuery`, collapsed into one grouped query
+    /// rather than a large OR: each schedule's own lower bound is applied in
+    /// Swift against the latest linked transaction date.
+    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) async throws -> Set<String> {
+        let bounds: [(id: String, start: Int)] = schedules.compactMap { schedule in
+            guard let nextDate = schedule.nextDate else { return nil }
+            let start = ScheduleStatusCalculator.occurrenceMatchStartDate(
+                nextDate: nextDate,
+                dateOp: schedule.dateOp,
+                postsTransaction: schedule.postsTransaction)
+            return (schedule.id, start.yyyymmdd)
+        }
+        guard !bounds.isEmpty else { return [] }
+
+        return try await dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: bounds.count).joined(separator: ", ")
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT schedule, MAX(date) AS max_date
+                FROM transactions
+                WHERE schedule IN (\(placeholders))
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                GROUP BY schedule
+                """, arguments: StatementArguments(bounds.map(\.id)))
+
+            var latestDate: [String: Int] = [:]
+            for row in rows {
+                guard let scheduleId: String = row["schedule"],
+                      let maxDate: Int = row["max_date"] else { continue }
+                latestDate[scheduleId] = maxDate
+            }
+
+            var paid = Set<String>()
+            for bound in bounds where (latestDate[bound.id] ?? Int.min) >= bound.start {
+                paid.insert(bound.id)
+            }
+            return paid
+        }
+    }
+    
+    /// Is another live schedule already using this name? Mirrors loot-core
+    /// `checkIfScheduleExists`, which enforces unique names so the "link to
+    /// schedule" pickers stay unambiguous.
+    func scheduleNameExists(_ name: String, excluding scheduleId: String?) throws -> Bool {
+        try dbQueue.read { db in
+            let existingId = try String.fetchOne(db, sql: """
+                SELECT id FROM schedules
+                WHERE (tombstone = 0 OR tombstone IS NULL)
+                  AND name = ?
+                  AND (? IS NULL OR id <> ?)
+                LIMIT 1
+                """, arguments: [name, scheduleId, scheduleId])
+            return existingId != nil
+        }
+    }
+
+    /// Refresh the local `schedules_json_paths` cache for one schedule.
+    ///
+    /// This table is NOT synced — loot-core rebuilds it locally from a sync
+    /// listener whenever a rule changes, so the web repairs its own copy when
+    /// our rule arrives. Actuali doesn't read the table at all (it parses rule
+    /// conditions directly), but keeping the local file self-consistent costs
+    /// one statement and means nothing depends on a listener we don't run.
+    ///
+    /// It also has no `id` column, so it could not go through the CRDT apply
+    /// path even if it were synced.
+    func writeScheduleJSONPaths(scheduleId: String, conditions: [[String: Any]]) throws {
+        try dbQueue.write { db in
+            guard try db.tableExists("schedules_json_paths") else { return }
+            let paths = ScheduleConditions.jsonPaths(for: conditions)
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO schedules_json_paths
+                    (schedule_id, payee, account, amount, date)
+                VALUES (?, ?, ?, ?, ?)
+                """, arguments: [scheduleId, paths.payee, paths.account,
+                                 paths.amount, paths.date])
+        }
+    }
 
     /// Dedup guard for the poster: does an alive transaction linked to this
     /// schedule already exist on/after `date` (YYYYMMDD int)?
@@ -2590,6 +2915,105 @@ class BudgetDatabase {
         }
         return .unsupported
     }
+    
+    /// Transactions linked to a schedule, newest first. Powers the editor's
+    /// linked-transactions section and the unlink action.
+    func fetchTransactions(scheduleId: String, limit: Int = 50) throws -> [Transaction] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
+                       t.description, t.notes, t.date, t.imported_description,
+                       t.schedule, t.transferred_id, t.cleared, t.reconciled,
+                       t.sort_order, t.tombstone, t.parent_id,
+                       COALESCE(pa.name, p.name) AS payee_name,
+                       c.name AS category_name
+                FROM transactions t
+                LEFT JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN payees pa ON pa.id = t.description
+                LEFT JOIN categories c ON c.id = t.category
+                WHERE t.schedule = ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
+                ORDER BY t.date DESC, t.sort_order DESC
+                LIMIT ?
+                """, arguments: [scheduleId, limit])
+            return rows.map(Self.mapTransaction)
+        }
+    }
+    
+    /// Set or clear the schedule link on transactions.
+    ///
+    /// Deliberately narrow rather than adding `schedule` to `updateTransaction`:
+    /// the transaction editor rebuilds its row without carrying that column, so
+    /// widening the shared UPDATE would clear the link whenever a scheduled
+    /// transaction is edited by hand.
+    func setTransactionSchedule(transactionIds: [String], scheduleId: String?) throws {
+        guard !transactionIds.isEmpty else { return }
+        try dbQueue.write { db in
+            let placeholders = Array(repeating: "?", count: transactionIds.count).joined(separator: ", ")
+            var arguments: [DatabaseValueConvertible?] = [scheduleId]
+            arguments.append(contentsOf: transactionIds)
+            try db.execute(
+                sql: "UPDATE transactions SET schedule = ? WHERE id IN (\(placeholders))",
+                arguments: StatementArguments(arguments))
+        }
+    }
+    
+    /// One account's transactions that are eligible to form a schedule.
+    ///
+    /// Mirrors the filters in upstream's `getTransactions`: already-scheduled
+    /// rows are excluded, transfers are excluded (they pair two accounts and
+    /// aren't a bill), and split children are excluded so a split doesn't read
+    /// as several independent payments.
+    func fetchDiscoveryTransactions(
+        accountId: String,
+        notBefore: Int
+    ) throws -> [ScheduleDiscovery.Candidate] {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT t.id, t.date, t.amount, pm.targetId AS payee_id
+                FROM transactions t
+                JOIN payee_mapping pm ON pm.id = t.description
+                LEFT JOIN payees p ON p.id = pm.targetId
+                WHERE t.acct = ?
+                  AND t.date >= ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.schedule IS NULL
+                  AND (t.isChild = 0 OR t.isChild IS NULL)
+                  AND t.transferred_id IS NULL
+                  AND p.transfer_acct IS NULL
+                ORDER BY t.date ASC
+                """, arguments: [accountId, notBefore])
+
+            return rows.compactMap { row in
+                guard let id: String = row["id"],
+                      let rawDate: Int = row["date"],
+                      let date = DayDate(yyyymmdd: rawDate),
+                      let payeeId: String = row["payee_id"],
+                      let amount: Int = row["amount"]
+                else { return nil }
+                return ScheduleDiscovery.Candidate(
+                    id: id, date: date, amount: amount,
+                    payeeId: payeeId, accountId: accountId)
+            }
+        }
+    }
+
+    /// Latest transaction date on an account — the anchor every pattern sweep
+    /// measures back from.
+    func latestTransactionDate(accountId: String) throws -> DayDate? {
+        try dbQueue.read { db in
+            let raw = try Int.fetchOne(db, sql: """
+                SELECT date FROM transactions
+                WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+                  AND parent_id IS NULL
+                ORDER BY date DESC LIMIT 1
+                """, arguments: [accountId])
+            return raw.flatMap { DayDate(yyyymmdd: $0) }
+        }
+    }
 
     // MARK: - Preferences
 
@@ -2606,6 +3030,19 @@ class BudgetDatabase {
                 SELECT value FROM preferences WHERE id = 'defaultCurrencyCode'
                 """)
 
+            return row?["value"]
+        }
+    }
+    
+    /// Budget-wide upcoming-schedule window, as stored by Actual. Nil when
+    /// unset, so callers fall back to `ScheduleUpcomingLength.fallback`.
+    func fetchUpcomingScheduledTransactionLength() async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return nil }
+            let row = try Row.fetchOne(db, sql: """
+                SELECT value FROM preferences
+                WHERE id = 'upcomingScheduledTransactionLength'
+                """)
             return row?["value"]
         }
     }

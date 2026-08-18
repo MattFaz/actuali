@@ -299,6 +299,16 @@ struct ConditionsFilterTests {
         #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"), conditions: [cond], op: "and", context: groupContext))
         #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "rent"), conditions: [cond], op: "and", context: groupContext))
     }
+    
+    /// Two days either side of a US DST change must still be "approximately"
+    /// the same date — the bug a local calendar reintroduces.
+    @Test func approxDateSpansDaylightSavingBoundaries() {
+        // 2026-11-01 is a US fall-back date.
+        #expect(RuleDateMatcher.matches(transactionDate: 20261101, op: "isapprox",
+                                        value: "2026-10-30") == true)
+        #expect(RuleDateMatcher.matches(transactionDate: 20260308, op: "isapprox",
+                                        value: "2026-03-10") == true)
+    }
 }
 
 /// Test helper to build WidgetRuleCondition values from primitives.

@@ -106,7 +106,10 @@ struct BudgetTransferSheet: View {
                 }
 
                 Section {
-                    AmountInputField(text: $amountText)
+                    AmountInputField(
+                        text: $amountText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry
+                    )
                 } header: {
                     Text("Amount")
                 } footer: {

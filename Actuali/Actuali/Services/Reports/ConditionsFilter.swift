@@ -139,26 +139,10 @@ enum ConditionsFilter {
     /// Transactions store dates as YYYYMMDD ints. Recurring-date conditions
     /// (objects with a frequency) are not supported and pass through.
     private static func matchDate(_ tx: Transaction, _ c: WidgetRuleCondition) -> Bool {
-        guard let s = decodeString(c.value) else { return true }
-        let digits = s.replacingOccurrences(of: "-", with: "")
-        guard let value = Int(digits) else { return true }
-
-        switch (c.op, digits.count) {
-        case ("is", 8): return tx.date == value
-        case ("is", 6): return tx.date / 100 == value      // month
-        case ("is", 4): return tx.date / 10000 == value    // year
-        case ("isapprox", 8):
-            guard let target = ymdToDate(value), let txDate = ymdToDate(tx.date) else { return false }
-            return abs(txDate.timeIntervalSince(target)) <= 2 * 86_400 + 1
-        case ("gt", 8): return tx.date > value
-        case ("gte", 8): return tx.date >= value
-        case ("lt", 8): return tx.date < value
-        case ("lte", 8): return tx.date <= value
-        default:
-            // Upstream rejects month/year values for comparison ops at parse
-            // time, dropping the condition entirely.
-            return true
-        }
+        guard let value = decodeString(c.value) else { return true }
+        // An unevaluable date condition is a dropped condition here, matching
+        // upstream's filter builder — the report shows everything else.
+        return RuleDateMatcher.matches(transactionDate: tx.date, op: c.op, value: value) ?? true
     }
 
     // MARK: - Id conditions (category / account / payee)
@@ -324,11 +308,5 @@ enum ConditionsFilter {
             return AmountOptions(inflow: nil, outflow: nil)
         }
         return opts
-    }
-
-    private static func ymdToDate(_ ymd: Int) -> Date? {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        return cal.date(from: DateComponents(year: ymd / 10000, month: (ymd % 10000) / 100, day: ymd % 100))
     }
 }

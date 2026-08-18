@@ -1,0 +1,51 @@
+name: App Store reviews
+
+# Polls App Store Connect for new customer reviews and posts each one to the
+# #app-store-reviews Discord channel (webhook in DISCORD_REVIEWS_WEBHOOK_URL).
+# Reuses the App Store Connect API key secrets from the TestFlight workflow.
+#
+# "Already posted" state is the createdDate of the newest review, kept in the
+# Actions cache; the first run (or a run after the cache is evicted) posts
+# nothing and just re-records the high-water mark.
+
+on:
+  schedule:
+    - cron: "0 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      backfill:
+        description: "Post every review ever left, oldest first (one-off)"
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: app-store-reviews
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    if: github.repository == 'MattFaz/actuali'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # Cache keys are immutable, so key on the run id (always a miss, always
+      # saves) and restore the most recent one by prefix.
+      - uses: actions/cache@v4
+        with:
+          path: .asc-reviews-state
+          key: asc-reviews-${{ github.run_id }}
+          restore-keys: asc-reviews-
+
+      - name: Post new reviews
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
+          WEBHOOK_URL: ${{ secrets.DISCORD_REVIEWS_WEBHOOK_URL }}
+          BACKFILL: ${{ inputs.backfill && '1' || '0' }}
+        run: |
+          echo -n "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/AuthKey.p8"
+          ASC_KEY_PATH="$RUNNER_TEMP/AuthKey.p8" ruby dev/scripts/post-app-store-reviews.rb

@@ -16,6 +16,7 @@ on:
     types: [opened, closed, reopened]
   pull_request_target:
     types: [opened, closed, reopened]
+    branches: [main]
   release:
     types: [published]
 
@@ -23,6 +24,7 @@ permissions: {}
 
 jobs:
   notify:
+    if: github.repository == 'MattFaz/actuali'
     runs-on: ubuntu-latest
     steps:
       - name: Send Discord message

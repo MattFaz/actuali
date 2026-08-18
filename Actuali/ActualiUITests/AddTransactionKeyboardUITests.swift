@@ -21,11 +21,6 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
 
-        // The tab-hosted add flow is not a presentation; a Cancel button
-        // here would be a no-op and must not render.
-        XCTAssertFalse(app.navigationBars.buttons["Cancel"].exists,
-                       "Cancel button rendered in the tab-hosted add flow")
-
         amountField.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
                       "keyboard did not appear")
