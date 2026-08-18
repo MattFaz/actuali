@@ -4,6 +4,8 @@ import Testing
 
 private final class FallbackTransport: URLProtocol {
     nonisolated(unsafe) static var requestedURLs: [URL] = []
+    nonisolated(unsafe) static var primaryFailure = URLError(.cannotConnectToHost)
+    nonisolated(unsafe) static var fallbackFailure: URLError?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -13,7 +15,11 @@ private final class FallbackTransport: URLProtocol {
         Self.requestedURLs.append(request.url!)
 
         if host == "primary.example.com" {
-            client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+            client?.urlProtocol(self, didFailWithError: Self.primaryFailure)
+            return
+        }
+        if let fallbackFailure = Self.fallbackFailure {
+            client?.urlProtocol(self, didFailWithError: fallbackFailure)
             return
         }
 
@@ -39,6 +45,8 @@ struct ActualServerClientFallbackTests {
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
         -> ActualServerClient {
         FallbackTransport.requestedURLs = []
+        FallbackTransport.primaryFailure = URLError(.cannotConnectToHost)
+        FallbackTransport.fallbackFailure = nil
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FallbackTransport.self]
         let client = ActualServerClient(session: URLSession(configuration: configuration))
@@ -78,5 +86,30 @@ struct ActualServerClientFallbackTests {
         _ = try await client.login(password: "password")
     
         #expect(FallbackTransport.requestedURLs.last?.path == "/actual/account/login")
+    }
+
+    @Test func doesNotRetryFallbackAgainstItselfAfterFailover() async throws {
+        let client = try await makeClient()
+        _ = try await client.login(password: "password")
+        FallbackTransport.fallbackFailure = URLError(.cannotConnectToHost)
+    
+        await #expect(throws: ActualServerError.self) {
+            _ = try await client.login(password: "password")
+        }
+    
+        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+            "primary.example.com", "fallback.example.com", "fallback.example.com"
+        ])
+    }
+    
+    @Test func offlineDeviceDoesNotAttemptFallback() async throws {
+        let client = try await makeClient()
+        FallbackTransport.primaryFailure = URLError(.notConnectedToInternet)
+    
+        await #expect(throws: ActualServerError.self) {
+            _ = try await client.login(password: "password")
+        }
+    
+        #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
     }
 }
