@@ -2,7 +2,7 @@ name: Sync fork
 
 on:
   schedule:
-    - cron: '0 6 * * *'   # daily at 06:00 UTC
+    - cron: '0 * * * *'   # daily at 06:00 UTC
   workflow_dispatch:       # lets you run it manually too
 
 jobs:
