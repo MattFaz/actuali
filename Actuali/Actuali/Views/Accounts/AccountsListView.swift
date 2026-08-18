@@ -64,7 +64,7 @@ struct AccountsListView: View {
     }
 
     var closedAccounts: [Account] {
-        budgetStore.accounts.filter { $0.closed }
+        budgetStore.visibleClosedAccounts
     }
 
     var onBudgetTotal: Int { onBudgetAccounts.sumBalance }
@@ -308,6 +308,17 @@ struct AccountsListView: View {
                         Image(systemName: "plus")
                     }
                     .accessibilityLabel("Add Account")
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Toggle(isOn: $budgetStore.hideClosedAccounts) {
+                            Label("Hide Closed Accounts", systemImage: "archivebox")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Accounts options")
+                    .accessibilityHint("Account list display options")
                 }
                 ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
