@@ -259,19 +259,25 @@ actor ActualServerClient {
     /// `ActualServerError.networkError` so callers surface actionable guidance
     /// instead of CFNetwork's raw description.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        // Capture the base that produced this request before suspension. Another
+        // request may fail over the actor while this one is awaiting its response.
+        let requestServerURL = serverURL
         do {
             return try await session.data(for: request)
         } catch let urlError as URLError where urlError.code != .cancelled {
             if let fallbackServerURL,
                let requestURL = request.url,
-               let primaryServerURL = serverURL,
-               requestURL.host == primaryServerURL.host {
+               let primaryServerURL = requestServerURL,
+               requestURL.host == primaryServerURL.host,
+               urlError.code != .notConnectedToInternet,
+               let fallbackURL = Self.fallbackRequestURL(
+                   requestURL: requestURL,
+                   primaryServerURL: primaryServerURL,
+                   fallbackServerURL: fallbackServerURL
+               ),
+               fallbackURL != requestURL {
                 var fallbackRequest = request
-                fallbackRequest.url = Self.fallbackRequestURL(
-                    requestURL: requestURL,
-                    primaryServerURL: primaryServerURL,
-                    fallbackServerURL: fallbackServerURL
-                )
+                fallbackRequest.url = fallbackURL
                 do {
                     let result = try await session.data(for: fallbackRequest)
                     // Keep using the reachable address for the rest of this
