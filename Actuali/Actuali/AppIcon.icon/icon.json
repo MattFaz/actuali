@@ -1,0 +1,52 @@
+{
+  "fill": {
+    "linear-gradient": [
+      "display-p3:0.42676,0.21833,0.96215,1.00000",
+      "display-p3:0.19152,0.08570,0.67755,1.00000"
+    ],
+    "orientation": {
+      "start": {
+        "x": 0.5,
+        "y": 0.0
+      },
+      "stop": {
+        "x": 0.5,
+        "y": 1.0
+      }
+    }
+  },
+  "groups": [
+    {
+      "blur-material": null,
+      "hidden": false,
+      "layers": [
+        {
+          "image-name": "actuali-mark-white.svg",
+          "name": "actuali-mark-white",
+          "position": {
+            "scale": 1,
+            "translation-in-points": [
+              0.21499616440928548,
+              -11.9296875
+            ]
+          }
+        }
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": false,
+        "value": 0.5
+      }
+    }
+  ],
+  "supported-platforms": {
+    "circles": [
+      "watchOS"
+    ],
+    "squares": "shared"
+  }
+}
