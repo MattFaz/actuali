@@ -54,6 +54,13 @@ struct MainTabView: View {
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
             if accountId != nil { selectedTab = 0 }
         }
+        // Cancel in the tab-hosted add flow returns to the user's Start Page.
+        .onChange(of: notificationRouter.pendingTabNavigation) { _, tab in
+            if let tab {
+                selectedTab = tab
+                notificationRouter.pendingTabNavigation = nil
+            }
+        }
     }
 
     /// The `Tab` value API rather than `tabItem`: `sidebarAdaptable` above only
