@@ -500,7 +500,10 @@ class BudgetDatabase {
     /// on-budget↔on-budget transfer carries no category; a categorised leg
     /// into an off-budget account is spending, as upstream counts it).
     /// Split parents are excluded and their children counted, matching the
-    /// budget's spent query.
+    /// budget's spent query. Deleted accounts are excluded as well: upstream
+    /// tombstones an account's transactions along with it, so a live
+    /// transaction left on a tombstoned account is a sync-race orphan the
+    /// all-accounts balance above the card doesn't count either.
     func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: """
@@ -521,6 +524,7 @@ class BudgetDatabase {
                   AND (g.tombstone = 0 OR g.tombstone IS NULL)
                   AND (g.hidden = 0 OR g.hidden IS NULL)
                   AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
                   AND (t.date / 100) = ?
                 """, arguments: [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()

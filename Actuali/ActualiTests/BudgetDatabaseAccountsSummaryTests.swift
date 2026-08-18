@@ -113,7 +113,8 @@ struct BudgetDatabaseAccountsSummaryTests {
     @Test func countsOnBudgetAccountsOnly() async throws {
         // The figures have to agree with the budget tab's Income/Spent, which
         // ignores off-budget accounts entirely (GH #256 follow-up). Closed
-        // on-budget accounts still count.
+        // on-budget accounts still count; a deleted one doesn't, so a
+        // transaction orphaned on it can't leak into every future month.
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -122,12 +123,14 @@ struct BudgetDatabaseAccountsSummaryTests {
                 INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
                     ('acct-on',     'Checking',  0, 0, 1.0, 0),
                     ('acct-off',    'Brokerage', 1, 0, 2.0, 0),
-                    ('acct-closed', 'Old Card',  0, 1, 3.0, 0);
+                    ('acct-closed', 'Old Card',  0, 1, 3.0, 0),
+                    ('acct-dead',   'Deleted',   0, 0, 4.0, 1);
 
                 INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
                     ('salary',   'acct-on',     'cat-salary', 300000, 20260803, 0),
                     ('dividend', 'acct-off',    'cat-salary',   5000, 20260804, 0),
-                    ('fee',      'acct-closed', 'cat-food',    -1200, 20260805, 0);
+                    ('fee',      'acct-closed', 'cat-food',    -1200, 20260805, 0),
+                    ('ghost',    'acct-dead',   'cat-food',  -100000, 20260806, 0);
             """)
         }
 
