@@ -40,6 +40,11 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
     /// `AccountsListView` consumes the id by pushing the account.
     @Published var pendingAccountNavigation: String?
 
+    /// Tab tag to select after the tab-hosted add flow cancels (the user's
+    /// Start Page, GH #281). Also not set by notifications; consumed by
+    /// `MainTabView`.
+    @Published var pendingTabNavigation: Int?
+
     /// From a tapped new-transaction notification.
     @Published var destination: NotificationDestination?
 

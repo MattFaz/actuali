@@ -444,18 +444,26 @@ class BudgetDatabase {
             // to the parent. We must exclude parents (isParent = 0) or every
             // split would be counted twice — matching Actual's own aggregate
             // semantics and fetchTransactionsForReports(). We must also exclude
-            // children whose parent is tombstoned: deleting a split tombstones
-            // the parent but leaves the child rows with tombstone = 0, so a
-            // per-row tombstone check alone would still count those orphans
-            // (matching Actual's alive view). Transfer legs still count;
-            // accounts with no transactions get 0.
+            // children whose parent is tombstoned or missing: deleting a split
+            // tombstones the parent but leaves the child rows with tombstone =
+            // 0, so a per-row tombstone check alone would still count those
+            // orphans, and upstream's alive view joins the parent row itself,
+            // so a child whose parent row never materialized doesn't count
+            // either. Transfer legs still count; accounts with no transactions
+            // get 0.
+            //
+            // date IS NOT NULL mirrors upstream v_transactions_internal: a
+            // CRDT update for a row whose insert messages are gone (e.g.
+            // after a sync reset) materializes a half-applied row with no
+            // date, which official clients never show or count (GH #275).
             let balanceRows = try Row.fetchAll(db, sql: """
                 SELECT t.acct AS acct, COALESCE(SUM(t.amount), 0) AS balance
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct IS NOT NULL
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 GROUP BY t.acct
                 """)
@@ -479,42 +487,59 @@ class BudgetDatabase {
         }
     }
     
-    /// Money in and out across every account for one month, for the accounts
-    /// tab's summary group (GH #256).
+    /// A month's income and spending for the accounts tab's summary group
+    /// (GH #256), on the same footing as the budget tab's Income and Spent.
     struct AccountsMonthSummary: Equatable {
         var incomeCents = 0
-        /// Positive: what left the accounts, not a signed amount.
+        /// Spending sign-flipped to read as money out, so a normal month is
+        /// positive. Net activity, like the budget tab's Spent (GH #212):
+        /// refunds offset spending, and a month whose refunds outweigh it
+        /// goes negative — the same figure the budget tab shows, so both
+        /// tabs stay in step.
         var expenseCents = 0
 
+        /// What the month kept: income less what actually went out. A net
+        /// refund makes `expenseCents` negative and so adds here, which is
+        /// the cash that stayed.
         var netCents: Int { incomeCents - expenseCents }
     }
 
-    /// Income and expenses across every account for one "yyyy-MM" month.
+    /// Income and expenses for one "yyyy-MM" month.
     ///
-    /// Scoped to all accounts, off-budget and closed included, so it
-    /// reconciles with the all-accounts balance it sits under — unlike the
-    /// budget month's income/spent, which only counts categorised
-    /// transactions in on-budget accounts. Transfer legs are excluded: a
-    /// transfer moves money inside that set, so counting it would show up as
-    /// both income and an expense (same rule as the WebUI's cash flow card).
-    /// Split parents are excluded and their children counted, matching
-    /// `fetchAccounts()`'s balance query.
+    /// Same scope as the budget month's income/spent so the two tabs agree
+    /// (GH #256): categorised transactions in on-budget accounts only, with
+    /// hidden categories and hidden groups left out the way the budget tab's
+    /// Income/Spent totals leave them out. Income is the income categories'
+    /// activity, expenses the rest — so an off-budget account's spending
+    /// doesn't land in either, and transfers need no special-casing (an
+    /// on-budget↔on-budget transfer carries no category; a categorised leg
+    /// into an off-budget account is spending, as upstream counts it).
+    /// Split parents are excluded and their children counted, matching the
+    /// budget's spent query. Deleted accounts are excluded as well: upstream
+    /// tombstones an account's transactions along with it, so a live
+    /// transaction left on a tombstoned account is a sync-race orphan the
+    /// all-accounts balance above the card doesn't count either.
     func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT
-                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS expense
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
                 FROM transactions t
-                LEFT JOIN payee_mapping pm ON pm.id = t.description
-                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                JOIN category_groups g ON g.id = c.cat_group
                 JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "par"))
+                  AND (c.tombstone = 0 OR c.tombstone IS NULL)
+                  AND (c.hidden = 0 OR c.hidden IS NULL)
+                  AND (g.tombstone = 0 OR g.tombstone IS NULL)
+                  AND (g.hidden = 0 OR g.hidden IS NULL)
+                  AND a.offbudget = 0
                   AND (a.tombstone = 0 OR a.tombstone IS NULL)
-                  AND p.transfer_acct IS NULL
                   AND (t.date / 100) = ?
                 """, arguments: [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
@@ -526,6 +551,15 @@ class BudgetDatabase {
     }
 
     // MARK: - Transactions
+
+    /// Alive-child filter for every query that counts split children:
+    /// mirrors upstream v_transactions_internal_alive, which joins the
+    /// parent row of every is_child = 1 row and requires it to exist with
+    /// tombstone = 0, so children of tombstoned or never-materialized
+    /// parents count nowhere. `parent` is the joined parent row's alias.
+    private static func aliveChildPredicate(parent: String) -> String {
+        "(t.isChild = 0 OR t.isChild IS NULL OR (\(parent).id IS NOT NULL AND (\(parent).tombstone = 0 OR \(parent).tombstone IS NULL)))"
+    }
 
     /// SELECT + display-name joins + liveness filter shared by the
     /// creation-detection and single-id transaction queries. The list query
@@ -551,6 +585,8 @@ class BudgetDatabase {
         LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND (t.isChild = 0 OR t.isChild IS NULL)
+          AND t.date IS NOT NULL
+          AND t.acct IS NOT NULL
         """
 
     private static func mapTransaction(_ row: Row) -> Transaction {
@@ -650,6 +686,8 @@ class BudgetDatabase {
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isChild = 0 OR t.isChild IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """
 
             var arguments: [(any DatabaseValueConvertible)?] = []
@@ -801,8 +839,9 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId]) ?? 0
         }
@@ -824,8 +863,9 @@ class BudgetDatabase {
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId])
             return AccountBalanceBreakdown(
@@ -853,9 +893,10 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.reconciled = 0 OR t.reconciled IS NULL)
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                 ORDER BY t.date DESC, t.sort_order DESC
                 """, arguments: [accountId])
 
@@ -902,8 +943,9 @@ class BudgetDatabase {
 
     private static let uncategorizedWhere = """
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND t.date IS NOT NULL
           AND (t.isParent = 0 OR t.isParent IS NULL)
-          AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+          AND \(aliveChildPredicate(parent: "par"))
           AND t.category IS NULL
           AND (a.offbudget = 0 OR a.offbudget IS NULL)
           AND (a.tombstone = 0 OR a.tombstone IS NULL)
@@ -1008,7 +1050,8 @@ class BudgetDatabase {
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND \(Self.aliveChildPredicate(parent: "par"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND COALESCE(cm.transferId, t.category) = ?
                   AND a.offbudget = 0
@@ -1178,6 +1221,11 @@ class BudgetDatabase {
             //   * Only count on-budget accounts (accounts.offbudget = 0). A
             //     categorised transaction in an off-budget account is not budget
             //     spending.
+            //   * Also skip deleted accounts (accounts.tombstone = 1). Upstream
+            //     doesn't check this, because deleteAccount() tombstones or
+            //     reassigns every transaction on its way out; a live transaction
+            //     left on a deleted account is a sync-race orphan (upstream's own
+            //     TODO in accounts/app.ts) that nothing else in the app counts.
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
@@ -1202,10 +1250,11 @@ class BudgetDatabase {
                 LEFT JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
                   AND (t.date / 100) <= ?
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
@@ -1608,7 +1657,9 @@ class BudgetDatabase {
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
-                  AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "par"))
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """)
 
             return rows.map { row in
@@ -2745,6 +2796,8 @@ class BudgetDatabase {
                 LEFT JOIN categories c ON c.id = t.category
                 WHERE t.schedule = ?
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 ORDER BY t.date DESC, t.sort_order DESC
                 LIMIT ?
                 """, arguments: [scheduleId, limit])

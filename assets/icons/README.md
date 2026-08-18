@@ -22,8 +22,13 @@ rounded, symmetric one. See the note at the bottom.
 
 Re-derive these after editing a master:
 
-- `Actuali/Actuali/Assets.xcassets/AppIcon.appiconset/` — three copies of
-  `actuali-appicon-1024.png`, one per appearance (see the gap below)
+- `Actuali/Actuali/AppIcon.icon` — Icon Composer document, the app icon iOS
+  renders. Holds the mark as SVG plus the gradient as two `display-p3` stops;
+  iOS derives light/dark/clear/tinted from it at runtime. Keep the two stops
+  equal to the master's endpoints (`#7534FF` → `#3514B4`), or the app icon and
+  the website drift apart. Icon Composer allows exactly two stops, so the
+  master's 18%/55% midpoints are dropped — they sit within 6/255 of the
+  straight line between the endpoints, so the ramp is unchanged in practice.
 - `website/public/icon.png` — `actuali-appicon-1024.png` verbatim.
   apple-touch-icon and OpenGraph image
 - `website/public/favicon.svg` — the master with `rx="230"` corner rounding
@@ -37,14 +42,25 @@ Re-derive these after editing a master:
 - `website/src/components/Logo.astro` — the same gradient and path inlined, so
   the header logo costs no extra request. Keep it in sync with `favicon.svg`.
 
-## Known gap
+## Appearances
 
-**Dark and tinted appearances are unimplemented.** `AppIcon-Dark.png` and
-`AppIcon-Tinted.png` are byte-identical copies of the light icon, which
-predates this icon and carried over. Tinted is the one that shows: iOS maps the
-image's luminance onto the user's chosen tint, so an opaque full-colour icon
-ignores the tint and stands out on a tinted Home Screen. The fix is a grayscale
-variant — cheap now that a vector master exists.
+Closed by the move to Icon Composer. Previously `AppIcon-Dark.png` and
+`AppIcon-Tinted.png` were byte-identical copies of the light icon, so tinted
+Home Screens ignored the user's tint and the icon stood out. iOS now derives
+all appearances from the layers in `AppIcon.icon`.
+
+Render any of them to check a change — renditions are `Default`, `Dark`,
+`TintedLight`, `TintedDark`, `ClearLight`, `ClearDark`:
+
+```bash
+"/Applications/Xcode.app/Contents/Applications/Icon Composer.app/Contents/Executables/ictool" \
+  Actuali/Actuali/AppIcon.icon --export-image --output-file /tmp/out.png \
+  --platform iOS --rendition Dark --width 1024 --height 1024 --scale 1
+```
+
+Dark renders the mark in brand purple on near-black rather than white. That is
+the automatic derivation, and it is legible; add an explicit dark override in
+Icon Composer if a white mark is wanted there.
 
 ## Third-party marks
 

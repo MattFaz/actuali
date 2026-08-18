@@ -331,11 +331,28 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether the Accounts list drops its Closed Accounts section, for
+    /// budgets that have accumulated closed accounts over the years
+    /// (GH #277). Persisted to UserDefaults, defaults to off.
+    @Published var hideClosedAccounts: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideClosedAccounts, forKey: "hideClosedAccounts")
+        }
+    }
+
     /// Categories the Budget list should show. With the hide toggle on, only
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
         hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+    }
+
+    /// Closed accounts the Accounts list should show — none when the hide
+    /// toggle is on. A view filter only: the All Accounts total still counts
+    /// closed accounts, so hiding them can't quietly change the net worth on
+    /// screen.
+    var visibleClosedAccounts: [Account] {
+        hideClosedAccounts ? [] : accounts.filter(\.closed)
     }
 
     /// One consistent-width replacement keeps masked amounts visually stable
@@ -833,6 +850,8 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideZeroBudgetCategories"))
         _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
+        _hideClosedAccounts = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "hideClosedAccounts"))
         _postScheduledTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "postScheduledTransactions"))
 
