@@ -7,8 +7,8 @@ import XCTest
 /// to the Start Page tab instead.
 final class AddTransactionCancelUITests: XCTestCase {
 
-    /// Types an amount on the decimal pad and dismisses the keyboard, then
-    /// taps the nav-bar Cancel.
+    /// Types an amount and taps Cancel with the keyboard still up — the
+    /// normal mid-entry state a cancel arrives from.
     @MainActor
     private func enterAmountAndCancel(in app: XCUIApplication) {
         let amountField = app.textFields.matching(
@@ -19,12 +19,6 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
                       "keyboard did not appear")
         amountField.typeText("500")
-
-        let done = app.buttons["Done"]
-        XCTAssertTrue(done.waitForExistence(timeout: 5), "no Done bar above the decimal pad")
-        done.tap()
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
-                      "keyboard did not dismiss")
 
         let cancel = app.navigationBars.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
@@ -71,9 +65,12 @@ final class AddTransactionCancelUITests: XCTestCase {
 
         enterAmountAndCancel(in: app)
 
-        // The Start Page is this tab: cancel stays put and just discards.
-        XCTAssertTrue(app.navigationBars["Add Transaction"].waitForExistence(timeout: 5),
-                      "cancel navigated away from its own Start Page tab")
+        // The Start Page is this tab: cancel stays put, discards the entry,
+        // and dismisses the mid-entry keyboard (which covers the tab bar).
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "keyboard stayed up after cancelling in place")
         assertAmountCleared(in: app)
+        XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
+                      "tab bar not reachable after cancelling in place")
     }
 }

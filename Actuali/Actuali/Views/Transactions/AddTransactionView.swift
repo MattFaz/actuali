@@ -95,6 +95,10 @@ struct AddTransactionView: View {
     }
 
     private var isEditing: Bool { editing != nil }
+    /// Presented flows (edit, account-detail "+", notification prefill) can
+    /// close themselves; the tab-hosted add flow can't. Cancel, post-save
+    /// behavior, and the header all branch on this.
+    private var canDismiss: Bool { isEditing || isPresented }
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
     private var isEditingTransfer: Bool { editing?.transferId != nil }
@@ -491,7 +495,10 @@ struct AddTransactionView: View {
                 }
             }
             .readableWidth()
-            .navigationTitle(isEditing ? "Edit Transaction" : "Add Transaction")
+            // Presented flows keep their sheet titles; the tab root shows no
+            // header, matching the Accounts and Budget tabs.
+            .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
+            .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
@@ -502,7 +509,7 @@ struct AddTransactionView: View {
                     // the entry and returns to the user's Start Page instead
                     // (GH #281). Esc triggers it on a hardware keyboard.
                     Button("Cancel") {
-                        if isEditing || isPresented {
+                        if canDismiss {
                             dismiss()
                         } else {
                             resetForm()
@@ -513,14 +520,8 @@ struct AddTransactionView: View {
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") {
-                        payeeFocused = false
-                        UIApplication.shared.sendAction(
-                            #selector(UIResponder.resignFirstResponder),
-                            to: nil, from: nil, for: nil
-                        )
-                    }
-                    .fontWeight(.semibold)
+                    Button("Done") { dismissKeyboard() }
+                        .fontWeight(.semibold)
                 }
             }
             .disabled(isLoading)
@@ -696,7 +697,7 @@ struct AddTransactionView: View {
 
         do {
             try await budgetStore.saveTransaction(form, editing: editing)
-            if isEditing || isPresented {
+            if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the
                 // saved transaction's list.
@@ -725,6 +726,20 @@ struct AddTransactionView: View {
         errorMessage = nil
         splitLines = []
         unsplitRequested = false
+        // A fresh form suggests categories from payee history again — a
+        // discarded manual pick must not keep suppressing the lookup.
+        userPickedCategory = false
+        // Cancel can arrive with the amount or payee field still focused;
+        // a fresh form doesn't keep the old keyboard up.
+        dismissKeyboard()
+    }
+
+    private func dismissKeyboard() {
+        payeeFocused = false
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil, from: nil, for: nil
+        )
     }
 }
 
