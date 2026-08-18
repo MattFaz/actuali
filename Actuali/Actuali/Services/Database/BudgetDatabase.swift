@@ -489,32 +489,38 @@ class BudgetDatabase {
         var netCents: Int { incomeCents - expenseCents }
     }
 
-    /// Income and expenses across every account for one "yyyy-MM" month.
+    /// Income and expenses for one "yyyy-MM" month.
     ///
-    /// Scoped to all accounts, off-budget and closed included, so it
-    /// reconciles with the all-accounts balance it sits under — unlike the
-    /// budget month's income/spent, which only counts categorised
-    /// transactions in on-budget accounts. Transfer legs are excluded: a
-    /// transfer moves money inside that set, so counting it would show up as
-    /// both income and an expense (same rule as the WebUI's cash flow card).
-    /// Split parents are excluded and their children counted, matching
-    /// `fetchAccounts()`'s balance query.
+    /// Same scope as the budget month's income/spent so the two tabs agree
+    /// (GH #256): categorised transactions in on-budget accounts only, with
+    /// hidden categories and hidden groups left out the way the budget tab's
+    /// Income/Spent totals leave them out. Income is the income categories'
+    /// activity, expenses the rest — so an off-budget account's spending
+    /// doesn't land in either, and transfers need no special-casing (an
+    /// on-budget↔on-budget transfer carries no category; a categorised leg
+    /// into an off-budget account is spending, as upstream counts it).
+    /// Split parents are excluded and their children counted, matching the
+    /// budget's spent query.
     func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT
-                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS expense
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
                 FROM transactions t
-                LEFT JOIN payee_mapping pm ON pm.id = t.description
-                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                JOIN category_groups g ON g.id = c.cat_group
                 JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
-                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
-                  AND p.transfer_acct IS NULL
+                  AND (c.tombstone = 0 OR c.tombstone IS NULL)
+                  AND (c.hidden = 0 OR c.hidden IS NULL)
+                  AND (g.tombstone = 0 OR g.tombstone IS NULL)
+                  AND (g.hidden = 0 OR g.hidden IS NULL)
+                  AND a.offbudget = 0
                   AND (t.date / 100) = ?
                 """, arguments: [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
