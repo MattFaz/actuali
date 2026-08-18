@@ -25,6 +25,11 @@ struct ReconcileView: View {
         guard let clearedBalance, let targetCents else { return nil }
         return targetCents - clearedBalance
     }
+    
+    /// Signed so a shortfall and a surplus read differently at a glance.
+    private func differenceText(_ cents: Int) -> String {
+        (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,8 +42,10 @@ struct ReconcileView: View {
                             // Deliberately bypasses the hide-balances mask:
                             // comparing exact amounts against the bank is the
                             // whole point of reconciling.
-                            Text(budgetStore.formatCurrency(clearedBalance))
+                            let text = budgetStore.formatCurrency(clearedBalance)
+                            Text(text)
                                 .fontWeight(.semibold)
+                                .animatedAmount(text)
                         } else {
                             ProgressView()
                         }
@@ -83,7 +90,11 @@ struct ReconcileView: View {
                     } else {
                         Section {
                             HStack {
-                                Text("Difference")
+                                let text = differenceText(difference)
+                                Text(text)
+                                    .fontWeight(.semibold)
+                                    .foregroundStyle(.orange)
+                                    .animatedAmount(text)
                                 Spacer()
                                 Text((difference > 0 ? "+" : "") + budgetStore.formatCurrency(difference))
                                     .fontWeight(.semibold)
@@ -106,6 +117,10 @@ struct ReconcileView: View {
                     }
                 }
             }
+            // Typing towards the bank's figure counts the difference down and
+            // then swaps the whole section for "All reconciled!" — the moment
+            // the numbers meet is the one thing this screen exists to show.
+            .animation(AppAnimation.appearance, value: difference)
             .navigationTitle("Reconcile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
