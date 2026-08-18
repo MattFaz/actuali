@@ -449,11 +449,17 @@ class BudgetDatabase {
             // per-row tombstone check alone would still count those orphans
             // (matching Actual's alive view). Transfer legs still count;
             // accounts with no transactions get 0.
+            //
+            // date IS NOT NULL mirrors upstream v_transactions_internal: a
+            // CRDT update for a row whose insert messages are gone (e.g.
+            // after a sync reset) materializes a half-applied row with no
+            // date, which official clients never show or count (GH #275).
             let balanceRows = try Row.fetchAll(db, sql: """
                 SELECT t.acct AS acct, COALESCE(SUM(t.amount), 0) AS balance
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct IS NOT NULL
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
@@ -568,6 +574,8 @@ class BudgetDatabase {
         LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND (t.isChild = 0 OR t.isChild IS NULL)
+          AND t.date IS NOT NULL
+          AND t.acct IS NOT NULL
         """
 
     private static func mapTransaction(_ row: Row) -> Transaction {
@@ -667,6 +675,8 @@ class BudgetDatabase {
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isChild = 0 OR t.isChild IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """
 
             var arguments: [(any DatabaseValueConvertible)?] = []
@@ -818,6 +828,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
@@ -841,6 +852,7 @@ class BudgetDatabase {
                 FROM transactions t
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
+                  AND t.date IS NOT NULL
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
@@ -870,6 +882,7 @@ class BudgetDatabase {
                 LEFT JOIN transactions p ON p.id = t.parent_id
                 WHERE t.acct = ?
                   AND t.cleared = 1
+                  AND t.date IS NOT NULL
                   AND (t.reconciled = 0 OR t.reconciled IS NULL)
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.parent_id IS NULL OR p.tombstone = 0 OR p.tombstone IS NULL)
@@ -919,6 +932,7 @@ class BudgetDatabase {
 
     private static let uncategorizedWhere = """
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+          AND t.date IS NOT NULL
           AND (t.isParent = 0 OR t.isParent IS NULL)
           AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
           AND t.category IS NULL
@@ -1632,6 +1646,8 @@ class BudgetDatabase {
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND t.date IS NOT NULL
+                  AND t.acct IS NOT NULL
                 """)
 
             return rows.map { row in
