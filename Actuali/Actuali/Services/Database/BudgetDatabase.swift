@@ -479,42 +479,59 @@ class BudgetDatabase {
         }
     }
     
-    /// Money in and out across every account for one month, for the accounts
-    /// tab's summary group (GH #256).
+    /// A month's income and spending for the accounts tab's summary group
+    /// (GH #256), on the same footing as the budget tab's Income and Spent.
     struct AccountsMonthSummary: Equatable {
         var incomeCents = 0
-        /// Positive: what left the accounts, not a signed amount.
+        /// Spending sign-flipped to read as money out, so a normal month is
+        /// positive. Net activity, like the budget tab's Spent (GH #212):
+        /// refunds offset spending, and a month whose refunds outweigh it
+        /// goes negative — the same figure the budget tab shows, so both
+        /// tabs stay in step.
         var expenseCents = 0
 
+        /// What the month kept: income less what actually went out. A net
+        /// refund makes `expenseCents` negative and so adds here, which is
+        /// the cash that stayed.
         var netCents: Int { incomeCents - expenseCents }
     }
 
-    /// Income and expenses across every account for one "yyyy-MM" month.
+    /// Income and expenses for one "yyyy-MM" month.
     ///
-    /// Scoped to all accounts, off-budget and closed included, so it
-    /// reconciles with the all-accounts balance it sits under — unlike the
-    /// budget month's income/spent, which only counts categorised
-    /// transactions in on-budget accounts. Transfer legs are excluded: a
-    /// transfer moves money inside that set, so counting it would show up as
-    /// both income and an expense (same rule as the WebUI's cash flow card).
-    /// Split parents are excluded and their children counted, matching
-    /// `fetchAccounts()`'s balance query.
+    /// Same scope as the budget month's income/spent so the two tabs agree
+    /// (GH #256): categorised transactions in on-budget accounts only, with
+    /// hidden categories and hidden groups left out the way the budget tab's
+    /// Income/Spent totals leave them out. Income is the income categories'
+    /// activity, expenses the rest — so an off-budget account's spending
+    /// doesn't land in either, and transfers need no special-casing (an
+    /// on-budget↔on-budget transfer carries no category; a categorised leg
+    /// into an off-budget account is spending, as upstream counts it).
+    /// Split parents are excluded and their children counted, matching the
+    /// budget's spent query. Deleted accounts are excluded as well: upstream
+    /// tombstones an account's transactions along with it, so a live
+    /// transaction left on a tombstoned account is a sync-race orphan the
+    /// all-accounts balance above the card doesn't count either.
     func fetchAccountsMonthSummary(month: String) async throws -> AccountsMonthSummary {
         try await dbQueue.read { db in
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT
-                    COALESCE(SUM(CASE WHEN t.amount > 0 THEN t.amount ELSE 0 END), 0) AS income,
-                    COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS expense
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN t.amount ELSE 0 END), 0) AS income,
+                    COALESCE(SUM(CASE WHEN c.is_income = 1 THEN 0 ELSE -t.amount END), 0) AS expense
                 FROM transactions t
-                LEFT JOIN payee_mapping pm ON pm.id = t.description
-                LEFT JOIN payees p ON p.id = pm.targetId
+                LEFT JOIN category_mapping cm ON cm.id = t.category
+                JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                JOIN category_groups g ON g.id = c.cat_group
                 JOIN accounts a ON a.id = t.acct
                 LEFT JOIN transactions par ON par.id = t.parent_id
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND (t.parent_id IS NULL OR par.tombstone = 0 OR par.tombstone IS NULL)
+                  AND (c.tombstone = 0 OR c.tombstone IS NULL)
+                  AND (c.hidden = 0 OR c.hidden IS NULL)
+                  AND (g.tombstone = 0 OR g.tombstone IS NULL)
+                  AND (g.hidden = 0 OR g.hidden IS NULL)
+                  AND a.offbudget = 0
                   AND (a.tombstone = 0 OR a.tombstone IS NULL)
-                  AND p.transfer_acct IS NULL
                   AND (t.date / 100) = ?
                 """, arguments: [Self.monthStringToInt(month)]) else {
                 return AccountsMonthSummary()
@@ -1178,6 +1195,11 @@ class BudgetDatabase {
             //   * Only count on-budget accounts (accounts.offbudget = 0). A
             //     categorised transaction in an off-budget account is not budget
             //     spending.
+            //   * Also skip deleted accounts (accounts.tombstone = 1). Upstream
+            //     doesn't check this, because deleteAccount() tombstones or
+            //     reassigns every transaction on its way out; a live transaction
+            //     left on a deleted account is a sync-race orphan (upstream's own
+            //     TODO in accounts/app.ts) that nothing else in the app counts.
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
@@ -1206,6 +1228,7 @@ class BudgetDatabase {
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
                   AND (t.date / 100) <= ?
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
