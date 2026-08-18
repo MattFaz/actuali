@@ -110,6 +110,32 @@ struct BudgetDatabaseAccountsSummaryTests {
         #expect(summary.netCents == 250000)
     }
 
+    @Test func aMonthOfRefundsGoesNegativeLikeTheBudgetTabsSpent() async throws {
+        // Refunds net against spending rather than counting as income, so a
+        // month that got more back than it spent reports negative expenses —
+        // the same figure the budget tab's Spent shows (GH #212) — and the
+        // refund lands in Net as money kept.
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, sort_order) VALUES ('acct-1', 'Checking', 1.0);
+
+                INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
+                    ('pay',    'acct-1', 'cat-salary', 400000, 20260803, 0),
+                    ('food',   'acct-1', 'cat-food',    -5000, 20260805, 0),
+                    ('return', 'acct-1', 'cat-rent',    80000, 20260806, 0);
+            """)
+        }
+
+        let summary = try await db.fetchAccountsMonthSummary(month: "2026-08")
+
+        #expect(summary.incomeCents == 400000)
+        #expect(summary.expenseCents == -75000)
+        #expect(summary.netCents == 475000)
+    }
+
     @Test func countsOnBudgetAccountsOnly() async throws {
         // The figures have to agree with the budget tab's Income/Spent, which
         // ignores off-budget accounts entirely (GH #256 follow-up). Closed

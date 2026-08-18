@@ -479,13 +479,20 @@ class BudgetDatabase {
         }
     }
     
-    /// Money in and out across every account for one month, for the accounts
-    /// tab's summary group (GH #256).
+    /// A month's income and spending for the accounts tab's summary group
+    /// (GH #256), on the same footing as the budget tab's Income and Spent.
     struct AccountsMonthSummary: Equatable {
         var incomeCents = 0
-        /// Positive: what left the accounts, not a signed amount.
+        /// Spending sign-flipped to read as money out, so a normal month is
+        /// positive. Net activity, like the budget tab's Spent (GH #212):
+        /// refunds offset spending, and a month whose refunds outweigh it
+        /// goes negative — the same figure the budget tab shows, so both
+        /// tabs stay in step.
         var expenseCents = 0
 
+        /// What the month kept: income less what actually went out. A net
+        /// refund makes `expenseCents` negative and so adds here, which is
+        /// the cash that stayed.
         var netCents: Int { incomeCents - expenseCents }
     }
 
