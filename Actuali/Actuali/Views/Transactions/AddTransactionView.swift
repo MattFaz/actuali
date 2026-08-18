@@ -495,15 +495,16 @@ struct AddTransactionView: View {
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
-                // Any presented flow (edit, account-detail "+", notification
-                // prefill) gets Cancel; the tab-hosted add flow has nothing
-                // to dismiss to, so it shows none.
-                if isEditing || isPresented {
-                    ToolbarItem(placement: .cancellationAction) {
-                        // Esc closes the form on a hardware keyboard.
-                        Button("Cancel") { dismiss() }
-                            .keyboardShortcut(.cancelAction)
+                ToolbarItem(placement: .cancellationAction) {
+                    // Any presented flow (edit, account-detail "+",
+                    // notification prefill) closes on Cancel; the tab-hosted
+                    // add flow has nothing to dismiss to, so Cancel discards
+                    // the entry in place instead (GH #281).
+                    // Esc triggers it on a hardware keyboard.
+                    Button("Cancel") {
+                        if isEditing || isPresented { dismiss() } else { resetForm() }
                     }
+                    .keyboardShortcut(.cancelAction)
                 }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
