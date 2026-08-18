@@ -1,9 +1,11 @@
 name: AI Code Review
 
 # pull_request_target: runs the base-branch workflow with secrets, so fork PRs
-# get reviewed too. Safety depends on never executing PR-head code — checkout
-# stays on the base ref and the agent's tools are capped to reading the diff
-# and posting comments.
+# get reviewed too. Safety depends on never EXECUTING PR-head code — the
+# checkout below is GitHub's test-merge commit (PR + latest main), but nothing
+# builds or runs it: no build/test steps, and the agent's Bash is capped to
+# `gh` subcommands. PR files are untrusted input the agent reads, same trust
+# level as the diff; worst case is a bad review comment.
 on:
   pull_request_target:
     types: [opened, synchronize]
@@ -21,9 +23,13 @@ jobs:
       group: ai-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     steps:
-      # Base branch only — never set ref to the PR head.
+      # The test-merge ref = PR head merged into current main, so the review
+      # always sees the branch as if it were up to date with main. If the PR
+      # conflicts with main this ref doesn't exist and the job fails — fine,
+      # a conflicted PR can't be meaningfully reviewed anyway.
       - uses: actions/checkout@v6
         with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 1
 
       - uses: anthropics/claude-code-action@v1
@@ -43,8 +49,10 @@ jobs:
           # review comment.
           plugin_marketplaces: |
             https://github.com/dietrichgebert/ponytail.git
+            https://github.com/AminBlg/SimpleEnglish.git
           plugins: |
             ponytail@ponytail
+            simple-english@simple-english
           prompt: |
             Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
             Fetch the diff with `gh pr diff ${{ github.event.pull_request.number }}`.
@@ -58,14 +66,33 @@ jobs:
             of AGENTS.md conventions such as missing test coverage for behavior
             changes). Only report
             P1 and P2 issues — skip style nits, minor suggestions, and anything
-            lower. If there are none, post a one-line comment saying the PR
-            looks fine.
+            lower.
 
-            Also run /ponytail:ponytail-review on the diff and fold any
-            over-engineering findings that rate P1/P2 into the same list.
+            After the correctness review, run /ponytail:ponytail-review on the
+            diff and fold any over-engineering findings that rate P1/P2 into
+            the same lists.
 
-            Format the review as a markdown list grouped by file, one line per
-            issue: `- **P1** `path/to/file.swift:123` — description`.
+            Write the review using the /simple-english:simple-english skill
+            (Simplified Technical English). Use exactly this template. Omit the
+            P1 or P2 section if it has no issues; if there are no issues at
+            all, keep just the summary and the decision.
+
+            ## 📝 PR Summary
+            A concise, 2-3 sentence summary of what this code introduces or alters.
+
+            ### 🚨 P1 Issues
+            - **path/to/file.swift (Line X):** brief description of the issue
+                - **Impact:** why this is an issue
+                - **Suggested Fix:**
+                  ```swift
+                  // corrected code here
+                  ```
+
+            ### ⚠️ P2 Issues
+            (same format as P1)
+
+            ## Review Decision
+            Approve ✅ (no P1/P2 issues) | Request Changes 🔁
 
             Write the review to review.md, then post it with
             `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
@@ -73,4 +100,4 @@ jobs:
           # code is never on disk. --body-file avoids heredocs/$() in the comment
           # command, which would fail the Bash prefix match and get denied.
           claude_args: |
-            --allowedTools "Read,Write,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
+            --allowedTools "Read,Write,Skill,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
