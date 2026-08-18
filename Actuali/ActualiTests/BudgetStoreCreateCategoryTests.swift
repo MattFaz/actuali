@@ -145,7 +145,7 @@ struct BudgetStoreCreateCategoryTests {
         let store = try await makeStore(database: database)
 
         // Close the gap at the top of the group so the insert has to shove.
-        try database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "UPDATE categories SET sort_order = 2.0 WHERE id = 'cat-groceries'")
         }
 
