@@ -50,7 +50,13 @@ final class ReconciliationUITests: XCTestCase {
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == 'Reconciled'")).count, 0,
                        "demo data starts with nothing reconciled")
 
-        let reconcileButton = app.buttons["account.reconcile"]
+        // Reconcile sits in the toolbar's overflow menu, so open that first.
+        let moreButton = app.navigationBars.buttons["More"]
+        XCTAssertTrue(moreButton.waitForExistence(timeout: 10))
+        moreButton.tap()
+
+        // Menu items don't inherit accessibility identifiers, so match the label.
+        let reconcileButton = app.buttons["Reconcile"]
         XCTAssertTrue(reconcileButton.waitForExistence(timeout: 10))
         reconcileButton.tap()
 

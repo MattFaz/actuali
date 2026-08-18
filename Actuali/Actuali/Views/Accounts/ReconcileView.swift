@@ -82,7 +82,7 @@ struct ReconcileView: View {
                         )
                     }
                 } footer: {
-                    Text(String(localized: "Reconcile Balance"))
+                    Text(String(localized: "reconcile.balancePrompt"))
                 }
 
                 if let difference {

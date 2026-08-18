@@ -108,7 +108,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "On Budget",
+                                    title: String(localized: "On Budget"),
+                                    id: "on-budget",
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded
                                 )
@@ -125,7 +126,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Off Budget",
+                                    title: String(localized: "Off Budget"),
+                                    id: "off-budget",
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded
                                 )
@@ -142,7 +144,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Closed Accounts",
+                                    title: String(localized: "Closed Accounts"),
+                                    id: "closed",
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded
                                 )
@@ -187,7 +190,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "On Budget",
+                                    title: String(localized: "On Budget"),
+                                    id: "on-budget",
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -204,7 +208,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Off Budget",
+                                    title: String(localized: "Off Budget"),
+                                    id: "off-budget",
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -221,7 +226,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Closed Accounts",
+                                    title: String(localized: "Closed Accounts"),
+                                    id: "closed",
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded,
                                     totalTrailingPadding: 0
@@ -490,6 +496,8 @@ struct AccountsSummaryCard: View {
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let title: String
+    /// Locale-independent identifier suffix; the title is display-only.
+    let id: String
     let total: Int
     @Binding var isExpanded: Bool
     /// Extra trailing inset lining the total up with row balances that sit
@@ -530,20 +538,14 @@ struct AccountSectionHeader: View {
         // indistinguishable from an empty one. Same convention as the budget
         // tab's group headers ("Essentials, collapsed").
         .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), title, expandedState, totalText))
-        .accessibilityIdentifier("account.group.\(accessibilityKey)")
+        .accessibilityIdentifier("account.group.\(id)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
         .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
     }
 
     private var expandedState: String {
-        isExpanded ? "expanded" : "collapsed"
-    }
-
-    private var accessibilityKey: String {
-        title.lowercased()
-            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
-            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        isExpanded ? String(localized: "expanded") : String(localized: "collapsed")
     }
 }
 

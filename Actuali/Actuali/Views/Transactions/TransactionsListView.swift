@@ -140,12 +140,15 @@ struct TransactionListRow: View {
     @Binding var editing: Transaction?
 
     var body: some View {
-        TransactionRow(transaction: transaction, showAccount: showAccount, showDate: showDate, onToggleCleared: {
-            Task { await budgetStore.toggleCleared(transaction) }
-        })
-        .contentShape(Rectangle())
-        .accessibilityElement(children: .contain)
-        .onTapGesture { editing = transaction }
+        Button {
+            editing = transaction
+        } label: {
+            TransactionRow(transaction: transaction, showAccount: showAccount, showDate: showDate, onToggleCleared: {
+                Task { await budgetStore.toggleCleared(transaction) }
+            })
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             Button(role: .destructive) {
                 Task { await budgetStore.deleteTransaction(transaction) }

@@ -104,7 +104,9 @@ struct AccountDetailView: View {
         }
     }
 
-    private func breakdownRow(_ title: String, amount: Int) -> some View {
+    // `id` keeps the identifier stable across languages; the localized title
+    // is display-only.
+    private func breakdownRow(_ title: String, id: String, amount: Int) -> some View {
         let text = budgetStore.displayBalance(amount)
         return HStack {
             Text(title)
@@ -115,7 +117,7 @@ struct AccountDetailView: View {
                 .animatedAmount(text)
         }
         .font(.subheadline)
-        .accessibilityIdentifier("account.breakdown.\(title.lowercased())")
+        .accessibilityIdentifier("account.breakdown.\(id)")
     }
 
     var body: some View {
@@ -150,9 +152,9 @@ struct AccountDetailView: View {
                     : String(localized: "Shows cleared, uncleared, and reconciled balances"))
 
                 if showingBreakdown, let breakdown {
-                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
-                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
-                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
+                    breakdownRow(String(localized: "Cleared"), id: "cleared", amount: breakdown.cleared)
+                    breakdownRow(String(localized: "Uncleared"), id: "uncleared", amount: breakdown.uncleared)
+                    breakdownRow(String(localized: "Reconciled"), id: "reconciled", amount: breakdown.reconciled)
                 }
             }
 
@@ -226,13 +228,12 @@ struct AccountDetailView: View {
             ToolbarItem(placement: .secondaryAction) {
                 Toggle(String(localized: "Hide Cleared Transactions"), isOn: $budgetStore.hideClearedTransactions)
             }
-            ToolbarItem(placement: .primaryAction) {
+            ToolbarItem(placement: .secondaryAction) {
                 Button {
                     showingReconcile = true
                 } label: {
                     Label(String(localized: "Reconcile"), systemImage: "checkmark.seal")
                 }
-                .accessibilityIdentifier("account.reconcile")
             }
             ToolbarItem(placement: .primaryAction) {
                 Button {

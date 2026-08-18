@@ -5,10 +5,6 @@ import UserNotifications
 
 struct NewTransactionNotifierTests {
 
-    private func localized(_ key: String) -> String {
-        String(localized: String.LocalizationValue(key))
-    }
-
     private func makeTransaction(id: String, payeeName: String? = nil,
                                  categoryId: String? = nil, amount: Int = -1250,
                                  transferId: String? = nil,
@@ -29,12 +25,10 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
             currencyCode: "USD")
 
-        #expect(content?.title == localized("New transaction"))
-        #expect(content?.body.contains(
-            CurrencyAmountFormat.string(cents: 1250, currencyCode: "USD", narrowSymbol: false)
-        ) == true)
+        #expect(content?.title == "New transaction")
+        #expect(content?.body.contains("12.50") == true)
         #expect(content?.body.contains("Starbucks") == true)
-        #expect(content?.body.contains(localized("Needs a category")) == false)
+        #expect(content?.body.localizedCaseInsensitiveContains("category") == false)
     }
 
     /// Expenses are negative cents; the notification line must carry that
@@ -63,7 +57,7 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Starbucks")],
             currencyCode: "USD")
 
-        #expect(content?.body.contains(localized("Needs a category")) == true)
+        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }
 
     /// A transfer between on-budget accounts can't take a category, so its
@@ -74,7 +68,7 @@ struct NewTransactionNotifierTests {
                                   transferId: "leg-2", transferAcct: "acct2")],
             currencyCode: "USD")
 
-        #expect(content?.body.contains(localized("Needs a category")) == false)
+        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
     }
 
     /// Off-budget accounts aren't categorized at all (GH #123).
@@ -83,7 +77,7 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Broker")],
             currencyCode: "USD", offBudgetAccountIds: ["acct1"])
 
-        #expect(content?.body.contains(localized("Needs a category")) == false)
+        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
     }
 
     /// Money leaving the budget still needs a category: a transfer whose
@@ -95,7 +89,7 @@ struct NewTransactionNotifierTests {
                                   transferId: "leg-2", transferAcct: "acct2")],
             currencyCode: "USD", offBudgetAccountIds: ["acct2"])
 
-        #expect(content?.body.contains(localized("Needs a category")) == true)
+        #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }
 
     @Test func singleTransactionShowsAccountWhenKnown() {
@@ -103,7 +97,7 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
             currencyCode: "USD", accountNames: ["acct1": "Checking"])
 
-        #expect(content?.body.contains(String(format: localized(" on %@"), "Checking")) == true)
+        #expect(content?.body.contains("on Checking") == true)
     }
 
     /// Symbol Only (GH #83) reaches notification bodies too. Locale-robust:
@@ -128,20 +122,16 @@ struct NewTransactionNotifierTests {
         let content = NewTransactionNotifier.makeContent(
             for: batch, currencyCode: "USD", accountNames: ["acct1": "Checking"])
 
-        #expect(content?.title == String(format: localized("%lld new transactions"), Int64(2)))
+        #expect(content?.title == "2 new transactions")
         let lines = content?.body.components(separatedBy: "\n")
         #expect(lines?.count == 2)
-        #expect(lines?.first?.contains(
-            CurrencyAmountFormat.string(cents: 500, currencyCode: "USD", narrowSymbol: false)
-        ) == true)
+        #expect(lines?.first?.contains("5.00") == true)
         #expect(lines?.first?.contains("Starbucks") == true)
-        #expect(lines?.first?.contains(String(format: localized(" on %@"), "Checking")) == true)
-        #expect(lines?.first?.contains(localized("Needs a category")) == false)
-        #expect(lines?.last?.contains(
-            CurrencyAmountFormat.string(cents: 4200, currencyCode: "USD", narrowSymbol: false)
-        ) == true)
+        #expect(lines?.first?.contains("on Checking") == true)
+        #expect(lines?.first?.localizedCaseInsensitiveContains("category") == false)
+        #expect(lines?.last?.contains("42.00") == true)
         #expect(lines?.last?.contains("Shell") == true)
-        #expect(lines?.last?.contains(localized("Needs a category")) == true)
+        #expect(lines?.last?.localizedCaseInsensitiveContains("needs a category") == true)
         #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String]
                 == ["t1", "t2"])
     }
@@ -153,10 +143,10 @@ struct NewTransactionNotifierTests {
 
         let content = NewTransactionNotifier.makeContent(for: batch, currencyCode: "USD")
 
-        #expect(content?.title == String(format: localized("%lld new transactions"), Int64(6)))
+        #expect(content?.title == "6 new transactions")
         let lines = content?.body.components(separatedBy: "\n") ?? []
         #expect(lines.count == 5)
-        #expect(lines.last?.contains(String(format: localized("…and %lld more"), Int64(2))) == true)
+        #expect(lines.last?.contains("2 more") == true)
         #expect((content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String])?.count == 6)
     }
 

@@ -16,12 +16,12 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 
-        let expandedHeader = app.buttons["budget.group.essentials"]
+        let expandedHeader = app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.essentials' AND label CONTAINS ', expanded'")).firstMatch
         XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
         expandedHeader.tap()
 
         // Collapsing hides the group's category rows but keeps the totals row.
-        let collapsedHeader = app.buttons["budget.group.essentials"]
+        let collapsedHeader = app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.essentials' AND label CONTAINS ', collapsed'")).firstMatch
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
         XCTAssertTrue(groceries.waitForNonExistence(timeout: 5),
                   "collapsing Essentials should hide its categories")
@@ -53,8 +53,8 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         collapseAll.tap()
 
         // Every group collapses, not just the first one.
-        XCTAssertTrue(app.buttons["budget.group.essentials"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["budget.group.lifestyle"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.essentials' AND label CONTAINS ', collapsed'")).firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.lifestyle' AND label CONTAINS ', collapsed'")).firstMatch.waitForExistence(timeout: 10),
                       "collapse all should also collapse the other groups")
         XCTAssertTrue(groceries.waitForNonExistence(timeout: 5),
                   "collapse all should hide the category rows")
@@ -65,11 +65,11 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
         expandAll.tap()
 
-        XCTAssertTrue(app.buttons["budget.group.essentials"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.essentials' AND label CONTAINS ', expanded'")).firstMatch.waitForExistence(timeout: 10))
         // Transport sits right below Essentials, so it stays on screen; the
         // lower groups scroll out of the lazy list's accessibility tree once
         // everything is expanded, so they can't be asserted here.
-        XCTAssertTrue(app.buttons["budget.group.transport"].waitForExistence(timeout: 10),
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier == 'budget.group.transport' AND label CONTAINS ', expanded'")).firstMatch.waitForExistence(timeout: 10),
                       "expand all should also expand the other groups")
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "expand all should restore the category rows")

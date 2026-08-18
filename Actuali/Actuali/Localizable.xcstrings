@@ -82,13 +82,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Creare"
+            "value": "Crea"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Creëren"
+            "value": "Aanmaken"
           }
         }
       }
@@ -628,13 +628,13 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Benutzerkonto erstellen"
+            "value": "Konto erstellen"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Creare un account"
+            "value": "Crea conto"
           }
         },
         "nl": {
@@ -680,7 +680,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nome utente"
+            "value": "Nome del conto"
           }
         },
         "nl": {
@@ -858,19 +858,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gleichgewicht"
+            "value": "Saldo"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bilancia"
+            "value": "Saldo"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Evenwicht"
+            "value": "Saldo"
           }
         }
       }
@@ -996,19 +996,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Versöhnen"
+            "value": "Abgleichen"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conciliare"
+            "value": "Riconcilia"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verzoenen"
+            "value": "Afstemmen"
           }
         }
       }
@@ -1134,7 +1134,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alle versöhnt!"
+            "value": "Alles abgeglichen!"
           }
         },
         "it": {
@@ -1146,7 +1146,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allemaal verzoend!"
+            "value": "Alles afgestemd!"
           }
         }
       }
@@ -1594,7 +1594,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Erweitern Sie „Alle Gruppen“."
+            "value": "Alle Gruppen ausklappen"
           }
         },
         "it": {
@@ -1606,7 +1606,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Vouw Alle groepen uit"
+            "value": "Alle groepen uitvouwen"
           }
         }
       }
@@ -1640,7 +1640,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alle Gruppen reduzieren"
+            "value": "Alle Gruppen einklappen"
           }
         },
         "it": {
@@ -2388,7 +2388,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Redden"
+            "value": "Opslaan"
           }
         }
       }
@@ -2422,7 +2422,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aus"
+            "value": "Von"
           }
         },
         "it": {
@@ -2606,19 +2606,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abdeckung von"
+            "value": "Decken von"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copertina da"
+            "value": "Copri da"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Dekking vanaf"
+            "value": "Dekken vanuit"
           }
         }
       }
@@ -2652,19 +2652,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bewegen Sie sich nach"
+            "value": "Verschieben nach"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Spostati in"
+            "value": "Sposta in"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verplaats naar"
+            "value": "Verplaatsen naar"
           }
         }
       }
@@ -2698,13 +2698,13 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ wurde in %@ um %@ zu viel ausgegeben."
+            "value": "%@ ist um %@ überzogen (%@)."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ è stato speso in eccesso da %@ in %@."
+            "value": "%@ è in eccesso di %@ in %@."
           }
         },
         "nl": {
@@ -2882,19 +2882,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bewegen"
+            "value": "Verschieben"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mossa"
+            "value": "Sposta"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Beweging"
+            "value": "Verplaatsen"
           }
         }
       }
@@ -3434,19 +3434,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Abdeckung"
+            "value": "Decken"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Copertina"
+            "value": "Copri"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Omslag"
+            "value": "Dekken"
           }
         }
       }
@@ -4642,7 +4642,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Laden..."
+            "value": "Laden…"
           }
         }
       }
@@ -7003,7 +7003,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Zeigt ausgeglichene, ungeklärte und abgeglichene Salden an"
+            "value": "Zeigt gebuchte, ausstehende und abgeglichene Salden an"
           }
         },
         "it": {
@@ -7050,7 +7050,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Versöhnt"
+            "value": "Abgeglichen"
           }
         },
         "it": {
@@ -7062,7 +7062,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verzoend"
+            "value": "Afgestemd"
           }
         }
       }
@@ -8366,19 +8366,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Versöhnen"
+            "value": "Abgleichen"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Conciliare"
+            "value": "Riconcilia"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Verzoenen"
+            "value": "Afstemmen"
           }
         }
       }
@@ -8419,13 +8419,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saldo azzerato"
+            "value": "Saldo contabilizzato"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saldo gewist"
+            "value": "Geboekt saldo"
           }
         }
       }
@@ -8507,7 +8507,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Alle versöhnt!"
+            "value": "Alles abgeglichen!"
           }
         },
         "it": {
@@ -8519,7 +8519,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Allemaal verzoend!"
+            "value": "Alles afgestemd!"
           }
         }
       }
@@ -8712,53 +8712,6 @@
         }
       }
     },
-    "Reconcile Balance": {
-      "comment": "Reconciliation screen explanation for the bank balance field",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enter the current balance of the bank account you want to reconcile with."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Saisissez le solde actuel du compte bancaire à rapprocher."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Introduzca el saldo actual de la cuenta bancaria que desea conciliar."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Digite o saldo atual da conta bancária que deseja conciliar."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Geben Sie den aktuellen Saldo des Bankkontos ein, mit dem Sie abgleichen möchten."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Inserisci il saldo corrente del conto bancario con cui desideri riconciliarti."
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Voer het huidige saldo in van de bankrekening waarmee u wilt afstemmen."
-          }
-        }
-      }
-    },
     "Locking marks every cleared transaction as reconciled so it can't be changed by accident.": {
       "comment": "Reconciliation explanation for locking cleared transactions",
       "localizations": {
@@ -8842,7 +8795,7 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Eliminare"
+            "value": "Elimina"
           }
         },
         "nl": {
@@ -8936,13 +8889,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Modificare"
+            "value": "Modifica"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bewerking"
+            "value": "Bewerken"
           }
         }
       }
@@ -9259,19 +9212,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gleichgewicht"
+            "value": "Saldo"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bilancia"
+            "value": "Saldo"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Evenwicht"
+            "value": "Saldo"
           }
         }
       }
@@ -9400,19 +9353,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Überweisen"
+            "value": "Umbuchung"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trasferire"
+            "value": "Trasferimento"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Overdracht"
+            "value": "Overboeking"
           }
         }
       }
@@ -11495,19 +11448,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geloggt %@ um %@"
+            "value": "Transaktion über %@ bei %@ erfasst"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Registrato %@ alle %@"
+            "value": "Transazione di %@ da %@ registrata"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Aangemeld op %@ op %@"
+            "value": "Transactie van %@ bij %@ geregistreerd"
           }
         }
       }
@@ -11589,19 +11542,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lokal gespeichert: %@ um %@"
+            "value": "Lokal gespeichert: %@ bei %@"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Salvato localmente: %@ alle %@"
+            "value": "Salvato localmente: %@ da %@"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lokaal opgeslagen: %@ om %@"
+            "value": "Lokaal opgeslagen: %@ bij %@"
           }
         }
       }
@@ -11642,13 +11595,13 @@
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ alle %@"
+            "value": "%@ da %@"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "%@ op %@"
+            "value": "%@ bij %@"
           }
         }
       }
@@ -11683,19 +11636,19 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "am %@"
+            "value": " auf %@"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "il %@"
+            "value": " su %@"
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "op %@"
+            "value": " op %@"
           }
         }
       }
@@ -13093,13 +13046,13 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Teilt"
+            "value": "Split"
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "Diviso"
+            "value": "Suddivisione"
           }
         },
         "nl": {
@@ -13375,7 +13328,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keine ungeklärten Transaktionen"
+            "value": "Keine ausstehenden Transaktionen"
           }
         },
         "it": {
@@ -13387,7 +13340,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geen onopgeloste transacties"
+            "value": "Geen openstaande transacties"
           }
         }
       }
@@ -16477,7 +16430,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Veröffentlichen Sie geplante Transaktionen"
+            "value": "Geplante Transaktionen buchen"
           }
         },
         "it": {
@@ -17857,7 +17810,7 @@
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Keine ungeklärten Transaktionen"
+            "value": "Keine ausstehenden Transaktionen"
           }
         },
         "it": {
@@ -17869,7 +17822,7 @@
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Geen onduidelijke transacties"
+            "value": "Geen openstaande transacties"
           }
         }
       }
@@ -18699,6 +18652,375 @@
           "stringUnit": {
             "state": "translated",
             "value": "Back-ups"
+          }
+        }
+      }
+    },
+    "Hide Closed Accounts": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hide Closed Accounts"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Masquer les comptes clôturés"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar cuentas cerradas"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ocultar contas encerradas"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geschlossene Konten ausblenden"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nascondi conti chiusi"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gesloten rekeningen verbergen"
+          }
+        }
+      }
+    },
+    "Accounts options": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Accounts options"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Options des comptes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opciones de cuentas"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opções de contas"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontenoptionen"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opzioni dei conti"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rekeningopties"
+          }
+        }
+      }
+    },
+    "Account list display options": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Account list display options"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Options d'affichage de la liste des comptes"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opciones de visualización de la lista de cuentas"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opções de exibição da lista de contas"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Anzeigeoptionen für die Kontenliste"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opzioni di visualizzazione dell'elenco dei conti"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Weergaveopties voor de rekeninglijst"
+          }
+        }
+      }
+    },
+    "expanded": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expanded"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "développé"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expandido"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "expandido"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ausgeklappt"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "espanso"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "uitgevouwen"
+          }
+        }
+      }
+    },
+    "collapsed": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "collapsed"
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "réduit"
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "contraído"
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "recolhido"
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "eingeklappt"
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "compresso"
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "samengevouwen"
+          }
+        }
+      }
+    },
+    "reconcile.balancePrompt": {
+      "comment": "Reconciliation screen explanation for the bank balance field",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enter the current balance of the bank account you want to reconcile with."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saisissez le solde actuel du compte bancaire à rapprocher."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Introduzca el saldo actual de la cuenta bancaria que desea conciliar."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Digite o saldo atual da conta bancária que deseja conciliar."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Geben Sie den aktuellen Saldo des Bankkontos ein, mit dem Sie abgleichen möchten."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inserisci il saldo corrente del conto bancario con cui desideri riconciliare."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voer het huidige saldo in van de bankrekening waarmee u wilt afstemmen."
+          }
+        }
+      }
+    },
+    "error.ruleNeedsCondition": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add at least one condition."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutez au moins une condition."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añada al menos una condición."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicione pelo menos uma condição."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fügen Sie mindestens eine Bedingung hinzu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi almeno una condizione."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voeg ten minste één voorwaarde toe."
+          }
+        }
+      }
+    },
+    "error.ruleNeedsAction": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add at least one action."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ajoutez au moins une action."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Añada al menos una acción."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Adicione pelo menos uma ação."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fügen Sie mindestens eine Aktion hinzu."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aggiungi almeno un'azione."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Voeg ten minste één actie toe."
           }
         }
       }

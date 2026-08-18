@@ -40,12 +40,19 @@ The app ships a String Catalog at `Actuali/Actuali/Localizable.xcstrings` (JSON,
 **Non-SwiftUI strings** — notification bodies, AppIntent error descriptions, and Siri/Shortcuts dialog text must be wrapped explicitly:
 
 ```swift
-// preferred — String Catalog key = the English value
+// one-off strings — String Catalog key = the English value
 String(localized: "Couldn't log transaction")
+
+// shared/reused strings — semantic key, English lives in the catalog
+String(localized: "common.cancel")
 
 // with runtime values — %@ placeholders are generated automatically
 String(localized: "…and \(count) more")
 ```
+
+Keep translations in the same placeholder order as English — the app never uses positional specifiers (`%1$@`), so a reordered translation silently swaps its arguments.
+
+Run `python3 dev/scripts/validate-localization.py` before opening a PR; it checks that every explicit key exists in the catalog, every entry covers all supported locales, and placeholders match across languages.
 
 ### Adding a new language
 

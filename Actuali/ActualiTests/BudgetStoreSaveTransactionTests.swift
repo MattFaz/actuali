@@ -193,16 +193,8 @@ struct BudgetStoreSaveTransactionTests {
         // as payeeCreationFailed — proving the name missed the find path.
         let store = BudgetStore.previewInstance()
         store.payees = [payee(id: "p-joe", name: "Trader Joe's")]
-        do {
+        await #expect(throws: BudgetStoreError.payeeCreationFailed("Sync not configured")) {
             _ = try await store.resolvePayeeId(name: "Whole Foods", editing: nil)
-            Issue.record("Expected payee creation to fail without sync configuration")
-        } catch let error as BudgetStoreError {
-            guard case .payeeCreationFailed = error else {
-                Issue.record("Expected payeeCreationFailed, got \(error)")
-                return
-            }
-        } catch {
-            Issue.record("Expected BudgetStoreError, got \(error)")
         }
     }
 

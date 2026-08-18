@@ -76,9 +76,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .categoryGroupCreationFailed(let message):
             return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
-            return "Add at least one condition."
+            return String(localized: "error.ruleNeedsCondition")
         case .ruleNeedsAction:
-            return "Add at least one action."
+            return String(localized: "error.ruleNeedsAction")
         case .ruleInvalidCondition(let field, let op):
             return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
         case .ruleInvalidAction:
