@@ -7,8 +7,10 @@ import XCTest
 /// to the Start Page tab instead.
 final class AddTransactionCancelUITests: XCTestCase {
 
-    /// Types an amount and taps Cancel with the keyboard still up — the
-    /// normal mid-entry state a cancel arrives from.
+    /// Types an amount, drops the keyboard the way the form offers (the Done
+    /// bar above the decimal pad), then taps the Cancel row at the foot of the
+    /// form — Cancel lives below the save button now, not in the navigation
+    /// bar, so it sits behind the keyboard mid-entry.
     @MainActor
     private func enterAmountAndCancel(in app: XCUIApplication) {
         let amountField = app.textFields.matching(
@@ -20,9 +22,19 @@ final class AddTransactionCancelUITests: XCTestCase {
                       "keyboard did not appear")
         amountField.typeText("500")
 
-        let cancel = app.navigationBars.buttons["Cancel"]
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "keyboard did not dismiss after tapping Done")
+
+        let cancel = app.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
                       "tab-hosted add flow has no Cancel button")
+        var scrollsLeft = 5
+        while !cancel.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(cancel.isHittable, "Cancel row not reachable at the foot of the form")
         cancel.tap()
     }
 
@@ -65,10 +77,10 @@ final class AddTransactionCancelUITests: XCTestCase {
 
         enterAmountAndCancel(in: app)
 
-        // The Start Page is this tab: cancel stays put, discards the entry,
-        // and dismisses the mid-entry keyboard (which covers the tab bar).
+        // The Start Page is this tab: cancel stays put and discards the entry
+        // without bringing a keyboard back up over the tab bar.
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
-                      "keyboard stayed up after cancelling in place")
+                      "keyboard came back up after cancelling in place")
         assertAmountCleared(in: app)
         XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
                       "tab bar not reachable after cancelling in place")

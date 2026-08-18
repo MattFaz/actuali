@@ -450,8 +450,11 @@ struct AddTransactionView: View {
                 }
 
                 Section {
+                    // One line while the note is short — an empty three-line
+                    // box only pushes Cleared and the save button off screen —
+                    // growing as the text needs it, up to six.
                     TextField("Notes", text: $notes, axis: .vertical)
-                        .lineLimit(3...6)
+                        .lineLimit(1...6)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
@@ -493,6 +496,23 @@ struct AddTransactionView: View {
                     // whole form. Inert while the save is disabled.
                     .keyboardShortcut(.return, modifiers: .command)
                 }
+
+                // Cancel sits under the save button rather than in the
+                // navigation bar: the two decisions belong together at the
+                // end of the form, and its own section makes it the same
+                // full-width row as the save button.
+                Section {
+                    Button(role: .destructive, action: cancelEntry) {
+                        HStack {
+                            Spacer()
+                            Text("Cancel")
+                                .fontWeight(.semibold)
+                            Spacer()
+                        }
+                    }
+                    // Esc still cancels on a hardware keyboard.
+                    .keyboardShortcut(.cancelAction)
+                }
             }
             .readableWidth()
             // Presented flows keep their sheet titles; the tab root shows no
@@ -502,22 +522,6 @@ struct AddTransactionView: View {
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    // Any presented flow (edit, account-detail "+",
-                    // notification prefill) closes on Cancel; the tab-hosted
-                    // add flow has nothing to dismiss to, so Cancel discards
-                    // the entry and returns to the user's Start Page instead
-                    // (GH #281). Esc triggers it on a hardware keyboard.
-                    Button("Cancel") {
-                        if canDismiss {
-                            dismiss()
-                        } else {
-                            resetForm()
-                            NotificationRouter.shared.pendingTabNavigation = StartTab.persisted.tabTag
-                        }
-                    }
-                    .keyboardShortcut(.cancelAction)
-                }
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
                     Button("Done") { dismissKeyboard() }
@@ -531,6 +535,19 @@ struct AddTransactionView: View {
                 // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
             }
+        }
+    }
+
+    /// Any presented flow (edit, account-detail "+", notification prefill)
+    /// closes on Cancel; the tab-hosted add flow has nothing to dismiss to, so
+    /// Cancel discards the entry and returns to the user's Start Page instead
+    /// (GH #281).
+    private func cancelEntry() {
+        if canDismiss {
+            dismiss()
+        } else {
+            resetForm()
+            NotificationRouter.shared.pendingTabNavigation = StartTab.persisted.tabTag
         }
     }
 
