@@ -160,6 +160,31 @@ struct BudgetDatabaseIncomeTests {
         #expect(june.incomeCategories.map(\.categoryId) == ["cat-salary"])
     }
 
+    @Test func transactionsOnADeletedAccountAreExcluded() async throws {
+        // Deleting an account takes its transactions with it; one left alive on
+        // a tombstoned account is a sync-race orphan, and counting it would put
+        // income and spending on the budget for an account the user can no
+        // longer see.
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try execSQL(db, """
+            INSERT INTO accounts (id, name, offbudget, sort_order, tombstone)
+            VALUES ('acct-dead', 'Deleted', 0, 2.0, 1);
+
+            INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
+                ('ghost-income', 'acct-dead', 'cat-salary',    77_000, 20260601, 0),
+                ('ghost-spend',  'acct-dead', 'cat-groceries', -8_000, 20260602, 0);
+            """)
+        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
+        try insertTransaction(db, date: 20260602, category: "cat-groceries", amount: -30_000)
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+
+        #expect(june.totalIncome == 100_000)
+        #expect(june.totalSpent == -30_000)
+    }
+
     @Test func trackingBudgetIncludesBudgetedIncome() async throws {
         let (db, url) = try makeDatabase(envelope: false)
         defer { cleanup(url) }

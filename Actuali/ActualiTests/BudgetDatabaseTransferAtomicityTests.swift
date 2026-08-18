@@ -129,6 +129,62 @@ struct BudgetDatabaseTransferAtomicityTests {
         #expect(rows[1]["transferred_id"] == sourceId)
     }
 
+    @Test func convertingToATransferCommitsTheEditedRowAndItsNewPartner() throws {
+        let (database, path) = try makeDatabase()
+        let legId = UUID().uuidString
+        let partnerId = UUID().uuidString
+        // An ordinary transaction, before the conversion repoints it.
+        var leg = transaction(id: legId, accountId: "acct-from", amount: -1050, transferId: partnerId)
+        leg.transferId = nil
+        try database.insertTransaction(leg)
+
+        leg.transferId = partnerId
+        let partner = transaction(id: partnerId, accountId: "acct-to", amount: 1050, transferId: legId)
+        let crdtMessages = messages(for: [leg, partner])
+
+        let inserted = try database.convertToTransfer(
+            leg: leg, partner: partner, messages: crdtMessages)
+
+        #expect(inserted.count == crdtMessages.count)
+        let queue = try DatabaseQueue(path: path.path)
+        let rows = try queue.read { db in
+            try Row.fetchAll(db, sql: "SELECT id, acct, amount, transferred_id FROM transactions ORDER BY amount")
+        }
+        #expect(rows.count == 2)
+        #expect(rows[0]["id"] == legId)
+        #expect(rows[0]["transferred_id"] == partnerId)
+        #expect(rows[1]["id"] == partnerId)
+        #expect(rows[1]["transferred_id"] == legId)
+    }
+
+    @Test func partnerInsertFailureRollsBackTheEditedRowAndAllMessages() throws {
+        let (database, path) = try makeDatabase()
+        let legId = UUID().uuidString
+        var leg = transaction(id: legId, accountId: "acct-from", amount: -1050, transferId: legId)
+        leg.transferId = nil
+        try database.insertTransaction(leg)
+
+        // Same id as the row being converted: the partner INSERT violates the
+        // primary key, simulating a persistence failure on the new leg.
+        leg.transferId = legId
+        let partner = transaction(id: legId, accountId: "acct-to", amount: 1050, transferId: legId)
+
+        #expect(throws: (any Error).self) {
+            try database.convertToTransfer(
+                leg: leg, partner: partner, messages: self.messages(for: [leg, partner]))
+        }
+
+        // Atomicity: the edited row keeps no dangling link and no CRDT message
+        // escaped to be pushed to the server.
+        let queue = try DatabaseQueue(path: path.path)
+        let transferredId = try queue.read { db in
+            try String.fetchOne(db, sql: "SELECT transferred_id FROM transactions WHERE id = ?", arguments: [legId])
+        }
+        #expect(transferredId == nil)
+        #expect(try rowCount(path: path, table: "transactions") == 1)
+        #expect(try rowCount(path: path, table: "messages_crdt") == 0)
+    }
+
     @Test func secondLegFailureRollsBackFirstLegAndAllMessages() throws {
         let (database, path) = try makeDatabase()
         let sourceId = UUID().uuidString

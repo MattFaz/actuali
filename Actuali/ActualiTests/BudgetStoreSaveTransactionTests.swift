@@ -265,16 +265,18 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["description"] == "p-1")
     }
 
-    @Test func editingIntoATransferIsRejectedAndLeavesOriginalIntact() async throws {
+    @Test func editingASplitParentIntoATransferIsRejectedAndLeavesOriginalIntact() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        let original = transaction(payeeId: "p-1", payeeName: "Grocer")
+        // An ordinary row converts in place (GH #259, covered in
+        // BudgetStoreConvertToTransferTests), but a split parent's amount is
+        // its children's sum — pairing it would orphan them (actios-7u6).
+        var original = transaction(payeeId: "p-1", payeeName: "Grocer")
+        original.isParent = true
         try database.insertTransaction(original)
 
-        // Converting an existing transaction into a transfer would create a new
-        // transfer pair and orphan the original (actios-7u6). It must be refused.
         var edit = form(type: .transfer, amount: "25.00", transferToAccountId: "acct-2")
         edit.payeeName = "Grocer"
         await #expect(throws: BudgetStoreError.cannotConvertToTransfer) {

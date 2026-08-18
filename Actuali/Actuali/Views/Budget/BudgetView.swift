@@ -20,7 +20,10 @@ private let monthTitleFormatter: DateFormatter = {
 /// like the PWA's table.
 enum BudgetColumn {
     static let width: CGFloat = 70
-    static let spacing: CGFloat = 6
+    // Tight: every point between the columns comes out of the category
+    // name, which wraps early on a phone ("Caravan Parks 🏕" drops its
+    // emoji to a second line).
+    static let spacing: CGFloat = 4
 
     /// Cell text for the budget table: a plain grouped number without the
     /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
@@ -193,10 +196,11 @@ struct BudgetView: View {
                                             name: group.name,
                                             isCollapsed: isCollapsed,
                                             totals: budgetStore.showGroupTotals ? group.totals : nil,
-                                            onToggleCollapse: { toggleCollapsed(group.id) }
+                                            onToggleCollapse: { toggleCollapsed(group.id) },
+                                            reservesTwoLines: true
                                         )
                                         .listRowBackground(Color(.tertiarySystemFill))
-                                        .listRowInsets(EdgeInsets(top: 6, leading: 12, bottom: 6, trailing: 16))
+                                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
                                         if !isCollapsed {
                                             ForEach(group.categories) { category in
                                                 CategoryBudgetRow(
@@ -525,6 +529,31 @@ struct BudgetView: View {
     }
 }
 
+/// A name that always occupies two lines' height, so short and wrapping
+/// names produce equal-height rows and the amount columns line up (GH
+/// #252). A hidden copy reserves the space and the visible copy centers
+/// within it — `reservesSpace` alone pins the text to the top.
+private struct TwoLineName: View {
+    let text: String
+    let font: Font
+    var minimumScaleFactor: CGFloat = 1
+
+    var body: some View {
+        ZStack {
+            Text(text)
+                .font(font)
+                .lineLimit(2, reservesSpace: true)
+                .minimumScaleFactor(minimumScaleFactor)
+                .hidden()
+
+            Text(text)
+                .font(font)
+                .lineLimit(2)
+                .minimumScaleFactor(minimumScaleFactor)
+        }
+    }
+}
+
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
@@ -544,10 +573,11 @@ struct CategoryBudgetRow: View {
                 Button {
                     onShowTransactions(category, nil)
                 } label: {
-                    Text(category.categoryName)
-                        .font(.subheadline)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
+                    TwoLineName(
+                        text: category.categoryName,
+                        font: .subheadline,
+                        minimumScaleFactor: 0.85
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(category.categoryName)")
@@ -595,7 +625,7 @@ struct CategoryBudgetRow: View {
                 )
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
     }
 }
 
@@ -890,6 +920,10 @@ struct BudgetGroupHeader: View {
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
     let onToggleCollapse: () -> Void
+    /// The detailed style reserves two lines so group rows stay equal-height
+    /// whether names wrap or not (GH #252); the clean style's plain section
+    /// titles keep their natural height.
+    var reservesTwoLines = false
 
     var body: some View {
         Button(action: onToggleCollapse) {
@@ -897,11 +931,20 @@ struct BudgetGroupHeader: View {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.secondary)
-                Text(name)
-                    .font(.subheadline.weight(.semibold))
+                if reservesTwoLines {
+                    TwoLineName(
+                        text: name,
+                        font: .subheadline.weight(.semibold),
+                        minimumScaleFactor: 0.85
+                    )
                     .foregroundStyle(.primary)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.85)
+                } else {
+                    Text(name)
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.85)
+                }
                 Spacer(minLength: 4)
                 if let totals {
                     BudgetAmountPill(
@@ -947,8 +990,7 @@ struct IncomeCategoryRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(income.categoryName)
-                    .font(.body)
+                TwoLineName(text: income.categoryName, font: .body)
                 Spacer()
                 Text(budgetStore.displayBalance(income.received))
                     .foregroundColor(income.received > 0 ? .green : .secondary)
@@ -959,7 +1001,7 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
+        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
     }
 }
 
@@ -1008,7 +1050,12 @@ struct EditBudgetAmountSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    AmountInputField(text: $amountText, allowsNegative: true, autofocus: true)
+                    AmountInputField(
+                        text: $amountText,
+                        conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                        allowsNegative: true,
+                        autofocus: true
+                    )
                 } header: {
                     Text("Budgeted in \(MonthPicker.title(for: category.month))")
                 } footer: {

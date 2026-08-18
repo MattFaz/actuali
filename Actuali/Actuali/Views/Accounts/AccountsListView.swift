@@ -64,7 +64,7 @@ struct AccountsListView: View {
     }
 
     var closedAccounts: [Account] {
-        budgetStore.accounts.filter { $0.closed }
+        budgetStore.visibleClosedAccounts
     }
 
     var onBudgetTotal: Int { onBudgetAccounts.sumBalance }
@@ -310,6 +310,17 @@ struct AccountsListView: View {
                     .accessibilityLabel("Add Account")
                 }
                 ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Toggle(isOn: $budgetStore.hideClosedAccounts) {
+                            Label("Hide Closed Accounts", systemImage: "archivebox")
+                        }
+                    } label: {
+                        Image(systemName: "ellipsis.circle")
+                    }
+                    .accessibilityLabel("Accounts options")
+                    .accessibilityHint("Account list display options")
+                }
+                ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
                 }
             }
@@ -402,10 +413,11 @@ private extension Array where Element == Account {
     }
 }
 
-/// The list's lead row: the all-accounts balance over this month's money in,
-/// money out, and the difference — the same at-a-glance group the budget tab
-/// opens with (GH #256). It's still the row that pushes the All Accounts
-/// transaction list, so the figures lead to the transactions behind them.
+/// The list's lead row: the all-accounts balance over this month's income,
+/// spending, and the difference — the same figures, on the same budgeted
+/// scope, that the budget tab opens with (GH #256). It's still the row that
+/// pushes the All Accounts transaction list, so the figures lead to the
+/// transactions behind them.
 struct AccountsSummaryCard: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let totalBalance: Int

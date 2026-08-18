@@ -23,7 +23,7 @@ enum ScheduledAmount: Equatable {
 /// (setNextDate throws on shapes it can't handle and the schedule service
 /// swallows it) — so `.unsupported` posts the stored due occurrence once and
 /// never advances, exactly like `.fixed`.
-enum ScheduleDateCondition {
+enum ScheduleDateCondition: Equatable {
     case fixed(DayDate)
     case recurring(RecurConfig)
     case unsupported

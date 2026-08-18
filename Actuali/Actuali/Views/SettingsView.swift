@@ -13,7 +13,7 @@ struct SettingsView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     /// Every currency in Actual's loot-core currencies list, plus a few
-    /// user-requested extras Actual lacks (AMD, NOK, NZD, ZAR). Sorted by
+    /// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
     /// code. Display-only — all budget math is currency-agnostic integer
     /// cents, and rendering uses the system formatter for the ISO code.
     private static let currencyOptions: [(symbol: String, code: String)] = [
@@ -21,6 +21,7 @@ struct SettingsView: View {
         ("֏", "AMD"),
         ("Arg$", "ARS"),
         ("A$", "AUD"),
+        ("৳", "BDT"),
         ("R$", "BRL"),
         ("Br", "BYN"),
         ("C$", "CAD"),
@@ -124,6 +125,18 @@ struct SettingsView: View {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         return "\(version) (\(build))"
+    }
+
+    /// Routes the picker's selection through `setCurrencyCode`, which
+    /// persists the choice into the budget's own `preferences` table (not
+    /// just UserDefaults) so it survives a relaunch (GH #59).
+    private var currencyPickerBinding: Binding<String> {
+        Binding(
+            get: { budgetStore.currencyCode },
+            set: { newValue in
+                Task { await budgetStore.setCurrencyCode(newValue) }
+            }
+        )
     }
 
     private var budgetPickerBinding: Binding<String?> {
@@ -349,7 +362,7 @@ struct SettingsView: View {
                 }
 
                 Section {
-                    Picker("Currency", selection: $budgetStore.currencyCode) {
+                    Picker("Currency", selection: currencyPickerBinding) {
                         // Empty code = no currency, matching Actual's
                         // defaultCurrencyCode convention. Amounts render as
                         // plain numbers.
@@ -381,10 +394,18 @@ struct SettingsView: View {
                             Text(mode.label).tag(mode)
                         }
                     }
+                    
+                    Picker("Uncategorized Tap Opens", selection: $budgetStore.uncategorizedTapAction) {
+                        ForEach(UncategorizedTapAction.allCases) { action in
+                            Text(action.label).tag(action)
+                        }
+                    }
 
                     Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
 
                     Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
+
+                    Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
 
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
@@ -416,17 +437,31 @@ struct SettingsView: View {
                             }
                         }
                     }
+
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            RulesListView()
+                        } label: {
+                            Text("Rules")
+                        }
+                    }
                 } header: {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     }
                 }
-
+                
                 Section {
+                    NavigationLink {
+                        SchedulesListView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
                     Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
