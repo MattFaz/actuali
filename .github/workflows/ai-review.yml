@@ -31,6 +31,10 @@ jobs:
         with:
           ref: refs/pull/${{ github.event.pull_request.number }}/merge
           fetch-depth: 1
+          # checkout@v6 refuses PR refs under pull_request_target without this.
+          # "Unsafe" means executing the code — which nothing in this job does;
+          # see the header comment for why reading it is acceptable.
+          allow-unsafe-pr-checkout: true
 
       - uses: anthropics/claude-code-action@v1
         with:
