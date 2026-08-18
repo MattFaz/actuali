@@ -1188,6 +1188,11 @@ class BudgetDatabase {
             //   * Only count on-budget accounts (accounts.offbudget = 0). A
             //     categorised transaction in an off-budget account is not budget
             //     spending.
+            //   * Also skip deleted accounts (accounts.tombstone = 1). Upstream
+            //     doesn't check this, because deleteAccount() tombstones or
+            //     reassigns every transaction on its way out; a live transaction
+            //     left on a deleted account is a sync-race orphan (upstream's own
+            //     TODO in accounts/app.ts) that nothing else in the app counts.
             //   * Do NOT filter transfers. On-budget↔on-budget transfers carry no
             //     category (excluded by category IS NOT NULL); a categorised leg
             //     is a transfer to an off-budget account, which Actual counts as
@@ -1216,6 +1221,7 @@ class BudgetDatabase {
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND t.category IS NOT NULL
                   AND a.offbudget = 0
+                  AND (a.tombstone = 0 OR a.tombstone IS NULL)
                   AND (t.date / 100) <= ?
                 GROUP BY (t.date / 100), COALESCE(cm.transferId, t.category)
                 """, arguments: [targetMonthInt])
