@@ -90,15 +90,13 @@ struct ReconcileView: View {
                     } else {
                         Section {
                             HStack {
+                                Text("Difference")
+                                Spacer()
                                 let text = differenceText(difference)
                                 Text(text)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.orange)
                                     .animatedAmount(text)
-                                Spacer()
-                                Text((difference > 0 ? "+" : "") + budgetStore.formatCurrency(difference))
-                                    .fontWeight(.semibold)
-                                    .foregroundStyle(.orange)
                             }
                             Button {
                                 Task { await createAdjustment(difference) }

@@ -243,7 +243,6 @@ struct BudgetView: View {
                         // stored value, rather than at the call site.
                         .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
                         // The clean style keeps the stock section rhythm; the
-                        // The clean style keeps the stock section rhythm; the
                         // detailed table packs its group cards tighter.
                         .listSectionSpacing(
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
