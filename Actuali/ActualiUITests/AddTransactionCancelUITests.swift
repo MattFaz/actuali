@@ -1,17 +1,16 @@
 import XCTest
 
 /// The tab-hosted add flow must offer a Cancel that discards everything
-/// entered (issue #281). Presented flows (edit, account-detail "+") already
-/// had Cancel via dismiss; the tab flow has nothing to dismiss to, so its
-/// Cancel resets the form in place.
+/// entered and returns to the user's Start Page (issue #281). Presented
+/// flows (edit, account-detail "+") already had Cancel via dismiss; the tab
+/// flow has nothing to dismiss to, so its Cancel resets the form and routes
+/// to the Start Page tab instead.
 final class AddTransactionCancelUITests: XCTestCase {
 
+    /// Types an amount on the decimal pad and dismisses the keyboard, then
+    /// taps the nav-bar Cancel.
     @MainActor
-    func testTabHostedAddFlowCancelClearsTheForm() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
-        app.launch()
-
+    private func enterAmountAndCancel(in app: XCUIApplication) {
         let amountField = app.textFields.matching(
             NSPredicate(format: "placeholderValue == '0.00'")
         ).firstMatch
@@ -31,13 +30,50 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
                       "tab-hosted add flow has no Cancel button")
         cancel.tap()
+    }
 
-        // The entered amount must be gone: the field shows its placeholder
-        // again, and the form stays put (still the Add Transaction tab).
-        XCTAssertTrue(app.navigationBars["Add Transaction"].waitForExistence(timeout: 5),
-                      "cancel navigated away from the add tab")
+    /// Asserts the amount field shows its placeholder again — the entered
+    /// amount was discarded.
+    @MainActor
+    private func assertAmountCleared(in app: XCUIApplication) {
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 5), "amount field not found")
         let cleared = NSPredicate(format: "value == '0.00' OR value == ''")
         expectation(for: cleared, evaluatedWith: amountField)
         waitForExpectations(timeout: 5)
+    }
+
+    @MainActor
+    func testCancelReturnsToStartPageAndClearsTheForm() throws {
+        let app = XCUIApplication()
+        // -startTab feeds UserDefaults via the argument domain, the same key
+        // the Settings Start Page picker persists.
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "budget"]
+        app.launch()
+
+        enterAmountAndCancel(in: app)
+
+        XCTAssertTrue(app.navigationBars["Budget"].waitForExistence(timeout: 5),
+                      "cancel did not land on the configured Start Page")
+
+        // Back on the Add tab, the entered amount must be gone.
+        app.tabBars.buttons["Add"].tap()
+        assertAmountCleared(in: app)
+    }
+
+    @MainActor
+    func testCancelStaysPutWhenStartPageIsAddTransaction() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "addTransaction"]
+        app.launch()
+
+        enterAmountAndCancel(in: app)
+
+        // The Start Page is this tab: cancel stays put and just discards.
+        XCTAssertTrue(app.navigationBars["Add Transaction"].waitForExistence(timeout: 5),
+                      "cancel navigated away from its own Start Page tab")
+        assertAmountCleared(in: app)
     }
 }

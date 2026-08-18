@@ -499,10 +499,15 @@ struct AddTransactionView: View {
                     // Any presented flow (edit, account-detail "+",
                     // notification prefill) closes on Cancel; the tab-hosted
                     // add flow has nothing to dismiss to, so Cancel discards
-                    // the entry in place instead (GH #281).
-                    // Esc triggers it on a hardware keyboard.
+                    // the entry and returns to the user's Start Page instead
+                    // (GH #281). Esc triggers it on a hardware keyboard.
                     Button("Cancel") {
-                        if isEditing || isPresented { dismiss() } else { resetForm() }
+                        if isEditing || isPresented {
+                            dismiss()
+                        } else {
+                            resetForm()
+                            NotificationRouter.shared.pendingTabNavigation = StartTab.persisted.tabTag
+                        }
                     }
                     .keyboardShortcut(.cancelAction)
                 }
