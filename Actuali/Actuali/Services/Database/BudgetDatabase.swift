@@ -1076,7 +1076,7 @@ class BudgetDatabase {
                             groupId: cat.catGroup ?? "",
                             isIncome: cat.isIncome == 1,
                             hidden: cat.hidden == 1,
-                            sortOrder: Int(cat.sortOrder ?? 0)
+                            sortOrder: cat.sortOrder ?? 0
                         )
                     }
 
@@ -1085,10 +1085,148 @@ class BudgetDatabase {
                     name: group.name ?? "Unknown",
                     isIncome: group.isIncome == 1,
                     hidden: group.hidden == 1,
-                    sortOrder: Int(group.sortOrder ?? 0),
+                    sortOrder: group.sortOrder ?? 0,
                     categories: categories
                 )
             }
+        }
+    }
+    
+    /// Everything a category insert wrote: the new row, plus the siblings the
+    /// shove had to move to make room for it.
+    struct CategoryInsertion: Equatable {
+        let category: Category
+        let movedSiblings: [SortOrder.Position]
+    }
+
+    /// Refusals that come from the budget's own contents rather than SQLite,
+    /// worded for the person who typed the name. Upstream rejects the same
+    /// two cases in `insertCategoryGroup` / `insertCategory`.
+    enum CategoryWriteError: LocalizedError, Equatable {
+        case duplicateGroupName(String)
+        case duplicateCategoryName(name: String, groupName: String)
+        case groupNotFound
+
+        var errorDescription: String? {
+            switch self {
+            case .duplicateGroupName(let name):
+                return "A category group named \"\(name)\" already exists"
+            case .duplicateCategoryName(let name, let groupName):
+                return "\(groupName) already has a category named \"\(name)\""
+            case .groupNotFound:
+                return "That category group no longer exists"
+            }
+        }
+    }
+
+    /// Create a category group after every existing one, mirroring upstream
+    /// `insertCategoryGroup`: names are unique across the whole budget
+    /// (case-insensitively), and the group sorts one increment past the last.
+    /// Returns the row as written, so the caller can turn it into CRDT
+    /// messages.
+    func insertCategoryGroup(id: String, name: String) throws -> CategoryGroup {
+        try dbQueue.write { db in
+            let clash = try String.fetchOne(db, sql: """
+                SELECT name FROM category_groups
+                WHERE UPPER(name) = UPPER(?) AND tombstone IS NOT 1
+                LIMIT 1
+                """, arguments: [name])
+            if let clash {
+                throw CategoryWriteError.duplicateGroupName(clash)
+            }
+
+            let lastSortOrder = try Double.fetchOne(db, sql: """
+                SELECT sort_order FROM category_groups
+                WHERE tombstone IS NOT 1
+                ORDER BY sort_order DESC, id DESC
+                LIMIT 1
+                """) ?? 0
+
+            let group = CategoryGroup(
+                id: id,
+                name: name,
+                isIncome: false,
+                hidden: false,
+                sortOrder: lastSortOrder + SortOrder.increment,
+                categories: []
+            )
+
+            try db.execute(sql: """
+                INSERT INTO category_groups (id, name, is_income, hidden, tombstone, sort_order)
+                VALUES (?, ?, 0, 0, 0, ?)
+                """, arguments: [group.id, group.name, group.sortOrder])
+
+            return group
+        }
+    }
+
+    /// Create a category at the top of its group, mirroring upstream
+    /// `insertCategory`: names are unique within the group, the new row takes
+    /// its group's income and hidden flags, and it gets the self-referencing
+    /// `category_mapping` row every read path joins through. Siblings the
+    /// shove moved are written here too and returned for the caller's CRDT
+    /// messages.
+    func insertCategory(id: String, name: String, groupId: String) throws -> CategoryInsertion {
+        try dbQueue.write { db in
+            let group = try Row.fetchOne(db, sql: """
+                SELECT name, is_income, hidden FROM category_groups
+                WHERE id = ? AND tombstone IS NOT 1
+                """, arguments: [groupId])
+            guard let group else {
+                throw CategoryWriteError.groupNotFound
+            }
+            let groupName: String = group["name"] ?? "That group"
+
+            let clash = try Bool.fetchOne(db, sql: """
+                SELECT 1 FROM categories
+                WHERE cat_group = ? AND UPPER(name) = UPPER(?) AND tombstone IS NOT 1
+                LIMIT 1
+                """, arguments: [groupId, name]) ?? false
+            if clash {
+                throw CategoryWriteError.duplicateCategoryName(name: name, groupName: groupName)
+            }
+
+            let siblings = try Row.fetchAll(db, sql: """
+                SELECT id, sort_order FROM categories
+                WHERE cat_group = ? AND tombstone IS NOT 1
+                ORDER BY sort_order, id
+                """, arguments: [groupId]).map { row in
+                SortOrder.Position(id: row["id"], sortOrder: row["sort_order"] ?? 0)
+            }
+            let placement = SortOrder.shove(siblings, before: siblings.first?.id)
+
+            for moved in placement.moved {
+                try db.execute(
+                    sql: "UPDATE categories SET sort_order = ? WHERE id = ?",
+                    arguments: [moved.sortOrder, moved.id])
+            }
+
+            let category = Category(
+                id: id,
+                name: name,
+                groupId: groupId,
+                isIncome: group["is_income"] == 1,
+                hidden: group["hidden"] == 1,
+                sortOrder: placement.sortOrder
+            )
+
+            try db.execute(sql: """
+                INSERT INTO categories (id, name, cat_group, is_income, hidden, tombstone, sort_order)
+                VALUES (?, ?, ?, ?, ?, 0, ?)
+                """, arguments: [
+                    category.id,
+                    category.name,
+                    category.groupId,
+                    category.isIncome ? 1 : 0,
+                    category.hidden ? 1 : 0,
+                    category.sortOrder
+                ])
+            try db.execute(sql: """
+                INSERT INTO category_mapping (id, transferId)
+                VALUES (?, ?)
+                """, arguments: [category.id, category.id])
+
+            return CategoryInsertion(category: category, movedSiblings: placement.moved)
         }
     }
 

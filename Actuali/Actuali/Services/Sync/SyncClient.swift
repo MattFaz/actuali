@@ -416,6 +416,79 @@ actor SyncClient {
         // 6. Sync to push the new account to the server (rate-limited)
         await automaticSync()
     }
+    
+    /// Create a category group (optimistic local-first). Placement, the
+    /// duplicate-name check and the row itself are the database's job — this
+    /// turns what it wrote into CRDT messages.
+    func createCategoryGroup(id: String, name: String) async throws -> CategoryGroup {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createCategoryGroup() - id: \(id, privacy: .private)")
+
+        // 1. Insert locally (optimistic)
+        let group = try database.insertCategoryGroup(id: id, name: name)
+
+        // 2. Generate CRDT messages for the group row
+        let messages = try await messageGenerator.messagesForInsert(group)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for category group")
+
+        // 3. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 4. Sync to push the new group to the server (rate-limited)
+        await automaticSync()
+
+        return group
+    }
+
+    /// Create a category in a group (optimistic local-first), together with
+    /// the `category_mapping` row upstream pairs with every category and the
+    /// sort_order updates its placement shoved onto the group's other
+    /// categories.
+    /// `categoryGroupId` rather than `groupId` so it can't be confused with
+    /// the actor's sync group id.
+    func createCategory(id: String, name: String, categoryGroupId: String) async throws -> Category {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("createCategory() - id: \(id, privacy: .private)")
+
+        // 1. Insert locally (optimistic) - includes category_mapping
+        let insertion = try database.insertCategory(id: id, name: name, groupId: categoryGroupId)
+
+        // 2. Generate CRDT messages for the category and its self-mapping
+        var messages = try await messageGenerator.messagesForInsert(insertion.category)
+        messages += try await messageGenerator.messagesForInsert(
+            CategoryMapping(id: insertion.category.id, targetId: insertion.category.id)
+        )
+
+        // 3. Generate a sort_order message per sibling the shove displaced,
+        //    matching the `update('categories', ...)` calls upstream makes
+        //    inside the same batch as the insert.
+        for sibling in insertion.movedSiblings {
+            messages += try await messageGenerator.messages(
+                dataset: Category.datasetName,
+                row: sibling.id,
+                fields: [("sort_order", sibling.sortOrder)]
+            )
+        }
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for new category")
+
+        // 4. Store messages and update merkle
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        // 5. Sync to push the new category to the server (rate-limited)
+        await automaticSync()
+
+        return insertion.category
+    }
 
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
