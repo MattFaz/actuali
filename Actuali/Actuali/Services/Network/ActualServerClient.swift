@@ -264,13 +264,14 @@ actor ActualServerClient {
         } catch let urlError as URLError where urlError.code != .cancelled {
             if let fallbackServerURL,
                let requestURL = request.url,
-               requestURL.host == serverURL?.host {
+               let serverURL,
+               requestURL.host == serverURL.host {
                 var fallbackRequest = request
-                fallbackRequest.url = URL(
-                    string: requestURL.path(percentEncoded: true)
-                        + (requestURL.query.map { "?" + $0 } ?? ""),
-                    relativeTo: fallbackServerURL
-                )?.absoluteURL
+                fallbackRequest.url = Self.fallbackRequestURL(
+                    requestURL: requestURL,
+                    primaryServerURL: serverURL,
+                    fallbackServerURL: fallbackServerURL
+                )
                 do {
                     let result = try await session.data(for: fallbackRequest)
                     // Keep using the reachable address for the rest of this
@@ -285,6 +286,43 @@ actor ActualServerClient {
             // screen the user left), so it propagates untouched.
             throw ActualServerError.networkError(urlError)
         }
+    }
+
+    /// Rebase an API request from the primary server onto the fallback while
+    /// preserving path prefixes on either address (for example `/actual`).
+    private static func fallbackRequestURL(
+        requestURL: URL,
+        primaryServerURL: URL,
+        fallbackServerURL: URL
+    ) -> URL? {
+        let primaryPath = primaryServerURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let requestPath = requestURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let endpointPath: Substring
+        if !primaryPath.isEmpty,
+           requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
+            endpointPath = requestPath.dropFirst(primaryPath.count)
+        } else {
+            endpointPath = requestPath[...]
+        }
+    
+        var components = URLComponents(
+            url: fallbackServerURL,
+            resolvingAgainstBaseURL: false
+        )
+        let fallbackPath = fallbackServerURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let endpoint = String(endpointPath)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components?.percentEncodedPath = "/" + [fallbackPath, endpoint]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components?.percentEncodedQuery = URLComponents(
+            url: requestURL,
+            resolvingAgainstBaseURL: false
+        )?.percentEncodedQuery
+        return components?.url
     }
 
     /// Whether a response looks like an auth proxy's login page rather than the
