@@ -1305,7 +1305,6 @@ struct CategoryPickerView: View {
     @Binding var selectedCategoryId: String?
     var onPick: (() -> Void)? = nil
     @State private var searchText = ""
-    @FocusState private var searchFocused: Bool
 
     var body: some View {
         List {
@@ -1352,7 +1351,6 @@ struct CategoryPickerView: View {
         .navigationTitle("Category")
         .navigationBarTitleDisplayMode(.inline)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search categories")
-        .searchFocused($searchFocused)
     }
 
     private var filteredGroups: [CategoryGroup] {
