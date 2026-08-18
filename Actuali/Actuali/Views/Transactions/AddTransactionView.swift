@@ -515,6 +515,10 @@ struct AddTransactionView: View {
                 }
             }
             .readableWidth()
+            // The form's default ~35pt top inset is dead space on a screen
+            // with no header; 8pt keeps the first section off the status bar
+            // without it.
+            .contentMargins(.top, 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
