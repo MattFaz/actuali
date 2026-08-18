@@ -49,6 +49,19 @@ struct BudgetStoreDuplicationTests {
                 CREATE TABLE categories (
                     id TEXT PRIMARY KEY,
                     name TEXT,
+                    cat_group TEXT,
+                    is_income INTEGER DEFAULT 0,
+                    sort_order REAL,
+                    hidden INTEGER DEFAULT 0,
+                    tombstone INTEGER DEFAULT 0
+                );
+
+                CREATE TABLE category_groups (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    is_income INTEGER DEFAULT 0,
+                    sort_order REAL,
+                    hidden INTEGER DEFAULT 0,
                     tombstone INTEGER DEFAULT 0
                 );
 
