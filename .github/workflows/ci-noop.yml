@@ -5,6 +5,7 @@ name: CI (no app changes)
 
 on:
   pull_request:
+    branches: [main]
     paths-ignore:
       - "Actuali/**"
       - ".github/workflows/ci.yml"

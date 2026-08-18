@@ -5,6 +5,7 @@ name: CI
 
 on:
   pull_request:
+    branches: [main]
     paths:
       - "Actuali/**"
       - ".github/workflows/ci.yml"
