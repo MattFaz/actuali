@@ -44,6 +44,10 @@ struct OverspentCategoriesView: View {
             }
         }
         .readableWidth()
+        // Covering a category removes its row, and covering the last one
+        // swaps the list for "Nothing Overspent" — the payoff for the swipe
+        // action, so let it play rather than blink.
+        .animation(AppAnimation.appearance, value: budgetStore.currentBudgetMonth?.overspentCount)
         .navigationTitle("Overspent Categories")
         .navigationBarTitleDisplayMode(.inline)
     }
@@ -58,6 +62,7 @@ struct OverspentCategoryRow: View {
     let category: CategoryBudget
 
     var body: some View {
+        let available = budgetStore.displayBalance(category.available)
         NavigationLink {
             CategoryTransactionsView(
                 destination: CategoryTransactionsDestination(
@@ -74,6 +79,7 @@ struct OverspentCategoryRow: View {
                     Text(budgetStore.displayBalance(category.available))
                         .foregroundStyle(.red)
                         .monospacedDigit()
+                        .animatedAmount(available)    
                 }
                 Text(category.groupName)
                     .font(.caption)
