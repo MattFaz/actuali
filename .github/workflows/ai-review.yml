@@ -7,6 +7,7 @@ name: AI Code Review
 on:
   pull_request_target:
     types: [opened, synchronize]
+    branches: [main]
 
 permissions:
   contents: read
@@ -32,6 +33,10 @@ jobs:
           # with this job's capped GITHUB_TOKEN instead of the app's broader
           # installation token. Comments post as github-actions[bot].
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # The action refuses actors without write access by default, which
+          # blocks every fork PR. Safe to waive here: the job's token is the
+          # capped GITHUB_TOKEN and checkout never touches PR-head code.
+          allowed_non_write_users: "*"
           prompt: |
             Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
             Fetch the diff with `gh pr diff ${{ github.event.pull_request.number }}`.
