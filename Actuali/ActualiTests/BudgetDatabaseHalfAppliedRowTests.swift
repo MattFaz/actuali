@@ -188,4 +188,22 @@ struct BudgetDatabaseHalfAppliedRowTests {
         let rows = try db.fetchTransactions(scheduleId: "sched-1")
         #expect(rows.map(\.id) == ["t-real"])
     }
+
+    /// The "All Time" category drill-down has no month window, so it can't
+    /// rely on `(date / 100) = ?` to drop NULL-date rows as a side effect.
+    @Test func allTimeCategoryListHidesHalfAppliedRows() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seed(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                UPDATE transactions SET category = 'cat-1'
+                WHERE id IN ('t-real', 't-phantom');
+            """)
+        }
+
+        let rows = try await db.fetchCategoryTransactions(categoryId: "cat-1", month: nil)
+        #expect(rows.map(\.id) == ["t-real"])
+    }
 }

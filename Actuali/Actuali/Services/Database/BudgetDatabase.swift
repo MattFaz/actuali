@@ -1050,6 +1050,7 @@ class BudgetDatabase {
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND t.date IS NOT NULL
                   AND \(Self.aliveChildPredicate(parent: "par"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                   AND COALESCE(cm.transferId, t.category) = ?
