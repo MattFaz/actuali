@@ -25,6 +25,29 @@ struct ReconcileView: View {
         guard let clearedBalance, let targetCents else { return nil }
         return targetCents - clearedBalance
     }
+    
+    /// Signed so a shortfall and a surplus read differently at a glance.
+    private func differenceText(_ cents: Int) -> String {
+        (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
+    }
+    
+    /// Which of the mutually exclusive sections below the entry fields is
+    /// showing. The section swap is animated off this rather than off
+    /// `difference`, which recomputes on every keystroke — an implicit
+    /// animation above a live text field would re-fire per character typed.
+    private enum ComparisonSection: Equatable {
+        case none
+        case invalidAmount
+        case difference
+        case reconciled
+    }
+
+    private var comparisonSection: ComparisonSection {
+        guard let difference else {
+            return clearedBalance != nil && !balanceText.isEmpty ? .invalidAmount : .none
+        }
+        return difference == 0 ? .reconciled : .difference
+    }
 
     var body: some View {
         NavigationStack {
@@ -37,8 +60,10 @@ struct ReconcileView: View {
                             // Deliberately bypasses the hide-balances mask:
                             // comparing exact amounts against the bank is the
                             // whole point of reconciling.
-                            Text(budgetStore.formatCurrency(clearedBalance))
+                            let text = budgetStore.formatCurrency(clearedBalance)
+                            Text(text)
                                 .fontWeight(.semibold)
+                                .animatedAmount(text)
                         } else {
                             ProgressView()
                         }
@@ -85,9 +110,11 @@ struct ReconcileView: View {
                             HStack {
                                 Text("Difference")
                                 Spacer()
-                                Text((difference > 0 ? "+" : "") + budgetStore.formatCurrency(difference))
+                                let text = differenceText(difference)
+                                Text(text)
                                     .fontWeight(.semibold)
                                     .foregroundStyle(.orange)
+                                    .animatedAmount(text)
                             }
                             Button {
                                 Task { await createAdjustment(difference) }
@@ -106,6 +133,11 @@ struct ReconcileView: View {
                     }
                 }
             }
+            // The moment the numbers meet, the difference section gives way
+            // to "All reconciled!" — the one thing this screen exists to
+            // show. The difference figure itself rolls on its own curve via
+            // `animatedAmount`, so this only has to cover the swap.
+            .animation(AppAnimation.appearance, value: comparisonSection)
             .navigationTitle("Reconcile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
