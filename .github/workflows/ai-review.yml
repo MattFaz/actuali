@@ -95,8 +95,7 @@ jobs:
             ### ⚠️ P2 Issues
             (same format as P1)
 
-            ## Review Decision
-            Approve ✅ (no P1/P2 issues) | Request Changes 🔁
+            ## Review Decision: Approve ✅ (no P1/P2 issues) | Requires Changes 🔁
 
             Write the review to review.md, then post it with
             `gh pr comment ${{ github.event.pull_request.number }} --body-file review.md`.
@@ -104,4 +103,5 @@ jobs:
           # code is never on disk. --body-file avoids heredocs/$() in the comment
           # command, which would fail the Bash prefix match and get denied.
           claude_args: |
+            --model claude-opus-5
             --allowedTools "Read,Write,Skill,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
