@@ -43,10 +43,14 @@ jobs:
       # CODE_SIGNING_ALLOWED=NO: an unsigned test host can't reach the
       # simulator keychain (errSecMissingEntitlement in EncryptionKeyManager
       # tests).
+      # xcbeautify (preinstalled on macOS runners) keeps the log readable;
+      # pipefail preserves xcodebuild's exit code through the pipe.
       - name: Build and run unit tests
         run: |
+          set -o pipefail
           xcodebuild test \
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
-            -skip-testing:ActualiUITests
+            -skip-testing:ActualiUITests \
+            | xcbeautify
