@@ -16,8 +16,8 @@ struct SyncStatusView: View {
                 // screen, so the spinner giving way to a settled icon is the
                 // only signal it finished. `.symbolEffect(.replace)` morphs
                 // one cloud glyph into the next rather than cutting.
-                Image(systemName: symbolName)
-                    .foregroundStyle(symbolColor)
+                Image(systemName: symbol.name)
+                    .foregroundStyle(symbol.color)
                     .contentTransition(.symbolEffect(.replace))
                     .transition(.scale.combined(with: .opacity))
             }
@@ -28,19 +28,11 @@ struct SyncStatusView: View {
 
     /// `.syncing` never draws a symbol (the spinner stands in for it), but
     /// the switch still has to cover it.
-    private var symbolName: String {
+    private var symbol: (name: String, color: Color) {
         switch state {
-        case .idle, .syncing: "checkmark.icloud"
-        case .offline: "icloud.slash"
-        case .error: "exclamationmark.icloud"
-        }
-    }
-
-    private var symbolColor: Color {
-        switch state {
-        case .idle, .syncing: .green
-        case .offline: .orange
-        case .error: .red
+        case .idle, .syncing: ("checkmark.icloud", .green)
+        case .offline: ("icloud.slash", .orange)
+        case .error: ("exclamationmark.icloud", .red)
         }
     }
 }

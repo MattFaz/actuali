@@ -30,6 +30,24 @@ struct ReconcileView: View {
     private func differenceText(_ cents: Int) -> String {
         (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
     }
+    
+    /// Which of the mutually exclusive sections below the entry fields is
+    /// showing. The section swap is animated off this rather than off
+    /// `difference`, which recomputes on every keystroke — an implicit
+    /// animation above a live text field would re-fire per character typed.
+    private enum ComparisonSection: Equatable {
+        case none
+        case invalidAmount
+        case difference
+        case reconciled
+    }
+
+    private var comparisonSection: ComparisonSection {
+        guard let difference else {
+            return clearedBalance != nil && !balanceText.isEmpty ? .invalidAmount : .none
+        }
+        return difference == 0 ? .reconciled : .difference
+    }
 
     var body: some View {
         NavigationStack {
@@ -115,10 +133,11 @@ struct ReconcileView: View {
                     }
                 }
             }
-            // Typing towards the bank's figure counts the difference down and
-            // then swaps the whole section for "All reconciled!" — the moment
-            // the numbers meet is the one thing this screen exists to show.
-            .animation(AppAnimation.appearance, value: difference)
+            // The moment the numbers meet, the difference section gives way
+            // to "All reconciled!" — the one thing this screen exists to
+            // show. The difference figure itself rolls on its own curve via
+            // `animatedAmount`, so this only has to cover the swap.
+            .animation(AppAnimation.appearance, value: comparisonSection)
             .navigationTitle("Reconcile")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
