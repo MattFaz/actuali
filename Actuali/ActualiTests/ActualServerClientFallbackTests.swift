@@ -3,14 +3,14 @@ import Testing
 @testable import Actuali
 
 private final class FallbackTransport: URLProtocol {
-    nonisolated(unsafe) static var requestedHosts: [String] = []
+    nonisolated(unsafe) static var requestedURLs: [URL] = []
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let host = request.url?.host ?? ""
-        Self.requestedHosts.append(host)
+        Self.requestedURLs.append(request.url!)
 
         if host == "primary.example.com" {
             client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
@@ -38,7 +38,7 @@ private final class FallbackTransport: URLProtocol {
 struct ActualServerClientFallbackTests {
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
         -> ActualServerClient {
-        FallbackTransport.requestedHosts = []
+        FallbackTransport.requestedURLs = []
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FallbackTransport.self]
         let client = ActualServerClient(session: URLSession(configuration: configuration))
@@ -56,10 +56,8 @@ struct ActualServerClientFallbackTests {
         _ = try await client.login(password: "password")
 
         #expect(token == "fallback-token")
-        #expect(FallbackTransport.requestedHosts == [
-            "primary.example.com",
-            "fallback.example.com",
-            "fallback.example.com"
+        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+            "primary.example.com", "fallback.example.com", "fallback.example.com"
         ])
     }
 
@@ -69,6 +67,16 @@ struct ActualServerClientFallbackTests {
         await #expect(throws: ActualServerError.self) {
             _ = try await client.login(password: "password")
         }
-        #expect(FallbackTransport.requestedHosts == ["primary.example.com"])
+        #expect(FallbackTransport.requestedURLs.map(\.host) == ["primary.example.com"])
+    }
+
+    @Test func preservesFallbackAddressPathPrefix() async throws {
+        let client = try await makeClient(
+            fallbackServerURL: "https://fallback.example.com/actual"
+        )
+    
+        _ = try await client.login(password: "password")
+    
+        #expect(FallbackTransport.requestedURLs.last?.path == "/actual/account/login")
     }
 }
