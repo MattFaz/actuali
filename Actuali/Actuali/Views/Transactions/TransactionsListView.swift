@@ -7,7 +7,6 @@ struct TransactionsListView: View {
     @State private var editingTransaction: Transaction?
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
-    @State private var showingConfirmDelete = false
 
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)

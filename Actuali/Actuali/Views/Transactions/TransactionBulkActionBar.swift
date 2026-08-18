@@ -19,7 +19,7 @@ struct TransactionBulkActionBar: View {
         VStack(spacing: 0) {
             Divider()
             HStack(spacing: 8) {
-                Button(allSelected ? "Deselect All" : (selectedCount == 0 ? "Select All (\(totalCount))" : "Select All")) {
+                Button(allSelected ? "Deselect All" : "Select All") {
                     if allSelected {
                         onDeselectAll()
                     } else {

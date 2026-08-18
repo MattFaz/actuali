@@ -286,4 +286,55 @@ struct BudgetStoreDuplicationTests {
         fetched = try await database.fetchTransactions(limit: 1000)
         #expect(fetched.allSatisfy { $0.cleared == false })
     }
+
+    @Test
+    func bulkDuplicateTransferBothLegsSelected() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        try await store.createTransfer(
+            fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
+            date: 20260810, notes: "Transfer funds", cleared: true
+        )
+
+        let initialTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(initialTxs.count == 2)
+
+        // Bulk duplicate passing both legs of the transfer
+        await store.duplicateTransactions(initialTxs)
+
+        let allTxs = try await database.fetchTransactions(limit: 1000)
+        // Should only create 1 new transfer pair (total 4 transactions)
+        #expect(allTxs.count == 4)
+
+        let duplicatedLegs = allTxs.filter { $0.id != initialTxs[0].id && $0.id != initialTxs[1].id }
+        #expect(duplicatedLegs.count == 2)
+        let dup1 = duplicatedLegs[0]
+        let dup2 = duplicatedLegs[1]
+        #expect(dup1.transferId == dup2.id)
+        #expect(dup2.transferId == dup1.id)
+    }
+
+    @Test
+    func bulkDeleteTransferBothLegsSelected() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        try await store.createTransfer(
+            fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
+            date: 20260810, notes: "Transfer funds", cleared: true
+        )
+
+        let initialTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(initialTxs.count == 2)
+
+        // Bulk delete passing both legs of the transfer
+        await store.deleteTransactions(initialTxs)
+
+        let remainingTxs = try await database.fetchTransactions(limit: 1000)
+        #expect(remainingTxs.isEmpty)
+        #expect(store.error == nil)
+    }
 }

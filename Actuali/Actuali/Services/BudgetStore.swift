@@ -2123,6 +2123,33 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
+    private func makeDuplicateTransaction(
+        from source: Transaction,
+        id: String = UUID().uuidString,
+        sortOrder: Double
+    ) -> Transaction {
+        Transaction(
+            id: id,
+            accountId: source.accountId,
+            date: source.date,
+            amount: source.amount,
+            payeeId: source.payeeId,
+            payeeName: source.payeeName,
+            categoryId: source.categoryId,
+            categoryName: source.categoryName,
+            notes: source.notes,
+            cleared: false,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: sortOrder,
+            importedPayee: source.importedPayee,
+            schedule: nil
+        )
+    }
+
     private func duplicateSingleTransaction(_ transaction: Transaction) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
@@ -2135,47 +2162,11 @@ final class BudgetStore: ObservableObject {
                 let newSourceId = UUID().uuidString
                 let newTargetId = UUID().uuidString
 
-                let newSource = Transaction(
-                    id: newSourceId,
-                    accountId: transaction.accountId,
-                    date: transaction.date,
-                    amount: transaction.amount,
-                    payeeId: transaction.payeeId,
-                    payeeName: transaction.payeeName,
-                    categoryId: transaction.categoryId,
-                    categoryName: transaction.categoryName,
-                    notes: transaction.notes,
-                    cleared: false,
-                    reconciled: false,
-                    transferId: newTargetId,
-                    isParent: false,
-                    parentId: nil,
-                    tombstone: false,
-                    sortOrder: nowMs,
-                    importedPayee: transaction.importedPayee,
-                    schedule: nil
-                )
+                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: nowMs)
+                newSource.transferId = newTargetId
 
-                let newTarget = Transaction(
-                    id: newTargetId,
-                    accountId: partner.accountId,
-                    date: partner.date,
-                    amount: partner.amount,
-                    payeeId: partner.payeeId,
-                    payeeName: partner.payeeName,
-                    categoryId: partner.categoryId,
-                    categoryName: partner.categoryName,
-                    notes: partner.notes,
-                    cleared: false,
-                    reconciled: false,
-                    transferId: newSourceId,
-                    isParent: false,
-                    parentId: nil,
-                    tombstone: false,
-                    sortOrder: nowMs,
-                    importedPayee: partner.importedPayee,
-                    schedule: nil
-                )
+                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: nowMs)
+                newTarget.transferId = newSourceId
 
                 try await syncClient.createTransfer(source: newSource, target: newTarget)
                 return
@@ -2185,75 +2176,25 @@ final class BudgetStore: ObservableObject {
         // Handle split parent
         if transaction.isParent, let database {
             let newParentId = UUID().uuidString
-            let children = (try? await database.fetchChildTransactions(parentId: transaction.id)) ?? []
+            let children = try await database.fetchChildTransactions(parentId: transaction.id)
             let newChildren = children.map { child in
-                Transaction(
-                    id: UUID().uuidString,
-                    accountId: child.accountId,
-                    date: child.date,
-                    amount: child.amount,
-                    payeeId: child.payeeId,
-                    payeeName: child.payeeName,
-                    categoryId: child.categoryId,
-                    categoryName: child.categoryName,
-                    notes: child.notes,
-                    cleared: false,
-                    reconciled: false,
-                    transferId: nil,
-                    isParent: false,
-                    parentId: newParentId,
-                    tombstone: false,
-                    sortOrder: nowMs,
-                    importedPayee: child.importedPayee,
-                    schedule: nil
-                )
+                var newChild = makeDuplicateTransaction(from: child, sortOrder: nowMs)
+                newChild.parentId = newParentId
+                return newChild
             }
-            let newParent = Transaction(
-                id: newParentId,
-                accountId: transaction.accountId,
-                date: transaction.date,
-                amount: transaction.amount,
-                payeeId: transaction.payeeId,
-                payeeName: transaction.payeeName,
-                categoryId: transaction.categoryId,
-                categoryName: transaction.categoryName,
-                notes: transaction.notes,
-                cleared: false,
-                reconciled: false,
-                transferId: nil,
-                isParent: true,
-                parentId: nil,
-                tombstone: false,
-                sortOrder: nowMs,
-                importedPayee: transaction.importedPayee,
-                schedule: nil
-            )
+            var newParent = makeDuplicateTransaction(from: transaction, id: newParentId, sortOrder: nowMs)
+            newParent.isParent = true
             try await syncClient.createSplit(parent: newParent, children: newChildren)
             return
         }
 
         // Standard transaction (ensure transfer payee is cleared if transaction has no transferId)
         let isTransfer = payees.first { $0.id == transaction.payeeId && $0.transferAccountId != nil } != nil
-        let newTx = Transaction(
-            id: UUID().uuidString,
-            accountId: transaction.accountId,
-            date: transaction.date,
-            amount: transaction.amount,
-            payeeId: isTransfer ? nil : transaction.payeeId,
-            payeeName: isTransfer ? nil : transaction.payeeName,
-            categoryId: transaction.categoryId,
-            categoryName: transaction.categoryName,
-            notes: transaction.notes,
-            cleared: false,
-            reconciled: false,
-            transferId: nil,
-            isParent: false,
-            parentId: nil,
-            tombstone: false,
-            sortOrder: nowMs,
-            importedPayee: transaction.importedPayee,
-            schedule: nil
-        )
+        var newTx = makeDuplicateTransaction(from: transaction, sortOrder: nowMs)
+        if isTransfer {
+            newTx.payeeId = nil
+            newTx.payeeName = nil
+        }
         try await syncClient.createTransaction(newTx)
     }
 

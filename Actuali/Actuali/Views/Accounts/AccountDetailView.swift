@@ -22,7 +22,6 @@ struct AccountDetailView: View {
     @State private var editingNote = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
-    @State private var showingConfirmDelete = false
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
