@@ -6,7 +6,7 @@ import Testing
 @MainActor
 struct BudgetStoreDuplicationTests {
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
+    private func makeDatabase(seedSQL: String = "") throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-dup-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
@@ -99,7 +99,7 @@ struct BudgetStoreDuplicationTests {
                 INSERT INTO payee_mapping (id, targetId) VALUES
                     ('payee-transfer-1', 'payee-transfer-1'),
                     ('payee-transfer-2', 'payee-transfer-2');
-                """)
+                """ + seedSQL)
         }
 
         let database = try BudgetDatabase(path: tempURL)
@@ -416,6 +416,133 @@ struct BudgetStoreDuplicationTests {
         children = try await database.fetchChildTransactions(parentId: "parent-1")
         #expect(children.count == 2)
         #expect(children.allSatisfy { $0.cleared == false })
+    }
+
+    @Test
+    func bulkUnclearLeavesReconciledRowsLocked() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        let reconciledTx = Transaction(
+            id: "tx-locked", accountId: "acct-1", date: 20260810, amount: -1000,
+            payeeId: nil, payeeName: "Locked", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: true, reconciled: true, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        let plainTx = Transaction(
+            id: "tx-plain", accountId: "acct-1", date: 20260810, amount: -2000,
+            payeeId: nil, payeeName: "Plain", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: true, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 200
+        )
+        try await store.createTransaction(reconciledTx)
+        try await store.createTransaction(plainTx)
+
+        await store.setClearedStatus(transactions: [reconciledTx, plainTx], cleared: false)
+
+        let fetched = try await database.fetchTransactions(limit: 1000)
+        let locked = fetched.first { $0.id == "tx-locked" }
+        #expect(locked?.reconciled == true)
+        #expect(locked?.cleared == true)
+        #expect(fetched.first { $0.id == "tx-plain" }?.cleared == false)
+    }
+
+    @Test
+    func duplicateOrphanTransferPayeeClearsPayee() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, _) = try await makeStore(database: database)
+
+        // A transfer payee with no partner leg (transferId nil), as upstream
+        // files can contain.
+        let orphan = Transaction(
+            id: "tx-orphan", accountId: "acct-1", date: 20260810, amount: -5000,
+            payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        try await store.createTransaction(orphan)
+
+        // Duplicate the row as fetched, so transferAcct is populated the way
+        // list rows have it.
+        let fetched = try await database.fetchTransaction(id: "tx-orphan")
+        #expect(fetched?.transferAcct == "acct-2")
+        await store.duplicateTransaction(fetched!)
+
+        let all = try await database.fetchTransactions(limit: 1000)
+        #expect(all.count == 2)
+        let copy = all.first { $0.id != "tx-orphan" }
+        #expect(copy?.payeeId == nil)
+    }
+
+    @Test
+    func duplicateSkipsRulesEngine() async throws {
+        // A delete-transaction rule that matches the source row must not be
+        // able to silently swallow (or rewrite) the copy.
+        let (database, tempURL) = try makeDatabase(seedSQL: """
+
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY,
+                stage TEXT,
+                conditions_op TEXT DEFAULT 'and',
+                conditions TEXT,
+                actions TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
+
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
+                ('rule-1', NULL, 'and',
+                 '[{"op":"contains","field":"imported_description","value":"spam"}]',
+                 '[{"op":"delete-transaction","value":null}]', 0);
+            """)
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        var tx = Transaction(
+            id: "tx-ruled", accountId: "acct-1", date: 20260810, amount: -1000,
+            payeeId: nil, payeeName: "Spam Co", categoryId: nil, categoryName: nil,
+            notes: "keep me", cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        tx.importedPayee = "SPAM CO"
+        try await syncClient.createTransaction(tx, applyRules: false)
+
+        await store.duplicateTransaction(tx)
+
+        let all = try await database.fetchTransactions(limit: 1000)
+        #expect(all.count == 2)
+        #expect(store.error == nil)
+        let copy = all.first { $0.id != "tx-ruled" }
+        #expect(copy?.notes == "keep me")
+    }
+
+    @Test
+    func bulkDeleteSplitParentDeletesChildren() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        let parent = Transaction(
+            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        let child = Transaction(
+            id: "child-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            payeeId: nil, payeeName: "Store", categoryId: "cat-1", categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
+        )
+        try await syncClient.createSplit(parent: parent, children: [child])
+
+        await store.deleteTransactions([parent])
+
+        let remaining = try await database.fetchTransactions(limit: 1000)
+        #expect(remaining.isEmpty)
+        let children = try await database.fetchChildTransactions(parentId: "parent-1")
+        #expect(children.isEmpty)
     }
 
     @Test

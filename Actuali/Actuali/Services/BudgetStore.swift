@@ -2139,18 +2139,40 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
-    /// Bulk soft-delete a list of transactions.
+    /// Bulk soft-delete a list of transactions in one batch write — one
+    /// merkle/clock save and one sync for the whole selection, like
+    /// `lockClearedTransactions`.
     func deleteTransactions(_ transactions: [Transaction]) async {
         guard let syncClient else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
+        var deleted: [Transaction] = []
         for tx in transactions {
-            do {
-                try await deleteSingleTransaction(tx)
-            } catch {
-                self.error = "Failed to delete transaction: \(error.localizedDescription)"
+            // Deleting a split deletes its children too — orphaned children
+            // would be invisible in the list but still feed reports.
+            if tx.isParent, let database {
+                do {
+                    for child in try await database.fetchChildTransactions(parentId: tx.id) {
+                        var deletedChild = child
+                        deletedChild.tombstone = true
+                        deleted.append(deletedChild)
+                    }
+                } catch {
+                    // Skip the parent when its children couldn't be read —
+                    // tombstoning it anyway would orphan them.
+                    self.error = "Failed to delete transaction: \(error.localizedDescription)"
+                    continue
+                }
             }
+            var copy = tx
+            copy.tombstone = true
+            deleted.append(copy)
+        }
+        do {
+            try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
+        } catch {
+            self.error = "Failed to delete transaction: \(error.localizedDescription)"
         }
         await refreshDataOnly()
     }
@@ -2263,8 +2285,18 @@ final class BudgetStore: ObservableObject {
             let newParentId = UUID().uuidString
             let children = try await database.fetchChildTransactions(parentId: transaction.id)
             let newChildren = children.enumerated().map { index, child in
-                var newChild = makeDuplicateTransaction(from: child, sortOrder: sortOrder - Double(index + 1))
+                // Fractional offsets keep children just below their parent
+                // without landing on the integer slots bulk duplication hands
+                // to its other items.
+                var newChild = makeDuplicateTransaction(from: child, sortOrder: sortOrder - Double(index + 1) * 0.001)
                 newChild.parentId = newParentId
+                // A transfer-leg child loses its partner in the copy, so it
+                // can't keep the transfer payee either (same as the standard
+                // branch below).
+                if child.transferAcct != nil {
+                    newChild.payeeId = nil
+                    newChild.payeeName = nil
+                }
                 return newChild
             }
             var newParent = makeDuplicateTransaction(from: transaction, id: newParentId, sortOrder: sortOrder)
@@ -2273,40 +2305,52 @@ final class BudgetStore: ObservableObject {
             return
         }
 
-        // Standard transaction (ensure transfer payee is cleared if transaction has no transferId)
-        let isTransfer = payees.first { $0.id == transaction.payeeId && $0.transferAccountId != nil } != nil
+        // Standard transaction: a row with a transfer payee but no partner leg
+        // can't keep that payee on the copy. transferAcct comes through
+        // payee_mapping, so it survives payee merges.
         var newTx = makeDuplicateTransaction(from: transaction, sortOrder: sortOrder)
-        if isTransfer {
+        if transaction.transferAcct != nil {
             newTx.payeeId = nil
             newTx.payeeName = nil
         }
-        try await syncClient.createTransaction(newTx)
+        // Rules are skipped, same as createTransfer/createSplit — every field
+        // of the copy comes from the source row.
+        try await syncClient.createTransaction(newTx, applyRules: false)
     }
 
-    /// Bulk update the cleared status of transactions.
+    /// Bulk update the cleared status of transactions in one batch write.
+    /// Reconciled rows are locked: the row-level path unlocks them only after
+    /// an explicit confirmation, so bulk edits leave them alone. Split
+    /// children follow their parent's cleared state (the cleared piece of
+    /// `cascadeSharedFieldsToChildren`, inlined so the whole selection lands
+    /// in a single merkle/clock save instead of a refresh per child).
     func setClearedStatus(transactions: [Transaction], cleared: Bool) async {
         guard let syncClient else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
-        for tx in transactions {
-            guard tx.cleared != cleared else { continue }
-            var updated = tx
-            updated.cleared = cleared
-            if !cleared && updated.reconciled {
-                updated.reconciled = false
-            }
+        var updated: [Transaction] = []
+        for tx in transactions where !tx.reconciled && tx.cleared != cleared {
+            var copy = tx
+            copy.cleared = cleared
+            updated.append(copy)
+            guard tx.isParent, let database else { continue }
             do {
-                try await syncClient.updateTransaction(
-                    updated,
-                    changedFields: updated.reconciled != tx.reconciled ? ["cleared", "reconciled"] : ["cleared"]
-                )
-                if updated.isParent {
-                    try await cascadeSharedFieldsToChildren(of: updated, originalPayeeId: tx.payeeId)
+                for child in try await database.fetchChildTransactions(parentId: tx.id)
+                where child.cleared != cleared {
+                    var childCopy = child
+                    childCopy.cleared = cleared
+                    updated.append(childCopy)
                 }
             } catch {
                 self.error = "Failed to update cleared status: \(error.localizedDescription)"
             }
+        }
+        guard !updated.isEmpty else { return }
+        do {
+            try await syncClient.updateTransactions(updated, changedFields: ["cleared"])
+        } catch {
+            self.error = "Failed to update cleared status: \(error.localizedDescription)"
         }
         await refreshDataOnly()
     }

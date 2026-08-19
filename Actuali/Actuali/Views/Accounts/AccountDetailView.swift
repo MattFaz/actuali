@@ -317,9 +317,12 @@ struct AccountDetailView: View {
         .task(id: [account.id, searchText]) {
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
-                // than showing them while the new ones load.
+                // than showing them while the new ones load — and its
+                // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                isSelecting = false
+                selectedTransactionIds.removeAll()
             } else if searchQuery != nil {
                 // Debounce keystrokes; the initial (empty) load and account
                 // switches run immediately.

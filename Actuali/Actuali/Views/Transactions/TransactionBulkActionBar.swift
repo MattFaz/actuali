@@ -82,6 +82,11 @@ struct TransactionBulkActionBar: View {
             .padding(.vertical, 10)
             .background(.thinMaterial)
         }
+        .onChange(of: transactions) {
+            // Drop ids the list no longer holds (refilter, search, account
+            // switch), so the counts match what the actions will touch.
+            selectedIds.formIntersection(transactions.map(\.id))
+        }
         .confirmationDialog(
             "Delete \(selectedCount) transaction(s)?",
             isPresented: $showingConfirmDelete,
