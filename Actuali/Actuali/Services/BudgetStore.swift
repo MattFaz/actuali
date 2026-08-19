@@ -2185,10 +2185,13 @@ final class BudgetStore: ObservableObject {
         let baseSortOrder = Date().timeIntervalSince1970 * 1000
         var handledTransferIds = Set<String>()
         for (index, tx) in transactions.enumerated() {
+            // The partner leg may already have been copied as part of its
+            // pair — test this first: a half-linked leg (upstream files can
+            // contain them) carries no transferId of its own.
+            if handledTransferIds.contains(tx.id) {
+                continue
+            }
             if let transferId = tx.transferId, !transferId.isEmpty {
-                if handledTransferIds.contains(tx.id) {
-                    continue
-                }
                 handledTransferIds.insert(transferId)
             }
             do {
@@ -2307,20 +2310,32 @@ final class BudgetStore: ObservableObject {
         for tx in transactions where !tx.reconciled && tx.cleared != cleared {
             var copy = tx
             copy.cleared = cleared
-            updated.append(copy)
-            guard tx.isParent, let database else { continue }
+            guard tx.isParent, let database else {
+                updated.append(copy)
+                continue
+            }
             do {
+                var batch = [copy]
                 // Reconciled children are locked for the same reason as
                 // their parents.
                 for child in try await database.fetchChildTransactions(parentId: tx.id)
                 where !child.reconciled && child.cleared != cleared {
                     var childCopy = child
                     childCopy.cleared = cleared
-                    updated.append(childCopy)
+                    batch.append(childCopy)
                 }
+                updated.append(contentsOf: batch)
             } catch {
+                // Skip the parent when its children can't be read — a parent
+                // that flips without them leaves the split inconsistent.
                 self.error = "Failed to update cleared status: \(error.localizedDescription)"
             }
+        }
+        // The reconciled lock is silent otherwise: say which part of the
+        // selection stayed put.
+        let locked = transactions.filter { $0.reconciled && $0.cleared != cleared }.count
+        if locked > 0 {
+            self.error = "\(locked) reconciled transaction\(locked == 1 ? "" : "s") stayed locked. Unlock from the status dot to change them."
         }
         guard !updated.isEmpty else { return }
         do {

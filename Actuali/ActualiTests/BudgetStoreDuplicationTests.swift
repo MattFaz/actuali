@@ -330,6 +330,36 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
+    func bulkDuplicateHalfLinkedTransferCopiesPartnerOnce() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        // A one-way link: leg A points at B, B points at nothing (upstream
+        // files can contain these). Selecting both must not copy B twice.
+        let legA = Transaction(
+            id: "tx-a", accountId: "acct-1", date: 20260810, amount: -5000,
+            payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: "tx-b",
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        let legB = Transaction(
+            id: "tx-b", accountId: "acct-2", date: 20260810, amount: 5000,
+            payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        try await syncClient.createTransaction(legA, applyRules: false)
+        try await syncClient.createTransaction(legB, applyRules: false)
+
+        await store.duplicateTransactions([legA, legB])
+
+        // One new pair only: A's duplication copies both legs, B is skipped.
+        let all = try await database.fetchTransactions(limit: 1000)
+        #expect(all.count == 4)
+    }
+
+    @Test
     func deleteSingleTransferDoesNotDeletePartner() async throws {
         let (database, tempURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: tempURL) }
