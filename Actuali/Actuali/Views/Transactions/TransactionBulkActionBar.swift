@@ -55,6 +55,7 @@ struct TransactionBulkActionBar: View {
                         .font(.body.weight(.medium))
                         .frame(width: 32, height: 32)
                 }
+                .accessibilityLabel("Set Cleared Status")
                 .disabled(selectedCount == 0)
 
                 Button {
@@ -68,6 +69,7 @@ struct TransactionBulkActionBar: View {
                     Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "plus.square.on.square")
                         .font(.subheadline.weight(.semibold))
                 }
+                .accessibilityLabel("Duplicate \(selectedCount) Selected")
                 .disabled(selectedCount == 0)
 
                 Button(role: .destructive) {
@@ -76,6 +78,7 @@ struct TransactionBulkActionBar: View {
                     Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "trash")
                         .font(.subheadline.weight(.semibold))
                 }
+                .accessibilityLabel("Delete \(selectedCount) Selected")
                 .disabled(selectedCount == 0)
             }
             .padding(.horizontal, 16)

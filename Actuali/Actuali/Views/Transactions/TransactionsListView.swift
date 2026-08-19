@@ -195,8 +195,7 @@ struct TransactionListRow: View {
                 isSelected: isSelected,
                 onToggleCleared: {
                     Task { await budgetStore.toggleCleared(transaction) }
-                },
-                onToggleSelect: onToggleSelect
+                }
             )
             .contentShape(Rectangle())
         }
@@ -267,7 +266,6 @@ struct TransactionRow: View {
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
     var onToggleCleared: (() -> Void)? = nil
-    var onToggleSelect: (() -> Void)? = nil
 
     @State private var confirmingUnlock = false
 
@@ -309,16 +307,15 @@ struct TransactionRow: View {
     var body: some View {
         HStack(spacing: 10) {
             if isSelectionMode {
-                Button {
-                    onToggleSelect?()
-                } label: {
+                // No button needed: the row itself toggles selection. The
+                // cleared dot stays in view — the bulk bar acts on it.
+                HStack(spacing: 6) {
                     Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
                         .font(.system(size: 20))
                         .foregroundStyle(isSelected ? Color.accentColor : .secondary)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Rectangle())
+                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                 }
-                .buttonStyle(.borderless)
+                .frame(width: 48, height: 28)
                 .accessibilityLabel(isSelected ? "Selected" : "Not selected")
             } else if let onToggleCleared {
                 Button {

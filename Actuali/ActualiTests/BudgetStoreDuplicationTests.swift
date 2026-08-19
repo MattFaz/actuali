@@ -477,6 +477,44 @@ struct BudgetStoreDuplicationTests {
     }
 
     @Test
+    func duplicateSplitWithTransferChildClearsChildPayee() async throws {
+        let (database, tempURL) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let (store, syncClient) = try await makeStore(database: database)
+
+        let parent = Transaction(
+            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 100
+        )
+        // A child that is a transfer leg — its copy loses the partner, so it
+        // must lose the transfer payee too.
+        let transferChild = Transaction(
+            id: "child-1", accountId: "acct-1", date: 20260810, amount: -2000,
+            payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
+        )
+        let plainChild = Transaction(
+            id: "child-2", accountId: "acct-1", date: 20260810, amount: -1000,
+            payeeId: nil, payeeName: "Plain", categoryId: "cat-1", categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 98
+        )
+        try await syncClient.createSplit(parent: parent, children: [transferChild, plainChild])
+
+        await store.duplicateTransaction(parent)
+
+        let dupParent = try await database.fetchTransactions(limit: 1000)
+            .first { $0.isParent && $0.id != "parent-1" }
+        #expect(dupParent != nil)
+        let dupChildren = try await database.fetchChildTransactions(parentId: dupParent?.id ?? "")
+        #expect(dupChildren.count == 2)
+        #expect(dupChildren.first { $0.amount == -2000 }?.payeeId == nil)
+    }
+
+    @Test
     func duplicateSkipsRulesEngine() async throws {
         // A delete-transaction rule that matches the source row must not be
         // able to silently swallow (or rewrite) the copy.

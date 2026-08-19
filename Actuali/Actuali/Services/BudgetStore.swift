@@ -2130,13 +2130,7 @@ final class BudgetStore: ObservableObject {
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
-        do {
-            try await deleteSingleTransaction(transaction)
-        } catch {
-            self.error = "Failed to delete transaction: \(error.localizedDescription)"
-            return
-        }
-        await refreshDataOnly()
+        await deleteTransactions([transaction])
     }
 
     /// Bulk soft-delete a list of transactions in one batch write — one
@@ -2177,31 +2171,9 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
     }
 
-    private func deleteSingleTransaction(_ transaction: Transaction) async throws {
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        if transaction.isParent, let database {
-            for child in try await database.fetchChildTransactions(parentId: transaction.id) {
-                var deletedChild = child
-                deletedChild.tombstone = true
-                try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
-            }
-        }
-        var deleted = transaction
-        deleted.tombstone = true
-        try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
-    }
-
     /// Duplicate a transaction (and its split children if parent, or paired transfer if transfer).
     func duplicateTransaction(_ transaction: Transaction) async {
-        do {
-            try await duplicateSingleTransaction(transaction)
-        } catch {
-            self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
-            return
-        }
-        await refreshDataOnly()
+        await duplicateTransactions([transaction])
     }
 
     /// Duplicate multiple transactions.
@@ -2257,15 +2229,17 @@ final class BudgetStore: ObservableObject {
 
     private func duplicateSingleTransaction(
         _ transaction: Transaction,
-        sortOrder: Double = Date().timeIntervalSince1970 * 1000
+        sortOrder: Double
     ) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
-        // Handle transfers: duplicate both legs if partner found, otherwise clear transfer mapping
-        if let transferId = transaction.transferId, !transferId.isEmpty {
-            if let database, let partner = try? await database.fetchTransaction(id: transferId) {
+        // Handle transfers: duplicate both legs. A missing partner falls
+        // through to the standard branch (the copy can't keep the transfer
+        // link); a read error must surface, not silently degrade the copy.
+        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
+            if let partner = try await database.fetchTransaction(id: transferId) {
                 let newSourceId = UUID().uuidString
                 let newTargetId = UUID().uuidString
 
@@ -2336,8 +2310,10 @@ final class BudgetStore: ObservableObject {
             updated.append(copy)
             guard tx.isParent, let database else { continue }
             do {
+                // Reconciled children are locked for the same reason as
+                // their parents.
                 for child in try await database.fetchChildTransactions(parentId: tx.id)
-                where child.cleared != cleared {
+                where !child.reconciled && child.cleared != cleared {
                     var childCopy = child
                     childCopy.cleared = cleared
                     updated.append(childCopy)
