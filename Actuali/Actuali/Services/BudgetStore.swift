@@ -1394,11 +1394,18 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            // Let the database stay authoritative; the post-sync refresh in
-            // refreshDataOnly() is what corrects a snapshot that trails the
-            // preference messages (GH #297).
+            // The downloaded SQLite snapshot can predate the following CRDT
+            // sync. When a cached value already exists, keep showing it —
+            // the sync that always runs right after this load corrects it
+            // moments later via refreshDataOnly() (unconditional, so this
+            // can never get stuck on a wrong value either — GH #59/#297).
+            // With no cache yet (first time loading this budget), the fresh
+            // snapshot is still the best answer available, so show it now
+            // rather than leaving the previous budget's value on screen.
             if let fetchedCurrencyCode {
-                currencyCode = fetchedCurrencyCode
+                if cachedCurrencyCode == nil {
+                    currencyCode = fetchedCurrencyCode
+                }
                 cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
             }
             
