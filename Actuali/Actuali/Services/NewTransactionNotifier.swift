@@ -89,12 +89,9 @@ enum NewTransactionNotifier {
         content.userInfo = [transactionIdsKey: transactions.map(\.id)]
         // No sound — a quiet reminder, matching the Wallet-automation banners.
 
-        content.title = transactions.count == 1
-            ? String(localized: "New transaction")
-            : String(
-                format: String(localized: "%lld new transactions"),
-                Int64(transactions.count)
-            )
+        // Interpolation, not a count ternary: the catalog's plural variations
+        // pick the right CLDR category per locale (fr/pt-BR treat 0 as "one").
+        content.title = String(localized: "\(transactions.count) new transactions")
 
         var lines = transactions.prefix(maxDetailLines).map {
             line(for: $0, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
@@ -128,7 +125,7 @@ enum NewTransactionNotifier {
             line = String(format: String(localized: "%@ at %@"), line, payee)
         }
         if let account = accountNames[transaction.accountId], !account.isEmpty {
-            line += String(format: String(localized: " on %@"), account)
+            line = String(format: String(localized: "%@ on %@"), line, account)
         }
         if transaction.needsCategory(offBudgetAccountIds: offBudgetAccountIds) {
             line += " · " + String(localized: "Needs a category")

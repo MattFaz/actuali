@@ -24,7 +24,7 @@ struct AgeOfMoneyWidgetView: View {
                             Image(systemName: trendSymbol.name)
                                 .foregroundStyle(trendSymbol.color)
                         }
-                        Text(String(localized: "^[\(age) day](inflect: true)"))
+                        Text(String(localized: "\(age) days"))
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                     }

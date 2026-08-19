@@ -17,8 +17,9 @@ struct GetCategoriesIntent: AppIntent {
         let categories = await store.categoriesForIntent().filter { !$0.hidden }
         let entities = categories.map { CategoryEntity(id: $0.id, name: $0.name) }
 
-        let count = entities.count
-        let dialogText = String(format: String(localized: count == 1 ? "Found %lld category in Actuali." : "Found %lld categories in Actuali."), count)
+        // Interpolation, not a count ternary: the catalog's plural variations
+        // pick the right CLDR category per locale (fr/pt-BR treat 0 as "one").
+        let dialogText = String(localized: "Found \(entities.count) categories in Actuali.")
         return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

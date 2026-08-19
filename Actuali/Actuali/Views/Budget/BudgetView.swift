@@ -133,7 +133,7 @@ struct BudgetView: View {
                                         OverspentCategoriesView()
                                     } label: {
                                         Label {
-                                            Text("^[\(budget.overspentCount) Overspent Category](inflect: true)")
+                                            Text(String(localized: "\(budget.overspentCount) Overspent Categories"))
                                         } icon: {
                                             Image(systemName: "exclamationmark.circle.fill")
                                                 .foregroundStyle(.red)
@@ -148,7 +148,7 @@ struct BudgetView: View {
                                         UncategorizedTransactionsView()
                                     } label: {
                                         Label {
-                                            Text("^[\(budgetStore.uncategorizedCount) Uncategorized Transaction](inflect: true)")
+                                            Text(String(localized: "\(budgetStore.uncategorizedCount) Uncategorized Transactions"))
                                         } icon: {
                                             Image(systemName: "questionmark.circle.fill")
                                                 .foregroundStyle(.orange)
@@ -1006,9 +1006,13 @@ struct BudgetGroupHeader: View {
     }
 
     private var accessibilityKey: String {
-        name.lowercased()
+        let slug = name.lowercased()
             .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
             .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        // A name written entirely outside [a-z0-9] (Japanese, Cyrillic, …)
+        // slugs to nothing; fall back to the raw name so two such groups
+        // don't collide on "budget.group.".
+        return slug.isEmpty ? name : slug
     }
 }
 

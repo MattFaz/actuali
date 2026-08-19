@@ -505,7 +505,7 @@ struct AddTransactionView: View {
                     Button(role: .destructive, action: cancelEntry) {
                         HStack {
                             Spacer()
-                            Text("Cancel")
+                            Text(String(localized: "common.cancel"))
                                 .fontWeight(.semibold)
                             Spacer()
                         }

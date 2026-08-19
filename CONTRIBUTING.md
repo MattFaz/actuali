@@ -50,7 +50,13 @@ String(localized: "common.cancel")
 String(localized: "…and \(count) more")
 ```
 
-Keep translations in the same placeholder order as English — the app never uses positional specifiers (`%1$@`), so a reordered translation silently swaps its arguments.
+Keep translations in the same placeholder order as English, or use positional specifiers (`%1$@`, `%2$@`) when a language needs a different word order — a reordered translation without them silently swaps its arguments.
+
+**Counts** — never pick singular/plural in Swift (`count == 1 ? … : …`); CLDR plural rules differ per language (French and Brazilian Portuguese treat 0 as singular). Interpolate the count and give the catalog entry plural `variations` per locale:
+
+```swift
+String(localized: "Imported \(count) transactions")   // key: "Imported %lld transactions"
+```
 
 Run `python3 dev/scripts/validate-localization.py` before opening a PR; it checks that every explicit key exists in the catalog, every entry covers all supported locales, and placeholders match across languages.
 

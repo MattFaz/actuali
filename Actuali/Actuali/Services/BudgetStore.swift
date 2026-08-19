@@ -68,13 +68,13 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .accountCreationFailed(let message):
             return String(format: String(localized: "error.accountCreationFailed %@"), message)
         case .invalidCategoryName:
-            return "Enter a category name"
+            return String(localized: "error.invalidCategoryName")
         case .invalidCategoryGroupName:
-            return "Enter a category group name"
+            return String(localized: "error.invalidCategoryGroupName")
         case .categoryCreationFailed(let message):
-            return "Failed to create category: \(message)"
+            return String(format: String(localized: "error.categoryCreationFailed %@"), message)
         case .categoryGroupCreationFailed(let message):
-            return "Failed to create category group: \(message)"
+            return String(format: String(localized: "error.categoryGroupCreationFailed %@"), message)
         case .ruleNeedsCondition:
             return String(localized: "error.ruleNeedsCondition")
         case .ruleNeedsAction:

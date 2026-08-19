@@ -16,11 +16,31 @@ SOURCE_LANGUAGE = "en"
 REQUIRED_LOCALES = {"en", "fr", "es", "pt-BR", "de", "it", "nl"}
 
 KEY_PATTERN = re.compile(r'String\(localized:\s*"((?:\\.|[^"\\])*)"')
-PLACEHOLDER_PATTERN = re.compile(r"%(?!%)[+\-0-9.*lh]*[a-zA-Z@]")
+PLACEHOLDER_PATTERN = re.compile(r"%(?!%)(?:\d+\$)?[+\-0-9.*lh]*[a-zA-Z@]")
+# Swift string interpolation inside a localized key, e.g. "Found \(count) items"
+INTERPOLATION_PATTERN = re.compile(r"\\\([^()]*(?:\([^()]*\)[^()]*)*\)")
 
 
 def placeholders(value: str) -> list[str]:
-    return PLACEHOLDER_PATTERN.findall(value)
+    found = PLACEHOLDER_PATTERN.findall(value)
+    # Positional specifiers (%1$@) carry the argument order explicitly, so a
+    # translation may reorder them in the sentence; canonicalize back to
+    # argument order so it compares equal to the source's specifier list.
+    if any("$" in item for item in found):
+        found = [
+            "%" + item.split("$", 1)[1]
+            for item in sorted(found, key=lambda item: int(item[1 : item.index("$")]))
+        ]
+    return found
+
+
+def interpolated_key_matches(key: str, catalog: dict) -> bool:
+    """True if a source key using \\(...) interpolation resolves to some
+    catalog key — the compiler turns each interpolation into a format
+    specifier (%lld, %@, ...) we can't know statically, so match any."""
+    parts = INTERPOLATION_PATTERN.split(key)
+    pattern = re.compile(PLACEHOLDER_PATTERN.pattern.join(re.escape(part) for part in parts))
+    return any(pattern.fullmatch(candidate) for candidate in catalog)
 
 
 def localized_values(value: object) -> list[str]:
@@ -108,7 +128,10 @@ def main() -> int:
             )
 
     for key in sorted(used):
-        if key not in catalog:
+        if INTERPOLATION_PATTERN.search(key):
+            if not interpolated_key_matches(key, catalog):
+                errors.append(f"missing catalog key for interpolated: {key}")
+        elif key not in catalog:
             errors.append(f"missing catalog key: {key}")
 
     for key, entry in sorted(catalog.items()):

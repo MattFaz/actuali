@@ -56,7 +56,7 @@ struct PayeeLocationsView: View {
         .navigationTitle(String(localized: "Payee Locations"))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
-
+        .task { await reload() }
     }
 
     private func reload() async {

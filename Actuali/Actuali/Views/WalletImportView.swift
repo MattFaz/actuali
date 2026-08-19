@@ -134,7 +134,7 @@ struct WalletImportView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text(String(format: String(localized: importableCount == 1 ? "Import %lld Transaction" : "Import %lld Transactions"), importableCount))
+                    Text(String(localized: "Import \(importableCount) Transactions"))
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -160,9 +160,11 @@ struct WalletImportView: View {
     }
 
     private func summary(for result: BudgetStore.WalletImportResult) -> String {
-        var text = String(format: String(localized: result.imported == 1 ? "Imported %lld transaction" : "Imported %lld transactions"), result.imported)
+        // Interpolation, not count ternaries: the catalog's plural variations
+        // pick the right CLDR category per locale (fr/pt-BR treat 0 as "one").
+        var text = String(localized: "Imported \(result.imported) transactions")
         if result.skippedDuplicates > 0 {
-            text += String(format: String(localized: result.skippedDuplicates == 1 ? ", skipped %lld duplicate" : ", skipped %lld duplicates"), result.skippedDuplicates)
+            text += String(localized: ", skipped \(result.skippedDuplicates) duplicates")
         }
         return text
     }

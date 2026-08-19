@@ -108,7 +108,7 @@ enum TransactionLogNotifier {
             parts.append(amountString)
         }
         if let payee, !payee.isEmpty {
-            parts.append(String(format: String(localized: "%@ at %@", locale: locale), "", payee).trimmingCharacters(in: .whitespaces))
+            parts.append(String(format: String(localized: "at %@", locale: locale), payee))
         }
         let prefix = parts.joined(separator: " ")
         return prefix.isEmpty ? message : "\(prefix). \(message)"
