@@ -26,6 +26,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidCategoryName
     case invalidCategoryGroupName
     case categoryCreationFailed(String)
+    case categoryUpdateFailed(String)
     case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
@@ -76,6 +77,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter a category group name"
         case .categoryCreationFailed(let message):
             return "Failed to create category: \(message)"
+        case .categoryUpdateFailed(let message):
+            return "Failed to update category: \(message)"
         case .categoryGroupCreationFailed(let message):
             return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
@@ -1789,6 +1792,28 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
 
         return category
+    }
+
+    /// Rename a category without changing its group, sort order, budget, or
+    /// transactions.
+    func renameCategory(id: String, name: String) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.renameCategory(id: id, name: trimmedName)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
@@ -3921,4 +3946,3 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
-

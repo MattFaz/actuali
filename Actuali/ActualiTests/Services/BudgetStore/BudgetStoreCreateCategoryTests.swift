@@ -204,4 +204,37 @@ struct BudgetStoreCreateCategoryTests {
 
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
     }
+
+    @Test func renamingACategoryWritesOnlyItsNameMessage() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        try await store.renameCategory(id: "cat-groceries", name: "  Food  ")
+
+        let renamed: String = try rows(
+            path: url,
+            sql: "SELECT name FROM categories WHERE id = 'cat-groceries'"
+        )[0]["name"]
+        #expect(renamed == "Food")
+        #expect(try messagedColumns(
+            path: url,
+            dataset: "categories",
+            row: "cat-groceries"
+        ) == ["name"])
+    }
+
+    @Test func aRejectedRenameEmitsNothing() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateCategoryName(
+            name: "Fuel",
+            groupName: "Daily"
+        )) {
+            try await store.renameCategory(id: "cat-groceries", name: "Fuel")
+        }
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
+    }
 }

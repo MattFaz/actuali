@@ -27,16 +27,12 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 
 /// The Budget tab's single view-options control (GH #157).
 ///
-/// Layout, expand/collapse and the spent-category filter used to be three
+/// Layout, expand/collapse and the spent-category visibility toggle used to be three
 /// separate controls — two crowding the navigation bar and one stranded in a
-/// footer section below the table. They all answer "how should this screen
-/// look", so they live behind one menu; the navigation bar keeps only month
-/// navigation.
+/// footer section below the table. Category status filters stay visible in
+/// the check-in strip instead of being hidden here.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
-
-    @Binding var categoryFilter: BudgetCategoryFilter
-    var isTrackingBudget = false
 
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
@@ -45,20 +41,6 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
-            Picker("Categories", selection: $categoryFilter) {
-                Label("All Categories", systemImage: "list.bullet")
-                    .tag(BudgetCategoryFilter.all)
-                Label("Needs Attention", systemImage: "exclamationmark.circle")
-                    .tag(BudgetCategoryFilter.needsAttention)
-                Label(isTrackingBudget ? "Over Budget" : "Overspent", systemImage: "exclamationmark.triangle")
-                    .tag(BudgetCategoryFilter.overspent)
-                Label(isTrackingBudget ? "No Budget Set" : "Not Funded", systemImage: "circle.dashed")
-                    .tag(BudgetCategoryFilter.unassigned)
-                Label(isTrackingBudget ? "Within Budget" : "On Track", systemImage: "checkmark.circle")
-                    .tag(BudgetCategoryFilter.onTrack)
-            }
-            .pickerStyle(.inline)
-
             Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
                 Label("Clean", systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
@@ -93,9 +75,7 @@ struct BudgetOptionsMenu: View {
                 }
             }
         } label: {
-            Image(systemName: categoryFilter == .all
-                ? "ellipsis.circle"
-                : "line.3.horizontal.decrease.circle.fill")
+            Image(systemName: "ellipsis.circle")
         }
         .accessibilityLabel("Budget options")
         .accessibilityHint("Layout, group and amount display options")
@@ -108,7 +88,6 @@ struct BudgetOptionsMenu: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     BudgetOptionsMenu(
-                        categoryFilter: .constant(.all),
                         expandAllGroups: {},
                         collapseAllGroups: {}
                     )
