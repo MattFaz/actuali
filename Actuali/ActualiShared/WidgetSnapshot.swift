@@ -18,10 +18,9 @@ struct WidgetCategoryBalance: Codable, Equatable, Identifiable {
 
 /// Everything the widget needs to render, written by the app after each data
 /// refresh and read by the widget extension through the app group container.
+/// App and widget ship as one bundle, so both always agree on this format;
+/// a failed decode (nil) already covers any future format change.
 struct WidgetSnapshot: Codable, Equatable {
-    static let currentSchemaVersion = 1
-
-    var schemaVersion: Int = Self.currentSchemaVersion
     let generatedAt: Date
     /// Mirrors the app's hide-balances privacy setting. The formatted amounts
     /// arrive already masked; the widget additionally mutes overspent

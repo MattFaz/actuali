@@ -33,14 +33,11 @@ struct WidgetSnapshotStore {
         try? FileManager.default.removeItem(at: fileURL)
     }
 
-    /// nil when the snapshot is missing, unreadable, or written by a newer
-    /// schema than this binary understands.
+    /// nil when the snapshot is missing or unreadable.
     func read() -> WidgetSnapshot? {
         guard let data = try? Data(contentsOf: fileURL) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .secondsSince1970
-        guard let snapshot = try? decoder.decode(WidgetSnapshot.self, from: data),
-              snapshot.schemaVersion <= WidgetSnapshot.currentSchemaVersion else { return nil }
-        return snapshot
+        return try? decoder.decode(WidgetSnapshot.self, from: data)
     }
 }

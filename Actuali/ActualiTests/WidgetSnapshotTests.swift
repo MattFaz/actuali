@@ -71,16 +71,6 @@ struct WidgetSnapshotTests {
         #expect(store.read() == nil)
     }
 
-    @Test func readReturnsNilForNewerSchemaVersion() throws {
-        let store = try makeStore()
-        var snapshot = sampleSnapshot()
-        snapshot.schemaVersion = WidgetSnapshot.currentSchemaVersion + 1
-
-        try store.write(snapshot)
-
-        #expect(store.read() == nil)
-    }
-
     // MARK: - Category selection
 
     @Test func selectionPreservesChosenOrderAndDropsUnknownIds() {
@@ -99,6 +89,55 @@ struct WidgetSnapshotTests {
         let picked = sampleSnapshot().categories(matching: ["a", "b", "c"], limit: 2)
 
         #expect(picked.map(\.id) == ["a", "b"])
+    }
+
+    // MARK: - BudgetStore publishing
+
+    private func makeBudget(id: String, name: String, month: String) -> CategoryBudget {
+        CategoryBudget(
+            month: month, categoryId: id, categoryName: name,
+            groupId: "g1", groupName: "Everyday", groupSortOrder: 0, categorySortOrder: 0,
+            budgeted: 10_000, spent: -5_000, available: 5_000, carryover: 0
+        )
+    }
+
+    @Test @MainActor func publishUsesWidgetMonthNotBrowsedMonth() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        // The user is browsing January's history while the calendar says August.
+        budgetStore.currentBudgetMonth = BudgetMonth(
+            month: "2026-01", categoryBudgets: [makeBudget(id: "old", name: "Old", month: "2026-01")])
+        budgetStore.widgetBudgetMonth = BudgetMonth(
+            month: "2026-08", categoryBudgets: [makeBudget(id: "dining", name: "Dining Out", month: "2026-08")])
+
+        budgetStore.publishWidgetSnapshot()
+
+        #expect(store.read()?.categories.map(\.id) == ["dining"])
+    }
+
+    @Test @MainActor func publishIsNoOpBeforeAnyBudgetLoads() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetBudgetMonth = nil
+
+        budgetStore.publishWidgetSnapshot()
+
+        #expect(store.read() == nil)
+    }
+
+    @Test @MainActor func clearRemovesPublishedSnapshot() throws {
+        let budgetStore = BudgetStore.previewInstance()
+        let store = try makeStore()
+        budgetStore.widgetSnapshotStore = store
+        budgetStore.widgetBudgetMonth = BudgetMonth(
+            month: "2026-08", categoryBudgets: [makeBudget(id: "dining", name: "Dining Out", month: "2026-08")])
+        budgetStore.publishWidgetSnapshot()
+
+        budgetStore.clearWidgetSnapshot()
+
+        #expect(store.read() == nil)
     }
 
     // MARK: - Building from category budgets
