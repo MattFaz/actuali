@@ -1,5 +1,30 @@
 import SwiftUI
 
+enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
+    case all
+    case needsAttention
+    case overspent
+    case unassigned
+    case onTrack
+
+    var id: Self { self }
+
+    func includes(_ category: CategoryBudget) -> Bool {
+        switch self {
+        case .all:
+            true
+        case .needsAttention:
+            category.progressState == .overspent || category.progressState == .unassigned
+        case .overspent:
+            category.progressState == .overspent
+        case .unassigned:
+            category.progressState == .unassigned
+        case .onTrack:
+            category.progressState == .funded || category.progressState == .spending
+        }
+    }
+}
+
 /// The Budget tab's single view-options control (GH #157).
 ///
 /// Layout, expand/collapse and the spent-category filter used to be three
@@ -10,6 +35,9 @@ import SwiftUI
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
+    @Binding var categoryFilter: BudgetCategoryFilter
+    var isTrackingBudget = false
+
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
     var expandAllGroups: (() -> Void)?
@@ -17,6 +45,20 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
+            Picker("Categories", selection: $categoryFilter) {
+                Label("All Categories", systemImage: "list.bullet")
+                    .tag(BudgetCategoryFilter.all)
+                Label("Needs Attention", systemImage: "exclamationmark.circle")
+                    .tag(BudgetCategoryFilter.needsAttention)
+                Label(isTrackingBudget ? "Over Budget" : "Overspent", systemImage: "exclamationmark.triangle")
+                    .tag(BudgetCategoryFilter.overspent)
+                Label(isTrackingBudget ? "No Budget Set" : "Not Funded", systemImage: "circle.dashed")
+                    .tag(BudgetCategoryFilter.unassigned)
+                Label(isTrackingBudget ? "Within Budget" : "On Track", systemImage: "checkmark.circle")
+                    .tag(BudgetCategoryFilter.onTrack)
+            }
+            .pickerStyle(.inline)
+
             Picker(String(localized: "budget.options.layout"), selection: $budgetStore.budgetDisplayStyle) {
                 Label(String(localized: "budget.options.clean"), systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
@@ -53,7 +95,9 @@ struct BudgetOptionsMenu: View {
                 }
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: categoryFilter == .all
+                ? "ellipsis.circle"
+                : "line.3.horizontal.decrease.circle.fill")
         }
         .accessibilityLabel(String(localized: "Budget options"))
         .accessibilityIdentifier("budget.options")
@@ -66,7 +110,11 @@ struct BudgetOptionsMenu: View {
         Text("Budget")
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    BudgetOptionsMenu(expandAllGroups: {}, collapseAllGroups: {})
+                    BudgetOptionsMenu(
+                        categoryFilter: .constant(.all),
+                        expandAllGroups: {},
+                        collapseAllGroups: {}
+                    )
                 }
             }
     }

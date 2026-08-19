@@ -15,6 +15,10 @@ struct BudgetMonth: Identifiable, Hashable {
     /// for envelope budgets — nil for tracking budgets.
     var toBudget: Int?
 
+    var isTrackingBudget: Bool {
+        toBudget == nil
+    }
+
     /// Number of expense categories in the red — drives the Budget tab badge.
     var overspentCount: Int {
         categoryBudgets.count(where: \.isOverspent)
@@ -27,6 +31,34 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets
             .filter(\.isOverspent)
             .sorted { $0.available < $1.available }
+    }
+
+    /// Categories with neither assigned money nor carried balance/activity.
+    /// This is a check-in prompt, not a target calculation.
+    var unassignedCategories: [CategoryBudget] {
+        categoryBudgets
+            .filter { $0.progressState == .unassigned }
+            .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
+    }
+
+    /// Healthy categories that have consumed at least 80% of their available
+    /// capacity. Overspent and fully spent categories have separate guidance.
+    var approachingLimitCategories: [CategoryBudget] {
+        categoryBudgets
+            .filter { !$0.isOverspent && $0.available > 0 && $0.spent < 0 && $0.progressFraction >= 0.8 }
+            .sorted { $0.progressFraction > $1.progressFraction }
+    }
+
+    /// Whether the monthly check-in has anything actionable to show. This is
+    /// intentionally independent of presentation preferences such as the
+    /// optional Budget tab badge. Money left to assign is not an issue here:
+    /// the check-in draws no row for it (the Budget summary already shows it),
+    /// so counting it would suppress "Budget looks good" under an empty list.
+    func hasCheckInIssues(uncategorizedCount: Int) -> Bool {
+        overspentCount > 0
+            || uncategorizedCount > 0
+            || !unassignedCategories.isEmpty
+            || !approachingLimitCategories.isEmpty
     }
 
     var totalBudgeted: Int {
@@ -120,6 +152,72 @@ struct CategoryBudget: Identifiable, Hashable {
     /// A bar with no budget and no activity carries no information.
     var showsProgressBar: Bool {
         budgeted != 0 || spent != 0
+    }
+
+    /// A compact, mode-neutral description of where this category stands.
+    /// Views translate it into envelope or tracking language as needed.
+    var progressState: CategoryProgressState {
+        if available < 0 { return .overspent }
+        if available == 0, spent != 0 { return .spent }
+        if available == 0, budgeted == 0, carryover == 0 { return .unassigned }
+        if spent != 0 { return .spending }
+        return .funded
+    }
+}
+
+enum CategoryProgressState: Equatable {
+    case unassigned
+    case funded
+    case spending
+    case spent
+    case overspent
+}
+
+struct QuickAssignSuggestion: Identifiable, Equatable {
+    enum Kind: String {
+        case spentLastMonth
+        case averageSpent
+        case assignedLastMonth
+        case resetAvailable
+        case setToZero
+    }
+
+    var id: Kind { kind }
+    let kind: Kind
+    let amount: Int
+}
+
+extension CategoryBudget {
+    /// Suggested *final assigned amounts*, never deltas. This keeps the UI on
+    /// Actual's existing setBudgetAmount path and makes every choice previewable.
+    func quickAssignSuggestions(history: [CategoryBudget]) -> [QuickAssignSuggestion] {
+        var suggestions: [QuickAssignSuggestion] = []
+        if let lastMonth = history.first {
+            let spent = abs(min(lastMonth.spent, 0))
+            if spent > 0 {
+                suggestions.append(.init(kind: .spentLastMonth, amount: spent))
+            }
+            if lastMonth.budgeted != 0 {
+                suggestions.append(.init(kind: .assignedLastMonth, amount: lastMonth.budgeted))
+            }
+        }
+
+        // One month of history would just duplicate Spent Last Month.
+        let spending = history.map { abs(min($0.spent, 0)) }
+        if spending.count >= 2 {
+            let average = Int((Double(spending.reduce(0, +)) / Double(spending.count)).rounded())
+            if average > 0 {
+                suggestions.append(.init(kind: .averageSpent, amount: average))
+            }
+        }
+
+        if available != 0 {
+            suggestions.append(.init(kind: .resetAvailable, amount: budgeted - available))
+        }
+        if budgeted != 0 {
+            suggestions.append(.init(kind: .setToZero, amount: 0))
+        }
+        return suggestions
     }
 }
 

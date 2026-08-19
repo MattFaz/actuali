@@ -10,6 +10,7 @@
 		A7550BD62EE7B8F8007026DC /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BD52EE7B8F8007026DC /* GRDB */; };
 		A7550BD92EE7B967007026DC /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BD82EE7B967007026DC /* SwiftProtobuf */; };
 		A7550BE62EE7BDFE007026DC /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BE52EE7BDFE007026DC /* ZIPFoundation */; };
+		AC0000000000000000000EDF /* ActualiWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AC00000000000000000001DF /* ActualiWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -27,12 +28,34 @@
 			remoteGlobalIDString = A7550B852EE7B4F7007026DC;
 			remoteInfo = Actuali;
 		};
+		AC0000000000000000000BDF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = A7550B7E2EE7B4F7007026DC /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AC00000000000000000004DF;
+			remoteInfo = ActualiWidgets;
+		};
 /* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AC0000000000000000000DDF /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AC0000000000000000000EDF /* ActualiWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		A7550B862EE7B4F7007026DC /* Actuali.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Actuali.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000BDF /* ActualiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AC00000000000000000001DF /* ActualiWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ActualiWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -49,6 +72,16 @@
 		AB0000000000000000000ADF /* ActualiUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = ActualiUITests;
+			sourceTree = "<group>";
+		};
+		AC00000000000000000002DF /* ActualiWidgets */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ActualiWidgets;
+			sourceTree = "<group>";
+		};
+		AC00000000000000000003DF /* ActualiShared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = ActualiShared;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -78,6 +111,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AC00000000000000000006DF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -85,6 +125,8 @@
 			isa = PBXGroup;
 			children = (
 				A7550B882EE7B4F7007026DC /* Actuali */,
+				AC00000000000000000003DF /* ActualiShared */,
+				AC00000000000000000002DF /* ActualiWidgets */,
 				A79D4A9E2FA1F8F000D5A2DF /* ActualiTests */,
 				AB0000000000000000000ADF /* ActualiUITests */,
 				A7550B872EE7B4F7007026DC /* Products */,
@@ -95,6 +137,7 @@
 			isa = PBXGroup;
 			children = (
 				A7550B862EE7B4F7007026DC /* Actuali.app */,
+				AC00000000000000000001DF /* ActualiWidgets.appex */,
 				A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */,
 				AB0000000000000000000BDF /* ActualiUITests.xctest */,
 			);
@@ -111,14 +154,17 @@
 				A7550B822EE7B4F7007026DC /* Sources */,
 				A7550B832EE7B4F7007026DC /* Frameworks */,
 				A7550B842EE7B4F7007026DC /* Resources */,
+				AC0000000000000000000DDF /* Embed Foundation Extensions */,
 				A7550BC02EE7B600007026DC /* Stamp Build Number */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AC0000000000000000000CDF /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				A7550B882EE7B4F7007026DC /* Actuali */,
+				AC00000000000000000003DF /* ActualiShared */,
 			);
 			name = Actuali;
 			packageProductDependencies = (
@@ -176,6 +222,30 @@
 			productReference = AB0000000000000000000BDF /* ActualiUITests.xctest */;
 			productType = "com.apple.product-type.bundle.ui-testing";
 		};
+		AC00000000000000000004DF /* ActualiWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AC00000000000000000008DF /* Build configuration list for PBXNativeTarget "ActualiWidgets" */;
+			buildPhases = (
+				AC00000000000000000005DF /* Sources */,
+				AC00000000000000000006DF /* Frameworks */,
+				AC00000000000000000007DF /* Resources */,
+				AC0000000000000000000FDF /* Stamp Build Number */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				AC00000000000000000002DF /* ActualiWidgets */,
+				AC00000000000000000003DF /* ActualiShared */,
+			);
+			name = ActualiWidgets;
+			packageProductDependencies = (
+			);
+			productName = ActualiWidgets;
+			productReference = AC00000000000000000001DF /* ActualiWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -225,6 +295,7 @@
 			projectRoot = "";
 			targets = (
 				A7550B852EE7B4F7007026DC /* Actuali */,
+				AC00000000000000000004DF /* ActualiWidgets */,
 				A79D4A9C2FA1F8F000D5A2DF /* ActualiTests */,
 				AB0000000000000000000CDF /* ActualiUITests */,
 			);
@@ -247,6 +318,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		AB0000000000000000000FDF /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AC00000000000000000007DF /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -276,6 +354,26 @@
 			shellPath = /bin/sh;
 			shellScript = "# Auto-number builds: CFBundleVersion = 100 + git commit count, stamped into\n# the built product so archives number themselves and PRs never touch\n# CURRENT_PROJECT_VERSION (which remains the fallback when git is absent).\n# Archive from main so the count only moves forward.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
 		};
+		AC0000000000000000000FDF /* Stamp Build Number */ = {
+			isa = PBXShellScriptBuildPhase;
+			alwaysOutOfDate = 1;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(TARGET_BUILD_DIR)/$(INFOPLIST_PATH)",
+			);
+			name = "Stamp Build Number";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Same stamp as the app target: App Store validation requires an extension's\n# CFBundleVersion to match its containing app, so the widget must number\n# itself identically.\nPLIST=\"${TARGET_BUILD_DIR}/${INFOPLIST_PATH}\"\nif COUNT=$(git -C \"${SRCROOT}\" rev-list --count HEAD 2>/dev/null); then\n  /usr/libexec/PlistBuddy -c \"Set :CFBundleVersion $((COUNT + 100))\" \"${PLIST}\"\nfi\n";
+		};
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -300,6 +398,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AC00000000000000000005DF /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
@@ -312,6 +417,11 @@
 			isa = PBXTargetDependency;
 			target = A7550B852EE7B4F7007026DC /* Actuali */;
 			targetProxy = AB00000000000000000010DF /* PBXContainerItemProxy */;
+		};
+		AC0000000000000000000CDF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AC00000000000000000004DF /* ActualiWidgets */;
+			targetProxy = AC0000000000000000000BDF /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 
@@ -350,6 +460,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 88;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -371,6 +482,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0.9;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -415,6 +527,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 88;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_NS_ASSERTIONS = NO;
@@ -430,6 +543,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MARKETING_VERSION = 1.0.9;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -444,8 +558,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Actuali.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 88;
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -465,7 +579,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -484,8 +597,8 @@
 			buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Actuali.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 88;
 				DEVELOPMENT_TEAM = GJGY9A384M;
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
@@ -505,7 +618,6 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0.9;
 				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				STRING_CATALOG_GENERATE_SYMBOLS = YES;
@@ -599,6 +711,56 @@
 			};
 			name = Release;
 		};
+		AC00000000000000000009DF /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ActualiWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ActualiWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AC0000000000000000000ADF /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = ActualiWidgets.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = GJGY9A384M;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "ActualiWidgets-Info.plist";
+				INFOPLIST_KEY_CFBundleDisplayName = Actuali;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.mfazz.ActualiOS.Widgets;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -634,6 +796,15 @@
 			buildConfigurations = (
 				AB00000000000000000013DF /* Debug */,
 				AB00000000000000000014DF /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AC00000000000000000008DF /* Build configuration list for PBXNativeTarget "ActualiWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AC00000000000000000009DF /* Debug */,
+				AC0000000000000000000ADF /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
