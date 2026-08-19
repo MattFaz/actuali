@@ -11,7 +11,7 @@ struct ScheduleWritePlan {
     struct RowWrite {
         let dataset: String
         let row: String
-        let fields: [(column: String, value: Any?)]
+        let fields: [(column: String, value: (any Sendable)?)]
     }
 
     var scheduleId: String
@@ -105,7 +105,7 @@ enum ScheduleWriteBuilder {
         // This is the one case where writing `rule` is correct — upstream's
         // "you cannot change the rule" guard is about swapping a live rule.
         let ruleId = schedule.ruleId ?? newRuleId()
-        var ruleFields: [(column: String, value: Any?)] = [
+        var ruleFields: [(column: String, value: (any Sendable)?)] = [
             ("conditions", try ScheduleConditions.serialize(merged)),
         ]
         if schedule.ruleId == nil {
@@ -143,7 +143,7 @@ enum ScheduleWriteBuilder {
             // rather than silently skipping the write; `schedule_id` is only
             // needed on that new row.
             let rowId = schedule.nextDateRowId ?? newNextDateRowId()
-            var fields: [(column: String, value: Any?)] = []
+            var fields: [(column: String, value: (any Sendable)?)] = []
             if schedule.nextDateRowId == nil {
                 fields.append(("schedule_id", schedule.id))
                 fields.append(("local_next_date", nextDate.yyyymmdd))
@@ -154,7 +154,7 @@ enum ScheduleWriteBuilder {
             writes.append(.init(dataset: "schedules_next_date", row: rowId, fields: fields))
         }
 
-        var scheduleFields: [(column: String, value: Any?)] = [
+        var scheduleFields: [(column: String, value: (any Sendable)?)] = [
             ("name", fields.normalizedName),
             ("posts_transaction", fields.postsTransaction ? 1 : 0),
             ("custom_upcoming_length", fields.customUpcomingLength),
@@ -195,7 +195,7 @@ enum ScheduleWriteBuilder {
         now: Int64
     ) -> ScheduleWritePlan? {
         guard let rowId = schedule.nextDateRowId else { return nil }
-        let fields: [(column: String, value: Any?)] = reset
+        let fields: [(column: String, value: (any Sendable)?)] = reset
             ? [("base_next_date", newNextDate.yyyymmdd), ("base_next_date_ts", now)]
             : [("local_next_date", newNextDate.yyyymmdd),
                ("local_next_date_ts", schedule.baseNextDateTs)]
@@ -209,7 +209,7 @@ enum ScheduleWriteBuilder {
     /// lifecycle actions in M5).
     static func scheduleColumnsPlan(
         scheduleId: String,
-        fields: [(column: String, value: Any?)]
+        fields: [(column: String, value: (any Sendable)?)]
     ) -> ScheduleWritePlan {
         ScheduleWritePlan(
             scheduleId: scheduleId,

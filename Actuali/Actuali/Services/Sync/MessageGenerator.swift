@@ -63,7 +63,7 @@ actor MessageGenerator {
     func messages(
         dataset: String,
         row: String,
-        fields: [(column: String, value: Any?)]
+        fields: [(column: String, value: (any Sendable)?)]
     ) async throws -> [CRDTMessage] {
         var messages: [CRDTMessage] = []
 

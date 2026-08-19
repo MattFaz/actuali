@@ -935,7 +935,7 @@ struct CleanCategoryBudgetRow: View {
 
 /// Whether `month` ("YYYY-MM") is before the current calendar month. The
 /// strings are zero-padded, so a plain lexicographic compare is exact.
-private func isPastMonth(_ month: String) -> Bool {
+@MainActor private func isPastMonth(_ month: String) -> Bool {
     month < BudgetView.currentMonthString()
 }
 

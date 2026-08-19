@@ -5,7 +5,7 @@ enum BudgetFileError: LocalizedError {
     case invalidZipFile
     case missingDatabase
     case missingMetadata
-    case extractionFailed(Error)
+    case extractionFailed(any Error)
     case metadataParsingFailed
     case unsafeArchive(String)
 
@@ -37,7 +37,9 @@ struct BudgetMetadata: Codable {
     let encryptKeyId: String?
 }
 
-class BudgetFileManager {
+// Immutable singleton: both stored properties are `let`, and FileManager.default
+// is thread-safe, so instances are safe to share across actors.
+final class BudgetFileManager: @unchecked Sendable {
     static let shared = BudgetFileManager()
 
     private let fileManager = FileManager.default
