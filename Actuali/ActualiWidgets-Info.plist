@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Widget extension Info.plist base, following the Info-Debug/Info-Release
+  convention of living at the project level (INFOPLIST_FILE) with
+  GENERATE_INFOPLIST_FILE merging the INFOPLIST_KEY_* values on top. Exists
+  only to carry the NSExtension dict, which has no INFOPLIST_KEY_* setting.
+-->
+<plist version="1.0">
+<dict>
+	<key>NSExtension</key>
+	<dict>
+		<key>NSExtensionPointIdentifier</key>
+		<string>com.apple.widgetkit-extension</string>
+	</dict>
+</dict>
+</plist>

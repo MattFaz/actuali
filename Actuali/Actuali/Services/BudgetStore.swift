@@ -12,6 +12,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case transferAmountNotPositive
     case transferPayeeMissing
     case transferCategoriesMatch
+    case transferAmountExceedsSource
     case invalidAmount
     case missingTransferDestination
     case payeeCreationFailed(String)
@@ -47,6 +48,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Transfer payee not found for selected accounts"
         case .transferCategoriesMatch:
             return "Money must move between two different categories"
+        case .transferAmountExceedsSource:
+            return "That source does not have enough available money"
         case .invalidAmount:
             return "Invalid amount"
         case .missingTransferDestination:
@@ -188,6 +191,16 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+
+    /// The current calendar month's budget, tracked separately from
+    /// `currentBudgetMonth` (which follows whatever month BudgetView is
+    /// browsing) so the widget never publishes historical balances.
+    var widgetBudgetMonth: BudgetMonth?
+
+    /// Where publishWidgetSnapshot() writes; injectable for tests. nil when
+    /// the build's provisioning lacks the app group.
+    var widgetSnapshotStore: WidgetSnapshotStore? = .standard()
+
     /// Bumped every time the published data snapshot above is republished
     /// (budget load, local mutation, sync). Views that cache their own
     /// fetches (transaction pagers, report widgets) key reloads on this so
@@ -213,6 +226,7 @@ final class BudgetStore: ObservableObject {
     @Published var currencyCode: String = "USD" {
         didSet {
             UserDefaults.standard.set(currencyCode, forKey: "currencyCode")
+            publishWidgetSnapshot()
         }
     }
 
@@ -239,6 +253,7 @@ final class BudgetStore: ObservableObject {
     @Published var useNarrowCurrencySymbol: Bool = false {
         didSet {
             UserDefaults.standard.set(useNarrowCurrencySymbol, forKey: "useNarrowCurrencySymbol")
+            publishWidgetSnapshot()
         }
     }
 
@@ -329,6 +344,7 @@ final class BudgetStore: ObservableObject {
     @Published var hideBalances: Bool = false {
         didSet {
             UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+            publishWidgetSnapshot()
         }
     }
 
@@ -1136,6 +1152,7 @@ final class BudgetStore: ObservableObject {
         // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
         currentBudgetMonth = nil
+        widgetBudgetMonth = nil
         accounts = []
         transactions = []
         uncategorizedCount = 0
@@ -1147,6 +1164,7 @@ final class BudgetStore: ObservableObject {
         // not outlive the budget it described.
         isInitialSyncing = false
         dataVersion += 1
+        clearWidgetSnapshot()
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1331,7 +1349,9 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
+            publishWidgetSnapshot()
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -1478,10 +1498,12 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             dataVersion += 1
 
             await loadSchedules()
+            publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
@@ -3616,6 +3638,42 @@ final class BudgetStore: ObservableObject {
     }
 
     // MARK: - Budget Amounts
+
+    /// Prior category-month rows used for Quick Assign suggestions. Reading
+    /// history never changes the displayed month or introduces new storage.
+    func budgetHistory(for category: CategoryBudget, monthCount: Int = 3) async -> [CategoryBudget] {
+        guard let database, monthCount > 0 else { return [] }
+        var result: [CategoryBudget] = []
+        var month = category.month
+        for _ in 0..<monthCount {
+            guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
+            month = previous
+            guard let budget = try? await database.fetchBudgetMonth(month: previous),
+                  let priorCategory = budget.categoryBudgets.first(where: {
+                      $0.categoryId == category.categoryId
+                  }) else { continue }
+            result.append(priorCategory)
+        }
+        return result
+    }
+
+    /// Shift a "yyyy-MM" month key. Also backs the budget tab's month picker
+    /// (`BudgetView.shiftMonth`), so the format logic lives in one place.
+    /// Pure computation, so it stays callable off the main actor.
+    nonisolated static func shiftBudgetMonth(_ month: String, by offset: Int) -> String? {
+        let parts = month.split(separator: "-")
+        guard parts.count == 2,
+              let year = Int(parts[0]),
+              let monthNumber = Int(parts[1]),
+              let date = Calendar.current.date(from: DateComponents(
+                  year: year, month: monthNumber, day: 1
+              )),
+              let shifted = Calendar.current.date(byAdding: .month, value: offset, to: date)
+        else { return nil }
+        let components = Calendar.current.dateComponents([.year, .month], from: shifted)
+        guard let shiftedYear = components.year, let shiftedMonth = components.month else { return nil }
+        return String(format: "%04d-%02d", shiftedYear, shiftedMonth)
+    }
 
     /// Parse the budget edit field ("25.50") into cents. Negative amounts
     /// (intentional overdraw, as Actual's web client allows) are only valid
