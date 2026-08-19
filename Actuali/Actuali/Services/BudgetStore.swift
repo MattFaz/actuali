@@ -866,11 +866,6 @@ final class BudgetStore: ObservableObject {
         loadTask = Task {}
     }
 
-    /// Test-only: model the initial sync window after a budget download.
-    func setInitialSyncingForTesting(_ value: Bool) {
-        isInitialSyncing = value
-    }
-
     /// Test-only: swap in a server client wired to a stub transport so the
     /// login and probe paths can be exercised without a reachable server.
     func setServerClientForTesting(_ client: ActualServerClient) {
@@ -1399,16 +1394,12 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            // The downloaded SQLite snapshot can predate the following CRDT
-            // sync. Keep any known budget currency while the two disagree;
-            // sync establishes the authoritative setting immediately after.
+            // Let the database stay authoritative; the post-sync refresh in
+            // refreshDataOnly() is what corrects a snapshot that trails the
+            // preference messages (GH #297).
             if let fetchedCurrencyCode {
-                if let cachedCurrencyCode, fetchedCurrencyCode != cachedCurrencyCode {
-                    // Keep the known cached currency until sync resolves the difference.
-                } else {
-                    currencyCode = fetchedCurrencyCode
-                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
-                }
+                currencyCode = fetchedCurrencyCode
+                cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
