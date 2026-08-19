@@ -11,6 +11,7 @@ extension BudgetStore {
               let month = widgetBudgetMonth else { return }
         let snapshot = WidgetSnapshot.make(
             from: month.categoryBudgets,
+            month: month.month,
             balancesHidden: hideBalances,
             generatedAt: Date(),
             format: displayBalance
@@ -30,17 +31,24 @@ extension BudgetStore {
 
 extension WidgetSnapshot {
     /// Bridges the app's budget model to the widget snapshot. Formatting is
-    /// injected so the mapping stays a pure function of its inputs.
+    /// injected so the mapping stays a pure function of its inputs. Sorted
+    /// the way the Budget tab sorts — fetchBudgetMonth gives no order
+    /// guarantee, and the widget's unconfigured fallback shows the first
+    /// few categories.
     static func make(
         from budgets: [CategoryBudget],
+        month: String,
         balancesHidden: Bool,
         generatedAt: Date,
         format: (Int) -> String
     ) -> WidgetSnapshot {
         WidgetSnapshot(
+            month: month,
             generatedAt: generatedAt,
             balancesHidden: balancesHidden,
-            categories: budgets.map {
+            categories: budgets
+                .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
+                .map {
                 WidgetCategoryBalance(
                     id: $0.categoryId,
                     name: $0.categoryName,

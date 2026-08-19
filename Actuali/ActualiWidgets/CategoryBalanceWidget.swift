@@ -47,15 +47,17 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
     }
 
     func timeline(for configuration: SelectCategoriesIntent, in context: Context) async -> Timeline<CategoryBalanceEntry> {
-        // The app calls WidgetCenter.reloadAllTimelines() after every data
-        // refresh (foreground, pull-to-refresh, background sync), so the
-        // timeline itself never needs to expire.
-        Timeline(entries: [entry(for: configuration, in: context)], policy: .never)
+        // The app pushes reloads after every data refresh; the midnight
+        // expiry only exists so a month rollover without an app launch
+        // swaps stale balances for the empty state.
+        let nextMidnight = Calendar.current.startOfDay(for: .now.addingTimeInterval(86_400))
+        return Timeline(entries: [entry(for: configuration, in: context)], policy: .after(nextMidnight))
     }
 
     private func entry(for configuration: SelectCategoriesIntent, in context: Context) -> CategoryBalanceEntry {
         let limit = context.family == .systemSmall ? 1 : 4
-        guard let snapshot = WidgetSnapshotStore.standard()?.read() else {
+        guard let snapshot = WidgetSnapshotStore.standard()?.read(),
+              snapshot.isForMonth(containing: .now) else {
             return CategoryBalanceEntry(date: .now, balancesHidden: false, categories: [], hasSnapshot: false)
         }
         let chosenIds = (configuration.categories ?? []).map(\.id)
