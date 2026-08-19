@@ -85,6 +85,7 @@ The sync engine must stay byte-for-byte compatible with upstream Actual. For any
 ## Testing
 
 - Every behavior change needs test coverage. Unit tests use Swift Testing (`@Test` / `#expect`); UI tests (`ActualiUITests/`) use XCTest.
+- `ActualiTests/` mirrors the app source tree: put a test in the folder matching where the primary type under test lives (e.g. tests for `Services/Sync/*` go in `ActualiTests/Services/Sync/`). Exceptions: `BudgetStore` tests get their own `Services/BudgetStore/`, and notification tests live in `Services/Notifications/` even though those sources sit loose in `Services/`.
 - Run the unit test suite locally before opening a PR. CI runs it on every PR that touches `Actuali/**` and the check is required.
 - The sync fixture tests (`SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget. They must keep passing — never regenerate fixtures or loosen assertions to make a failure go away; a failure there usually means the change breaks sync compatibility.
 - Never weaken, skip, or delete an existing test to get a green build. If a test genuinely no longer describes desired behavior, say so explicitly in the PR.
