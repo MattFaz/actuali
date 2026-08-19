@@ -33,10 +33,10 @@ enum OpenIDAuthError: LocalizedError {
 @MainActor
 final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContextProviding {
     /// Scheme used for the callback URL. Must match the scheme in `returnURL`.
-    static let callbackScheme = "actuali"
+    nonisolated static let callbackScheme = "actuali"
     /// `returnUrl` sent to the server. Host is `localhost` so it passes the
     /// server's `isValidRedirectUrl` check.
-    static let returnURL = "\(callbackScheme)://localhost"
+    nonisolated static let returnURL = "\(callbackScheme)://localhost"
 
     private var session: ASWebAuthenticationSession?
 
