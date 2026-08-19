@@ -395,7 +395,7 @@ struct SettingsView: View {
                         }
                     }
                     
-                    Picker("Uncategorized Tap Opens", selection: $budgetStore.uncategorizedTapAction) {
+                    Picker("Uncategorized Action", selection: $budgetStore.uncategorizedTapAction) {
                         ForEach(UncategorizedTapAction.allCases) { action in
                             Text(action.label).tag(action)
                         }
