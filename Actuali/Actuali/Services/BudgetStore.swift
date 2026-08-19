@@ -2200,7 +2200,7 @@ final class BudgetStore: ObservableObject {
 
     /// Duplicate multiple transactions.
     func duplicateTransactions(_ transactions: [Transaction]) async {
-        guard let syncClient else {
+        guard syncClient != nil else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }

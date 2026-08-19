@@ -103,10 +103,17 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
+            let windowScenes = UIApplication.shared.connectedScenes
                 .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+            if let keyWindow = windowScenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) {
+                return keyWindow
+            }
+            // No key window yet (e.g. during launch) — anchor to any available scene.
+            guard let scene = windowScenes.first else {
+                // Auth can't be presented without a window scene.
+                preconditionFailure("No connected UIWindowScene available to anchor authentication.")
+            }
+            return ASPresentationAnchor(windowScene: scene)
         }
     }
 }

@@ -943,11 +943,11 @@ struct CleanCategoryBudgetRow: View {
 /// a month is finished, projected savings while it's still current or ahead.
 /// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
 /// the month rolls over.
-private func trackingSavings(_ budget: BudgetMonth) -> Int {
+@MainActor private func trackingSavings(_ budget: BudgetMonth) -> Int {
     isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
 }
 
-private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
+@MainActor private func trackingSavingsLabel(_ budget: BudgetMonth) -> String {
     isPastMonth(budget.month) ? "Saved" : "Projected"
 }
 

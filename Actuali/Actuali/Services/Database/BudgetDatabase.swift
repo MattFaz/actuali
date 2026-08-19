@@ -159,7 +159,9 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 ///   one of these async introduces an `await`, which opens an actor
 ///   reentrancy window mid-transaction. Any new write that participates in
 ///   CRDT message application or clock state belongs here.
-class BudgetDatabase {
+// Safe to share across actors: the only stored property is an immutable
+// GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
+final class BudgetDatabase: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
