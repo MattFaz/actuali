@@ -1,7 +1,11 @@
 import Foundation
+import os
+
+private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "ServerNetwork")
 
 enum ActualServerError: LocalizedError {
     case invalidURL
+    case invalidFallbackURL
     case invalidResponse
     case httpError(statusCode: Int, message: String?)
     case unauthorized
@@ -14,6 +18,8 @@ enum ActualServerError: LocalizedError {
         switch self {
         case .invalidURL:
             return "Invalid server URL"
+        case .invalidFallbackURL:
+            return "Invalid fallback server URL"
         case .invalidResponse:
             return "Invalid response from server"
         case .authProxyBlocked:
@@ -194,6 +200,10 @@ enum ServerVersion {
 actor ActualServerClient {
     private let session: URLSession
     private var serverURL: URL?
+    private var fallbackServerURL: URL?
+    /// The primary as the user configured it, unaffected by failover swaps,
+    /// so a recovery probe knows which address to check.
+    private var configuredPrimaryURL: URL?
     private var token: String?
 
     /// User-supplied headers stamped onto every outgoing request, in order.
@@ -218,11 +228,24 @@ actor ActualServerClient {
 
     // MARK: - Configuration
 
-    func configure(serverURL: String) throws {
+    func configure(serverURL: String, fallbackServerURL: String = "") throws {
         guard let url = URL(string: serverURL) else {
             throw ActualServerError.invalidURL
         }
+        // Set the primary before validating the fallback: configureSavedSession
+        // swallows this method's errors with try?, and a bad fallback must not
+        // leave the client without a working primary.
         self.serverURL = url
+        self.configuredPrimaryURL = url
+        self.fallbackServerURL = nil
+        if !fallbackServerURL.isEmpty {
+            guard let fallbackURL = URL(string: fallbackServerURL),
+                  fallbackURL.scheme != nil,
+                  fallbackURL.host != nil else {
+                throw ActualServerError.invalidFallbackURL
+            }
+            self.fallbackServerURL = fallbackURL
+        }
     }
 
     func setToken(_ token: String?) {
@@ -248,13 +271,116 @@ actor ActualServerClient {
     /// `ActualServerError.networkError` so callers surface actionable guidance
     /// instead of CFNetwork's raw description.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
+        // Capture both bases that apply to this request before suspension. Another
+        // request may swap them on the actor while this one is awaiting its response.
+        let requestServerURL = serverURL
+        let requestFallbackURL = fallbackServerURL
         do {
             return try await session.data(for: request)
         } catch let urlError as URLError where urlError.code != .cancelled {
+            if let requestFallbackURL,
+               let requestURL = request.url,
+               let primaryServerURL = requestServerURL,
+               requestURL.host == primaryServerURL.host,
+               urlError.code != .notConnectedToInternet,
+               let fallbackURL = Self.fallbackRequestURL(
+                   requestURL: requestURL,
+                   primaryServerURL: primaryServerURL,
+                   fallbackServerURL: requestFallbackURL
+               ),
+               fallbackURL != requestURL {
+                var fallbackRequest = request
+                fallbackRequest.url = fallbackURL
+                do {
+                    let result = try await session.data(for: fallbackRequest)
+                    // Stick with the address that answered: swap the roles so
+                    // subsequent requests skip the dead address's timeout. A
+                    // later failure retries the old primary through this same
+                    // path, so a recovered primary swaps straight back.
+                    if serverURL == requestServerURL {
+                        serverURL = requestFallbackURL
+                        fallbackServerURL = requestServerURL
+                    }
+                    logger.notice(
+                        "Server was unreachable; switched to the configured alternate address"
+                    )
+                    return result
+                } catch let fallbackError as URLError where fallbackError.code != .cancelled {
+                    logger.error(
+                        "Fallback address also failed: \(fallbackError.code.rawValue, privacy: .public)"
+                    )
+                    // The primary is the address the user thinks of as "the
+                    // server", so its error is the one that tells them what
+                    // to fix; the fallback's failure lives in the log above.
+                    throw ActualServerError.networkError(urlError)
+                }
+            }
             // Cancellation is ordinary control flow (a superseded refresh, a
             // screen the user left), so it propagates untouched.
             throw ActualServerError.networkError(urlError)
         }
+    }
+
+    /// After a failover, check whether the configured primary is reachable
+    /// again and swap back if so. Safe to fire-and-forget on foreground: the
+    /// short probe timeout never blocks callers' own requests, and a no-op
+    /// when the session is already on the primary.
+    func retryPrimaryIfRecovered() async {
+        guard let configuredPrimaryURL,
+              let current = serverURL,
+              current != configuredPrimaryURL else { return }
+        var request = makeRequest(configuredPrimaryURL.appendingPathComponent("/info"))
+        request.timeoutInterval = 5
+        // Older servers and route-stripping reverse proxies don't answer
+        // /info (see fetchServerVersion), so any client-side status proves
+        // the primary is reachable; 5xx means a proxy whose backend is down,
+        // so stay on the fallback.
+        guard let (_, response) = try? await session.data(for: request),
+              let status = (response as? HTTPURLResponse)?.statusCode,
+              (200..<500).contains(status) else { return }
+        // Re-check after the await: a concurrent request may have swapped.
+        if serverURL == current {
+            fallbackServerURL = current
+            serverURL = configuredPrimaryURL
+            logger.notice("Primary server is reachable again; switched back to it")
+        }
+    }
+
+    /// Rebase an API request from the primary server onto the fallback while
+    /// preserving path prefixes on either address (for example `/actual`).
+    private static func fallbackRequestURL(
+        requestURL: URL,
+        primaryServerURL: URL,
+        fallbackServerURL: URL
+    ) -> URL? {
+        let primaryPath = primaryServerURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let requestPath = requestURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let endpointPath: Substring
+        if !primaryPath.isEmpty,
+           requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
+            endpointPath = requestPath.dropFirst(primaryPath.count)
+        } else {
+            endpointPath = requestPath[...]
+        }
+
+        var components = URLComponents(
+            url: fallbackServerURL,
+            resolvingAgainstBaseURL: false
+        )
+        let fallbackPath = fallbackServerURL.path(percentEncoded: true)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        let endpoint = String(endpointPath)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        components?.percentEncodedPath = "/" + [fallbackPath, endpoint]
+            .filter { !$0.isEmpty }
+            .joined(separator: "/")
+        components?.percentEncodedQuery = URLComponents(
+            url: requestURL,
+            resolvingAgainstBaseURL: false
+        )?.percentEncodedQuery
+        return components?.url
     }
 
     /// Whether a response looks like an auth proxy's login page rather than the
@@ -380,7 +506,7 @@ actor ActualServerClient {
         var request = makeRequest(url)
         request.httpMethod = "GET"
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await send(request),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
               let created = try? JSONDecoder().decode(Bool.self, from: data) else {
@@ -405,7 +531,7 @@ actor ActualServerClient {
         var request = makeRequest(url)
         request.httpMethod = "GET"
 
-        guard let (data, response) = try? await session.data(for: request),
+        guard let (data, response) = try? await send(request),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
               let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else {

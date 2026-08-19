@@ -48,6 +48,7 @@ struct BudgetView: View {
     @State private var editingCategory: CategoryBudget?
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
+    @State private var newBudgetItem: NewBudgetItem?
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
     /// string because @AppStorage can't hold a Set directly.
     @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
@@ -352,6 +353,31 @@ struct BudgetView: View {
                         .accessibilityLabel("Next month")
                     }
                 }
+                // Creation, unlike everything in the options menu, changes
+                // the budget rather than the view of it — so it gets its own
+                // button (GH #284). Nothing to add to until a budget is open.
+                if budgetStore.currentBudgetMonth != nil {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Menu {
+                            Button {
+                                newBudgetItem = .category
+                            } label: {
+                                Label("New Category", systemImage: "tag")
+                            }
+                            // A category needs a group to live in.
+                            .disabled(firstSelectableGroupId == nil)
+                            Button {
+                                newBudgetItem = .group
+                            } label: {
+                                Label("New Category Group", systemImage: "folder")
+                            }
+                        } label: {
+                            Image(systemName: "plus")
+                        }
+                        .accessibilityLabel("Add")
+                        .accessibilityHint("Create a category or category group")
+                    }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     // Every "how should this look" control lives here (GH
                     // #157). Whole-table expand/collapse is a menu rather
@@ -381,6 +407,14 @@ struct BudgetView: View {
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
             }
+            .sheet(item: $newBudgetItem, onDismiss: reloadAfterCreating) { item in
+                switch item {
+                case .category:
+                    NewCategorySheet(groupId: firstSelectableGroupId ?? "")
+                case .group:
+                    NewCategoryGroupSheet()
+                }
+            }
             .navigationDestination(item: $transactionsDestination) { destination in
                 CategoryTransactionsView(destination: destination)
             }
@@ -400,6 +434,22 @@ struct BudgetView: View {
         guard let budget = budgetStore.currentBudgetMonth else { return }
         transferContext = BudgetTransferContext(category: category, budget: budget)
     }
+    
+    /// The group a new category starts out filed under: the first one the
+    /// table would draw. Nil when the budget has no group to file it in.
+    private var firstSelectableGroupId: String? {
+        let visible = budgetStore.categoryGroups.filter { !$0.hidden }
+        return visible.min { $0.sortOrder < $1.sortOrder }?.id
+    }
+
+    /// `createCategory`/`createCategoryGroup` refresh the current calendar
+    /// month; if the table is showing a different one, fetch that too so the
+    /// new row appears without a pull-to-refresh.
+    private func reloadAfterCreating() {
+        guard selectedMonth != Self.currentMonthString() else { return }
+        Task { await budgetStore.fetchBudgetMonth(selectedMonth) }
+    }
+
 
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
@@ -431,7 +481,7 @@ struct BudgetView: View {
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
         let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
-        return byGroup
+        var sections = byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
                 let visible = budgetStore.visibleCategoryBudgets(items)
@@ -449,6 +499,26 @@ struct BudgetView: View {
                     )
                 )
             }
+        // A group you just made has no categories, so the month's rows above
+        // can't know about it. Draw it anyway — otherwise creating a group
+        // looks like it did nothing (GH #284). Income groups stay out: this
+        // list is the expense table, and income has its own section below,
+        // which likewise only appears once it has categories.
+        sections += budgetStore.categoryGroups
+            .filter { !$0.isIncome && !$0.hidden && $0.categories.isEmpty }
+            .map { group -> (Double, CategoryGroupSection) in
+                (
+                    group.sortOrder,
+                    CategoryGroupSection(
+                        id: group.id,
+                        name: group.name,
+                        categories: [],
+                        totals: CategoryGroupTotals([])
+                    )
+                )
+            }
+
+        return sections
             .sorted { $0.0 < $1.0 }
             .map(\.1)
     }

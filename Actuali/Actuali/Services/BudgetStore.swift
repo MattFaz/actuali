@@ -22,6 +22,10 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case splitAmountMismatch
     case invalidAccountName
     case accountCreationFailed(String)
+    case invalidCategoryName
+    case invalidCategoryGroupName
+    case categoryCreationFailed(String)
+    case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
     case ruleInvalidCondition(field: String, op: String)
@@ -63,6 +67,14 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter an account name"
         case .accountCreationFailed(let message):
             return "Failed to create account: \(message)"
+        case .invalidCategoryName:
+            return "Enter a category name"
+        case .invalidCategoryGroupName:
+            return "Enter a category group name"
+        case .categoryCreationFailed(let message):
+            return "Failed to create category: \(message)"
+        case .categoryGroupCreationFailed(let message):
+            return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
             return "Add at least one condition."
         case .ruleNeedsAction:
@@ -105,6 +117,12 @@ final class BudgetStore: ObservableObject {
     @Published var serverURL: String = "" {
         didSet {
             UserDefaults.standard.set(serverURL, forKey: "serverURL")
+        }
+    }
+
+    @Published var fallbackServerURL: String = "" {
+        didSet {
+            UserDefaults.standard.set(fallbackServerURL, forKey: "fallbackServerURL")
         }
     }
 
@@ -813,6 +831,8 @@ final class BudgetStore: ObservableObject {
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
             initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
+        _fallbackServerURL = Published(
+            initialValue: UserDefaults.standard.string(forKey: "fallbackServerURL") ?? "")
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
@@ -880,7 +900,13 @@ final class BudgetStore: ObservableObject {
 
     /// Configure server URL and token for sync to work on launch and app resume
     private func configureSavedSession(token: String) async {
-        try? await serverClient.configure(serverURL: serverURL)
+        // Normalize here too: the field persists raw text per keystroke, and
+        // only connect() normalizes — a value saved between connect and login
+        // would otherwise fail validation on every subsequent launch.
+        try? await serverClient.configure(
+            serverURL: serverURL,
+            fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
+        )
         await serverClient.setToken(token)
         isConnected = true
     }
@@ -933,6 +959,7 @@ final class BudgetStore: ObservableObject {
 
     func connect() async {
         let normalized = Self.normalizedServerURL(serverURL)
+        let normalizedFallback = Self.normalizedServerURL(fallbackServerURL)
         guard !normalized.isEmpty else {
             error = "Please enter a server URL"
             return
@@ -940,12 +967,18 @@ final class BudgetStore: ObservableObject {
         if normalized != serverURL {
             serverURL = normalized
         }
+        if normalizedFallback != fallbackServerURL {
+            fallbackServerURL = normalizedFallback
+        }
 
         isLoading = true
         error = nil
 
         do {
-            try await serverClient.configure(serverURL: normalized)
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
             // Ensure the client carries the user's headers before any probe/login,
             // so servers behind an auth proxy are reachable from the first request.
             applyCustomHeadersToClient()
@@ -1672,6 +1705,68 @@ final class BudgetStore: ObservableObject {
         let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
+    }
+    
+    /// Create a category group, mirroring the web UI's "Add group": it lands
+    /// after every existing group and starts out empty. Duplicate names are
+    /// refused the way upstream refuses them.
+    @discardableResult
+    func createCategoryGroup(name: String) async throws -> CategoryGroup {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryGroupName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        let group: CategoryGroup
+        do {
+            group = try await syncClient.createCategoryGroup(
+                id: UUID().uuidString,
+                name: trimmedName
+            )
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            // Already phrased for the person who typed the name.
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryGroupCreationFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+
+        return group
+    }
+
+    /// Create a category at the top of `groupId`, where the web UI puts it.
+    /// The new category inherits the group's income and hidden flags, so an
+    /// income group gets an income category.
+    @discardableResult
+    func createCategory(name: String, groupId: String) async throws -> Category {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        let category: Category
+        do {
+            category = try await syncClient.createCategory(
+                id: UUID().uuidString,
+                name: trimmedName,
+                categoryGroupId: groupId
+            )
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryCreationFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+
+        return category
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
@@ -3144,6 +3239,10 @@ final class BudgetStore: ObservableObject {
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
+        // After a failover, probe whether the primary recovered while we were
+        // backgrounded. Fire-and-forget: the sync below proceeds on whichever
+        // address is currently active and never waits on the probe.
+        Task { await serverClient.retryPrimaryIfRecovered() }
         guard let client = syncClient else {
             logger.debug("syncOnForeground() skipped - no budget loaded")
             return
