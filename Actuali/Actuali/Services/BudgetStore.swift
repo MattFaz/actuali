@@ -2152,25 +2152,218 @@ final class BudgetStore: ObservableObject {
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
     /// Failures surface through the published `error` string.
     func deleteTransaction(_ transaction: Transaction) async {
-        do {
-            guard let syncClient else {
-                throw BudgetStoreError.syncNotConfigured
-            }
+        await deleteTransactions([transaction])
+    }
+
+    /// Bulk soft-delete a list of transactions in one batch write — one
+    /// merkle/clock save and one sync for the whole selection, like
+    /// `lockClearedTransactions`.
+    func deleteTransactions(_ transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        var deleted: [Transaction] = []
+        for tx in transactions {
             // Deleting a split deletes its children too — orphaned children
             // would be invisible in the list but still feed reports.
-            if transaction.isParent, let database {
-                for child in try await database.fetchChildTransactions(parentId: transaction.id) {
-                    var deletedChild = child
-                    deletedChild.tombstone = true
-                    try await syncClient.updateTransaction(deletedChild, changedFields: ["tombstone"])
+            if tx.isParent, let database {
+                do {
+                    for child in try await database.fetchChildTransactions(parentId: tx.id) {
+                        var deletedChild = child
+                        deletedChild.tombstone = true
+                        deleted.append(deletedChild)
+                    }
+                } catch {
+                    // Skip the parent when its children couldn't be read —
+                    // tombstoning it anyway would orphan them.
+                    self.error = "Failed to delete transaction: \(error.localizedDescription)"
+                    continue
                 }
             }
-            var deleted = transaction
-            deleted.tombstone = true
-            try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+            var copy = tx
+            copy.tombstone = true
+            deleted.append(copy)
+        }
+        do {
+            try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
         } catch {
             self.error = "Failed to delete transaction: \(error.localizedDescription)"
+        }
+        await refreshDataOnly()
+    }
+
+    /// Duplicate a transaction (and its split children if parent, or paired transfer if transfer).
+    func duplicateTransaction(_ transaction: Transaction) async {
+        await duplicateTransactions([transaction])
+    }
+
+    /// Duplicate multiple transactions.
+    func duplicateTransactions(_ transactions: [Transaction]) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
+        }
+        let baseSortOrder = Date().timeIntervalSince1970 * 1000
+        var handledTransferIds = Set<String>()
+        for (index, tx) in transactions.enumerated() {
+            // The partner leg may already have been copied as part of its
+            // pair — test this first: a half-linked leg (upstream files can
+            // contain them) carries no transferId of its own.
+            if handledTransferIds.contains(tx.id) {
+                continue
+            }
+            if let transferId = tx.transferId, !transferId.isEmpty {
+                handledTransferIds.insert(transferId)
+            }
+            do {
+                try await duplicateSingleTransaction(tx, sortOrder: baseSortOrder + Double(index))
+            } catch {
+                self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
+            }
+        }
+        await refreshDataOnly()
+    }
+
+    private func makeDuplicateTransaction(
+        from source: Transaction,
+        id: String = UUID().uuidString,
+        sortOrder: Double
+    ) -> Transaction {
+        Transaction(
+            id: id,
+            accountId: source.accountId,
+            date: source.date,
+            amount: source.amount,
+            payeeId: source.payeeId,
+            payeeName: source.payeeName,
+            categoryId: source.categoryId,
+            categoryName: source.categoryName,
+            notes: source.notes,
+            cleared: false,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: sortOrder,
+            importedPayee: source.importedPayee,
+            schedule: nil
+        )
+    }
+
+    private func duplicateSingleTransaction(
+        _ transaction: Transaction,
+        sortOrder: Double
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        // Handle transfers: duplicate both legs. A missing partner falls
+        // through to the standard branch (the copy can't keep the transfer
+        // link); a read error must surface, not silently degrade the copy.
+        if let transferId = transaction.transferId, !transferId.isEmpty, let database {
+            if let partner = try await database.fetchTransaction(id: transferId) {
+                let newSourceId = UUID().uuidString
+                let newTargetId = UUID().uuidString
+
+                var newSource = makeDuplicateTransaction(from: transaction, id: newSourceId, sortOrder: sortOrder)
+                newSource.transferId = newTargetId
+
+                var newTarget = makeDuplicateTransaction(from: partner, id: newTargetId, sortOrder: sortOrder)
+                newTarget.transferId = newSourceId
+
+                try await syncClient.createTransfer(source: newSource, target: newTarget)
+                return
+            }
+        }
+
+        // Handle split parent
+        if transaction.isParent, let database {
+            let newParentId = UUID().uuidString
+            let children = try await database.fetchChildTransactions(parentId: transaction.id)
+            let newChildren = children.enumerated().map { index, child in
+                // Fractional offsets keep children just below their parent
+                // without landing on the integer slots bulk duplication hands
+                // to its other items.
+                var newChild = makeDuplicateTransaction(from: child, sortOrder: sortOrder - Double(index + 1) * 0.001)
+                newChild.parentId = newParentId
+                // A transfer-leg child loses its partner in the copy, so it
+                // can't keep the transfer payee either (same as the standard
+                // branch below).
+                if child.transferAcct != nil {
+                    newChild.payeeId = nil
+                    newChild.payeeName = nil
+                }
+                return newChild
+            }
+            var newParent = makeDuplicateTransaction(from: transaction, id: newParentId, sortOrder: sortOrder)
+            newParent.isParent = true
+            try await syncClient.createSplit(parent: newParent, children: newChildren)
+            return
+        }
+
+        // Standard transaction: a row with a transfer payee but no partner leg
+        // can't keep that payee on the copy. transferAcct comes through
+        // payee_mapping, so it survives payee merges.
+        var newTx = makeDuplicateTransaction(from: transaction, sortOrder: sortOrder)
+        if transaction.transferAcct != nil {
+            newTx.payeeId = nil
+            newTx.payeeName = nil
+        }
+        // Rules are skipped, same as createTransfer/createSplit — every field
+        // of the copy comes from the source row.
+        try await syncClient.createTransaction(newTx, applyRules: false)
+    }
+
+    /// Bulk update the cleared status of transactions in one batch write.
+    /// Reconciled rows are locked: the row-level path unlocks them only after
+    /// an explicit confirmation, so bulk edits leave them alone. Split
+    /// children follow their parent's cleared state (the cleared piece of
+    /// `cascadeSharedFieldsToChildren`, inlined so the whole selection lands
+    /// in a single merkle/clock save instead of a refresh per child).
+    func setClearedStatus(transactions: [Transaction], cleared: Bool) async {
+        guard let syncClient else {
+            self.error = BudgetStoreError.syncNotConfigured.localizedDescription
+            return
+        }
+        var updated: [Transaction] = []
+        for tx in transactions where !tx.reconciled && tx.cleared != cleared {
+            var copy = tx
+            copy.cleared = cleared
+            guard tx.isParent, let database else {
+                updated.append(copy)
+                continue
+            }
+            do {
+                var batch = [copy]
+                // Reconciled children are locked for the same reason as
+                // their parents.
+                for child in try await database.fetchChildTransactions(parentId: tx.id)
+                where !child.reconciled && child.cleared != cleared {
+                    var childCopy = child
+                    childCopy.cleared = cleared
+                    batch.append(childCopy)
+                }
+                updated.append(contentsOf: batch)
+            } catch {
+                // Skip the parent when its children can't be read — a parent
+                // that flips without them leaves the split inconsistent.
+                self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            }
+        }
+        // The reconciled lock is silent otherwise: say which part of the
+        // selection stayed put.
+        let locked = transactions.filter { $0.reconciled && $0.cleared != cleared }.count
+        if locked > 0 {
+            self.error = "\(locked) reconciled transaction\(locked == 1 ? "" : "s") stayed locked. Unlock from the status dot to change them."
+        }
+        guard !updated.isEmpty else { return }
+        do {
+            try await syncClient.updateTransactions(updated, changedFields: ["cleared"])
+        } catch {
+            self.error = "Failed to update cleared status: \(error.localizedDescription)"
         }
         await refreshDataOnly()
     }

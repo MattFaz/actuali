@@ -5,6 +5,8 @@ struct TransactionsListView: View {
     @State private var pager: TransactionPager?
     @State private var searchText = ""
     @State private var editingTransaction: Transaction?
+    @State private var isSelecting = false
+    @State private var selectedTransactionIds: Set<String> = []
 
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
@@ -56,9 +58,16 @@ struct TransactionsListView: View {
                         ForEach(groups) { group in
                             Section(group.title) {
                                 ForEach(group.transactions) { transaction in
-                                    TransactionListRow(transaction: transaction,
-                                                       showDate: false,
-                                                       editing: $editingTransaction)
+                                    TransactionListRow(
+                                        transaction: transaction,
+                                        showDate: false,
+                                        isSelectionMode: isSelecting,
+                                        isSelected: selectedTransactionIds.contains(transaction.id),
+                                        editing: $editingTransaction,
+                                        onToggleSelect: {
+                                            selectedTransactionIds.formSymmetricDifference([transaction.id])
+                                        }
+                                    )
                                 }
                                 // The sentinel rides in the last date section
                                 // so grouped mode doesn't grow a headerless
@@ -70,7 +79,15 @@ struct TransactionsListView: View {
                         }
                     } else {
                         ForEach(pager.transactions) { transaction in
-                            TransactionListRow(transaction: transaction, editing: $editingTransaction)
+                            TransactionListRow(
+                                transaction: transaction,
+                                isSelectionMode: isSelecting,
+                                isSelected: selectedTransactionIds.contains(transaction.id),
+                                editing: $editingTransaction,
+                                onToggleSelect: {
+                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
+                                }
+                            )
                         }
                         if pager.hasMore {
                             TransactionPagingSentinel(pager: pager)
@@ -84,6 +101,16 @@ struct TransactionsListView: View {
         .navigationTitle("All Accounts")
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button(isSelecting ? "Done" : "Select") {
+                    withAnimation {
+                        isSelecting.toggle()
+                        if !isSelecting {
+                            selectedTransactionIds.removeAll()
+                        }
+                    }
+                }
+            }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
@@ -91,6 +118,16 @@ struct TransactionsListView: View {
                 Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
             }
         }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting, let pager {
+                TransactionBulkActionBar(
+                    transactions: pager.transactions,
+                    selectedIds: $selectedTransactionIds,
+                    isSelecting: $isSelecting
+                )
+            }
+        }
+        .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .task(id: searchText) {
             // Debounce keystrokes; the initial (empty) load runs immediately.
             if searchQuery != nil {
@@ -137,30 +174,52 @@ struct TransactionListRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
+    var isSelectionMode: Bool = false
+    var isSelected: Bool = false
     @Binding var editing: Transaction?
+    var onToggleSelect: (() -> Void)? = nil
 
     var body: some View {
         Button {
-            editing = transaction
+            if isSelectionMode {
+                onToggleSelect?()
+            } else {
+                editing = transaction
+            }
         } label: {
-            TransactionRow(transaction: transaction, showAccount: showAccount, showDate: showDate, onToggleCleared: {
-                Task { await budgetStore.toggleCleared(transaction) }
-            })
+            TransactionRow(
+                transaction: transaction,
+                showAccount: showAccount,
+                showDate: showDate,
+                isSelectionMode: isSelectionMode,
+                isSelected: isSelected,
+                onToggleCleared: {
+                    Task { await budgetStore.toggleCleared(transaction) }
+                }
+            )
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            Button(role: .destructive) {
-                Task { await budgetStore.deleteTransaction(transaction) }
-            } label: {
-                Label("Delete", systemImage: "trash")
+            if !isSelectionMode {
+                Button(role: .destructive) {
+                    Task { await budgetStore.deleteTransaction(transaction) }
+                } label: {
+                    Label("Delete", systemImage: "trash")
+                }
+                Button {
+                    Task { await budgetStore.duplicateTransaction(transaction) }
+                } label: {
+                    Label("Duplicate", systemImage: "plus.square.on.square")
+                }
+                .tint(.blue)
+                Button {
+                    editing = transaction
+                } label: {
+                    Label("Edit", systemImage: "pencil")
+                }
+                .tint(.yellow)
             }
-            Button {
-                editing = transaction
-            } label: {
-                Label("Edit", systemImage: "pencil")
-            }
-            .tint(.yellow)
         }
     }
 }
@@ -201,6 +260,8 @@ struct TransactionRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
+    var isSelectionMode: Bool = false
+    var isSelected: Bool = false
     /// Tap action for the cleared-status dot. Nil leaves the dot inert
     /// (split-child rows, contexts without a reload path). Reconciled rows
     /// confirm before invoking, since the store unlocks them instead.
@@ -245,7 +306,18 @@ struct TransactionRow: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if let onToggleCleared {
+            if isSelectionMode {
+                // No button needed: the row itself toggles selection. The
+                // cleared dot stays in view — the bulk bar acts on it.
+                HStack(spacing: 6) {
+                    Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                        .font(.system(size: 20))
+                        .foregroundStyle(isSelected ? Color.accentColor : .secondary)
+                    ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
+                }
+                .frame(width: 48, height: 28)
+                .accessibilityLabel(isSelected ? "Selected" : "Not selected")
+            } else if let onToggleCleared {
                 Button {
                     if transaction.reconciled {
                         confirmingUnlock = true
