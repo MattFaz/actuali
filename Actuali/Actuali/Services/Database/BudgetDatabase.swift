@@ -2953,7 +2953,7 @@ class BudgetDatabase {
         guard !transactionIds.isEmpty else { return }
         try dbQueue.write { db in
             let placeholders = Array(repeating: "?", count: transactionIds.count).joined(separator: ", ")
-            var arguments: [DatabaseValueConvertible?] = [scheduleId]
+            var arguments: [(any DatabaseValueConvertible)?] = [scheduleId]
             arguments.append(contentsOf: transactionIds)
             try db.execute(
                 sql: "UPDATE transactions SET schedule = ? WHERE id IN (\(placeholders))",

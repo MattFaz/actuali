@@ -6,7 +6,7 @@ enum OpenIDAuthError: LocalizedError {
     case cancelled
     case missingToken
     case server(String)
-    case sessionFailed(Error)
+    case sessionFailed(any Error)
 
     var errorDescription: String? {
         switch self {

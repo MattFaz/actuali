@@ -28,7 +28,7 @@ protocol SchedulePostingActions {
 /// that window.
 actor SchedulePoster {
     let database: BudgetDatabase
-    let actions: SchedulePostingActions
+    let actions: any SchedulePostingActions
     let defaults: UserDefaults
 
     /// In-flight guard; see the actor rationale above.
@@ -40,7 +40,7 @@ actor SchedulePoster {
     /// spinning forever.
     private static let iterationCap = 200
 
-    init(database: BudgetDatabase, actions: SchedulePostingActions, defaults: UserDefaults = .standard) {
+    init(database: BudgetDatabase, actions: any SchedulePostingActions, defaults: UserDefaults = .standard) {
         self.database = database
         self.actions = actions
         self.defaults = defaults
