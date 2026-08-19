@@ -120,6 +120,12 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    @Published var fallbackServerURL: String = "" {
+        didSet {
+            UserDefaults.standard.set(fallbackServerURL, forKey: "fallbackServerURL")
+        }
+    }
+
     /// Extra HTTP headers the user wants stamped onto every server request
     /// (e.g. Cloudflare Access service-token headers). Persisted in the Keychain
     /// because values may be secrets. Assigning re-persists and pushes the live
@@ -825,6 +831,8 @@ final class BudgetStore: ObservableObject {
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
             initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
+        _fallbackServerURL = Published(
+            initialValue: UserDefaults.standard.string(forKey: "fallbackServerURL") ?? "")
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
@@ -892,7 +900,13 @@ final class BudgetStore: ObservableObject {
 
     /// Configure server URL and token for sync to work on launch and app resume
     private func configureSavedSession(token: String) async {
-        try? await serverClient.configure(serverURL: serverURL)
+        // Normalize here too: the field persists raw text per keystroke, and
+        // only connect() normalizes — a value saved between connect and login
+        // would otherwise fail validation on every subsequent launch.
+        try? await serverClient.configure(
+            serverURL: serverURL,
+            fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
+        )
         await serverClient.setToken(token)
         isConnected = true
     }
@@ -945,6 +959,7 @@ final class BudgetStore: ObservableObject {
 
     func connect() async {
         let normalized = Self.normalizedServerURL(serverURL)
+        let normalizedFallback = Self.normalizedServerURL(fallbackServerURL)
         guard !normalized.isEmpty else {
             error = "Please enter a server URL"
             return
@@ -952,12 +967,18 @@ final class BudgetStore: ObservableObject {
         if normalized != serverURL {
             serverURL = normalized
         }
+        if normalizedFallback != fallbackServerURL {
+            fallbackServerURL = normalizedFallback
+        }
 
         isLoading = true
         error = nil
 
         do {
-            try await serverClient.configure(serverURL: normalized)
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
             // Ensure the client carries the user's headers before any probe/login,
             // so servers behind an auth proxy are reachable from the first request.
             applyCustomHeadersToClient()
@@ -3060,6 +3081,10 @@ final class BudgetStore: ObservableObject {
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
+        // After a failover, probe whether the primary recovered while we were
+        // backgrounded. Fire-and-forget: the sync below proceeds on whichever
+        // address is currently active and never waits on the probe.
+        Task { await serverClient.retryPrimaryIfRecovered() }
         guard let client = syncClient else {
             logger.debug("syncOnForeground() skipped - no budget loaded")
             return
