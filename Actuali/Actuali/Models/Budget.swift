@@ -51,10 +51,11 @@ struct BudgetMonth: Identifiable, Hashable {
 
     /// Whether the monthly check-in has anything actionable to show. This is
     /// intentionally independent of presentation preferences such as the
-    /// optional Budget tab badge.
+    /// optional Budget tab badge. Money left to assign is not an issue here:
+    /// the check-in draws no row for it (the Budget summary already shows it),
+    /// so counting it would suppress "Budget looks good" under an empty list.
     func hasCheckInIssues(uncategorizedCount: Int) -> Bool {
-        (toBudget ?? 0) > 0
-            || overspentCount > 0
+        overspentCount > 0
             || uncategorizedCount > 0
             || !unassignedCategories.isEmpty
             || !approachingLimitCategories.isEmpty
@@ -201,8 +202,9 @@ extension CategoryBudget {
             }
         }
 
+        // One month of history would just duplicate Spent Last Month.
         let spending = history.map { abs(min($0.spent, 0)) }
-        if !spending.isEmpty {
+        if spending.count >= 2 {
             let average = Int((Double(spending.reduce(0, +)) / Double(spending.count)).rounded())
             if average > 0 {
                 suggestions.append(.init(kind: .averageSpent, amount: average))

@@ -35,11 +35,20 @@ struct OverspentCategoriesView: View {
                             }
                                 // Keep the existing shortcut in addition to
                                 // the visible action for experienced users.
+                                // Same resolution as the button: tracking
+                                // budgets edit the amount, envelopes cover.
                                 .swipeActions(edge: .trailing) {
                                     Button {
-                                        transferContext = BudgetTransferContext(category: category, budget: budget)
+                                        if budget.isTrackingBudget {
+                                            editingCategory = category
+                                        } else {
+                                            transferContext = BudgetTransferContext(category: category, budget: budget)
+                                        }
                                     } label: {
-                                        Label("Cover", systemImage: "arrow.left.arrow.right")
+                                        Label(
+                                            budget.isTrackingBudget ? "Adjust" : "Cover",
+                                            systemImage: budget.isTrackingBudget ? "plus.circle.fill" : "arrow.left.arrow.right"
+                                        )
                                     }
                                     .tint(.green)
                                 }

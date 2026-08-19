@@ -473,8 +473,13 @@ struct BudgetView: View {
         var sections = byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
-                let visible = budgetStore.visibleCategoryBudgets(items)
-                    .filter(categoryFilter.includes)
+                // An explicit filter is its own visibility rule: "Not Funded"
+                // must still match zero-available categories even when the
+                // Hide Spent Categories setting would drop them from "All".
+                let base = categoryFilter == .all
+                    ? budgetStore.visibleCategoryBudgets(items)
+                    : items.filter(categoryFilter.includes)
+                let visible = base
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
                 // A group whose rows are all hidden drops out entirely rather
                 // than leaving a header stranded over an empty card.
@@ -494,8 +499,10 @@ struct BudgetView: View {
         // looks like it did nothing (GH #284). Income groups stay out: this
         // list is the expense table, and income has its own section below,
         // which likewise only appears once it has categories.
+        // Empty placeholders only belong in the unfiltered table: a filter
+        // that matches nothing should show the empty state, not bare headers.
         sections += budgetStore.categoryGroups
-            .filter { !$0.isIncome && !$0.hidden && $0.categories.isEmpty }
+            .filter { categoryFilter == .all && !$0.isIncome && !$0.hidden && $0.categories.isEmpty }
             .map { group -> (Double, CategoryGroupSection) in
                 (
                     group.sortOrder,
@@ -518,20 +525,7 @@ struct BudgetView: View {
     }
 
     static func shiftMonth(_ month: String, by offset: Int) -> String {
-        let parts = month.split(separator: "-")
-        guard parts.count == 2,
-              let year = Int(parts[0]),
-              let m = Int(parts[1]) else { return month }
-        var components = DateComponents()
-        components.year = year
-        components.month = m
-        components.day = 1
-        let calendar = Calendar.current
-        guard let date = calendar.date(from: components),
-              let shifted = calendar.date(byAdding: .month, value: offset, to: date) else {
-            return month
-        }
-        return yearMonthFormatter.string(from: shifted)
+        BudgetStore.shiftBudgetMonth(month, by: offset) ?? month
     }
 }
 
@@ -1257,7 +1251,7 @@ struct CategoryBudgetDetailSheet: View {
     @State private var editingNote = false
     @State private var note: EntityNote = .unsupported
     @State private var recentTransactions: [Transaction] = []
-    @State private var quickAssignSuggestions: [QuickAssignSuggestion] = []
+    @State private var history: [CategoryBudget] = []
     @State private var isApplyingSuggestion = false
     @State private var quickAssignError: String?
     @AppStorage("budgetDetailActionsExpanded") private var actionsExpanded = true
@@ -1267,8 +1261,21 @@ struct CategoryBudgetDetailSheet: View {
         budgetStore.currentBudgetMonth?.isTrackingBudget == true
     }
 
+    /// The sheet item is a snapshot taken at tap time; read the row live from
+    /// the store so Assign/Cover done from inside this sheet update the
+    /// figures immediately instead of only after reopening.
+    private var liveCategory: CategoryBudget {
+        budgetStore.currentBudgetMonth?.categoryBudgets
+            .first { $0.categoryId == category.categoryId && $0.month == category.month }
+            ?? category
+    }
+
+    private var quickAssignSuggestions: [QuickAssignSuggestion] {
+        liveCategory.quickAssignSuggestions(history: history)
+    }
+
     private var statusTitle: String {
-        switch (isTracking, category.progressState) {
+        switch (isTracking, liveCategory.progressState) {
         case (_, .overspent): isTracking ? "Over budget" : "Overspent"
         case (true, .funded): "Budget set"
         case (false, .funded): "Funded"
@@ -1282,12 +1289,20 @@ struct CategoryBudgetDetailSheet: View {
     }
 
     private var statusColor: Color {
-        switch category.progressState {
+        switch liveCategory.progressState {
         case .overspent: .red
         case .spent: .orange
         case .spending: .blue
         case .funded: .green
         case .unassigned: .secondary
+        }
+    }
+
+    private var statusIcon: String {
+        switch liveCategory.progressState {
+        case .overspent: "exclamationmark.circle.fill"
+        case .unassigned: "circle.dashed"
+        case .funded, .spending, .spent: "checkmark.circle.fill"
         }
     }
 
@@ -1297,9 +1312,7 @@ struct CategoryBudgetDetailSheet: View {
                 Section {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack {
-                            Label(statusTitle, systemImage: category.isOverspent
-                                ? "exclamationmark.circle.fill"
-                                : "checkmark.circle.fill")
+                            Label(statusTitle, systemImage: statusIcon)
                                 .font(.headline)
                                 .foregroundStyle(statusColor)
                             Spacer()
@@ -1308,17 +1321,17 @@ struct CategoryBudgetDetailSheet: View {
                                 .foregroundStyle(.secondary)
                         }
                         CategoryProgressBar(
-                            fraction: category.progressFraction,
-                            state: category.progressState
+                            fraction: liveCategory.progressFraction,
+                            state: liveCategory.progressState
                         )
                         LabeledContent(isTracking ? "Budget" : "Assigned") {
-                            Text(budgetStore.displayBalance(category.budgeted))
+                            Text(budgetStore.displayBalance(liveCategory.budgeted))
                         }
                         LabeledContent("Activity") {
-                            Text(budgetStore.displayBalance(category.spent))
+                            Text(budgetStore.displayBalance(liveCategory.spent))
                         }
                         LabeledContent(isTracking ? "Balance" : "Available") {
-                            Text(budgetStore.displayBalance(category.available))
+                            Text(budgetStore.displayBalance(liveCategory.available))
                                 .foregroundStyle(statusColor)
                         }
                     }
@@ -1333,15 +1346,15 @@ struct CategoryBudgetDetailSheet: View {
                             Label(isTracking ? "Edit Budget" : "Assign Money", systemImage: "pencil")
                         }
 
-                        if category.available != 0,
+                        if liveCategory.available != 0,
                            let budget = budgetStore.currentBudgetMonth {
                             Button {
-                                transferContext = BudgetTransferContext(category: category, budget: budget)
+                                transferContext = BudgetTransferContext(category: liveCategory, budget: budget)
                             } label: {
                                 Label(
                                     isTracking
                                         ? "Reallocate Budget"
-                                        : (category.isOverspent ? "Cover Overspending" : "Move Money"),
+                                        : (liveCategory.isOverspent ? "Cover Overspending" : "Move Money"),
                                     systemImage: "arrow.left.arrow.right"
                                 )
                             }
@@ -1444,7 +1457,7 @@ struct CategoryBudgetDetailSheet: View {
             }
             .task { await reloadSupportingDetails() }
             .sheet(isPresented: $editingBudget) {
-                EditBudgetAmountSheet(category: category)
+                EditBudgetAmountSheet(category: liveCategory)
             }
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
@@ -1470,13 +1483,13 @@ struct CategoryBudgetDetailSheet: View {
         async let fetchedHistory = budgetStore.budgetHistory(for: category)
         recentTransactions = await fetchedTransactions
         note = await fetchedNote
-        quickAssignSuggestions = category.quickAssignSuggestions(history: await fetchedHistory)
+        history = await fetchedHistory
     }
 
     private func quickAssignTitle(for kind: QuickAssignSuggestion.Kind) -> String {
         switch kind {
         case .spentLastMonth: "Spent Last Month"
-        case .averageSpent: "Average Spent (3 Months)"
+        case .averageSpent: "Average Spent (\(history.count) Months)"
         case .assignedLastMonth: isTracking ? "Budgeted Last Month" : "Assigned Last Month"
         case .resetAvailable: isTracking ? "Reset Balance to Zero" : "Reset Available to Zero"
         case .setToZero: isTracking ? "Set Budget to Zero" : "Set Assigned to Zero"

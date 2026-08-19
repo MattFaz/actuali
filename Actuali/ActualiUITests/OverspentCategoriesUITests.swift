@@ -54,7 +54,8 @@ final class OverspentCategoriesUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Nothing Overspent"].waitForExistence(timeout: 10),
                       "covering the category should resolve the result immediately")
         app.navigationBars.buttons.firstMatch.tap() // back to the budget
-        XCTAssertTrue(waitForNotHittable(notice, timeout: 10),
+        scrollToTop(app)
+        XCTAssertTrue(waitForNonExistence(of: notice, timeout: 10),
                       "overspent check-in result still shown after covering it")
         attachScreenshot(app, name: "4-notice-cleared")
     }
@@ -97,10 +98,10 @@ final class OverspentCategoriesUITests: XCTestCase {
     }
 
     @MainActor
-    private func waitForNotHittable(_ element: XCUIElement, timeout: TimeInterval) -> Bool {
+    private func waitForNonExistence(of element: XCUIElement, timeout: TimeInterval) -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if !element.exists || !element.isHittable { return true }
+            if !element.exists { return true }
             RunLoop.current.run(until: Date().addingTimeInterval(0.5))
         }
         return false

@@ -105,6 +105,16 @@ struct CategoryBudgetProgressTests {
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
     }
 
+    // With one history month the average equals Spent Last Month; offering
+    // both would just duplicate the suggestion.
+    @Test func quickAssignOmitsAverageForASingleHistoryMonth() {
+        let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
+        let history = [makeCategory(budgeted: 9000, spent: -8000, available: 1000)]
+        let kinds = current.quickAssignSuggestions(history: history).map(\.kind)
+        #expect(!kinds.contains(.averageSpent))
+        #expect(kinds.contains(.spentLastMonth))
+    }
+
     @Test func coverSourcesPrioritizeFullCoverageThenSameGroup() {
         let overspent = makeCategory(id: "target", groupId: "home", budgeted: 0, spent: -5000, available: -5000)
         let partialSameGroup = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)

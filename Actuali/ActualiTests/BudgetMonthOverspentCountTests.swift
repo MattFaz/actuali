@@ -48,6 +48,14 @@ struct BudgetMonthOverspentCountTests {
         #expect(month.hasCheckInIssues(uncategorizedCount: 0))
     }
 
+    // Money left to assign has no check-in row (the Budget summary shows
+    // it), so it must not suppress "Budget looks good" either.
+    @Test func moneyLeftToAssignAloneIsNotACheckInIssue() {
+        var month = makeMonth(availables: [5000])
+        month.toBudget = 12000
+        #expect(!month.hasCheckInIssues(uncategorizedCount: 0))
+    }
+
     // MARK: - overspentCategories (the badge's explanation, GH #138)
 
     @Test func overspentCategoriesListsOnlyTheOnesInTheRed() {

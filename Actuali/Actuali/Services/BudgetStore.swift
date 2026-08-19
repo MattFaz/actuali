@@ -3445,7 +3445,9 @@ final class BudgetStore: ObservableObject {
         return result
     }
 
-    private static func shiftBudgetMonth(_ month: String, by offset: Int) -> String? {
+    /// Shift a "yyyy-MM" month key. Also backs the budget tab's month picker
+    /// (`BudgetView.shiftMonth`), so the format logic lives in one place.
+    static func shiftBudgetMonth(_ month: String, by offset: Int) -> String? {
         let parts = month.split(separator: "-")
         guard parts.count == 2,
               let year = Int(parts[0]),
