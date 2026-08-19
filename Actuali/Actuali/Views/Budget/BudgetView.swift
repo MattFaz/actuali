@@ -1164,7 +1164,8 @@ struct CategoryBudgetDetailSheet: View {
                     }
                 }
 
-                Section {
+                Section(
+                    content: {
                     if quickAssignSuggestions.isEmpty {
                         Text("No suggestions available")
                             .foregroundStyle(.secondary)
@@ -1187,11 +1188,14 @@ struct CategoryBudgetDetailSheet: View {
                             .disabled(isApplyingSuggestion)
                         }
                     }
-                } header: {
-                    Text(isTracking ? "Quick Budget" : "Quick Assign")
-                } footer: {
-                    Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
-                }
+                    },
+                    header: {
+                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                    },
+                    footer: {
+                        Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
+                    }
+                )
 
                 if let errorMessage {
                     Section {
