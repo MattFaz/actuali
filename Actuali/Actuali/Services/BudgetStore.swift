@@ -188,6 +188,16 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+
+    /// The current calendar month's budget, tracked separately from
+    /// `currentBudgetMonth` (which follows whatever month BudgetView is
+    /// browsing) so the widget never publishes historical balances.
+    var widgetBudgetMonth: BudgetMonth?
+
+    /// Where publishWidgetSnapshot() writes; injectable for tests. nil when
+    /// the build's provisioning lacks the app group.
+    var widgetSnapshotStore: WidgetSnapshotStore? = .standard()
+
     /// Bumped every time the published data snapshot above is republished
     /// (budget load, local mutation, sync). Views that cache their own
     /// fetches (transaction pagers, report widgets) key reloads on this so
@@ -213,6 +223,7 @@ final class BudgetStore: ObservableObject {
     @Published var currencyCode: String = "USD" {
         didSet {
             UserDefaults.standard.set(currencyCode, forKey: "currencyCode")
+            publishWidgetSnapshot()
         }
     }
 
@@ -239,6 +250,7 @@ final class BudgetStore: ObservableObject {
     @Published var useNarrowCurrencySymbol: Bool = false {
         didSet {
             UserDefaults.standard.set(useNarrowCurrencySymbol, forKey: "useNarrowCurrencySymbol")
+            publishWidgetSnapshot()
         }
     }
 
@@ -329,6 +341,7 @@ final class BudgetStore: ObservableObject {
     @Published var hideBalances: Bool = false {
         didSet {
             UserDefaults.standard.set(hideBalances, forKey: "hideBalances")
+            publishWidgetSnapshot()
         }
     }
 
@@ -1136,6 +1149,7 @@ final class BudgetStore: ObservableObject {
         // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
         currentBudgetMonth = nil
+        widgetBudgetMonth = nil
         accounts = []
         transactions = []
         uncategorizedCount = 0
@@ -1147,6 +1161,7 @@ final class BudgetStore: ObservableObject {
         // not outlive the budget it described.
         isInitialSyncing = false
         dataVersion += 1
+        clearWidgetSnapshot()
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1331,7 +1346,9 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
+            publishWidgetSnapshot()
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -1478,10 +1495,12 @@ final class BudgetStore: ObservableObject {
             categoryGroups = fetchedGroups
             payees = fetchedPayees
             currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             dataVersion += 1
 
             await loadSchedules()
+            publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
