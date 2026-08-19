@@ -1370,9 +1370,8 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            if let code = fetchedCurrencyCode, !code.isEmpty {
-                currencyCode = code
-            }
+            currencyCode = fetchedCurrencyCode ?? ""
+
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             
@@ -1510,6 +1509,7 @@ final class BudgetStore: ObservableObject {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
             // leave the UI with a mixed snapshot.
+            let fetchedCurrencyCode = try await database.fetchCurrencyCode()
             let fetchedAccounts = try await database.fetchAccounts()
             let fetchedTransactions = try await database.fetchTransactions()
             let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
@@ -1524,7 +1524,8 @@ final class BudgetStore: ObservableObject {
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
             guard self.database === database else { return }
-
+            
+            currencyCode = fetchedCurrencyCode ?? ""
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
