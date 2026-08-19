@@ -5,6 +5,7 @@ import Testing
 private final class FallbackTransport: URLProtocol {
     nonisolated(unsafe) static var requestedURLs: [URL] = []
     nonisolated(unsafe) static var failures: [String: URLError] = [:]
+    nonisolated(unsafe) static var statuses: [String: Int] = [:]
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -20,7 +21,7 @@ private final class FallbackTransport: URLProtocol {
 
         let response = HTTPURLResponse(
             url: request.url!,
-            statusCode: 200,
+            statusCode: Self.statuses[host] ?? 200,
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
@@ -40,6 +41,7 @@ struct ActualServerClientFallbackTests {
     private func makeSession() -> URLSession {
         FallbackTransport.requestedURLs = []
         FallbackTransport.failures = ["primary.example.com": URLError(.cannotConnectToHost)]
+        FallbackTransport.statuses = [:]
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FallbackTransport.self]
         return URLSession(configuration: configuration)
@@ -132,6 +134,59 @@ struct ActualServerClientFallbackTests {
     @Test func foregroundProbeKeepsFallbackWhilePrimaryIsDown() async throws {
         let client = try await makeClient()
         _ = try await client.login(password: "password")
+
+        await client.retryPrimaryIfRecovered()
+        _ = try await client.login(password: "password")
+
+        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+            "primary.example.com", "fallback.example.com",
+            "primary.example.com", "fallback.example.com"
+        ])
+    }
+
+    @Test func surfacesPrimaryErrorWhenBothAddressesFail() async throws {
+        let client = try await makeClient()
+        FallbackTransport.failures = [
+            "primary.example.com": URLError(.secureConnectionFailed),
+            "fallback.example.com": URLError(.cannotFindHost),
+        ]
+
+        do {
+            _ = try await client.login(password: "password")
+            Issue.record("Expected the request to fail")
+        } catch let error as ActualServerError {
+            guard case .networkError(let underlying) = error,
+                  let urlError = underlying as? URLError else {
+                Issue.record("Expected a networkError, got \(error)")
+                return
+            }
+            // The primary's error is the actionable one; the fallback's
+            // failure is only logged.
+            #expect(urlError.code == .secureConnectionFailed)
+        }
+    }
+
+    @Test func foregroundProbeAcceptsPrimariesWithoutAnInfoRoute() async throws {
+        let client = try await makeClient()
+        _ = try await client.login(password: "password")
+        FallbackTransport.failures = [:]
+        FallbackTransport.statuses = ["primary.example.com": 404]
+
+        await client.retryPrimaryIfRecovered()
+        FallbackTransport.statuses = [:]
+        _ = try await client.login(password: "password")
+
+        #expect(FallbackTransport.requestedURLs.map(\.host) == [
+            "primary.example.com", "fallback.example.com",
+            "primary.example.com", "primary.example.com"
+        ])
+    }
+
+    @Test func foregroundProbeStaysOnFallbackWhenPrimaryAnswers5xx() async throws {
+        let client = try await makeClient()
+        _ = try await client.login(password: "password")
+        FallbackTransport.failures = [:]
+        FallbackTransport.statuses = ["primary.example.com": 502]
 
         await client.retryPrimaryIfRecovered()
         _ = try await client.login(password: "password")

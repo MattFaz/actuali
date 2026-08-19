@@ -306,7 +306,13 @@ actor ActualServerClient {
                     )
                     return result
                 } catch let fallbackError as URLError where fallbackError.code != .cancelled {
-                    throw ActualServerError.networkError(fallbackError)
+                    logger.error(
+                        "Fallback address also failed: \(fallbackError.code.rawValue, privacy: .public)"
+                    )
+                    // The primary is the address the user thinks of as "the
+                    // server", so its error is the one that tells them what
+                    // to fix; the fallback's failure lives in the log above.
+                    throw ActualServerError.networkError(urlError)
                 }
             }
             // Cancellation is ordinary control flow (a superseded refresh, a
@@ -325,8 +331,13 @@ actor ActualServerClient {
               current != configuredPrimaryURL else { return }
         var request = makeRequest(configuredPrimaryURL.appendingPathComponent("/info"))
         request.timeoutInterval = 5
+        // Older servers and route-stripping reverse proxies don't answer
+        // /info (see fetchServerVersion), so any client-side status proves
+        // the primary is reachable; 5xx means a proxy whose backend is down,
+        // so stay on the fallback.
         guard let (_, response) = try? await session.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+              let status = (response as? HTTPURLResponse)?.statusCode,
+              (200..<500).contains(status) else { return }
         // Re-check after the await: a concurrent request may have swapped.
         if serverURL == current {
             fallbackServerURL = current
