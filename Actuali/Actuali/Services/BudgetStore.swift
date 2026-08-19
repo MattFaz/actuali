@@ -233,6 +233,20 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    private static func currencyCodeCacheKey(for budgetId: String) -> String {
+        "currencyCode.\(budgetId)"
+    }
+
+    private func cachedCurrencyCode(for budgetId: String) -> String? {
+        UserDefaults.standard.string(forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
+    private func cacheCurrencyCode(_ code: String, for budgetId: String) {
+        // Keep an explicit empty value too: it is Actual's meaningful "None"
+        // preference, distinct from a budget we have never cached.
+        UserDefaults.standard.set(code, forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
     /// User-initiated currency changes (the Settings picker) go through
     /// here, not a direct `currencyCode = ...` assignment: it also persists
     /// the choice into the budget's own `preferences` table via sync, so it
@@ -242,6 +256,9 @@ final class BudgetStore: ObservableObject {
     /// exactly what keeps this from looping back on itself.
     func setCurrencyCode(_ code: String) async {
         currencyCode = code
+        if let currentBudgetId {
+            cacheCurrencyCode(code, for: currentBudgetId)
+        }
         guard let syncClient else { return }
         do {
             try await syncClient.updateCurrencyCode(code)
@@ -849,6 +866,11 @@ final class BudgetStore: ObservableObject {
         loadTask = Task {}
     }
 
+    /// Test-only: model the initial sync window after a budget download.
+    func setInitialSyncingForTesting(_ value: Bool) {
+        isInitialSyncing = value
+    }
+
     /// Test-only: swap in a server client wired to a stub transport so the
     /// login and probe paths can be exercised without a reachable server.
     func setServerClientForTesting(_ client: ActualServerClient) {
@@ -1342,6 +1364,12 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
+        // A fresh budget download can predate the CRDT preference messages
+        // that its first sync will apply. Show this budget's last confirmed
+        // code during that short window. A budget without a cached or stored
+        // preference retains the current fallback currency.
+        let cachedCurrencyCode = cachedCurrencyCode(for: budgetId)
+        currencyCode = cachedCurrencyCode ?? currencyCode
 
         var db: BudgetDatabase?
         do {
@@ -1353,7 +1381,8 @@ final class BudgetStore: ObservableObject {
             // Fetch all data into locals first, then publish in one batch so
             // the UI never sees a torn snapshot if another load interleaves
             // at a suspension point.
-            // Currency code from preferences (use if non-empty, else keep UserDefaults value)
+            // Nil means the budget has no currency preference; an empty value
+            // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedAccounts = try await openedDb.fetchAccounts()
@@ -1370,8 +1399,17 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            currencyCode = fetchedCurrencyCode ?? ""
-
+            // The downloaded SQLite snapshot can predate the following CRDT
+            // sync. Keep any known budget currency while the two disagree;
+            // sync establishes the authoritative setting immediately after.
+            if let fetchedCurrencyCode {
+                if let cachedCurrencyCode, fetchedCurrencyCode != cachedCurrencyCode {
+                    // Keep the known cached currency until sync resolves the difference.
+                } else {
+                    currencyCode = fetchedCurrencyCode
+                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+                }
+            }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             
@@ -1505,11 +1543,11 @@ final class BudgetStore: ObservableObject {
     /// Use this after local changes to update the UI
     private func refreshDataOnly() async {
         guard let database else { return }
+        let budgetId = currentBudgetId
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
             // leave the UI with a mixed snapshot.
-            let fetchedCurrencyCode = try await database.fetchCurrencyCode()
             let fetchedAccounts = try await database.fetchAccounts()
             let fetchedTransactions = try await database.fetchTransactions()
             let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
@@ -1520,12 +1558,20 @@ final class BudgetStore: ObservableObject {
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
+            // Read this last so a Settings change cannot be overwritten by a
+            // stale currency value fetched before the other asynchronous reads.
+            let fetchedCurrencyCode = try await database.fetchCurrencyCode()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
-            guard self.database === database else { return }
-            
-            currencyCode = fetchedCurrencyCode ?? ""
+            guard self.database === database, self.currentBudgetId == budgetId else { return }
+
+            if let fetchedCurrencyCode {
+                currencyCode = fetchedCurrencyCode
+                if let budgetId {
+                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+                }
+            }
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
