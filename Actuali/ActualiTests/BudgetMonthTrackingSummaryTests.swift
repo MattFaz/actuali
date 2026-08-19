@@ -7,6 +7,14 @@ import Testing
 /// `total-saved` (budgeted income - budgeted expenses).
 struct BudgetMonthTrackingSummaryTests {
 
+    @Test func budgetTypeFollowsPresenceOfToBudget() {
+        let tracking = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: nil)
+        let envelope = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: 0)
+
+        #expect(tracking.isTrackingBudget)
+        #expect(!envelope.isTrackingBudget)
+    }
+
     private func expense(id: String, budgeted: Int, spent: Int) -> CategoryBudget {
         CategoryBudget(
             month: "2026-07",
