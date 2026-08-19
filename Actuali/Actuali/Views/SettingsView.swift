@@ -188,6 +188,13 @@ struct SettingsView: View {
                         .disabled(budgetStore.isConnected)
                         .accessibilityHint("Example: https://actual.example.com")
 
+                    TextField("Fallback server URL (optional)", text: $budgetStore.fallbackServerURL)
+                        .textContentType(.URL)
+                        .autocapitalization(.none)
+                        .keyboardType(.URL)
+                        .disabled(budgetStore.isConnected)
+                        .accessibilityHint("Used when the primary server cannot be reached")
+
                     if !budgetStore.isConnected {
                         // Show the password field before probing, when password
                         // login is active, or when the first OpenID sign-in needs
