@@ -201,6 +201,9 @@ actor ActualServerClient {
     private let session: URLSession
     private var serverURL: URL?
     private var fallbackServerURL: URL?
+    /// The primary as the user configured it, unaffected by failover swaps,
+    /// so a recovery probe knows which address to check.
+    private var configuredPrimaryURL: URL?
     private var token: String?
 
     /// User-supplied headers stamped onto every outgoing request, in order.
@@ -229,19 +232,20 @@ actor ActualServerClient {
         guard let url = URL(string: serverURL) else {
             throw ActualServerError.invalidURL
         }
-        let fallbackURL: URL?
-        if fallbackServerURL.isEmpty {
-            fallbackURL = nil
-        } else {
-            guard let url = URL(string: fallbackServerURL),
-                  url.scheme != nil,
-                  url.host != nil else {
+        // Set the primary before validating the fallback: configureSavedSession
+        // swallows this method's errors with try?, and a bad fallback must not
+        // leave the client without a working primary.
+        self.serverURL = url
+        self.configuredPrimaryURL = url
+        self.fallbackServerURL = nil
+        if !fallbackServerURL.isEmpty {
+            guard let fallbackURL = URL(string: fallbackServerURL),
+                  fallbackURL.scheme != nil,
+                  fallbackURL.host != nil else {
                 throw ActualServerError.invalidFallbackURL
             }
-            fallbackURL = url
+            self.fallbackServerURL = fallbackURL
         }
-        self.serverURL = url
-        self.fallbackServerURL = fallbackURL
     }
 
     func setToken(_ token: String?) {
@@ -267,13 +271,14 @@ actor ActualServerClient {
     /// `ActualServerError.networkError` so callers surface actionable guidance
     /// instead of CFNetwork's raw description.
     private func send(_ request: URLRequest) async throws -> (Data, URLResponse) {
-        // Capture the base that produced this request before suspension. Another
-        // request may fail over the actor while this one is awaiting its response.
+        // Capture both bases that apply to this request before suspension. Another
+        // request may swap them on the actor while this one is awaiting its response.
         let requestServerURL = serverURL
+        let requestFallbackURL = fallbackServerURL
         do {
             return try await session.data(for: request)
         } catch let urlError as URLError where urlError.code != .cancelled {
-            if let fallbackServerURL,
+            if let requestFallbackURL,
                let requestURL = request.url,
                let primaryServerURL = requestServerURL,
                requestURL.host == primaryServerURL.host,
@@ -281,15 +286,23 @@ actor ActualServerClient {
                let fallbackURL = Self.fallbackRequestURL(
                    requestURL: requestURL,
                    primaryServerURL: primaryServerURL,
-                   fallbackServerURL: fallbackServerURL
+                   fallbackServerURL: requestFallbackURL
                ),
                fallbackURL != requestURL {
                 var fallbackRequest = request
                 fallbackRequest.url = fallbackURL
                 do {
                     let result = try await session.data(for: fallbackRequest)
+                    // Stick with the address that answered: swap the roles so
+                    // subsequent requests skip the dead address's timeout. A
+                    // later failure retries the old primary through this same
+                    // path, so a recovered primary swaps straight back.
+                    if serverURL == requestServerURL {
+                        serverURL = requestFallbackURL
+                        fallbackServerURL = requestServerURL
+                    }
                     logger.notice(
-                        "Primary server was unreachable; used the configured fallback for this request"
+                        "Server was unreachable; switched to the configured alternate address"
                     )
                     return result
                 } catch let fallbackError as URLError where fallbackError.code != .cancelled {
@@ -299,6 +312,26 @@ actor ActualServerClient {
             // Cancellation is ordinary control flow (a superseded refresh, a
             // screen the user left), so it propagates untouched.
             throw ActualServerError.networkError(urlError)
+        }
+    }
+
+    /// After a failover, check whether the configured primary is reachable
+    /// again and swap back if so. Safe to fire-and-forget on foreground: the
+    /// short probe timeout never blocks callers' own requests, and a no-op
+    /// when the session is already on the primary.
+    func retryPrimaryIfRecovered() async {
+        guard let configuredPrimaryURL,
+              let current = serverURL,
+              current != configuredPrimaryURL else { return }
+        var request = makeRequest(configuredPrimaryURL.appendingPathComponent("/info"))
+        request.timeoutInterval = 5
+        guard let (_, response) = try? await session.data(for: request),
+              (response as? HTTPURLResponse)?.statusCode == 200 else { return }
+        // Re-check after the await: a concurrent request may have swapped.
+        if serverURL == current {
+            fallbackServerURL = current
+            serverURL = configuredPrimaryURL
+            logger.notice("Primary server is reachable again; switched back to it")
         }
     }
 
@@ -320,7 +353,7 @@ actor ActualServerClient {
         } else {
             endpointPath = requestPath[...]
         }
-    
+
         var components = URLComponents(
             url: fallbackServerURL,
             resolvingAgainstBaseURL: false

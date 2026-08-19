@@ -888,9 +888,12 @@ final class BudgetStore: ObservableObject {
 
     /// Configure server URL and token for sync to work on launch and app resume
     private func configureSavedSession(token: String) async {
+        // Normalize here too: the field persists raw text per keystroke, and
+        // only connect() normalizes — a value saved between connect and login
+        // would otherwise fail validation on every subsequent launch.
         try? await serverClient.configure(
             serverURL: serverURL,
-            fallbackServerURL: fallbackServerURL
+            fallbackServerURL: Self.normalizedServerURL(fallbackServerURL)
         )
         await serverClient.setToken(token)
         isConnected = true
@@ -3004,6 +3007,10 @@ final class BudgetStore: ObservableObject {
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
+        // After a failover, probe whether the primary recovered while we were
+        // backgrounded. Fire-and-forget: the sync below proceeds on whichever
+        // address is currently active and never waits on the probe.
+        Task { await serverClient.retryPrimaryIfRecovered() }
         guard let client = syncClient else {
             logger.debug("syncOnForeground() skipped - no budget loaded")
             return
