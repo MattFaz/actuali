@@ -22,6 +22,10 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case splitAmountMismatch
     case invalidAccountName
     case accountCreationFailed(String)
+    case invalidCategoryName
+    case invalidCategoryGroupName
+    case categoryCreationFailed(String)
+    case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
     case ruleInvalidCondition(field: String, op: String)
@@ -63,6 +67,14 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter an account name"
         case .accountCreationFailed(let message):
             return "Failed to create account: \(message)"
+        case .invalidCategoryName:
+            return "Enter a category name"
+        case .invalidCategoryGroupName:
+            return "Enter a category group name"
+        case .categoryCreationFailed(let message):
+            return "Failed to create category: \(message)"
+        case .categoryGroupCreationFailed(let message):
+            return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
             return "Add at least one condition."
         case .ruleNeedsAction:
@@ -1672,6 +1684,68 @@ final class BudgetStore: ObservableObject {
         let incomeCategories = categoryGroups.flatMap(\.categories).filter(\.isIncome)
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
+    }
+    
+    /// Create a category group, mirroring the web UI's "Add group": it lands
+    /// after every existing group and starts out empty. Duplicate names are
+    /// refused the way upstream refuses them.
+    @discardableResult
+    func createCategoryGroup(name: String) async throws -> CategoryGroup {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryGroupName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        let group: CategoryGroup
+        do {
+            group = try await syncClient.createCategoryGroup(
+                id: UUID().uuidString,
+                name: trimmedName
+            )
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            // Already phrased for the person who typed the name.
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryGroupCreationFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+
+        return group
+    }
+
+    /// Create a category at the top of `groupId`, where the web UI puts it.
+    /// The new category inherits the group's income and hidden flags, so an
+    /// income group gets an income category.
+    @discardableResult
+    func createCategory(name: String, groupId: String) async throws -> Category {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        let category: Category
+        do {
+            category = try await syncClient.createCategory(
+                id: UUID().uuidString,
+                name: trimmedName,
+                categoryGroupId: groupId
+            )
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryCreationFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+
+        return category
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
