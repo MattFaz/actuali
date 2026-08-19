@@ -19,7 +19,7 @@ struct SpendingWidgetView: View {
             Text(displayName).font(.headline)
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("This month")
+                    Text(String(localized: "This month"))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(budgetStore.displayBalance(data.currentSpentCents))
@@ -39,7 +39,7 @@ struct SpendingWidgetView: View {
                 HStack(spacing: 4) {
                     Image(systemName: delta > 0 ? "arrow.up" : (delta < 0 ? "arrow.down" : "equal"))
                     Text(budgetStore.displayBalance(abs(delta)))
-                    Text(delta > 0 ? "more spent" : (delta < 0 ? "less spent" : ""))
+                    Text(delta > 0 ? String(localized: "more spent") : (delta < 0 ? String(localized: "less spent") : ""))
                 }
                 .font(.subheadline)
                 .foregroundStyle(deltaColor)

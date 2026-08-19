@@ -40,15 +40,15 @@ struct TransactionsListView: View {
                     ContentUnavailableView.search(text: searchText)
                 } else if budgetStore.hideClearedTransactions {
                     ContentUnavailableView(
-                        "No Uncleared Transactions",
+                        String(localized: "No Uncleared Transactions"),
                         systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
+                        description: Text(String(localized: "Everything is cleared. Turn off Hide Cleared Transactions to see the rest."))
                     )
                 } else {
                     ContentUnavailableView(
-                        "No Transactions",
+                        String(localized: "No Transactions"),
                         systemImage: "list.bullet.rectangle",
-                        description: Text("Transactions will appear here once you load a budget")
+                        description: Text(String(localized: "Transactions will appear here once you load a budget"))
                     )
                 }
             } else if let pager {
@@ -98,8 +98,8 @@ struct TransactionsListView: View {
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
-        .navigationTitle("All Accounts")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .navigationTitle(String(localized: "All Accounts"))
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search transactions"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {
@@ -205,7 +205,7 @@ struct TransactionListRow: View {
                 Button(role: .destructive) {
                     Task { await budgetStore.deleteTransaction(transaction) }
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
                 Button {
                     Task { await budgetStore.duplicateTransaction(transaction) }
@@ -216,7 +216,7 @@ struct TransactionListRow: View {
                 Button {
                     editing = transaction
                 } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Label(String(localized: "common.edit"), systemImage: "pencil")
                 }
                 .tint(.yellow)
             }
@@ -332,13 +332,20 @@ struct TransactionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .accessibilityHint("Toggles cleared status")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(transaction.reconciled
+                    ? String(localized: "Reconciled")
+                    : (transaction.cleared ? String(localized: "Cleared") : String(localized: "Uncleared")))
+                .accessibilityHint(String(localized: "Toggles cleared status"))
+                .accessibilityIdentifier(transaction.reconciled
+                    ? "transaction.status.reconciled"
+                    : (transaction.cleared ? "transaction.status.cleared" : "transaction.status.uncleared"))
                 .confirmationDialog(
-                    "This transaction is reconciled. Unlock it to make changes?",
+                    String(localized: "This transaction is reconciled. Unlock it to make changes?"),
                     isPresented: $confirmingUnlock,
                     titleVisibility: .visible
                 ) {
-                    Button("Unlock") { onToggleCleared() }
+                    Button(String(localized: "Unlock")) { onToggleCleared() }
                 }
             } else {
                 // Same footprint as the tappable variant so mixed lists
@@ -352,8 +359,8 @@ struct TransactionRow: View {
                 // Off-budget rows say "No payee": they're commonly payee-less
                 // (balance adjustments) and "Unknown" read as a bug (GH #123).
                 Text(transaction.payeeName
-                     ?? (transaction.isParent ? "Split"
-                         : (isInOffBudgetAccount ? "No payee" : "Unknown")))
+                     ?? (transaction.isParent ? String(localized: "Split")
+                         : (isInOffBudgetAccount ? String(localized: "No payee") : String(localized: "Unknown"))))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
@@ -413,7 +420,10 @@ struct ClearedIndicator: View {
             }
         }
         .font(.system(size: 14))
-        .accessibilityLabel(reconciled ? "Reconciled" : (cleared ? "Cleared" : "Uncleared"))
+        .accessibilityLabel(reconciled
+            ? String(localized: "Reconciled")
+            : (cleared ? String(localized: "Cleared") : String(localized: "Uncleared")))
+        .accessibilityIdentifier(reconciled ? "transaction.status.reconciled" : (cleared ? "transaction.status.cleared" : "transaction.status.uncleared"))
     }
 }
 

@@ -43,6 +43,20 @@ struct TransactionLogNotifierTests {
         #expect(body == "-$12.50 at Starbucks. Error message")
     }
 
+    /// A failed save can arrive without a parsed amount; the payee fragment
+    /// must stand alone ("at Starbucks"), with no stray whitespace from the
+    /// amount that isn't there.
+    @Test func composeFailureBodyWithPayeeButNoAmount() {
+        let body = TransactionLogNotifier.composeBody(
+            message: "Error message",
+            payee: "Starbucks",
+            amountCents: nil,
+            currencyCode: "USD",
+            locale: enUS
+        )
+        #expect(body == "at Starbucks. Error message")
+    }
+
     @Test func composeFailureBodyHonorsNarrowSymbol() {
         let bodyNarrow = TransactionLogNotifier.composeBody(
             message: "Error message",

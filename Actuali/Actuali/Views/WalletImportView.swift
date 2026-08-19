@@ -60,16 +60,16 @@ struct WalletImportView: View {
                     }
                 } else {
                     Section {
-                        Text("Wallet transactions aren't available on this device. Apple Card, Apple Cash and Savings are required, and are currently US-only.")
+                        Text(String(localized: "Wallet transactions aren't available on this device. Apple Card, Apple Cash and Savings are required, and are currently US-only."))
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            .navigationTitle("Import from Wallet")
+            .navigationTitle(String(localized: "Import from Wallet"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(result == nil ? "Cancel" : "Done") { dismiss() }
+                    Button(result == nil ? String(localized: "common.cancel") : String(localized: "common.done")) { dismiss() }
                 }
             }
             .task(id: selectedAccountId) {
@@ -80,14 +80,14 @@ struct WalletImportView: View {
 
     private var accountSection: some View {
         Section {
-            Picker("Account", selection: $selectedAccountId) {
-                Text("Select Account").tag(String?.none)
+            Picker(String(localized: "Account"), selection: $selectedAccountId) {
+                Text(String(localized: "Select Account")).tag(String?.none)
                 ForEach(openAccounts) { account in
                     Text(account.name).tag(Optional(account.id))
                 }
             }
         } footer: {
-            Text("Transactions you pick from Wallet are added to this account and sync to your Actual server like any other transaction.")
+            Text(String(localized: "Transactions you pick from Wallet are added to this account and sync to your Actual server like any other transaction."))
         }
     }
 
@@ -96,13 +96,13 @@ struct WalletImportView: View {
             TransactionPicker(selection: $walletSelection) {
                 Label(
                     walletSelection.isEmpty
-                        ? "Select Wallet Transactions"
-                        : "Change Selection",
+                        ? String(localized: "Select Wallet Transactions")
+                        : String(localized: "Change Selection"),
                     systemImage: "wallet.pass"
                 )
             }
         } footer: {
-            Text("Apple shares only the transactions you pick — Actuali has no ongoing access to your Wallet.")
+            Text(String(localized: "Apple shares only the transactions you pick — Actuali has no ongoing access to your Wallet."))
         }
     }
 
@@ -118,7 +118,7 @@ struct WalletImportView: View {
                     }
                     Spacer()
                     if alreadyImportedIds.contains(candidate.id) {
-                        Text("Imported")
+                        Text(String(localized: "Imported"))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -134,16 +134,16 @@ struct WalletImportView: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text("Import \(importableCount) Transaction\(importableCount == 1 ? "" : "s")")
+                    Text(String(localized: "Import \(importableCount) Transactions"))
                         .frame(maxWidth: .infinity)
                 }
             }
             .disabled(isImporting || importableCount == 0 || selectedAccountId == nil)
         } header: {
-            Text("Selected")
+            Text(String(localized: "Selected"))
         } footer: {
             if importableCount < candidates.count {
-                Text("Transactions marked Imported already exist in this account and will be skipped.")
+                Text(String(localized: "Transactions marked Imported already exist in this account and will be skipped."))
             }
         }
     }
@@ -160,9 +160,11 @@ struct WalletImportView: View {
     }
 
     private func summary(for result: BudgetStore.WalletImportResult) -> String {
-        var text = "Imported \(result.imported) transaction\(result.imported == 1 ? "" : "s")"
+        // Interpolation, not count ternaries: the catalog's plural variations
+        // pick the right CLDR category per locale (fr/pt-BR treat 0 as "one").
+        var text = String(localized: "Imported \(result.imported) transactions")
         if result.skippedDuplicates > 0 {
-            text += ", skipped \(result.skippedDuplicates) duplicate\(result.skippedDuplicates == 1 ? "" : "s")"
+            text += String(localized: ", skipped \(result.skippedDuplicates) duplicates")
         }
         return text
     }

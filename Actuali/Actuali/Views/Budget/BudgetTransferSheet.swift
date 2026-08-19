@@ -145,9 +145,9 @@ struct BudgetTransferSheet: View {
 
                 Section {
                     if hasOptions {
-                        Picker(isCovering ? "From" : "To", selection: $endpoint) {
+                        Picker(isCovering ? String(localized: "budget.transfer.from") : String(localized: "budget.transfer.to"), selection: $endpoint) {
                             if Self.canUseToBudget(context), let toBudget = context.budget.toBudget {
-                                Text("To Budget (\(budgetStore.displayBalance(toBudget)))")
+                                Text(String(format: String(localized: "budget.transfer.toBudget"), budgetStore.displayBalance(toBudget)))
                                     .tag(Endpoint.toBudget)
                             }
                             ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
@@ -162,11 +162,11 @@ struct BudgetTransferSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text(isCovering ? "Cover from" : "Move to")
+                    Text(isCovering ? String(localized: "budget.transfer.coverFrom") : String(localized: "budget.transfer.moveTo"))
                 } footer: {
                     Text(isCovering
-                         ? "\(context.category.categoryName) is overspent by \(budgetStore.displayBalance(abs(context.category.available))) in \(MonthPicker.title(for: context.category.month))."
-                         : "\(context.category.categoryName) has \(budgetStore.displayBalance(context.category.available)) available in \(MonthPicker.title(for: context.category.month)).")
+                         ? String(format: String(localized: "budget.transfer.overspentFooter"), context.category.categoryName, budgetStore.displayBalance(abs(context.category.available)), MonthPicker.title(for: context.category.month))
+                         : String(format: String(localized: "budget.transfer.availableFooter"), context.category.categoryName, budgetStore.displayBalance(context.category.available), MonthPicker.title(for: context.category.month)))
                 }
 
                 Section {
@@ -175,7 +175,7 @@ struct BudgetTransferSheet: View {
                         conventionalAmountEntry: budgetStore.conventionalAmountEntry
                     )
                 } header: {
-                    Text("Amount")
+                    Text(String(localized: "common.amount"))
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
@@ -183,14 +183,14 @@ struct BudgetTransferSheet: View {
                     }
                 }
             }
-            .navigationTitle(isCovering ? "Cover Overspending" : "Move Money")
+            .navigationTitle(isCovering ? String(localized: "budget.transfer.coverOverspending") : String(localized: "budget.transfer.moveMoney"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Move") { save() }
+                    Button(String(localized: "budget.transfer.move")) { save() }
                         .disabled(isSaving || !hasOptions)
                 }
             }

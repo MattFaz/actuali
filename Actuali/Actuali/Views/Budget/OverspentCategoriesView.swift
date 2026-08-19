@@ -65,9 +65,9 @@ struct OverspentCategoriesView: View {
                 }
             } else {
                 ContentUnavailableView(
-                    "Nothing Overspent",
+                    String(localized: "overspent.empty.title"),
                     systemImage: "checkmark.circle",
-                    description: Text("No categories are overspent this month.")
+                    description: Text(String(localized: "overspent.empty.description"))
                 )
             }
         }
@@ -76,7 +76,7 @@ struct OverspentCategoriesView: View {
         // swaps the list for "Nothing Overspent" — the payoff for the swipe
         // action, so let it play rather than blink.
         .animation(AppAnimation.appearance, value: budgetStore.currentBudgetMonth?.overspentCount)
-        .navigationTitle("Overspent Categories")
+        .navigationTitle(String(localized: "overspent.title"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }
@@ -114,7 +114,7 @@ struct OverspentCategoryRow: View {
                     .foregroundStyle(.secondary)
                 if category.rolledOverOverspending < 0 {
                     Label {
-                        Text("Includes \(budgetStore.displayBalance(abs(category.rolledOverOverspending))) rolled over from earlier months")
+                        Text(String(format: String(localized: "overspent.rolledOver"), budgetStore.displayBalance(abs(category.rolledOverOverspending))))
                     } icon: {
                         Image(systemName: "arrow.uturn.forward")
                     }

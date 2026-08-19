@@ -13,27 +13,27 @@ struct EncryptionPasswordSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    SecureField("Encryption password", text: $password)
+                    SecureField(String(localized: "Encryption password"), text: $password)
                         .textContentType(.password)
                         .disabled(isWorking)
                 } header: {
-                    Text("End-to-End Encrypted")
+                    Text(String(localized: "End-to-End Encrypted"))
                 } footer: {
-                    Text("“\(budget.name)” is end-to-end encrypted. Enter its encryption password to open it on this device. This is separate from your server password.")
+                    Text(String(format: String(localized: "%@ is end-to-end encrypted. Enter its encryption password to open it on this device. This is separate from your server password."), budget.name))
                 }
 
                 if let errorText {
                     Text(errorText).foregroundStyle(.red).font(.callout)
                 }
             }
-            .navigationTitle("Unlock Budget")
+            .navigationTitle(String(localized: "Unlock Budget"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.disabled(isWorking)
+                    Button(String(localized: "common.cancel")) { dismiss() }.disabled(isWorking)
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Unlock") { Task { await unlock() } }
+                    Button(String(localized: "Unlock")) { Task { await unlock() } }
                         .disabled(password.isEmpty || isWorking)
                 }
             }

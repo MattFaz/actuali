@@ -125,6 +125,40 @@ struct BudgetView: View {
                         .padding(.bottom, 8)
 
                         List {
+                            // Explains the tab badge (GH #138): which categories
+                            // are overspent, including overspending rolled over
+                            // from earlier months. Shares the badge's Settings
+                            // toggle — off means no overspending callouts at all.
+                            if budgetStore.showOverspentBadge, budget.overspentCount > 0 {
+                                Section {
+                                    NavigationLink {
+                                        OverspentCategoriesView()
+                                    } label: {
+                                        Label {
+                                            Text(String(localized: "\(budget.overspentCount) Overspent Categories"))
+                                        } icon: {
+                                            Image(systemName: "exclamationmark.circle.fill")
+                                                .foregroundStyle(.red)
+                                        }
+                                    }
+                                }
+                            }
+
+                            if budgetStore.uncategorizedCount > 0 {
+                                Section {
+                                    NavigationLink {
+                                        UncategorizedTransactionsView()
+                                    } label: {
+                                        Label {
+                                            Text(String(localized: "\(budgetStore.uncategorizedCount) Uncategorized Transactions"))
+                                        } icon: {
+                                            Image(systemName: "questionmark.circle.fill")
+                                                .foregroundStyle(.orange)
+                                        }
+                                    }
+                                }
+                            }
+
                             BudgetCheckInSection(budget: budget)
 
                             if categoryFilter != .all, groupedCategories.isEmpty {
@@ -216,9 +250,9 @@ struct BudgetView: View {
                                     }
                                 } header: {
                                     HStack {
-                                        Text(budget.incomeCategories.first?.groupName ?? "Income")
+                                        Text(budget.incomeCategories.first?.groupName ?? String(localized: "Income"))
                                         Spacer()
-                                        Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+                                        Text(String(format: String(localized: "Received %@"), budgetStore.displayBalance(budget.totalIncome)))
                                     }
                                 }
                             }
@@ -291,20 +325,20 @@ struct BudgetView: View {
                 } else if !budgetStore.isLoading {
                     if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
                         ContentUnavailableView(
-                            "Select a Budget",
+                            String(localized: "Select a Budget"),
                             systemImage: "chart.pie",
-                            description: Text("You're connected. Choose a budget in Settings to load it here.")
+                            description: Text(String(localized: "You're connected. Choose a budget in Settings to load it here."))
                         )
                     } else {
                         ContentUnavailableView(
-                            "No Budget Loaded",
+                            String(localized: "No Budget Loaded"),
                             systemImage: "chart.pie",
-                            description: Text("Go to Settings to connect to your Actual Budget server")
+                            description: Text(String(localized: "Go to Settings to connect to your Actual Budget server"))
                         )
                     }
                 }
             }
-            .navigationTitle("Budget")
+            .navigationTitle(String(localized: "budget.title"))
             // The summary bar is pinned outside the List (GH #155), so it
             // can't move with an overscroll the way list content does. A
             // large title stretches on that overscroll and draws straight
@@ -325,7 +359,8 @@ struct BudgetView: View {
                         } label: {
                             Image(systemName: "chevron.left")
                         }
-                        .accessibilityLabel("Previous month")
+                        .accessibilityLabel(String(localized: "Previous month"))
+                        .accessibilityIdentifier("budget.previousMonth")
 
                         MonthPicker(selectedMonth: $selectedMonth)
 
@@ -334,7 +369,8 @@ struct BudgetView: View {
                         } label: {
                             Image(systemName: "chevron.right")
                         }
-                        .accessibilityLabel("Next month")
+                        .accessibilityLabel(String(localized: "Next month"))
+                        .accessibilityIdentifier("budget.nextMonth")
                     }
                 }
                 // Creation, unlike everything in the options menu, changes
@@ -796,6 +832,7 @@ struct CategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Details for \(category.categoryName)")
+                .accessibilityIdentifier("budget.transactions.\(category.categoryName)")
                 Spacer(minLength: 4)
                 Button {
                     onEditBudget(category)
@@ -806,7 +843,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Edit budgeted amount for %@"), category.categoryName))
                 Button {
                     onShowTransactions(category, category.month)
                 } label: {
@@ -816,7 +853,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                .accessibilityLabel(String(format: String(localized: "Transactions for %@ in %@"), category.categoryName, MonthPicker.title(for: category.month)))
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain cell.
                 Button {
@@ -830,8 +867,8 @@ struct CategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
+                    ? String(format: String(localized: "Cover overspending for %@"), category.categoryName)
+                    : String(format: String(localized: "Move money from %@"), category.categoryName))
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -872,6 +909,7 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Details for \(category.categoryName)")
+                .accessibilityIdentifier("budget.transactions.\(category.categoryName)")
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -884,8 +922,8 @@ struct CleanCategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
+                    ? String(format: String(localized: "Cover overspending for %@"), category.categoryName)
+                    : String(format: String(localized: "Move money from %@"), category.categoryName))
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -898,7 +936,7 @@ struct CleanCategoryBudgetRow: View {
                     onEditBudget(category)
                 } label: {
                     HStack(spacing: 4) {
-                        Text("Budgeted: \(budgetStore.displayBalance(category.budgeted))")
+                        Text(String(format: String(localized: "Budgeted: %@"), budgetStore.displayBalance(category.budgeted)))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Image(systemName: "pencil")
@@ -907,7 +945,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Edit budgeted amount for %@"), category.categoryName))
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
@@ -915,7 +953,7 @@ struct CleanCategoryBudgetRow: View {
                     HStack(spacing: 4) {
                         // Green + signed so a deposit-only category doesn't
                         // read as spending (GH #102).
-                        Text("Spent: \(budgetStore.displaySpentCaption(category.spent))")
+                        Text(String(format: String(localized: "Spent: %@"), budgetStore.displaySpentCaption(category.spent)))
                             .font(.caption)
                             .foregroundStyle(category.spent > 0
                                 ? AnyShapeStyle(Color.green)
@@ -926,7 +964,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                .accessibilityLabel(String(format: String(localized: "Transactions for %@ in %@"), category.categoryName, MonthPicker.title(for: category.month)))
             }
         }
         .padding(.vertical, 2)
@@ -1187,7 +1225,8 @@ struct BudgetGroupHeader: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
+        .accessibilityIdentifier("budget.group.\(accessibilityKey)")
+        .accessibilityHint(String(localized: "Toggles the group's categories"))
     }
 
     /// The pills are decoration to VoiceOver once the button carries its own
@@ -1201,6 +1240,16 @@ struct BudgetGroupHeader: View {
             spent \(budgetStore.displayBalance(totals.spent)), \
             balance \(budgetStore.displayBalance(totals.balance))
             """
+    }
+
+    private var accessibilityKey: String {
+        let slug = name.lowercased()
+            .replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+        // A name written entirely outside [a-z0-9] (Japanese, Cyrillic, …)
+        // slugs to nothing; fall back to the raw name so two such groups
+        // don't collide on "budget.group.".
+        return slug.isEmpty ? name : slug
     }
 }
 
@@ -1235,7 +1284,7 @@ struct IncomeCategoryRow: View {
                 .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
             }
             if showsBudgeted {
-                Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
+                Text(String(format: String(localized: "Budgeted: %@"), budgetStore.displayBalance(income.budgeted)))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1593,7 +1642,7 @@ struct CategoryProgressBar: View {
         // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
-        .accessibilityLabel("\(state.statusText), spent \(Int((fraction * 100).rounded())) percent")
+        .accessibilityLabel(String(format: String(localized: "Spent %lld percent of available"), Int64((fraction * 100).rounded())))
     }
 }
 
@@ -1640,7 +1689,7 @@ struct EditBudgetAmountSheet: View {
                         autofocus: true
                     )
                 } header: {
-                    Text("Budgeted in \(MonthPicker.title(for: category.month))")
+                    Text(String(format: String(localized: "Budgeted in %@"), MonthPicker.title(for: category.month)))
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
@@ -1652,10 +1701,10 @@ struct EditBudgetAmountSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { save() }
+                    Button(String(localized: "common.save")) { save() }
                         .disabled(isSaving)
                 }
             }

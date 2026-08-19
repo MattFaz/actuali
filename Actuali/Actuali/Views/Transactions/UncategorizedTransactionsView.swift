@@ -59,12 +59,12 @@ struct UncategorizedTransactionsView: View {
                         await reload()
                     }
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
                 Button {
                     editingTransaction = transaction
                 } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Label(String(localized: "common.edit"), systemImage: "pencil")
                 }
                 .tint(.yellow)
             }
@@ -75,14 +75,14 @@ struct UncategorizedTransactionsView: View {
         Group {
             if transactions.isEmpty && loaded {
                 ContentUnavailableView(
-                    "All Categorized",
+                    String(localized: "All Categorized"),
                     systemImage: "checkmark.circle",
-                    description: Text("Every transaction has a category")
+                    description: Text(String(localized: "Every transaction has a category"))
                 )
             } else {
                 List {
                     if !transactions.isEmpty && filteredTransactions.isEmpty {
-                        Text("No matching transactions")
+                        Text(String(localized: "No matching transactions"))
                             .foregroundStyle(.secondary)
                     }
                     if budgetStore.transactionDisplayMode == .groupedByDate {
@@ -102,9 +102,9 @@ struct UncategorizedTransactionsView: View {
             }
         }
         .readableWidth()
-        .navigationTitle("Uncategorized")
+        .navigationTitle(String(localized: "Uncategorized"))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search transactions"))
         .task { await reload() }
         .refreshable {
             await budgetStore.sync()

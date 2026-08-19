@@ -31,7 +31,7 @@ struct SankeyWidgetView: View {
                 }
                 .frame(height: Self.chartHeight)
             } else {
-                Text("No data")
+                Text(String(localized: "No data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

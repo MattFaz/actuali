@@ -12,7 +12,7 @@ final class AccountSectionCollapseUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Accounts"].tap()
+        app.tabBars.buttons["tab.accounts"].tap()
         return app
     }
 
@@ -28,13 +28,16 @@ final class AccountSectionCollapseUITests: XCTestCase {
         XCTAssertTrue(vanguard.waitForExistence(timeout: 10),
                       "demo data should show the off-budget accounts")
 
-        let expandedHeader = app.buttons["On Budget, expanded"]
-        XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
-        expandedHeader.tap()
+        let header = app.buttons["account.group.on-budget"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        XCTAssertTrue(header.label.contains(", expanded"))
+        header.tap()
 
         // Collapsing hides the section's accounts but not its neighbors, and
         // the header keeps announcing the section total.
-        let collapsedHeader = app.buttons["On Budget, collapsed"]
+        let collapsedHeader = app.buttons.matching(
+            NSPredicate(format: "identifier == 'account.group.on-budget' AND label CONTAINS ', collapsed'")
+        ).firstMatch
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
         XCTAssertFalse(chase.exists,
                        "collapsing On Budget should hide its accounts")
@@ -55,15 +58,18 @@ final class AccountSectionCollapseUITests: XCTestCase {
         let chase = app.staticTexts["Chase Checking"].firstMatch
         XCTAssertTrue(chase.waitForExistence(timeout: 10))
 
-        let expandedHeader = app.buttons["On Budget, expanded"]
-        XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
-        expandedHeader.tap()
-        XCTAssertTrue(app.buttons["On Budget, collapsed"].waitForExistence(timeout: 10))
+        let header = app.buttons["account.group.on-budget"]
+        XCTAssertTrue(header.waitForExistence(timeout: 10))
+        XCTAssertTrue(header.label.contains(", expanded"))
+        header.tap()
+        let collapsedPredicate = NSPredicate(
+            format: "identifier == 'account.group.on-budget' AND label CONTAINS ', collapsed'")
+        XCTAssertTrue(app.buttons.matching(collapsedPredicate).firstMatch.waitForExistence(timeout: 10))
 
         app.terminate()
         app = launchOnAccountsTab()
 
-        let collapsedHeader = app.buttons["On Budget, collapsed"]
+        let collapsedHeader = app.buttons.matching(collapsedPredicate).firstMatch
         XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10),
                       "the collapsed state should survive a relaunch")
         XCTAssertFalse(app.staticTexts["Chase Checking"].firstMatch.exists,

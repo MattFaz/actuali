@@ -15,7 +15,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-hideZeroBudgetCategories", "NO",
         ]
         app.launch()
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
     }
 
     @MainActor

@@ -13,14 +13,14 @@ struct AddAccountView: View {
                 NavigationLink {
                     CreateLocalAccountView(onCreated: { dismiss() })
                 } label: {
-                    Text("Create a local account")
+                    Text(String(localized: "accounts.create.local"))
                 }
             }
-            .navigationTitle("Add Account")
+            .navigationTitle(String(localized: "accounts.add.title"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
             }
         }
@@ -53,7 +53,7 @@ struct CreateLocalAccountView: View {
     var body: some View {
         Form {
             Section {
-                TextField("Account Name", text: $name)
+                TextField(String(localized: "accounts.create.name"), text: $name)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.words)
             } footer: {
@@ -64,14 +64,14 @@ struct CreateLocalAccountView: View {
             }
 
             Section {
-                Toggle("On Budget", isOn: $onBudget)
+                Toggle(String(localized: "accounts.create.onBudget"), isOn: $onBudget)
             } footer: {
-                Text("Off-budget accounts (like investments or loans) aren't included in your budget's available funds.")
+                Text(String(localized: "accounts.create.offBudgetHelp"))
             }
 
             Section {
                 HStack {
-                    Text("Balance")
+                    Text(String(localized: "accounts.create.balance"))
                     Spacer()
                     AmountInputField(
                         text: $balanceText,
@@ -81,14 +81,14 @@ struct CreateLocalAccountView: View {
                     )
                 }
             } footer: {
-                Text("The account's starting balance, as of today.")
+                Text(String(localized: "accounts.create.balanceHelp"))
             }
         }
-        .navigationTitle("Create Account")
+        .navigationTitle(String(localized: "accounts.create.title"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Create") {
+                Button(String(localized: "common.create")) {
                     Task { await create() }
                 }
                 .disabled(isSaving)
@@ -103,7 +103,7 @@ struct CreateLocalAccountView: View {
         // and enqueue a second Task — bail so one tap means one account.
         guard !isSaving else { return }
         guard !trimmedName.isEmpty else {
-            errorMessage = "Enter an account name"
+            errorMessage = String(localized: "accounts.create.nameRequired")
             return
         }
 
@@ -115,7 +115,7 @@ struct CreateLocalAccountView: View {
                   let parsedCents = Transaction.cents(fromDollars: dollars) {
             cents = parsedCents
         } else {
-            errorMessage = "Invalid balance"
+            errorMessage = String(localized: "accounts.create.invalidBalance")
             return
         }
 

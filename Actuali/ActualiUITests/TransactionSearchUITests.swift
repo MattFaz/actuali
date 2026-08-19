@@ -11,7 +11,7 @@ final class TransactionSearchUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Accounts"].tap()
+        app.tabBars.buttons["tab.accounts"].tap()
         let allAccounts = app.staticTexts["All Accounts"].firstMatch
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()

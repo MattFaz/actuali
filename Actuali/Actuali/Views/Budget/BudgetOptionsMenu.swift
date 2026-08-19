@@ -59,10 +59,10 @@ struct BudgetOptionsMenu: View {
             }
             .pickerStyle(.inline)
 
-            Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
-                Label("Clean", systemImage: "list.bullet.rectangle")
+            Picker(String(localized: "budget.options.layout"), selection: $budgetStore.budgetDisplayStyle) {
+                Label(String(localized: "budget.options.clean"), systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
-                Label("Detailed", systemImage: "tablecells")
+                Label(String(localized: "budget.options.detailed"), systemImage: "tablecells")
                     .tag(BudgetDisplayStyle.detailed)
             }
             .pickerStyle(.inline)
@@ -70,11 +70,13 @@ struct BudgetOptionsMenu: View {
             if let expandAllGroups, let collapseAllGroups {
                 Section {
                     Button(action: expandAllGroups) {
-                        Label("Expand All Groups", systemImage: "chevron.down")
+                        Label(String(localized: "budget.options.expandAll"), systemImage: "chevron.down")
                     }
+                    .accessibilityIdentifier("budget.expandAllGroups")
                     Button(action: collapseAllGroups) {
-                        Label("Collapse All Groups", systemImage: "chevron.right")
+                        Label(String(localized: "budget.options.collapseAll"), systemImage: "chevron.right")
                     }
+                    .accessibilityIdentifier("budget.collapseAllGroups")
                 }
             }
 
@@ -85,11 +87,11 @@ struct BudgetOptionsMenu: View {
                 // total, so the clean style doesn't offer the switch.
                 if budgetStore.budgetDisplayStyle == .detailed {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
-                        Label("Group Totals", systemImage: "sum")
+                        Label(String(localized: "budget.options.groupTotals"), systemImage: "sum")
                     }
                 }
                 Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
-                    Label("Hide Spent Categories", systemImage: "line.3.horizontal.decrease")
+                        Label(String(localized: "budget.options.hideSpent"), systemImage: "line.3.horizontal.decrease")
                 }
             }
         } label: {
@@ -97,8 +99,9 @@ struct BudgetOptionsMenu: View {
                 ? "ellipsis.circle"
                 : "line.3.horizontal.decrease.circle.fill")
         }
-        .accessibilityLabel("Budget options")
-        .accessibilityHint("Layout, group and amount display options")
+        .accessibilityLabel(String(localized: "Budget options"))
+        .accessibilityIdentifier("budget.options")
+        .accessibilityHint(String(localized: "Layout, group and amount display options"))
     }
 }
 

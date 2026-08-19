@@ -18,19 +18,19 @@ struct BackupListView: View {
         List {
             if hasLatest {
                 Section {
-                    Button("Revert to Original Version") {
+                    Button(String(localized: "Revert to Original Version")) {
                         Task { await budgetStore.revertToLatest() }
                     }
                 } header: {
-                    Text("You're Working From a Backup")
+                    Text(String(localized: "You're Working From a Backup"))
                 } footer: {
-                    Text("Reverting restores the budget exactly as it was before the backup was loaded.")
+                    Text(String(localized: "Reverting restores the budget exactly as it was before the backup was loaded."))
                 }
             }
 
             Section {
                 if archives.isEmpty {
-                    Text("No backups yet")
+                    Text(String(localized: "No backups yet"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(archives) { backup in
@@ -43,7 +43,7 @@ struct BackupListView: View {
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if let url = budgetStore.backupFileURL(id) {
                                     ShareLink(item: url) {
-                                        Label("Export", systemImage: "square.and.arrow.up")
+                                        Label(String(localized: "Export"), systemImage: "square.and.arrow.up")
                                     }
                                 }
                             }
@@ -52,32 +52,32 @@ struct BackupListView: View {
                 }
             } footer: {
                 if !hasLatest && !archives.isEmpty {
-                    Text("Restoring a backup replaces the current budget. Your current data is saved first so you can revert. Swipe a backup to export it for import into Actual on the web or desktop.")
+                    Text(String(localized: "backupList.exportFooter"))
                 }
             }
         }
-        .navigationTitle("Backups")
+        .navigationTitle(String(localized: "Backups"))
         .task { await budgetStore.refreshBackups() }
         .confirmationDialog(
-            "Restore this backup?",
+            String(localized: "Restore this backup?"),
             isPresented: Binding(
                 get: { pendingRestore != nil },
                 set: { if !$0 { pendingRestore = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button("Restore", role: .destructive) {
+            Button(String(localized: "Restore"), role: .destructive) {
                 if let backup = pendingRestore {
                     Task { await budgetStore.restoreBackup(backup.id) }
                 }
                 pendingRestore = nil
             }
-            Button("Cancel", role: .cancel) { pendingRestore = nil }
+            Button(String(localized: "common.cancel"), role: .cancel) { pendingRestore = nil }
         } message: {
             if budgetStore.isConnected {
-                Text("Restoring disconnects this budget from sync. To sync again, re-download the budget from your server — that replaces the restored data. Your current data is saved first so you can revert.")
+                Text(String(localized: "backupList.restoreConnected"))
             } else {
-                Text("Your current data is saved first so you can revert.")
+                Text(String(localized: "Your current data is saved first so you can revert."))
             }
         }
     }

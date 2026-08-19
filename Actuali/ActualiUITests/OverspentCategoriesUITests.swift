@@ -15,7 +15,7 @@ final class OverspentCategoriesUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        let budgetTab = app.tabBars.buttons["Budget"]
+        let budgetTab = app.tabBars.buttons["tab.budget"]
         XCTAssertTrue(budgetTab.waitForExistence(timeout: 10), "Budget tab not found")
 
         // Demo data is within budget everywhere: no notice at launch.

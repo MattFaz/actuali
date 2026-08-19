@@ -9,6 +9,7 @@ struct CurrencyAmountFormatTests {
 
     private let enUS = Locale(identifier: "en_US")
     private let enNZ = Locale(identifier: "en_NZ")
+    private let frFR = Locale(identifier: "fr_FR")
 
     @Test func standardPresentationKeepsDisambiguationPrefix() {
         let formatted = CurrencyAmountFormat.string(
@@ -57,5 +58,14 @@ struct CurrencyAmountFormatTests {
             cents: 123_450, currencyCode: "JPY", narrowSymbol: true, locale: enUS)
         #expect(standard == "¥1,234")
         #expect(narrow == "¥1,234")
+    }
+
+    /// French uses a comma as the decimal separator and the euro symbol,
+    /// confirming the formatter respects the injected locale.
+    @Test func frenchLocaleEuroFormatting() {
+        let formatted = CurrencyAmountFormat.string(
+            cents: 100_50, currencyCode: "EUR", narrowSymbol: false, locale: frFR)
+        #expect(formatted.contains("€"))
+        #expect(formatted.contains(",50"))
     }
 }

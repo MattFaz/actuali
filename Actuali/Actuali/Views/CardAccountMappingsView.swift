@@ -10,21 +10,21 @@ struct CardAccountMappingsView: View {
     private var sortedMappings: [(keyword: String, accountName: String)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0.name) })
         return budgetStore.cardAccountMappings.map { (keyword, accountId) in
-            (keyword: keyword, accountName: accountsById[accountId] ?? "Unknown Account")
+            (keyword: keyword, accountName: accountsById[accountId] ?? String(localized: "Unknown Account"))
         }.sorted { $0.keyword < $1.keyword }
     }
 
     var body: some View {
         List {
             Section {
-                Text("Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your accounts. When a shortcut logs a transaction with a card or account hint — such as the card name from an Apple Wallet automation — it routes to the matching account automatically.")
+                Text(String(localized: "cardMappings.explanation"))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Card Mappings") {
+            Section(String(localized: "cardMappings.title")) {
                 if sortedMappings.isEmpty {
-                    Text("No card mappings added yet.")
+                    Text(String(localized: "cardMappings.empty"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(sortedMappings, id: \.keyword) { mapping in
@@ -32,7 +32,7 @@ struct CardAccountMappingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(mapping.keyword)
                                     .font(.headline)
-                                Text("Routes to \(mapping.accountName)")
+                                Text(String(format: String(localized: "cardMappings.routesTo"), mapping.accountName))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -51,38 +51,38 @@ struct CardAccountMappingsView: View {
                     newKeyword = ""
                     showingAddSheet = true
                 } label: {
-                    Label("Add Card Mapping", systemImage: "plus")
+                    Label(String(localized: "cardMappings.add"), systemImage: "plus")
                 }
             }
         }
-        .navigationTitle("Card Mappings")
+        .navigationTitle(String(localized: "cardMappings.title"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSheet) {
             NavigationStack {
                 Form {
                     Section {
-                        TextField("Card Last-4 or Keyword (e.g. 1234, HSBC)", text: $newKeyword)
+                        TextField(String(localized: "cardMappings.keywordPrompt"), text: $newKeyword)
                             .autocorrectionDisabled()
                         
-                        Picker("Target Account", selection: $selectedAccountId) {
+                        Picker(String(localized: "cardMappings.targetAccount"), selection: $selectedAccountId) {
                             ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
                     } header: {
-                        Text("Mapping Details")
+                        Text(String(localized: "cardMappings.details"))
                     } footer: {
-                        Text("Enter the digits or keyword exactly as your shortcut passes them in the Card or Account Hint field.")
+                        Text(String(localized: "cardMappings.footer"))
                     }
                 }
-                .navigationTitle("Add Mapping")
+                .navigationTitle(String(localized: "cardMappings.addTitle"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
-                        Button("Cancel") { showingAddSheet = false }
+                        Button(String(localized: "common.cancel")) { showingAddSheet = false }
                     }
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") {
+                        Button(String(localized: "common.save")) {
                             saveMapping()
                             showingAddSheet = false
                         }
