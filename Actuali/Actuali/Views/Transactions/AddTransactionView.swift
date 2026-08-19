@@ -510,15 +510,19 @@ struct AddTransactionView: View {
                             Spacer()
                         }
                     }
-                    // Esc still cancels on a hardware keyboard.
+                    // Esc cancels on a hardware keyboard while the row is on
+                    // screen. A Form row is lazy, so on a form long enough to
+                    // scroll the shortcut isn't registered until the row is
+                    // reached — the same reachability the tap has.
                     .keyboardShortcut(.cancelAction)
                 }
             }
             .readableWidth()
-            // The form's default ~35pt top inset is dead space on a screen
-            // with no header; 8pt keeps the first section off the status bar
-            // without it.
-            .contentMargins(.top, 8, for: .scrollContent)
+            // The form's default ~35pt top inset is dead space on the
+            // header-less tab root; 8pt keeps the first section off the status
+            // bar without it. Presented flows have a title up there and keep
+            // the stock inset.
+            .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
@@ -750,8 +754,9 @@ struct AddTransactionView: View {
         // A fresh form suggests categories from payee history again — a
         // discarded manual pick must not keep suppressing the lookup.
         userPickedCategory = false
-        // Cancel can arrive with the amount or payee field still focused;
-        // a fresh form doesn't keep the old keyboard up.
+        // A reset can arrive with the amount or payee field still focused —
+        // Esc or ⌘Return from a hardware keyboard — and a fresh form doesn't
+        // keep the old keyboard up.
         dismissKeyboard()
     }
 

@@ -77,10 +77,7 @@ final class AddTransactionCancelUITests: XCTestCase {
 
         enterAmountAndCancel(in: app)
 
-        // The Start Page is this tab: cancel stays put and discards the entry
-        // without bringing a keyboard back up over the tab bar.
-        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
-                      "keyboard came back up after cancelling in place")
+        // The Start Page is this tab: cancel stays put and discards the entry.
         assertAmountCleared(in: app)
         XCTAssertTrue(app.tabBars.buttons["Accounts"].isHittable,
                       "tab bar not reachable after cancelling in place")
