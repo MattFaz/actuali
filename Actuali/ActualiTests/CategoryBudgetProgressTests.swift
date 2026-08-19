@@ -115,6 +115,29 @@ struct CategoryBudgetProgressTests {
         #expect(kinds.contains(.spentLastMonth))
     }
 
+    @Test func filterMatchesTheStatesItNames() {
+        let overspent = makeCategory(budgeted: 0, spent: -100, available: -100)
+        let unassigned = makeCategory(budgeted: 0, spent: 0, available: 0)
+        let funded = makeCategory(budgeted: 100, spent: 0, available: 100)
+
+        #expect(BudgetCategoryFilter.all.includes(funded))
+        #expect(BudgetCategoryFilter.overspent.includes(overspent))
+        #expect(!BudgetCategoryFilter.overspent.includes(unassigned))
+        #expect(BudgetCategoryFilter.unassigned.includes(unassigned))
+        #expect(BudgetCategoryFilter.needsAttention.includes(overspent))
+        #expect(BudgetCategoryFilter.needsAttention.includes(unassigned))
+        #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
+        #expect(BudgetCategoryFilter.onTrack.includes(funded))
+        #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
+    }
+
+    @Test func monthKeysShiftAcrossTheYearBoundary() {
+        #expect(BudgetStore.shiftBudgetMonth("2026-01", by: -1) == "2025-12")
+        #expect(BudgetStore.shiftBudgetMonth("2026-12", by: 1) == "2027-01")
+        #expect(BudgetStore.shiftBudgetMonth("2026-06", by: 0) == "2026-06")
+        #expect(BudgetStore.shiftBudgetMonth("not-a-month", by: -1) == nil)
+    }
+
     @Test func coverSourcesPrioritizeFullCoverageThenSameGroup() {
         let overspent = makeCategory(id: "target", groupId: "home", budgeted: 0, spent: -5000, available: -5000)
         let partialSameGroup = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)

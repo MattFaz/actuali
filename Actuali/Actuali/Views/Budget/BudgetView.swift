@@ -704,24 +704,29 @@ struct BudgetGuidanceCategoryList: View {
                             Button {
                                 selectedCategory = category
                             } label: {
-                                HStack {
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(category.categoryName)
-                                            .foregroundStyle(.primary)
-                                        Text(category.groupName)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
+                                // One explicit VStack: a Button lays multiple
+                                // label views out side by side, which would
+                                // squash the bar next to the Spacer'd row.
+                                VStack(alignment: .leading, spacing: 4) {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 4) {
+                                            Text(category.categoryName)
+                                                .foregroundStyle(.primary)
+                                            Text(category.groupName)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Text(budgetStore.displayBalance(category.available))
+                                            .foregroundStyle(category.isOverspent ? .red : .secondary)
+                                            .monospacedDigit()
                                     }
-                                    Spacer()
-                                    Text(budgetStore.displayBalance(category.available))
-                                        .foregroundStyle(category.isOverspent ? .red : .secondary)
-                                        .monospacedDigit()
-                                }
-                                if category.showsProgressBar {
-                                    CategoryProgressBar(
-                                        fraction: category.progressFraction,
-                                        state: category.progressState
-                                    )
+                                    if category.showsProgressBar {
+                                        CategoryProgressBar(
+                                            fraction: category.progressFraction,
+                                            state: category.progressState
+                                        )
+                                    }
                                 }
                             }
                             .buttonStyle(.plain)
@@ -1289,13 +1294,7 @@ struct CategoryBudgetDetailSheet: View {
     }
 
     private var statusColor: Color {
-        switch liveCategory.progressState {
-        case .overspent: .red
-        case .spent: .orange
-        case .spending: .blue
-        case .funded: .green
-        case .unassigned: .secondary
-        }
+        liveCategory.progressState.tint
     }
 
     private var statusIcon: String {
@@ -1543,14 +1542,13 @@ struct BudgetDetailSectionHeader: View {
     }
 }
 
-/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
-/// Available amount: green while money remains, red once overspent.
-struct CategoryProgressBar: View {
-    let fraction: Double
-    let state: CategoryProgressState
-
-    private var tint: Color {
-        switch state {
+/// One place for the status color and mode-neutral wording, shared by the
+/// bar, the dot, and the detail sheet — so VoiceOver says the same thing for
+/// the same category everywhere. The detail sheet keeps its own
+/// envelope/tracking titles on top of this.
+extension CategoryProgressState {
+    var tint: Color {
+        switch self {
         case .overspent: .red
         case .spent: .orange
         case .spending: .blue
@@ -1559,18 +1557,25 @@ struct CategoryProgressBar: View {
         }
     }
 
-    private var trackTint: Color {
-        state == .funded ? tint.opacity(0.25) : Color(.systemFill)
-    }
-
-    private var status: String {
-        switch state {
+    var statusText: String {
+        switch self {
         case .overspent: "Overspent"
-        case .spent: "Spent"
-        case .spending: "Spending"
+        case .spent: "Fully spent"
+        case .spending: "Partially spent"
         case .funded: "Funded"
-        case .unassigned: "Unassigned"
+        case .unassigned: "No money assigned"
         }
+    }
+}
+
+/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
+/// Available amount: green while money remains, red once overspent.
+struct CategoryProgressBar: View {
+    let fraction: Double
+    let state: CategoryProgressState
+
+    private var trackTint: Color {
+        state == .funded ? state.tint.opacity(0.25) : Color(.systemFill)
     }
 
     var body: some View {
@@ -1579,7 +1584,7 @@ struct CategoryProgressBar: View {
                 Capsule()
                     .fill(trackTint)
                 Capsule()
-                    .fill(tint)
+                    .fill(state.tint)
                     .frame(width: geometry.size.width * fraction)
             }
         }
@@ -1588,7 +1593,7 @@ struct CategoryProgressBar: View {
         // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
-        .accessibilityLabel("\(status), spent \(Int((fraction * 100).rounded())) percent")
+        .accessibilityLabel("\(state.statusText), spent \(Int((fraction * 100).rounded())) percent")
     }
 }
 
@@ -1597,31 +1602,11 @@ struct CategoryProgressBar: View {
 struct CompactCategoryStatusDot: View {
     let state: CategoryProgressState
 
-    private var tint: Color {
-        switch state {
-        case .overspent: .red
-        case .spent: .orange
-        case .spending: .blue
-        case .funded: .green
-        case .unassigned: .secondary
-        }
-    }
-
-    private var status: String {
-        switch state {
-        case .overspent: "Overspent"
-        case .spent: "Fully spent"
-        case .spending: "Partially spent"
-        case .funded: "Funded"
-        case .unassigned: "No money assigned"
-        }
-    }
-
     var body: some View {
         Circle()
-            .fill(tint)
+            .fill(state.tint)
             .frame(width: 7, height: 7)
-            .accessibilityLabel(status)
+            .accessibilityLabel(state.statusText)
     }
 }
 

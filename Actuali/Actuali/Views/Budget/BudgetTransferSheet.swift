@@ -99,8 +99,11 @@ struct BudgetTransferSheet: View {
         Self.canUseToBudget(context) || !eligibleCategories.isEmpty
     }
 
+    /// Clamped to the amount actually being covered: this month's budget can
+    /// offset part of the rolled-over overspending, and the breakdown must
+    /// never show more than the "Amount to cover" total above it.
     private var rolledOverAmount: Int {
-        abs(context.category.rolledOverOverspending)
+        min(abs(context.category.rolledOverOverspending), abs(context.category.available))
     }
 
     private var currentMonthShortfall: Int {
@@ -153,7 +156,9 @@ struct BudgetTransferSheet: View {
                             }
                         }
                     } else {
-                        Text("No other category has available funds to cover this.")
+                        Text(isCovering
+                            ? "Nothing can cover this right now: To Budget is empty and no other category has available funds."
+                            : "There are no other categories to move this to.")
                             .foregroundStyle(.secondary)
                     }
                 } header: {
