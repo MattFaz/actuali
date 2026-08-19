@@ -80,9 +80,20 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         let addTitle = app.navigationBars["Add Transaction"]
         XCTAssertTrue(addTitle.waitForExistence(timeout: 5), "add sheet did not present")
 
-        let cancel = app.navigationBars.buttons["Cancel"]
+        // The sheet autofocuses the amount field, and Cancel is a row at the
+        // foot of the form now — drop the keyboard first, then reach it.
+        if app.keyboards.firstMatch.waitForExistence(timeout: 5) {
+            app.buttons["Done"].tap()
+        }
+
+        let cancel = app.buttons["Cancel"]
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
                       "no Cancel button on the sheet-presented add flow")
+        var scrollsLeft = 5
+        while !cancel.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
         cancel.tap()
 
         XCTAssertTrue(addTitle.waitForNonExistence(timeout: 5),

@@ -244,4 +244,30 @@ struct BudgetDatabaseCategoryTransactionsTests {
         let ids = try await db.fetchCategoryTransactions(categoryId: "cat-food", month: nil).map(\.id)
         #expect(ids == ["t-new", "t-mid-late", "t-mid-early", "t-old"])
     }
+
+    @Test func fetchesIncomeCategoryTransactions() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES ('acct-1', 'Checking', 0);
+
+                INSERT INTO categories (id, name) VALUES ('cat-salary', 'Salary');
+                INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', NULL);
+
+                INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                    ('t-may-salary',  'acct-1', 'cat-salary', 500_000, 20260531),
+                    ('t-june-salary', 'acct-1', 'cat-salary', 500_000, 20260615);
+            """)
+        }
+
+        let juneTxns = try await db.fetchCategoryTransactions(categoryId: "cat-salary", month: "2026-06")
+        #expect(juneTxns.map(\.id) == ["t-june-salary"])
+        #expect(juneTxns.first?.amount == 500_000)
+        #expect(juneTxns.first?.categoryName == "Salary")
+
+        let allTxns = try await db.fetchCategoryTransactions(categoryId: "cat-salary", month: nil)
+        #expect(allTxns.map(\.id) == ["t-june-salary", "t-may-salary"])
+    }
 }

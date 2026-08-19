@@ -105,12 +105,14 @@ struct AccountDetailView: View {
     }
 
     private func breakdownRow(_ title: String, amount: Int) -> some View {
-        HStack {
+        let text = budgetStore.displayBalance(amount)
+        return HStack {
             Text(title)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text(budgetStore.displayBalance(amount))
+            Text(text)
                 .foregroundStyle(.secondary)
+                .animatedAmount(text)
         }
         .font(.subheadline)
     }
@@ -122,13 +124,14 @@ struct AccountDetailView: View {
                 // split (GH #134), so the reconciled figure can be checked
                 // against a bank statement without starting a reconciliation.
                 Button {
-                    withAnimation { showingBreakdown.toggle() }
+                    withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
                 } label: {
                     HStack {
                         Text("Current Balance")
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
+                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
                         if breakdown != nil {
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.semibold))

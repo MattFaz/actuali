@@ -113,7 +113,7 @@ struct ActualiApp: App {
                             .allowsHitTesting(false)
                     }
                 }
-                .animation(.easeInOut(duration: 0.25), value: budgetStore.schedulePostNotice)
+                .animation(AppAnimation.appearance, value: budgetStore.schedulePostNotice)
         }
     }
 }

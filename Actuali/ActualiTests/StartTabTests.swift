@@ -3,7 +3,10 @@ import Testing
 
 struct StartTabTests {
 
-    @Test func tabTagsMatchMainTabViewOrder() {
+    // Tags are fixed by the persisted start page and by the tab
+    // selections in MainTabView and NotificationRouter. They do not
+    // follow the position of the tabs in the tab bar.
+    @Test func tabTagsAreStable() {
         #expect(StartTab.accounts.tabTag == 0)
         #expect(StartTab.budget.tabTag == 1)
         #expect(StartTab.addTransaction.tabTag == 2)

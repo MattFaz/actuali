@@ -226,7 +226,8 @@ struct BudgetView: View {
                                             income: income,
                                             // Only tracking budgets budget income;
                                             // envelope budgets just receive it.
-                                            showsBudgeted: budget.toBudget == nil
+                                            showsBudgeted: budget.toBudget == nil,
+                                            onShowTransactions: showTransactions
                                         )
                                     }
                                 } header: {
@@ -238,6 +239,11 @@ struct BudgetView: View {
                                 }
                             }
                         }
+                        // Collapse state lives in @AppStorage, and a write to
+                        // that lands outside any withAnimation transaction —
+                        // so the rows have to be animated from here, off the
+                        // stored value, rather than at the call site.
+                        .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
                         // The clean style keeps the stock section rhythm; the
                         // detailed table packs its group cards tighter.
                         .listSectionSpacing(
@@ -451,6 +457,14 @@ struct BudgetView: View {
         transactionsDestination = CategoryTransactionsDestination(
             categoryId: category.categoryId,
             categoryName: category.categoryName,
+            month: month
+        )
+    }
+
+    private func showTransactions(_ income: IncomeCategory, month: String?) {
+        transactionsDestination = CategoryTransactionsDestination(
+            categoryId: income.categoryId,
+            categoryName: income.categoryName,
             month: month
         )
     }
@@ -856,6 +870,7 @@ struct SummaryStat: View {
                 .foregroundColor(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
+                .animatedAmount(value)
         }
     }
 }
@@ -878,6 +893,7 @@ struct SummaryColumn: View {
                 .foregroundColor(valueColor)
                 .lineLimit(1)
                 .minimumScaleFactor(0.6)
+                .animatedAmount(value)
         }
         .frame(width: BudgetColumn.width, alignment: .trailing)
     }
@@ -896,6 +912,7 @@ struct BudgetAmountPill: View {
             .lineLimit(1)
             .minimumScaleFactor(0.6)
             .foregroundStyle(dimmed ? Color.secondary : color)
+            .animatedAmount(text)
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .frame(width: BudgetColumn.width, alignment: .trailing)
@@ -930,9 +947,11 @@ struct BudgetGroupHeader: View {
     var body: some View {
         Button(action: onToggleCollapse) {
             HStack(spacing: BudgetColumn.spacing) {
-                Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
-                    .font(.caption2.weight(.semibold))
-                    .foregroundStyle(.secondary)
+                DisclosureChevron(
+                    isExpanded: !isCollapsed,
+                    font: .caption2.weight(.semibold)
+                )
+                .foregroundStyle(.secondary)
                 if reservesTwoLines {
                     TwoLineName(
                         text: name,
@@ -988,14 +1007,29 @@ struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
     var showsBudgeted = false
+    var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                TwoLineName(text: income.categoryName, font: .body)
+                Button {
+                    onShowTransactions(income, nil)
+                } label: {
+                    TwoLineName(text: income.categoryName, font: .body)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("All transactions for \(income.categoryName)")
+
                 Spacer()
-                Text(budgetStore.displayBalance(income.received))
-                    .foregroundColor(income.received > 0 ? .green : .secondary)
+
+                Button {
+                    onShowTransactions(income, income.month)
+                } label: {
+                    Text(budgetStore.displayBalance(income.received))
+                        .foregroundColor(income.received > 0 ? .green : .secondary)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
             }
             if showsBudgeted {
                 Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
@@ -1024,6 +1058,9 @@ struct CategoryProgressBar: View {
             }
         }
         .frame(height: 5)
+        // Budgeting a category shrinks its bar as the money lands, so the
+        // edit is visible in the row itself and not only in the pill.
+        .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
         .accessibilityLabel("Spent \(Int((fraction * 100).rounded())) percent of available")
     }
