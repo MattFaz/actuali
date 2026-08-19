@@ -68,12 +68,6 @@ struct MainTabView: View {
     /// `tabItem` form in compact width.
     private var tabs: some View {
         TabView(selection: $selectedTab) {
-            Tab(value: 0) {
-                AccountsListView()
-            } label: {
-                Label("Accounts", systemImage: "banknote")
-            }
-
             Tab(value: 1) {
                 BudgetView()
             } label: {
@@ -85,6 +79,12 @@ struct MainTabView: View {
             // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
             // fails on main for that reason, unrelated to this.)
             .accessibilityValue(Text(overspentBadgeValue))
+
+            Tab(value: 0) {
+                AccountsListView()
+            } label: {
+                Label("Accounts", systemImage: "banknote")
+            }
 
             Tab(value: 2) {
                 AddTransactionTabView()
