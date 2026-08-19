@@ -20,6 +20,8 @@ struct AccountDetailView: View {
     /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
+    @State private var isSelecting = false
+    @State private var selectedTransactionIds: Set<String> = []
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -162,10 +164,17 @@ struct AccountDetailView: View {
                     ForEach(groups) { group in
                         Section(group.title) {
                             ForEach(group.transactions) { transaction in
-                                TransactionListRow(transaction: transaction,
-                                                   showAccount: false,
-                                                   showDate: false,
-                                                   editing: $editingTransaction)
+                                TransactionListRow(
+                                    transaction: transaction,
+                                    showAccount: false,
+                                    showDate: false,
+                                    isSelectionMode: isSelecting,
+                                    isSelected: selectedTransactionIds.contains(transaction.id),
+                                    editing: $editingTransaction,
+                                    onToggleSelect: {
+                                        selectedTransactionIds.formSymmetricDifference([transaction.id])
+                                    }
+                                )
                             }
                             // The sentinel rides in the last date section so
                             // grouped mode doesn't grow a headerless section
@@ -178,9 +187,16 @@ struct AccountDetailView: View {
                 } else {
                     Section("Recent Transactions") {
                         ForEach(pager.transactions) { transaction in
-                            TransactionListRow(transaction: transaction,
-                                               showAccount: false,
-                                               editing: $editingTransaction)
+                            TransactionListRow(
+                                transaction: transaction,
+                                showAccount: false,
+                                isSelectionMode: isSelecting,
+                                isSelected: selectedTransactionIds.contains(transaction.id),
+                                editing: $editingTransaction,
+                                onToggleSelect: {
+                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
+                                }
+                            )
                         }
                         if pager.hasMore {
                             TransactionPagingSentinel(pager: pager)
@@ -207,6 +223,32 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if isSelecting {
+                    Button("Done") {
+                        withAnimation {
+                            isSelecting = false
+                            selectedTransactionIds.removeAll()
+                        }
+                    }
+                } else {
+                    Button {
+                        showingAddTransaction = true
+                    } label: {
+                        Image(systemName: "plus")
+                    }
+                    .accessibilityLabel("Add Transaction")
+                }
+            }
+            if !isSelecting {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        withAnimation { isSelecting = true }
+                    } label: {
+                        Label("Select Transactions", systemImage: "checkmark.circle")
+                    }
+                }
+            }
             if WalletImportView.isSupported {
                 ToolbarItem(placement: .secondaryAction) {
                     Button {
@@ -229,14 +271,17 @@ struct AccountDetailView: View {
                     Label("Reconcile", systemImage: "checkmark.seal")
                 }
             }
-            ToolbarItem(placement: .primaryAction) {
-                Button {
-                    showingAddTransaction = true
-                } label: {
-                    Image(systemName: "plus")
-                }
+        }
+        .safeAreaInset(edge: .bottom) {
+            if isSelecting, let pager {
+                TransactionBulkActionBar(
+                    transactions: pager.transactions,
+                    selectedIds: $selectedTransactionIds,
+                    isSelecting: $isSelecting
+                )
             }
         }
+        .toolbar(isSelecting ? .hidden : .visible, for: .tabBar)
         .sheet(isPresented: $showingReconcile) {
             ReconcileView(account: account)
                 .environmentObject(budgetStore)
@@ -272,9 +317,12 @@ struct AccountDetailView: View {
         .task(id: [account.id, searchText]) {
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
-                // than showing them while the new ones load.
+                // than showing them while the new ones load — and its
+                // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                isSelecting = false
+                selectedTransactionIds.removeAll()
             } else if searchQuery != nil {
                 // Debounce keystrokes; the initial (empty) load and account
                 // switches run immediately.

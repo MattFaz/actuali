@@ -8,7 +8,7 @@ name: AI Code Review
 # level as the diff; worst case is a bad review comment.
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [opened, ready_for_review]
     branches: [main]
 
 permissions:
@@ -17,11 +17,8 @@ permissions:
 
 jobs:
   review:
-    if: github.repository == 'MattFaz/actuali'
+    if: github.repository == 'MattFaz/actuali' && !github.event.pull_request.draft
     runs-on: ubuntu-latest
-    concurrency:
-      group: ai-review-${{ github.event.pull_request.number }}
-      cancel-in-progress: true
     steps:
       # The test-merge ref = PR head merged into current main, so the review
       # always sees the branch as if it were up to date with main. If the PR
