@@ -166,12 +166,10 @@ struct BudgetView: View {
             Group {
                 if let budget = budgetStore.currentBudgetMonth {
                     VStack(spacing: 0) {
-                        if budgetStore.showBudgetCheckInStrip {
-                            BudgetCheckInStrip(
-                                budget: budget,
-                                selection: $categoryFilter
-                            )
-                            .padding(.bottom, 8)
+                        // For the List view style, the BudgetCheckInStrip should be about the Overview
+                        if budgetStore.budgetDisplayStyle == .list, budgetStore.showBudgetCheckInStrip {
+                            BudgetCheckInStrip(budget: budget, selection: $categoryFilter)
+                                .padding(.bottom, 8)
                         }
 
                         // The selected style owns only the monthly
@@ -203,8 +201,6 @@ struct BudgetView: View {
                                     )
                                 }
                             }
-                            // The summary stays pinned outside the List for
-                            // every style, including List.
                             .padding(.horizontal, summarySpacing.horizontalPadding)
                             .padding(.top, summarySpacing.topPadding)
                             .padding(.bottom, summarySpacing.bottomPadding)
@@ -233,6 +229,11 @@ struct BudgetView: View {
                             .accessibilityIdentifier("budgetUncategorized")
                             .padding(.horizontal, 12)
                             .padding(.bottom, 8)
+                        }
+                        
+                        if budgetStore.budgetDisplayStyle != .list, budgetStore.showBudgetCheckInStrip {
+                            BudgetCheckInStrip(budget: budget, selection: $categoryFilter)
+                                .padding(.bottom, 8)
                         }
 
                         List {
