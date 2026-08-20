@@ -653,7 +653,8 @@ struct BudgetView: View {
     @ViewBuilder
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
-            if budgetStore.showBudgetCheckInStrip {
+            if budgetStore.budgetDisplayStyle == .list,
+               budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
                     selection: $categoryFilter
@@ -732,6 +733,15 @@ struct BudgetView: View {
                 }
                 .accessibilityIdentifier("budgetUncategorized")
                 .padding(.horizontal, 4)
+                .padding(.bottom, 8)
+            }
+
+            if budgetStore.budgetDisplayStyle != .list,
+               budgetStore.showBudgetCheckInStrip {
+                BudgetCheckInStrip(
+                    budget: budget,
+                    selection: $categoryFilter
+                )
                 .padding(.bottom, 8)
             }
 
