@@ -44,9 +44,8 @@ jobs:
       # simulator keychain (errSecMissingEntitlement in EncryptionKeyManager
       # tests).
       # xcbeautify (preinstalled on macOS runners) keeps the log readable;
-      # --quieter drops compiler-warning annotations so GitHub only surfaces
-      # actual build/test failures; pipefail preserves xcodebuild's exit code
-      # through the pipe.
+      # --quiet drops passing-task noise but keeps warnings and errors;
+      # pipefail preserves xcodebuild's exit code through the pipe.
       - name: Build and run unit tests
         run: |
           set -o pipefail
@@ -55,4 +54,4 @@ jobs:
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
             -skip-testing:ActualiUITests \
-            | xcbeautify --quieter
+            | xcbeautify --quiet
