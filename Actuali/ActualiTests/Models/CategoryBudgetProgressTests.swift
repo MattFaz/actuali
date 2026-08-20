@@ -138,7 +138,7 @@ struct CategoryBudgetProgressTests {
         #expect(BudgetStore.shiftBudgetMonth("not-a-month", by: -1) == nil)
     }
 
-    @Test @MainActor func coverSourcesPrioritizeFullCoverageThenSameGroup() {
+    @Test func coverSourcesPrioritizeFullCoverageThenSameGroup() {
         let overspent = makeCategory(id: "target", groupId: "home", budgeted: 0, spent: -5000, available: -5000)
         let partialSameGroup = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)
         let largeOtherGroup = makeCategory(id: "large", groupId: "other", budgeted: 12000, spent: 0, available: 12000)
