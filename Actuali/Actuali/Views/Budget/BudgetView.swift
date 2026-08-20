@@ -103,11 +103,6 @@ struct BudgetView: View {
         BudgetListMetrics(style: budgetStore.budgetDisplayStyle)
     }
 
-    private var navigationBarAppearance: BudgetNavigationBarAppearance {
-        BudgetNavigationBarAppearance(style: budgetStore.budgetDisplayStyle)
-    }
-
-
     private func toggleCollapsed(_ groupId: String) {
         var groups = collapsedGroups
         if !groups.insert(groupId).inserted {
@@ -127,6 +122,10 @@ struct BudgetView: View {
         let groups = collapsedGroups.subtracting(groupedCategories.map(\.id))
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
+    
+    private var isList: Bool {
+        budgetStore.budgetDisplayStyle == .list
+    }
 
     var body: some View {
         NavigationStack {
@@ -134,14 +133,14 @@ struct BudgetView: View {
                 if let budget = budgetStore.currentBudgetMonth {
                     VStack(spacing: 0) {
                         // For the List view style, the BudgetCheckInStrip should be about the Overview
-                        if budgetStore.budgetDisplayStyle == .list, budgetStore.showBudgetCheckInStrip {
+                        if isList, budgetStore.showBudgetCheckInStrip {
                             BudgetCheckInStrip(budget: budget, selection: $categoryFilter)
                                 .padding(.bottom, 8)
                         }
 
                         // The selected style owns only the monthly
                         // presentation; navigation and actions stay shared.
-                        if budgetStore.budgetDisplayStyle != .list
+                        if !isList
                             || budgetStore.showListBudgetOverview {
                             Group {
                                 switch budgetStore.budgetDisplayStyle {
@@ -198,7 +197,7 @@ struct BudgetView: View {
                             .padding(.bottom, 8)
                         }
                         
-                        if budgetStore.budgetDisplayStyle != .list, budgetStore.showBudgetCheckInStrip {
+                        if !isList, budgetStore.showBudgetCheckInStrip {
                             BudgetCheckInStrip(budget: budget, selection: $categoryFilter)
                                 .padding(.bottom, 8)
                         }
@@ -450,7 +449,7 @@ struct BudgetView: View {
             // below already occupies the centre, and the tab bar says
             // "Budget" anyway.
             .navigationBarTitleDisplayMode(.inline)
-            .budgetNavigationBarBackground(navigationBarAppearance)
+            .budgetNavigationBarBackground(isList: isList)
             .toolbar {
                 // Both arrows flank the month in the center, so nothing sits in
                 // the leading "back button" position where the previous-month
@@ -667,9 +666,9 @@ struct BudgetView: View {
 private extension View {
     @ViewBuilder
     func budgetNavigationBarBackground(
-        _ appearance: BudgetNavigationBarAppearance
+        isList: Bool
     ) -> some View {
-        if appearance.isOpaque {
+        if isList {
             self
                 .toolbarBackground(Color(.secondarySystemBackground), for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)
