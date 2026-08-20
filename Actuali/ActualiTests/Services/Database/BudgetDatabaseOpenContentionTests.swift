@@ -56,17 +56,17 @@ struct BudgetDatabaseOpenContentionTests {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let blocker = try DatabaseQueue(path: url.path)
-        let lockHeld = DispatchSemaphore(value: 0)
-        let thread = Thread {
-            try? blocker.writeWithoutTransaction { db in
-                try db.execute(sql: "BEGIN EXCLUSIVE")
-                lockHeld.signal()
-                Thread.sleep(forTimeInterval: 0.3)
-                try db.execute(sql: "COMMIT")
+        await withCheckedContinuation { continuation in
+            let thread = Thread {
+                try? blocker.writeWithoutTransaction { db in
+                    try db.execute(sql: "BEGIN EXCLUSIVE")
+                    continuation.resume()
+                    Thread.sleep(forTimeInterval: 0.3)
+                    try db.execute(sql: "COMMIT")
+                }
             }
+            thread.start()
         }
-        thread.start()
-        lockHeld.wait()
 
         _ = try BudgetDatabase(path: url)
     }

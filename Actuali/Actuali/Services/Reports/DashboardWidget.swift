@@ -37,7 +37,7 @@ struct AnyCodable: Codable, Equatable {
 
     init(rawJSON: Data) { self.raw = rawJSON }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
             raw = Data("null".utf8)
@@ -64,7 +64,7 @@ struct AnyCodable: Codable, Equatable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         // Re-emit the raw JSON. We do this by decoding into a typed shadow.
         var container = encoder.singleValueContainer()
         if let s = try? JSONDecoder().decode(String.self, from: raw) {
@@ -108,7 +108,7 @@ struct SummaryMeta: Codable, Equatable {
         self.content = content
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decodeIfPresent(String.self, forKey: .name)
         timeFrame = try container.decodeIfPresent(WidgetTimeFrame.self, forKey: .timeFrame)
@@ -124,7 +124,7 @@ struct SummaryMeta: Codable, Equatable {
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(timeFrame, forKey: .timeFrame)

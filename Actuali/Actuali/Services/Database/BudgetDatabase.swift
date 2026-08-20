@@ -159,7 +159,9 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 ///   one of these async introduces an `await`, which opens an actor
 ///   reentrancy window mid-transaction. Any new write that participates in
 ///   CRDT message application or clock state belongs here.
-class BudgetDatabase {
+// Safe to share across actors: the only stored property is an immutable
+// GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
+final class BudgetDatabase: Sendable {
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
@@ -1058,7 +1060,7 @@ class BudgetDatabase {
                   AND (a.tombstone = 0 OR a.tombstone IS NULL)
                 """
 
-            var arguments: [DatabaseValueConvertible] = [categoryId]
+            var arguments: [any DatabaseValueConvertible] = [categoryId]
 
             // Dates are YYYYMMDD ints, so date/100 is the YYYYMM month.
             if let month, let monthInt = Int(month.replacingOccurrences(of: "-", with: "")) {
@@ -2986,7 +2988,7 @@ class BudgetDatabase {
         guard !transactionIds.isEmpty else { return }
         try dbQueue.write { db in
             let placeholders = Array(repeating: "?", count: transactionIds.count).joined(separator: ", ")
-            var arguments: [DatabaseValueConvertible?] = [scheduleId]
+            var arguments: [(any DatabaseValueConvertible)?] = [scheduleId]
             arguments.append(contentsOf: transactionIds)
             try db.execute(
                 sql: "UPDATE transactions SET schedule = ? WHERE id IN (\(placeholders))",
@@ -3198,8 +3200,12 @@ class BudgetDatabase {
               maxDistanceMeters.isFinite, maxDistanceMeters > 0 else {
             return []
         }
-        let rows = try await dbQueue.read { db in
-            try Row.fetchAll(db, sql: """
+        // GRDB's `Row` isn't `Sendable`, so it can't escape the `read` closure
+        // across the async boundary under Swift 6. Map rows into `NearbyPayee`
+        // (a Sendable domain type) inside the closure and only let that cross;
+        // the distance filtering then runs on the mapped values below.
+        let candidates = try await dbQueue.read { db -> [NearbyPayee] in
+            let rows = try Row.fetchAll(db, sql: """
                 SELECT pl.id AS location_id, pl.payee_id, pl.latitude, pl.longitude, pl.created_at,
                        p.name, p.transfer_acct
                 FROM payee_locations pl
@@ -3207,32 +3213,34 @@ class BudgetDatabase {
                 WHERE pl.tombstone IS NOT 1 AND p.tombstone IS NOT 1
                   AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL AND pl.created_at IS NOT NULL
                 """)
+            return rows.map { row in
+                let location = PayeeLocation(
+                    id: row["location_id"],
+                    payeeId: row["payee_id"],
+                    latitude: row["latitude"],
+                    longitude: row["longitude"],
+                    createdAt: row["created_at"]
+                )
+                let payee = Payee(
+                    id: location.payeeId,
+                    name: row["name"] ?? "Unknown",
+                    transferAccountId: row["transfer_acct"]
+                )
+                let distance = LocationUtils.calculateDistanceMeters(
+                    lat1: latitude, lon1: longitude,
+                    lat2: location.latitude, lon2: location.longitude
+                )
+                return NearbyPayee(payee: payee, location: location, distanceMeters: distance)
+            }
         }
         var closestByPayee: [String: NearbyPayee] = [:]
-        for row in rows {
-            let location = PayeeLocation(
-                id: row["location_id"],
-                payeeId: row["payee_id"],
-                latitude: row["latitude"],
-                longitude: row["longitude"],
-                createdAt: row["created_at"]
-            )
-            let distance = LocationUtils.calculateDistanceMeters(
-                lat1: latitude, lon1: longitude,
-                lat2: location.latitude, lon2: location.longitude
-            )
-            guard distance <= maxDistanceMeters else { continue }
-            if let existing = closestByPayee[location.payeeId],
-               existing.distanceMeters <= distance {
+        for candidate in candidates {
+            guard candidate.distanceMeters <= maxDistanceMeters else { continue }
+            if let existing = closestByPayee[candidate.payee.id],
+               existing.distanceMeters <= candidate.distanceMeters {
                 continue
             }
-            let payee = Payee(
-                id: location.payeeId,
-                name: row["name"] ?? "Unknown",
-                transferAccountId: row["transfer_acct"]
-            )
-            closestByPayee[location.payeeId] = NearbyPayee(
-                payee: payee, location: location, distanceMeters: distance)
+            closestByPayee[candidate.payee.id] = candidate
         }
         return closestByPayee.values
             .sorted {
