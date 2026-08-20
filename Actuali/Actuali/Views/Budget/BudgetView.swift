@@ -162,6 +162,7 @@ struct BudgetView: View {
         .initialSyncBanner()
     }
 
+
     /// One group's rows, extracted from the `List` so the body stays within
     /// the compiler's type-check budget.
     @ViewBuilder
@@ -212,6 +213,8 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CategoryBudgetRow(
                             category: category,
+                            addsGroupBottomPadding:
+                                category.id == group.categories.last?.id,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
                             // Name shows all time, Spent shows
@@ -225,14 +228,37 @@ struct BudgetView: View {
         }
     }
 
+    /// The income group drawn at the bottom of the table, extracted from the
+    /// `List` so the body stays within the compiler's type-check budget.
+    @ViewBuilder
+    private func incomeSection(_ budget: BudgetMonth) -> some View {
+        Section {
+            ForEach(budget.incomeCategories) { income in
+                IncomeCategoryRow(
+                    income: income,
+                    // Only tracking budgets budget income;
+                    // envelope budgets just receive it.
+                    showsBudgeted: budget.toBudget == nil,
+                    onShowTransactions: showTransactions
+                )
+            }
+        } header: {
+            HStack {
+                Text(budget.incomeCategories.first?.groupName ?? "Income")
+                Spacer()
+                Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+            }
+        }
+    }
+
     /// The screen's toolbar, extracted from `body` so the whole screen stays
     /// within the compiler's type-check budget.
     @ToolbarContentBuilder
     private var budgetToolbar: some ToolbarContent {
-        // Both arrows flank the month in the center, so nothing sits in
-        // the leading "back button" position where the previous-month
-        // chevron used to be mistaken for one (it steps the month, not
-        // the navigation stack).
+        // Both arrows flank the month in the center, so nothing sits in the
+        // leading "back button" position where the previous-month chevron
+        // used to be mistaken for one (it steps the month, not the
+        // navigation stack).
         ToolbarItem(placement: .principal) {
             HStack(spacing: 8) {
                 Button {
@@ -252,9 +278,9 @@ struct BudgetView: View {
                 .accessibilityLabel("Next month")
             }
         }
-        // Creation, unlike everything in the options menu, changes
-        // the budget rather than the view of it — so it gets its own
-        // button (GH #284). Nothing to add to until a budget is open.
+        // Creation, unlike everything in the options menu, changes the budget
+        // rather than the view of it — so it gets its own button (GH #284).
+        // Nothing to add to until a budget is open.
         if budgetStore.currentBudgetMonth != nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -278,17 +304,13 @@ struct BudgetView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
-            // Every "how should this look" control lives here (GH
-            // #157). Whole-table expand/collapse is a menu rather
-            // than a long-press on the group headers: SwiftUI context
-            // menus don't fire inside the clean style's section
-            // headers (GH #130).
-            let hasBudget = budgetStore.currentBudgetMonth != nil
+            // Every "how should this look" control lives here (GH #157).
+            // Whole-table expand/collapse is a menu rather than a long-press
+            // on the group headers: SwiftUI context menus don't fire inside
+            // the clean style's section headers (GH #130).
             BudgetOptionsMenu(
-                categoryFilter: $categoryFilter,
-                isTrackingBudget: budgetStore.currentBudgetMonth?.isTrackingBudget == true,
-                expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
-                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
+                expandAllGroups: budgetStore.currentBudgetMonth == nil ? nil : expandAllGroups,
+                collapseAllGroups: budgetStore.currentBudgetMonth == nil ? nil : collapseAllGroups
             )
         }
     }
@@ -299,11 +321,10 @@ struct BudgetView: View {
     @ViewBuilder
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
-            // Summary card: the clean style reads as a 2x2 grid of
-            // currency amounts; the detailed style's captioned
-            // columns double as the column headers for the table
-            // below. It sits above the List (not inside it) so it
-            // stays pinned while the table scrolls (GH #155).
+            // Summary card: the clean style reads as a 2x2 grid of currency
+            // amounts; the detailed style's captioned columns double as the
+            // column headers for the table below. It sits above the List (not
+            // inside it) so it stays pinned while the table scrolls (GH #155).
             Group {
                 if budgetStore.budgetDisplayStyle == .clean {
                     CleanBudgetSummary(budget: budget)
@@ -315,8 +336,8 @@ struct BudgetView: View {
                         )
                 } else {
                     TableBudgetSummary(budget: budget)
-                        // Fine-tune the fixed-width columns against
-                        // the amount pills in the rows below.
+                        // Fine-tune the fixed-width columns against the
+                        // amount pills in the rows below.
                         .padding(.leading, 4)
                         .padding(.trailing, 4)
                         .padding(.horizontal, 12)
@@ -327,21 +348,51 @@ struct BudgetView: View {
                         )
                 }
             }
-            // The List below overrides its default margins with
-            // 4 pt content margins; match them so the summary is
-            // the same width as the sections.
+            // The List below overrides its default margins with 4 pt content
+            // margins; match them so the summary is the same width as the
+            // sections.
             .padding(.horizontal, 4)
             .padding(.top, 8)
-            // A gutter that survives scrolling, unlike the List's
-            // top content margin below. Without it the scrolled
-            // rows clip flush against the capsule — a group header
-            // sliced mid-glyph, its tinted background swallowing
-            // the capsule's bottom corners (GH #165).
+            // A gutter that survives scrolling, unlike the List's top content
+            // margin below. Without it the scrolled rows clip flush against
+            // the capsule — a group header sliced mid-glyph, its tinted
+            // background swallowing the capsule's bottom corners (GH #165).
             .padding(.bottom, 8)
 
-            List {
-                BudgetCheckInSection(budget: budget)
+            // The strip filters categories, so it can't express uncategorized
+            // transactions — and the check-in card it replaced held the only
+            // in-app route to that list (otherwise reachable only from a
+            // notification tap).
+            if budgetStore.uncategorizedCount > 0 {
+                NavigationLink {
+                    UncategorizedTransactionsView()
+                } label: {
+                    HStack {
+                        Label(
+                            "\(budgetStore.uncategorizedCount) uncategorized",
+                            systemImage: "questionmark.circle.fill"
+                        )
+                        Spacer(minLength: 8)
+                        Image(systemName: "chevron.right")
+                            .font(.footnote.weight(.semibold))
+                    }
+                    .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.orange)
+                }
+                .accessibilityIdentifier("budgetUncategorized")
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+            }
 
+            if budgetStore.showBudgetCheckInStrip {
+                BudgetCheckInStrip(
+                    budget: budget,
+                    selection: $categoryFilter
+                )
+                .padding(.bottom, 8)
+            }
+
+            List {
                 if categoryFilter != .all, groupedCategories.isEmpty {
                     ContentUnavailableView {
                         Label("No Matching Categories", systemImage: "line.3.horizontal.decrease.circle")
@@ -358,43 +409,51 @@ struct BudgetView: View {
                     groupSection(group)
                 }
 
-                // Income group last, matching the bottom of the web
-                // UI's budget table.
+                // Income group last, matching the bottom of the web UI's
+                // budget table.
                 if categoryFilter == .all, !budget.incomeCategories.isEmpty {
                     incomeSection(budget)
                 }
             }
-            // Collapse state lives in @AppStorage, and a write to
-            // that lands outside any withAnimation transaction —
-            // so the rows have to be animated from here, off the
-            // stored value, rather than at the call site.
+            // Collapse state lives in @AppStorage, and a write to that lands
+            // outside any withAnimation transaction — so the rows have to be
+            // animated from here, off the stored value, rather than at the
+            // call site.
             .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
-            // The clean style keeps the stock section rhythm; the
-            // detailed table packs its group cards tighter.
+            // The clean style keeps the stock section rhythm; the detailed
+            // table packs its group cards tighter.
             .listSectionSpacing(
                 budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
             )
+            // Pull-to-refresh belongs to the table alone. Attached to the
+            // container instead, SwiftUI also wires it to the check-in
+            // strip's horizontal ScrollView, so dragging the chips down
+            // fired a sync.
+            .refreshable {
+                await budgetStore.sync()
+                // sync() refreshes the current calendar month; re-fetch in
+                // case the user is viewing another.
+                await budgetStore.fetchBudgetMonth(selectedMonth)
+            }
             .contentMargins(.horizontal, 4, for: .scrollContent)
-            // The rest of the gap under the pinned summary — this
-            // part scrolls away with the content, leaving the 8 pt
-            // gutter above. Together they sit a notch wider than
-            // the spacing between the group sections, so the
-            // summary reads as its own bar rather than a first
-            // group (GH #165).
+            // The rest of the gap under the pinned summary — this part
+            // scrolls away with the content, leaving the 8 pt gutter above.
+            // Together they sit a notch wider than the spacing between the
+            // group sections, so the summary reads as its own bar rather than
+            // a first group (GH #165).
             .contentMargins(
                 .top,
                 budgetStore.budgetDisplayStyle == .clean ? 20 : 16,
                 for: .scrollContent
             )
-            // Let short rows (group headers) sit below the stock
-            // 44 pt minimum; tap targets stay fine because the whole
-            // row is the button.
+            // Let short rows (group headers) sit below the stock 44 pt
+            // minimum; tap targets stay fine because the whole row is the
+            // button.
             .environment(\.defaultMinListRowHeight, 32)
-            // Rows leaving the table used to be chopped off flat
-            // against the gutter under the summary, a hard grey
-            // line across mid-row. Fade them into it instead. The
-            // List's top content margin above is deeper than this
-            // fade, so at rest it covers empty background and
+            // Rows leaving the table used to be chopped off flat against the
+            // gutter under the summary, a hard grey line across mid-row. Fade
+            // them into it instead. The List's top content margin above is
+            // deeper than this fade, so at rest it covers empty background and
             // nothing on screen looks washed out.
             .overlay(alignment: .top) {
                 LinearGradient(
@@ -422,38 +481,14 @@ struct BudgetView: View {
                     }
             )
         }
-        // The budget table is a fixed grid of narrow amount
-        // columns; stretched to iPad width it becomes a category
-        // name and its numbers separated by a foot of nothing.
+        // The budget table is a fixed grid of narrow amount columns;
+        // stretched to iPad width it becomes a category name and its numbers
+        // separated by a foot of nothing.
         .readableWidth()
-        // The pinned summary sits outside the List, so paint the
-        // grouped background behind it to match.
+        // The pinned summary sits outside the List, so paint the grouped
+        // background behind it to match.
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
-
-    /// The income group drawn at the bottom of the table, extracted from the
-    /// `List` so the body stays within the compiler's type-check budget.
-    @ViewBuilder
-    private func incomeSection(_ budget: BudgetMonth) -> some View {
-        Section {
-            ForEach(budget.incomeCategories) { income in
-                IncomeCategoryRow(
-                    income: income,
-                    // Only tracking budgets budget income;
-                    // envelope budgets just receive it.
-                    showsBudgeted: budget.toBudget == nil,
-                    onShowTransactions: showTransactions
-                )
-            }
-        } header: {
-            HStack {
-                Text(budget.incomeCategories.first?.groupName ?? "Income")
-                Spacer()
-                Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
-            }
-        }
-    }
-
     /// Open the move-money sheet for a tapped balance (GH #128): cover
     /// overspending when red, move the surplus when green. The month is
     /// captured alongside so the picker lists its sibling categories.
