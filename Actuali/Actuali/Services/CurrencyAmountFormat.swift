@@ -34,22 +34,23 @@ enum CurrencyAmountFormat {
     }
 
     /// Formats with the budget currency's native precision while omitting its
-    /// symbol. The List table supplies the currency and meaning through its
+    /// symbol. The budget tables supply the currency and meaning through their
     /// column headers, leaving more horizontal room for category names.
     @MainActor
     static func symbolLessString(
         cents: Int,
         currencyCode: String,
+        wholeUnits: Bool = false,
         locale: Locale = .autoupdatingCurrent
     ) -> String {
         let amount = Double(cents) / 100.0
         guard !currencyCode.isEmpty else {
             return amount.formatted(
-                .number.precision(.fractionLength(2)).locale(locale)
+                .number.precision(.fractionLength(wholeUnits ? 0 : 2)).locale(locale)
             )
         }
 
-        let key = "\(locale.identifier)|\(currencyCode)"
+        let key = "\(locale.identifier)|\(currencyCode)|\(wholeUnits)"
         let formatter: NumberFormatter
         if let cached = symbolLessFormatters[key] {
             formatter = cached
@@ -60,6 +61,10 @@ enum CurrencyAmountFormat {
             created.currencyCode = currencyCode
             created.currencySymbol = ""
             created.internationalCurrencySymbol = ""
+            if wholeUnits {
+                created.minimumFractionDigits = 0
+                created.maximumFractionDigits = 0
+            }
             symbolLessFormatters[key] = created
             formatter = created
         }
