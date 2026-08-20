@@ -46,7 +46,6 @@ private struct BudgetListMetrics {
     let horizontalContentMargin: CGFloat
     let topContentMargin: CGFloat
     let showsTopFade: Bool
-    let backgroundColor: Color
 
     init(style: BudgetDisplayStyle) {
         switch style {
@@ -55,45 +54,16 @@ private struct BudgetListMetrics {
             horizontalContentMargin = 4
             topContentMargin = 20
             showsTopFade = true
-            backgroundColor = Color(.systemGroupedBackground)
         case .detailed:
             sectionSpacing = .custom(14)
             horizontalContentMargin = 4
             topContentMargin = 16
             showsTopFade = true
-            backgroundColor = Color(.systemGroupedBackground)
         case .list:
             sectionSpacing = .custom(0)
             horizontalContentMargin = 0
             topContentMargin = 0
             showsTopFade = false
-            backgroundColor = Color(.systemGroupedBackground)
-        }
-    }
-}
-
-struct BudgetNavigationBarAppearance: Equatable {
-    let isOpaque: Bool
-
-    init(style: BudgetDisplayStyle) {
-        isOpaque = style == .list
-    }
-}
-
-struct BudgetSummarySpacing: Equatable {
-    let horizontalPadding: CGFloat
-    let topPadding: CGFloat
-    let bottomPadding: CGFloat
-
-    init(style: BudgetDisplayStyle) {
-        if style == .list {
-            horizontalPadding = 0
-            topPadding = 0
-            bottomPadding = 0
-        } else {
-            horizontalPadding = 4
-            topPadding = 8
-            bottomPadding = 8
         }
     }
 }
@@ -137,9 +107,6 @@ struct BudgetView: View {
         BudgetNavigationBarAppearance(style: budgetStore.budgetDisplayStyle)
     }
 
-    private var summarySpacing: BudgetSummarySpacing {
-        BudgetSummarySpacing(style: budgetStore.budgetDisplayStyle)
-    }
 
     private func toggleCollapsed(_ groupId: String) {
         var groups = collapsedGroups
@@ -201,9 +168,9 @@ struct BudgetView: View {
                                     )
                                 }
                             }
-                            .padding(.horizontal, summarySpacing.horizontalPadding)
-                            .padding(.top, summarySpacing.topPadding)
-                            .padding(.bottom, summarySpacing.bottomPadding)
+                            .padding(.horizontal, isList ? 0 : 4)
+                            .padding(.vertical, isList ? 0 : 8)
+                            .background(Color(.systemGroupedBackground).ignoresSafeArea())
                         }
 
                         // The strip filters categories, so it can't express
@@ -457,7 +424,7 @@ struct BudgetView: View {
                     // columns; stretched to iPad width it becomes a category
                     // name and its numbers separated by a foot of nothing.
                     .readableWidth()
-                    .background(listMetrics.backgroundColor.ignoresSafeArea())
+                    .background(Color(.systemGroupedBackground).ignoresSafeArea())
                 } else if !budgetStore.isLoading {
                     if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
                         ContentUnavailableView(
