@@ -153,12 +153,16 @@ struct PayeeLocationManagementTests {
         let queue = try DatabaseQueue(path: path.path)
         let messages = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
+                .map { (row: $0["row"] as String,
+                        dataset: $0["dataset"] as String,
+                        column: $0["column"] as String,
+                        value: $0["value"] as String) }
         }
         #expect(messages.count == 2)
-        #expect(Set(messages.map { $0["row"] as String }) == ["a", "b"])
-        #expect(Set(messages.map { $0["dataset"] as String }) == ["payee_locations"])
-        #expect(Set(messages.map { $0["column"] as String }) == ["tombstone"])
-        #expect(Set(messages.map { $0["value"] as String }) == ["N:1"])
+        #expect(Set(messages.map(\.row)) == ["a", "b"])
+        #expect(Set(messages.map(\.dataset)) == ["payee_locations"])
+        #expect(Set(messages.map(\.column)) == ["tombstone"])
+        #expect(Set(messages.map(\.value)) == ["N:1"])
     }
 
     /// Nothing to clear is a no-op, not an error and not a spurious sync.
