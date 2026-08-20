@@ -259,7 +259,7 @@ struct ListCategoryBudgetRow: View {
             } else {
                 compactContent
             }
-            if showsProgressBars {
+            if showsProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
                     fraction: category.progressFraction,
                     state: category.progressState
@@ -354,9 +354,7 @@ struct ListCategoryBudgetRow: View {
             onShowDetails(category)
         } label: {
             HStack(spacing: 6) {
-                if showsProgressBars {
-                    CompactCategoryStatusDot(state: category.progressState)
-                }
+                CompactCategoryStatusDot(state: category.progressState)
                 Text(category.categoryName)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
