@@ -192,7 +192,7 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(!result.synced)
 
         let queue = try DatabaseQueue(path: url.path)
-        let rows = try await queue.read { db in
+        let rows: [Row] = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT id FROM transactions WHERE tombstone = 0")
         }
         #expect(rows.count == 1)

@@ -363,7 +363,7 @@ struct BudgetDatabaseSplitTests {
         #expect(inserted.count == crdtMessages.count)
 
         let queue = try DatabaseQueue(path: url.path)
-        let rows = try await queue.read { conn in
+        let rows: [Row] = try await queue.read { conn in
             try Row.fetchAll(conn, sql: """
                 SELECT id, isParent, isChild, parent_id, category, amount, sort_order
                 FROM transactions ORDER BY sort_order DESC

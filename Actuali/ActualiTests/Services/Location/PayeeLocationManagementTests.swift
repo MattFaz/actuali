@@ -151,7 +151,7 @@ struct PayeeLocationManagementTests {
         #expect(try await database.fetchPayeeLocations(payeeId: "p2").map(\.id) == ["other"])
 
         let queue = try DatabaseQueue(path: path.path)
-        let messages = try await queue.read { db in
+        let messages: [Row] = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
         }
         #expect(messages.count == 2)

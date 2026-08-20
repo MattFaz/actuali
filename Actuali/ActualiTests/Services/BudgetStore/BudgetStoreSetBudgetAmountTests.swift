@@ -135,7 +135,7 @@ struct BudgetStoreSetBudgetAmountTests {
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
 
         let queue = try DatabaseQueue(path: path.path)
-        let rows = try await queue.read { db in
+        let rows: [Row] = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets")
         }
         #expect(rows.count == 1)

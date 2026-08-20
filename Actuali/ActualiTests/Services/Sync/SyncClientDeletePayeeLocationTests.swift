@@ -58,7 +58,7 @@ struct SyncClientDeletePayeeLocationTests {
         }
         #expect(tombstone == 1)
 
-        let messages = try await queue.read { db in
+        let messages: [Row] = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
         }
         #expect(messages.count == 1)
