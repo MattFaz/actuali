@@ -463,6 +463,24 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Dashboard page the Reports tab opens on (GH #223). nil means the first
+    /// live page, matching the web app's ReportsDashboardRouter.
+    var defaultDashboardPageId: String? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return UserDefaults.standard.string(forKey: "defaultDashboardPageId_\(budgetId)")
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            if let value = newValue {
+                UserDefaults.standard.set(value, forKey: "defaultDashboardPageId_\(budgetId)")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "defaultDashboardPageId_\(budgetId)")
+            }
+            objectWillChange.send()
+        }
+    }
+
     /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
     /// Persisted per budget in UserDefaults.
     var cardAccountMappings: [String: String] {

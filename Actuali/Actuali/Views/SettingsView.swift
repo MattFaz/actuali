@@ -82,6 +82,7 @@ struct SettingsView: View {
     @State private var lastBackgroundRefresh = BackgroundRefreshStatus().lastRun
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
     @State private var confirmBackupOverBaseline = false
+    @State private var dashboardPages: [DashboardPage] = []
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -119,6 +120,21 @@ struct SettingsView: View {
         let status = BackgroundRefreshStatus()
         lastBackgroundRefresh = status.lastRun
         refreshRequestError = status.lastScheduleError
+    }
+
+    private func reloadDashboardPages() async {
+        guard let database = budgetStore.databaseForLogger else {
+            dashboardPages = []
+            return
+        }
+        dashboardPages = (try? await database.fetchDashboardPages()) ?? []
+        // A default naming a page that's since been deleted has no tag to
+        // match in the picker, and the Reports tab already falls back to the
+        // first page — so drop it rather than show a phantom selection.
+        if let id = budgetStore.defaultDashboardPageId,
+           !dashboardPages.contains(where: { $0.id == id }) {
+            budgetStore.defaultDashboardPageId = nil
+        }
     }
 
     private static var appVersion: String {
@@ -393,6 +409,17 @@ struct SettingsView: View {
                     Picker("Start Page", selection: $budgetStore.startTab) {
                         ForEach(StartTab.allCases) { tab in
                             Text(tab.label).tag(tab)
+                        }
+                    }
+
+                    // Nothing to choose between with one page, and the picker
+                    // would only ever offer the page already on screen.
+                    if dashboardPages.count > 1 {
+                        Picker("Default Dashboard", selection: $budgetStore.defaultDashboardPageId) {
+                            Text("First Dashboard").tag(nil as String?)
+                            ForEach(dashboardPages) { page in
+                                Text(page.name.isEmpty ? "Untitled" : page.name).tag(page.id as String?)
+                            }
                         }
                     }
 
@@ -678,6 +705,12 @@ struct SettingsView: View {
             .task {
                 reloadBackgroundRefreshStatus()
                 await refreshNotificationPermissionState()
+            }
+            // Keyed to the open database so the pages re-load when the budget
+            // finishes opening and when it's switched — Settings is a resident
+            // tab, so a plain .task only ever runs once.
+            .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) {
+                await reloadDashboardPages()
             }
             // The background refresh task fires while the app is suspended —
             // same process, so the @State snapshot taken at launch never

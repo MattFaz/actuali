@@ -115,13 +115,20 @@ struct ReportsTabView: View {
         page.name.isEmpty ? "Untitled" : page.name
     }
 
-    /// Which page to show: a still-live explicit selection wins, otherwise
-    /// the first live page (the web's ReportsDashboardRouter redirects to
-    /// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback
-    /// applies.
-    static func resolvePageId(selected: String?, pages: [DashboardPage]) -> String? {
+    /// Which page to show: a still-live explicit selection wins, then the
+    /// dashboard configured in Settings (GH #223), otherwise the first live
+    /// page (the web's ReportsDashboardRouter redirects to dashboardPages[0]),
+    /// otherwise nil so the pre-pages pageless fallback applies.
+    static func resolvePageId(
+        selected: String?,
+        configuredDefault: String? = nil,
+        pages: [DashboardPage]
+    ) -> String? {
         if let selected, pages.contains(where: { $0.id == selected }) {
             return selected
+        }
+        if let configuredDefault, pages.contains(where: { $0.id == configuredDefault }) {
+            return configuredDefault
         }
         return pages.first?.id
     }
@@ -133,7 +140,11 @@ struct ReportsTabView: View {
         }
         do {
             let fetchedPages = try await database.fetchDashboardPages()
-            let pageId = Self.resolvePageId(selected: selectedPageId, pages: fetchedPages)
+            let pageId = Self.resolvePageId(
+                selected: selectedPageId,
+                configuredDefault: budgetStore.defaultDashboardPageId,
+                pages: fetchedPages
+            )
             let fetched = try await database.fetchWidgets(pageId: pageId)
             self.pages = fetchedPages
             self.selectedPageId = pageId
