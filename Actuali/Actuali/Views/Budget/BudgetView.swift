@@ -308,9 +308,12 @@ struct BudgetView: View {
             // Whole-table expand/collapse is a menu rather than a long-press
             // on the group headers: SwiftUI context menus don't fire inside
             // the clean style's section headers (GH #130).
+            // The isolated method references can't be inferred as optional
+            // closures under Swift 6, so wrap them.
+            let hasBudget = budgetStore.currentBudgetMonth != nil
             BudgetOptionsMenu(
-                expandAllGroups: budgetStore.currentBudgetMonth == nil ? nil : expandAllGroups,
-                collapseAllGroups: budgetStore.currentBudgetMonth == nil ? nil : collapseAllGroups
+                expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
+                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
             )
         }
     }

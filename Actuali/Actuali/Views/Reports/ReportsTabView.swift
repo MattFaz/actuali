@@ -125,11 +125,15 @@ struct ReportsTabView: View {
         page.name.isEmpty ? "Untitled" : page.name
     }
 
-    /// Which page to show: a still-live explicit selection wins, otherwise
-    /// the first live page (the web's ReportsDashboardRouter redirects to
-    /// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback
-    /// applies.
-    nonisolated static func resolvePageId(selected: String?, pages: [DashboardPage]) -> String? {
+    /// Which page to show: a still-live explicit selection wins, then the
+    /// dashboard configured in Settings (GH #223), otherwise the first live
+    /// page (the web's ReportsDashboardRouter redirects to dashboardPages[0]),
+    /// otherwise nil so the pre-pages pageless fallback applies.
+    nonisolated static func resolvePageId(
+        selected: String?,
+        configuredDefault: String? = nil,
+        pages: [DashboardPage]
+    ) -> String? {
         if let selected, pages.contains(where: { $0.id == selected }) {
             return selected
         }
