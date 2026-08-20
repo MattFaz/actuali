@@ -32,8 +32,9 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 ///
 /// Layout, expand/collapse and the spent-category visibility toggle used to be three
 /// separate controls — two crowding the navigation bar and one stranded in a
-/// footer section below the table. Category status filters stay visible in
-/// the check-in strip instead of being hidden here.
+/// footer section below the table. The status filters themselves live in the
+/// visible check-in strip rather than in here; only whether that strip is
+/// shown is a view option.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -72,6 +73,9 @@ struct BudgetOptionsMenu: View {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
                         Label("Group Totals", systemImage: "sum")
                     }
+                }
+                Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
+                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
                     Label("Hide Spent Categories", systemImage: "line.3.horizontal.decrease")

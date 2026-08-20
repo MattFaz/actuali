@@ -309,6 +309,16 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget shows the status filter strip above the category list.
+    /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
+    /// space on a phone, so a budget that never needs the filters can reclaim
+    /// it — hiding the strip drops any active filter with it.
+    @Published var showBudgetCheckInStrip: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetCheckInStrip, forKey: "showBudgetCheckInStrip")
+        }
+    }
+
     /// Whether the detailed style's group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
@@ -876,6 +886,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
+        _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showBudgetCheckInStrip") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _conventionalAmountEntry = Published(initialValue: UserDefaults.standard

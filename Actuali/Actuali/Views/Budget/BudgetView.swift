@@ -15,6 +15,19 @@ private let monthTitleFormatter: DateFormatter = {
     return formatter
 }()
 
+/// Abbreviated variant for the navigation bar's month stepper only. A
+/// centered `.principal` toolbar item is centered in the whole bar, but only
+/// while it clears the trailing buttons — one point wider and UIKit stops
+/// centering and jams it against the leading edge. "September 2026" between
+/// two chevrons is well past that limit, so the bar would centre some months
+/// and left-align others. Every abbreviated month fits, so the stepper holds
+/// still all year (GH #305 review).
+private let monthShortTitleFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "MMM yyyy"
+    return formatter
+}()
+
 /// Shared metrics for the budget table's three numeric columns, so the
 /// summary captions, group totals and category pills line up vertically
 /// like the PWA's table.
@@ -149,11 +162,13 @@ struct BudgetView: View {
                             .padding(.bottom, 8)
                         }
 
-                        BudgetCheckInStrip(
-                            budget: budget,
-                            selection: $categoryFilter
-                        )
-                        .padding(.bottom, 8)
+                        if budgetStore.showBudgetCheckInStrip {
+                            BudgetCheckInStrip(
+                                budget: budget,
+                                selection: $categoryFilter
+                            )
+                            .padding(.bottom, 8)
+                        }
 
                         List {
                             if categoryFilter != .all, groupedCategories.isEmpty {
@@ -264,6 +279,16 @@ struct BudgetView: View {
                         .listSectionSpacing(
                             budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
                         )
+                        // Pull-to-refresh belongs to the table alone. Attached
+                        // to the container instead, SwiftUI also wires it to
+                        // the check-in strip's horizontal ScrollView, so
+                        // dragging the chips down fired a sync.
+                        .refreshable {
+                            await budgetStore.sync()
+                            // sync() refreshes the current calendar month;
+                            // re-fetch in case the user is viewing another.
+                            await budgetStore.fetchBudgetMonth(selectedMonth)
+                        }
                         .contentMargins(.horizontal, 4, for: .scrollContent)
                         // The rest of the gap under the pinned summary — this
                         // part scrolls away with the content, leaving the 8 pt
@@ -410,11 +435,10 @@ struct BudgetView: View {
                     await budgetStore.fetchBudgetMonth(newMonth)
                 }
             }
-            .refreshable {
-                await budgetStore.sync()
-                // sync() refreshes the current calendar month; re-fetch in
-                // case the user is viewing a different month.
-                await budgetStore.fetchBudgetMonth(selectedMonth)
+            // Hiding the strip takes its filter with it — otherwise the table
+            // stays filtered with no visible control to clear it.
+            .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
+                if !isShown { categoryFilter = .all }
             }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
@@ -1478,9 +1502,13 @@ struct MonthPicker: View {
                 }
             }
         } label: {
-            Text(Self.title(for: selectedMonth))
+            Text(Self.shortTitle(for: selectedMonth))
                 .font(.headline)
+                .lineLimit(1)
         }
+        // The abbreviation is a layout constraint, not what the month is
+        // called — VoiceOver still reads it in full.
+        .accessibilityLabel(Self.title(for: selectedMonth))
     }
 
     /// Next month back through the prior year, newest first, padded with the
@@ -1500,6 +1528,14 @@ struct MonthPicker: View {
             return month
         }
         return monthTitleFormatter.string(from: date)
+    }
+
+    /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
+    static func shortTitle(for month: String) -> String {
+        guard let date = date(fromMonth: month) else {
+            return month
+        }
+        return monthShortTitleFormatter.string(from: date)
     }
 
     static func date(fromMonth month: String) -> Date? {

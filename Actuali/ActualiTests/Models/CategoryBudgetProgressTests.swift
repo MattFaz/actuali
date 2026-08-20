@@ -135,6 +135,17 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
     }
 
+    // The toolbar stepper abbreviates the month so its `.principal` item keeps
+    // a width UIKit will still centre; everything that reads a month aloud or
+    // in prose keeps the full name.
+    @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
+        let short = MonthPicker.shortTitle(for: "2026-09")
+        #expect(short.contains("2026"))
+        #expect(short.count <= MonthPicker.title(for: "2026-09").count)
+        // Unparseable input falls through unchanged, like `title(for:)`.
+        #expect(MonthPicker.shortTitle(for: "not-a-month") == "not-a-month")
+    }
+
     @Test func monthKeysShiftAcrossTheYearBoundary() {
         #expect(BudgetStore.shiftBudgetMonth("2026-01", by: -1) == "2025-12")
         #expect(BudgetStore.shiftBudgetMonth("2026-12", by: 1) == "2027-01")
