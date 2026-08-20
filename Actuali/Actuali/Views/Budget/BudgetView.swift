@@ -409,7 +409,7 @@ struct BudgetView: View {
                 ListBudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
-                    totals: group.totals,
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
                     showsSpent: budgetStore.showListSpentColumn,
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )

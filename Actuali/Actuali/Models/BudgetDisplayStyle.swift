@@ -18,6 +18,10 @@ enum BudgetDisplayStyle: String, CaseIterable {
         }
         return BudgetDisplayStyle(rawValue: rawValue) ?? .clean
     }
+
+    var supportsGroupTotals: Bool {
+        self == .detailed || self == .list
+    }
 }
 
 struct ListBudgetViewPreferences: Equatable {

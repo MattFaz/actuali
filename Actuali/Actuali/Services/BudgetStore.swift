@@ -384,7 +384,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the detailed style's group headers total their columns.
+    /// Whether the Detailed and List styles' group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
