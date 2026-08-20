@@ -61,7 +61,7 @@ struct BudgetTransferSheet: View {
     /// Covering ranks sources that can fully solve the problem first, then
     /// prefers the same group and the smallest sufficient balance. Partial
     /// sources follow largest-first. Moving a surplus keeps table order.
-    static func rankedCategories(_ context: BudgetTransferContext) -> [CategoryBudget] {
+    nonisolated static func rankedCategories(_ context: BudgetTransferContext) -> [CategoryBudget] {
         let candidates = context.budget.categoryBudgets
             .filter { $0.categoryId != context.category.categoryId }
             .filter { context.category.available < 0 ? $0.available > 0 : true }
@@ -86,7 +86,7 @@ struct BudgetTransferSheet: View {
         }
     }
 
-    static func canUseToBudget(_ context: BudgetTransferContext) -> Bool {
+    nonisolated static func canUseToBudget(_ context: BudgetTransferContext) -> Bool {
         guard let toBudget = context.budget.toBudget else { return false }
         return context.category.available < 0 ? toBudget > 0 : true
     }
