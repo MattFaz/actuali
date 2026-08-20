@@ -1,12 +1,23 @@
 name: Sync fork
 
+# Keeps a fork's main up to date with upstream. Ships from upstream so every
+# fork inherits it; the job guard below makes it a no-op on upstream itself,
+# which has no parent to sync from.
+#
+# Fork owners who want a different cadence: edit the cron below, then run
+#   git update-index --skip-worktree .github/workflows/sync-with-upstream.yml
+# so the change stops showing up in PRs back to upstream. That flag is local to
+# your clone and can't be shipped here — see the PR discussion.
+
 on:
   schedule:
-    - cron: '0 * * * *'   # daily at 06:00 UTC
+    - cron: '0 6 * * *'    # daily at 06:00 UTC
   workflow_dispatch:       # lets you run it manually too
 
 jobs:
   sync:
+    # Upstream is not a fork, so `gh repo sync` has nothing to sync from.
+    if: github.repository != 'MattFaz/actuali'
     runs-on: ubuntu-latest
     permissions:
       contents: write

@@ -1546,7 +1546,7 @@ struct MonthPicker: View {
         return months.reversed()
     }
 
-    static func title(for month: String) -> String {
+    nonisolated static func title(for month: String) -> String {
         guard let date = date(fromMonth: month) else {
             return month
         }
@@ -1554,14 +1554,14 @@ struct MonthPicker: View {
     }
 
     /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
-    static func shortTitle(for month: String) -> String {
+    nonisolated static func shortTitle(for month: String) -> String {
         guard let date = date(fromMonth: month) else {
             return month
         }
         return monthShortTitleFormatter.string(from: date)
     }
 
-    static func date(fromMonth month: String) -> Date? {
+    nonisolated static func date(fromMonth month: String) -> Date? {
         let parts = month.split(separator: "-")
         guard parts.count == 2,
               let year = Int(parts[0]),
