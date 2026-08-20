@@ -135,13 +135,15 @@ struct BudgetStoreSetBudgetAmountTests {
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
 
         let queue = try DatabaseQueue(path: path.path)
-        let rows = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets")
+        let budgets = try await queue.read { db -> [BudgetRow] in
+            try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets").map { row in
+                BudgetRow(id: row["id"], amount: row["amount"])
+            }
         }
-        #expect(rows.count == 1)
-        let row = try #require(rows.first)
-        #expect(row["id"] == "202607-cat-groceries")
-        #expect(row["amount"] == 2550)
+        #expect(budgets.count == 1)
+        let budget = try #require(budgets.first)
+        #expect(budget.id == "202607-cat-groceries")
+        #expect(budget.amount == 2550)
 
         // The published month must reflect the edit without a manual refresh.
         let month = try #require(store.currentBudgetMonth)
@@ -175,4 +177,11 @@ struct BudgetStoreSetBudgetAmountTests {
             try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-1", amountCents: 100)
         }
     }
+}
+
+/// Sendable snapshot of a zero_budgets row, extracted inside the GRDB read
+/// closure so no non-Sendable `Row` crosses the async boundary.
+private struct BudgetRow: Sendable {
+    let id: String
+    let amount: Int
 }
