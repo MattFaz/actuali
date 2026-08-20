@@ -170,6 +170,25 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(groceries.budgeted == -10000)
     }
 
+    // A rename runs the shared data refresh, which republishes the *current
+    // calendar* month. Any other displayed month has to survive it, or the
+    // table's rows stop matching its title and the next amount edit lands on
+    // the wrong month.
+    @Test func renamingACategoryKeepsTheDisplayedMonthPublished() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
+        try await store.renameCategory(id: "cat-groceries", name: "Food", month: "2026-07")
+
+        let month = try #require(store.currentBudgetMonth)
+        #expect(month.month == "2026-07")
+        let renamed = try #require(month.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(renamed.categoryName == "Food")
+        #expect(renamed.budgeted == 2550)
+    }
+
     @Test func withoutSyncClientThrowsSyncNotConfigured() async throws {
         let store = BudgetStore.previewInstance()
 

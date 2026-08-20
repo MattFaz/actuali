@@ -1151,6 +1151,7 @@ final class BudgetDatabase: Sendable {
         case duplicateGroupName(String)
         case duplicateCategoryName(name: String, groupName: String)
         case groupNotFound
+        case categoryNotFound
 
         var errorDescription: String? {
             switch self {
@@ -1160,6 +1161,38 @@ final class BudgetDatabase: Sendable {
                 return "\(groupName) already has a category named \"\(name)\""
             case .groupNotFound:
                 return "That category group no longer exists"
+            case .categoryNotFound:
+                return "That category no longer exists"
+            }
+        }
+    }
+
+    /// Validate a category rename before the sync layer emits its name
+    /// message. Names remain unique within a group, matching category
+    /// creation and the web app.
+    func validateCategoryRename(id: String, name: String) throws {
+        try dbQueue.read { db in
+            let row = try Row.fetchOne(db, sql: """
+                SELECT cat_group FROM categories
+                WHERE id = ? AND tombstone IS NOT 1
+                """, arguments: [id])
+            guard let row else { throw CategoryWriteError.categoryNotFound }
+            let groupId: String = row["cat_group"] ?? ""
+            let groupName = try String.fetchOne(db, sql: """
+                SELECT name FROM category_groups
+                WHERE id = ? AND tombstone IS NOT 1
+                """, arguments: [groupId]) ?? "That group"
+            let clash = try Bool.fetchOne(db, sql: """
+                SELECT 1 FROM categories
+                WHERE cat_group = ? AND id != ? AND UPPER(name) = UPPER(?)
+                  AND tombstone IS NOT 1
+                LIMIT 1
+                """, arguments: [groupId, id, name]) ?? false
+            if clash {
+                throw CategoryWriteError.duplicateCategoryName(
+                    name: name,
+                    groupName: groupName
+                )
             }
         }
     }

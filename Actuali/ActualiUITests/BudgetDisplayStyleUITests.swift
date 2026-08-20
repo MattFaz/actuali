@@ -22,8 +22,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
-        XCTAssertTrue(app.staticTexts["Budget Check-In"].exists,
-                      "the month guidance should stay visible above the category groups")
+        XCTAssertTrue(app.buttons["budgetFilter-all"].exists,
+                      "the fixed check-in strip should stay visible above the category groups")
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 10),
                       "clean rows carry a 'Budgeted:' caption")
     }
@@ -73,7 +73,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryNameOpensActionableDetailSheet() throws {
+    func testCategoryNameOpensCompactEditor() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
@@ -84,75 +84,17 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10))
         groceries.tap()
 
-        XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Assign Money"].exists)
-        XCTAssertTrue(app.buttons["This Month's Transactions"].exists)
-        XCTAssertTrue(app.buttons["All Transactions"].exists)
+        XCTAssertTrue(app.navigationBars["Edit Category"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.textFields["Category Name"].exists)
+        XCTAssertTrue(app.staticTexts["Note"].exists)
         XCTAssertTrue(app.staticTexts["Quick Assign"].exists)
+        XCTAssertFalse(app.buttons["This Month's Transactions"].exists)
+        XCTAssertFalse(app.buttons["All Transactions"].exists)
+        XCTAssertFalse(app.staticTexts["Actions"].exists)
     }
 
     @MainActor
-    func testCategoryActionsAndQuickAssignCanCollapse() throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
-        ]
-        app.launch()
-
-        let groceries = app.buttons["Details for Groceries"].firstMatch
-        XCTAssertTrue(groceries.waitForExistence(timeout: 10))
-        groceries.tap()
-
-        let actions = app.buttons["Actions, expanded"]
-        let collapsedActions = app.buttons["Actions, collapsed"]
-        if collapsedActions.waitForExistence(timeout: 2) {
-            collapsedActions.tap()
-        }
-        XCTAssertTrue(actions.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["Assign Money"].exists)
-        actions.tap()
-        XCTAssertTrue(collapsedActions.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.buttons["Assign Money"].exists)
-
-        let quickAssign = app.buttons["Quick Assign, expanded"]
-        let collapsedQuickAssign = app.buttons["Quick Assign, collapsed"]
-        if collapsedQuickAssign.waitForExistence(timeout: 2) {
-            collapsedQuickAssign.tap()
-        }
-        XCTAssertTrue(quickAssign.waitForExistence(timeout: 10))
-        quickAssign.tap()
-        XCTAssertTrue(collapsedQuickAssign.waitForExistence(timeout: 5))
-
-        app.navigationBars.buttons["Done"].tap()
-        XCTAssertTrue(groceries.waitForExistence(timeout: 5))
-        groceries.tap()
-        XCTAssertTrue(collapsedActions.waitForExistence(timeout: 10))
-        XCTAssertTrue(collapsedQuickAssign.waitForExistence(timeout: 10))
-    }
-
-    @MainActor
-    func testBudgetCheckInCanCollapse() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
-        app.launch()
-
-        app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(app.buttons["Details for Groceries"].firstMatch.waitForExistence(timeout: 10))
-
-        let expanded = app.buttons["Budget Check-In, expanded"]
-        let collapsed = app.buttons["Budget Check-In, collapsed"]
-        if collapsed.waitForExistence(timeout: 2) {
-            collapsed.tap()
-        }
-        XCTAssertTrue(expanded.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Resolve the important items before assigning the rest of the month."].exists)
-        expanded.tap()
-        XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
-        XCTAssertFalse(app.staticTexts["Resolve the important items before assigning the rest of the month."].exists)
-    }
-
-    @MainActor
-    func testBudgetCheckInCanFundAnUnassignedCategory() throws {
+    func testCheckInStripFiltersUnassignedCategoriesInPlace() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
@@ -160,12 +102,15 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         // Parking has no activity in the demo. Clearing its budget makes it
         // a real Not Funded check-in result through the normal write path.
         let editParking = app.buttons["Edit budgeted amount for Parking"]
-        var scrollsLeft = 8
+        // Slow swipes: the pinned summary and status strip leave a short List
+        // viewport, and a full-velocity swipe scrolls Parking straight past
+        // the hittable band and off the other side.
+        var scrollsLeft = 20
         while !editParking.isHittable && scrollsLeft > 0 {
-            app.swipeUp()
+            app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }
-        XCTAssertTrue(editParking.isHittable)
+        XCTAssertTrue(editParking.isHittable, "Parking's edit button not reachable")
         editParking.tap()
 
         let amount = app.textFields.firstMatch
@@ -176,17 +121,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
 
         for _ in 0..<8 { app.swipeDown() }
-        let notFunded = app.buttons.matching(
-            NSPredicate(format: "label CONTAINS[c] 'not funded'")
-        ).firstMatch
-        XCTAssertTrue(notFunded.waitForExistence(timeout: 10))
-        notFunded.tap()
+        tapBudgetFilter(app, "unassigned")
 
-        let fundParking = app.buttons["Fund Parking"]
-        XCTAssertTrue(fundParking.waitForExistence(timeout: 5),
-                      "check-in result should expose a direct funding action")
-        fundParking.tap()
-        XCTAssertTrue(app.navigationBars["Parking"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Save"].exists)
+        XCTAssertTrue(app.buttons["Details for Parking"].waitForExistence(timeout: 5),
+                      "the horizontal check-in filter keeps matching categories in the budget table")
+        XCTAssertFalse(app.buttons["Details for Groceries"].exists)
     }
 }

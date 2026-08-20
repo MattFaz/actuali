@@ -573,6 +573,28 @@ actor SyncClient {
         return insertion.category
     }
 
+    /// Rename a category through the normal CRDT path so the local optimistic
+    /// edit and every synced client converge on the same name.
+    func renameCategory(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.validateCategoryRename(id: id, name: name)
+        let messages = try await messageGenerator.messages(
+            dataset: Category.datasetName,
+            row: id,
+            fields: [("name", name)]
+        )
+        try database.applyMessages(messages)
+
+        for message in try database.insertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        await automaticSync()
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.

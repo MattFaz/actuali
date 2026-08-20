@@ -15,6 +15,19 @@ private let monthTitleFormatter: DateFormatter = {
     return formatter
 }()
 
+/// Abbreviated variant for the navigation bar's month stepper only. A
+/// centered `.principal` toolbar item is centered in the whole bar, but only
+/// while it clears the trailing buttons — one point wider and UIKit stops
+/// centering and jams it against the leading edge. "September 2026" between
+/// two chevrons is well past that limit, so the bar would centre some months
+/// and left-align others. Every abbreviated month fits, so the stepper holds
+/// still all year (GH #305 review).
+private let monthShortTitleFormatter: DateFormatter = {
+    let formatter = DateFormatter()
+    formatter.dateFormat = "MMM yyyy"
+    return formatter
+}()
+
 /// Shared metrics for the budget table's three numeric columns, so the
 /// summary captions, group totals and category pills line up vertically
 /// like the PWA's table.
@@ -115,11 +128,10 @@ struct BudgetView: View {
                     await budgetStore.fetchBudgetMonth(newMonth)
                 }
             }
-            .refreshable {
-                await budgetStore.sync()
-                // sync() refreshes the current calendar month; re-fetch in
-                // case the user is viewing a different month.
-                await budgetStore.fetchBudgetMonth(selectedMonth)
+            // Hiding the strip takes its filter with it — otherwise the table
+            // stays filtered with no visible control to clear it.
+            .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
+                if !isShown { categoryFilter = .all }
             }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
@@ -580,220 +592,74 @@ private struct TwoLineName: View {
     }
 }
 
-struct BudgetCheckInSection: View {
-    @EnvironmentObject var budgetStore: BudgetStore
+/// Status filters stay visible above the category list, so checking the
+/// month never requires opening a menu or scrolling past a large card.
+struct BudgetCheckInStrip: View {
     let budget: BudgetMonth
-    @AppStorage("budgetCheckInExpanded") private var isExpanded = true
-
-    private var hasIssues: Bool {
-        budget.hasCheckInIssues(uncategorizedCount: budgetStore.uncategorizedCount)
-    }
+    @Binding var selection: BudgetCategoryFilter
 
     var body: some View {
-        Section {
-            Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isExpanded.toggle()
-                }
-            } label: {
-                HStack {
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.caption)
-                    Text("Budget Check-In")
-                        .font(.headline)
-                    Spacer()
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Budget Check-In, \(isExpanded ? "expanded" : "collapsed")")
-
-            if isExpanded, budget.overspentCount > 0 {
-                NavigationLink {
-                    OverspentCategoriesView()
-                } label: {
-                    Label(
-                        budget.isTrackingBudget
-                            ? "\(budget.overspentCount) over budget"
-                            : "\(budget.overspentCount) overspent",
-                        systemImage: "exclamationmark.circle.fill"
-                    )
-                    .foregroundStyle(.red)
-                }
-                .accessibilityIdentifier("budgetCheckInOverspent")
-            }
-
-            if isExpanded, budgetStore.uncategorizedCount > 0 {
-                NavigationLink {
-                    UncategorizedTransactionsView()
-                } label: {
-                    Label(
-                        "\(budgetStore.uncategorizedCount) uncategorized",
-                        systemImage: "questionmark.circle.fill"
-                    )
-                    .foregroundStyle(.orange)
-                }
-            }
-
-            if isExpanded, !budget.unassignedCategories.isEmpty {
-                NavigationLink {
-                    BudgetGuidanceCategoryList(
-                        title: budget.isTrackingBudget ? "No Budget Set" : "Not Funded",
-                        message: budget.isTrackingBudget
-                            ? "These categories have no budget or activity this month."
-                            : "These categories have no assigned or carried money this month.",
-                        kind: .unassigned
-                    )
-                } label: {
-                    Label(
-                        budget.isTrackingBudget
-                            ? "\(budget.unassignedCategories.count) without a budget"
-                            : "\(budget.unassignedCategories.count) not funded",
-                        systemImage: "circle.dashed"
-                    )
-                }
-            }
-
-            if isExpanded, !budget.approachingLimitCategories.isEmpty {
-                NavigationLink {
-                    BudgetGuidanceCategoryList(
-                        title: budget.isTrackingBudget ? "Near Budget" : "Almost Spent",
-                        message: "These categories have used at least 80% of their available amount.",
-                        kind: .approachingLimit
-                    )
-                } label: {
-                    Label(
-                        "\(budget.approachingLimitCategories.count) nearing the limit",
-                        systemImage: "gauge.with.dots.needle.67percent"
-                    )
-                    .foregroundStyle(.orange)
-                }
-            }
-
-            if isExpanded, !hasIssues {
-                Label("Budget looks good", systemImage: "checkmark.circle.fill")
-                    .foregroundStyle(.green)
-            }
-        } footer: {
-            if isExpanded {
-                Text(budget.isTrackingBudget
-                    ? "Review the plan against this month's actual activity."
-                    : "Resolve the important items before assigning the rest of the month.")
-            }
-        }
-    }
-}
-
-/// A focused check-in result. Selecting a category opens the same actionable
-/// detail sheet as the main budget table, so guidance always ends in a real
-/// resolution path rather than a dead-end status list.
-struct BudgetGuidanceCategoryList: View {
-    enum Kind {
-        case unassigned
-        case approachingLimit
-    }
-
-    @EnvironmentObject var budgetStore: BudgetStore
-    let title: String
-    let message: String
-    let kind: Kind
-    @State private var selectedCategory: CategoryBudget?
-    @State private var editingCategory: CategoryBudget?
-
-    private var categories: [CategoryBudget] {
-        guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        switch kind {
-        case .unassigned:
-            return budget.unassignedCategories
-        case .approachingLimit:
-            return budget.approachingLimitCategories
-        }
-    }
-
-    private var isTracking: Bool {
-        budgetStore.currentBudgetMonth?.isTrackingBudget == true
-    }
-
-    var body: some View {
-        List {
-            Section {
-                Text(message)
-                    .foregroundStyle(.secondary)
-            }
-            Section {
-                if categories.isEmpty {
-                    Label("No categories need attention", systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                } else {
-                    ForEach(categories) { category in
-                        VStack(alignment: .leading, spacing: 8) {
-                            Button {
-                                selectedCategory = category
-                            } label: {
-                                // One explicit VStack: a Button lays multiple
-                                // label views out side by side, which would
-                                // squash the bar next to the Spacer'd row.
-                                VStack(alignment: .leading, spacing: 4) {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            Text(category.categoryName)
-                                                .foregroundStyle(.primary)
-                                            Text(category.groupName)
-                                                .font(.caption)
-                                                .foregroundStyle(.secondary)
-                                        }
-                                        Spacer()
-                                        Text(budgetStore.displayBalance(category.available))
-                                            .foregroundStyle(category.isOverspent ? .red : .secondary)
-                                            .monospacedDigit()
-                                    }
-                                    if category.showsProgressBar {
-                                        CategoryProgressBar(
-                                            fraction: category.progressFraction,
-                                            state: category.progressState
-                                        )
-                                    }
+        ScrollView(.horizontal) {
+            HStack(spacing: 8) {
+                ForEach(BudgetCategoryFilter.allCases) { filter in
+                    Button {
+                        selection = filter
+                    } label: {
+                        Text(title(for: filter))
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(selection == filter ? Color.white : Color.primary)
+                            .padding(.horizontal, 14)
+                            .frame(minHeight: 40)
+                            .background {
+                                Capsule()
+                                    .fill(selection == filter
+                                        ? Color.accentColor
+                                        : Color(.secondarySystemGroupedBackground))
+                            }
+                            .overlay {
+                                if selection != filter {
+                                    Capsule()
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                                 }
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel("Details for \(category.categoryName)")
-
-                            Button {
-                                editingCategory = category
-                            } label: {
-                                Label(fundingActionTitle, systemImage: "plus.circle.fill")
-                            }
-                            .buttonStyle(.bordered)
-                            .accessibilityIdentifier("Fund \(category.categoryName)")
-                        }
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Show \(title(for: filter)) categories")
+                    .accessibilityIdentifier("budgetFilter-\(filter.rawValue)")
+                    .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
             }
         }
-        .readableWidth()
-        .navigationTitle(title)
-        .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $selectedCategory) { category in
-            CategoryBudgetDetailSheet(category: category)
-        }
-        .sheet(item: $editingCategory) { category in
-            EditBudgetAmountSheet(category: category)
+        .scrollIndicators(.hidden)
+        .contentMargins(.horizontal, 4, for: .scrollContent)
+    }
+
+    private func title(for filter: BudgetCategoryFilter) -> String {
+        switch filter {
+        case .all:
+            "All"
+        case .needsAttention:
+            "Needs Attention \(count(for: filter))"
+        case .overspent:
+            "\(budget.isTrackingBudget ? "Over Budget" : "Overspent") \(count(for: filter))"
+        case .unassigned:
+            "\(budget.isTrackingBudget ? "No Budget" : "Not Funded") \(count(for: filter))"
+        case .approachingLimit:
+            "\(budget.isTrackingBudget ? "Near Budget" : "Almost Spent") \(count(for: filter))"
+        case .onTrack:
+            "\(budget.isTrackingBudget ? "Within Budget" : "On Track") \(count(for: filter))"
         }
     }
 
-    private var fundingActionTitle: String {
-        switch (isTracking, kind) {
-        case (true, .unassigned): "Add Budget"
-        case (true, .approachingLimit): "Increase Budget"
-        case (false, .unassigned): "Assign Money"
-        case (false, .approachingLimit): "Assign More"
-        }
+    private func count(for filter: BudgetCategoryFilter) -> Int {
+        budget.categoryBudgets.count(where: filter.includes)
     }
 }
 
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var addsGroupBottomPadding = false
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     /// Push the category's transactions: month narrows to one "yyyy-MM",
@@ -866,7 +732,13 @@ struct CategoryBudgetRow: View {
                 )
             }
         }
-        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
+        .listRowInsets(EdgeInsets(
+            top: 4,
+            leading: 12,
+            bottom: addsGroupBottomPadding && budgetStore.showBudgetProgressBars
+                && category.showsProgressBar ? 10 : 4,
+            trailing: 16
+        ))
     }
 }
 
@@ -1270,183 +1142,46 @@ struct IncomeCategoryRow: View {
     }
 }
 
-/// One YNAB-style place to understand and act on a category without losing
-/// the month context. Actual's tracking budgets keep their own terminology.
+/// A compact category editor. Amount cells in the budget table keep their
+/// existing actions; tapping the name is reserved for the category's own
+/// metadata and quick-assignment shortcuts.
 struct CategoryBudgetDetailSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     let category: CategoryBudget
 
-    @State private var editingBudget = false
-    @State private var transferContext: BudgetTransferContext?
+    @State private var name: String
     @State private var editingNote = false
     @State private var note: EntityNote = .unsupported
-    @State private var recentTransactions: [Transaction] = []
     @State private var history: [CategoryBudget] = []
+    @State private var isSavingName = false
     @State private var isApplyingSuggestion = false
-    @State private var quickAssignError: String?
-    @AppStorage("budgetDetailActionsExpanded") private var actionsExpanded = true
-    @AppStorage("budgetDetailQuickAssignExpanded") private var quickAssignExpanded = true
+    @State private var errorMessage: String?
+
+    init(category: CategoryBudget) {
+        self.category = category
+        _name = State(initialValue: category.categoryName)
+    }
 
     private var isTracking: Bool {
         budgetStore.currentBudgetMonth?.isTrackingBudget == true
     }
 
-    /// The sheet item is a snapshot taken at tap time; read the row live from
-    /// the store so Assign/Cover done from inside this sheet update the
-    /// figures immediately instead of only after reopening.
-    private var liveCategory: CategoryBudget {
-        budgetStore.currentBudgetMonth?.categoryBudgets
-            .first { $0.categoryId == category.categoryId && $0.month == category.month }
-            ?? category
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 
     private var quickAssignSuggestions: [QuickAssignSuggestion] {
-        liveCategory.quickAssignSuggestions(history: history)
-    }
-
-    private var statusTitle: String {
-        switch (isTracking, liveCategory.progressState) {
-        case (_, .overspent): isTracking ? "Over budget" : "Overspent"
-        case (true, .funded): "Budget set"
-        case (false, .funded): "Funded"
-        case (true, .spending): "Within budget"
-        case (false, .spending): "On track"
-        case (true, .spent): "Budget used"
-        case (false, .spent): "Fully spent"
-        case (true, .unassigned): "No budget set"
-        case (false, .unassigned): "Not funded"
-        }
-    }
-
-    private var statusColor: Color {
-        liveCategory.progressState.tint
-    }
-
-    private var statusIcon: String {
-        switch liveCategory.progressState {
-        case .overspent: "exclamationmark.circle.fill"
-        case .unassigned: "circle.dashed"
-        case .funded, .spending, .spent: "checkmark.circle.fill"
-        }
+        category.quickAssignSuggestions(history: history)
     }
 
     var body: some View {
         NavigationStack {
-            List {
-                Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Label(statusTitle, systemImage: statusIcon)
-                                .font(.headline)
-                                .foregroundStyle(statusColor)
-                            Spacer()
-                            Text(MonthPicker.title(for: category.month))
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        CategoryProgressBar(
-                            fraction: liveCategory.progressFraction,
-                            state: liveCategory.progressState
-                        )
-                        LabeledContent(isTracking ? "Budget" : "Assigned") {
-                            Text(budgetStore.displayBalance(liveCategory.budgeted))
-                        }
-                        LabeledContent("Activity") {
-                            Text(budgetStore.displayBalance(liveCategory.spent))
-                        }
-                        LabeledContent(isTracking ? "Balance" : "Available") {
-                            Text(budgetStore.displayBalance(liveCategory.available))
-                                .foregroundStyle(statusColor)
-                        }
-                    }
-                    .padding(.vertical, 4)
-                }
-
-                Section {
-                    if actionsExpanded {
-                        Button {
-                            editingBudget = true
-                        } label: {
-                            Label(isTracking ? "Edit Budget" : "Assign Money", systemImage: "pencil")
-                        }
-
-                        if liveCategory.available != 0,
-                           let budget = budgetStore.currentBudgetMonth {
-                            Button {
-                                transferContext = BudgetTransferContext(category: liveCategory, budget: budget)
-                            } label: {
-                                Label(
-                                    isTracking
-                                        ? "Reallocate Budget"
-                                        : (liveCategory.isOverspent ? "Cover Overspending" : "Move Money"),
-                                    systemImage: "arrow.left.arrow.right"
-                                )
-                            }
-                        }
-
-                        NavigationLink {
-                            CategoryTransactionsView(destination: CategoryTransactionsDestination(
-                                categoryId: category.categoryId,
-                                categoryName: category.categoryName,
-                                month: category.month
-                            ))
-                        } label: {
-                            Label("This Month's Transactions", systemImage: "list.bullet.rectangle")
-                        }
-
-                        NavigationLink {
-                            CategoryTransactionsView(destination: CategoryTransactionsDestination(
-                                categoryId: category.categoryId,
-                                categoryName: category.categoryName,
-                                month: nil
-                            ))
-                        } label: {
-                            Label("All Transactions", systemImage: "clock.arrow.circlepath")
-                        }
-                    }
-                } header: {
-                    BudgetDetailSectionHeader(title: "Actions", isExpanded: $actionsExpanded)
-                }
-
-                if !quickAssignSuggestions.isEmpty {
-                    Section {
-                        if quickAssignExpanded {
-                            ForEach(quickAssignSuggestions) { suggestion in
-                                Button {
-                                    Task { await apply(suggestion) }
-                                } label: {
-                                    HStack {
-                                        Text(quickAssignTitle(for: suggestion.kind))
-                                            .foregroundStyle(.tint)
-                                        Spacer(minLength: 12)
-                                        Text(budgetStore.displayBalance(suggestion.amount))
-                                            .foregroundStyle(.primary)
-                                            .monospacedDigit()
-                                            .fixedSize(horizontal: true, vertical: false)
-                                    }
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(isApplyingSuggestion)
-                            }
-                        }
-                    } header: {
-                        BudgetDetailSectionHeader(
-                            title: isTracking ? "Quick Budget" : "Quick Assign",
-                            isExpanded: $quickAssignExpanded
-                        )
-                    } footer: {
-                        if quickAssignExpanded {
-                            Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
-                        }
-                    }
-                }
-
-                if let quickAssignError {
-                    Section {
-                        Text(quickAssignError)
-                            .foregroundStyle(.red)
-                    }
+            Form {
+                Section("Name") {
+                    TextField("Category Name", text: $name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
                 }
 
                 if note.supported {
@@ -1465,48 +1200,85 @@ struct CategoryBudgetDetailSheet: View {
                     }
                 }
 
-                if !recentTransactions.isEmpty {
-                    Section("Recent Activity") {
-                        ForEach(recentTransactions.prefix(3)) { transaction in
-                            TransactionRow(transaction: transaction)
+                Section(
+                    content: {
+                    // A suggestion overwrites this month's amount, so name the
+                    // month and show what's there now — otherwise the user
+                    // confirms a budget write blind.
+                    LabeledContent(MonthPicker.title(for: category.month)) {
+                        Text(budgetStore.displayBalance(category.budgeted))
+                            .monospacedDigit()
+                    }
+
+                    if quickAssignSuggestions.isEmpty {
+                        Text("No suggestions available")
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ForEach(quickAssignSuggestions) { suggestion in
+                            Button {
+                                Task { await apply(suggestion) }
+                            } label: {
+                                HStack {
+                                    Text(quickAssignTitle(for: suggestion.kind))
+                                        .foregroundStyle(.tint)
+                                    Spacer(minLength: 12)
+                                    Text(budgetStore.displayBalance(suggestion.amount))
+                                        .foregroundStyle(.primary)
+                                        .monospacedDigit()
+                                        .fixedSize(horizontal: true, vertical: false)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(isApplyingSuggestion)
                         }
+                    }
+                    },
+                    header: {
+                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                    },
+                    footer: {
+                        Text("Suggestions use this category's existing Actual history and replace the amount shown above.")
+                    }
+                )
+
+                if let errorMessage {
+                    Section {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
                     }
                 }
             }
-            .navigationTitle(category.categoryName)
+            .navigationTitle("Edit Category")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button("Save") {
+                        Task { await saveName() }
+                    }
+                    .disabled(isSavingName || trimmedName.isEmpty)
                 }
             }
             .task { await reloadSupportingDetails() }
-            .sheet(isPresented: $editingBudget) {
-                EditBudgetAmountSheet(category: liveCategory)
-            }
-            .sheet(item: $transferContext) { context in
-                BudgetTransferSheet(context: context)
-            }
             .sheet(isPresented: $editingNote, onDismiss: {
                 Task { note = await budgetStore.fetchNote(id: category.categoryId) }
             }) {
                 NoteEditorView(
                     noteId: category.categoryId,
-                    title: category.categoryName,
+                    title: trimmedName.isEmpty ? category.categoryName : trimmedName,
                     note: note.text
                 )
             }
+            .disabled(isSavingName)
+            .interactiveDismissDisabled(isSavingName)
         }
     }
 
     private func reloadSupportingDetails() async {
-        async let fetchedTransactions = budgetStore.fetchCategoryTransactions(
-            categoryId: category.categoryId,
-            month: category.month
-        )
         async let fetchedNote = budgetStore.fetchNote(id: category.categoryId)
         async let fetchedHistory = budgetStore.budgetHistory(for: category)
-        recentTransactions = await fetchedTransactions
         note = await fetchedNote
         history = await fetchedHistory
     }
@@ -1523,7 +1295,7 @@ struct CategoryBudgetDetailSheet: View {
 
     private func apply(_ suggestion: QuickAssignSuggestion) async {
         isApplyingSuggestion = true
-        quickAssignError = nil
+        errorMessage = nil
         do {
             try await budgetStore.setBudgetAmount(
                 month: category.month,
@@ -1532,39 +1304,29 @@ struct CategoryBudgetDetailSheet: View {
             )
             dismiss()
         } catch {
-            quickAssignError = error.localizedDescription
+            errorMessage = error.localizedDescription
             isApplyingSuggestion = false
         }
     }
-}
 
-/// Tappable List section header used where a category detail can otherwise
-/// become action-heavy on a phone. The state is in the accessibility label so
-/// a collapsed section is distinguishable from an empty one.
-struct BudgetDetailSectionHeader: View {
-    let title: String
-    @Binding var isExpanded: Bool
-
-    var body: some View {
-        Button {
-            withAnimation(.easeInOut(duration: 0.2)) {
-                isExpanded.toggle()
-            }
-        } label: {
-            HStack {
-                Text(title)
-                Spacer()
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.caption)
-                    .accessibilityHidden(true)
-            }
-            .contentShape(Rectangle())
+    private func saveName() async {
+        guard trimmedName != category.categoryName else {
+            dismiss()
+            return
         }
-        .buttonStyle(.plain)
-        .accessibilityAddTraits(.isHeader)
-        .accessibilityLabel("\(title), \(isExpanded ? "expanded" : "collapsed")")
-        .accessibilityIdentifier("\(title), \(isExpanded ? "expanded" : "collapsed")")
-        .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
+        isSavingName = true
+        errorMessage = nil
+        do {
+            try await budgetStore.renameCategory(
+                id: category.categoryId,
+                name: trimmedName,
+                month: category.month
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            isSavingName = false
+        }
     }
 }
 
@@ -1725,9 +1487,13 @@ struct MonthPicker: View {
                 }
             }
         } label: {
-            Text(Self.title(for: selectedMonth))
+            Text(Self.shortTitle(for: selectedMonth))
                 .font(.headline)
+                .lineLimit(1)
         }
+        // The abbreviation is a layout constraint, not what the month is
+        // called — VoiceOver still reads it in full.
+        .accessibilityLabel(Self.title(for: selectedMonth))
     }
 
     /// Next month back through the prior year, newest first, padded with the
@@ -1747,6 +1513,14 @@ struct MonthPicker: View {
             return month
         }
         return monthTitleFormatter.string(from: date)
+    }
+
+    /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
+    static func shortTitle(for month: String) -> String {
+        guard let date = date(fromMonth: month) else {
+            return month
+        }
+        return monthShortTitleFormatter.string(from: date)
     }
 
     static func date(fromMonth month: String) -> Date? {
