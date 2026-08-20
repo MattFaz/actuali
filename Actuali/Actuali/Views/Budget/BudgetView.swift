@@ -37,13 +37,6 @@ enum BudgetColumn {
     // name, which wraps early on a phone ("Caravan Parks 🏕" drops its
     // emoji to a second line).
     static let spacing: CGFloat = 4
-
-    /// Cell text for the budget table: a plain grouped number without the
-    /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
-    /// every cell would drown the category names on a phone.
-    static func text(_ cents: Int) -> String {
-        (Double(cents) / 100.0).formatted(.number.precision(.fractionLength(2)))
-    }
 }
 
 /// Style-specific list metrics live behind one exhaustive switch so adding a
@@ -105,10 +98,17 @@ struct BudgetSummarySpacing: Equatable {
     }
 }
 
-private extension BudgetStore {
-    /// Masked variant of `BudgetColumn.text` for the existing Detailed table.
+extension BudgetStore {
+    /// Plain grouped cell text using the budget currency's native precision.
+    /// The table headers supply the currency context, leaving more room for
+    /// category names than repeating the symbol in every cell.
     func displayBudgetCell(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : BudgetColumn.text(cents)
+        hideBalances
+            ? Self.hiddenBalanceText
+            : CurrencyAmountFormat.symbolLessString(
+                cents: cents,
+                currencyCode: currencyCode
+            )
     }
 }
 

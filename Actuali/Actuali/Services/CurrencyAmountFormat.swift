@@ -34,7 +34,7 @@ enum CurrencyAmountFormat {
     }
 
     /// Formats with the budget currency's native precision while omitting its
-    /// symbol. The List table supplies the currency and meaning through its
+    /// symbol. The budget tables supply the currency and meaning through their
     /// column headers, leaving more horizontal room for category names.
     @MainActor
     static func symbolLessString(

@@ -103,14 +103,14 @@ private struct ListOverviewAmount: View {
     let isResult: Bool
 
     var body: some View {
-        Text(budgetStore.displayListBudgetCell(stat.amount))
+        Text(budgetStore.displayBudgetCell(stat.amount))
             .font(.footnote.weight(.semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
-            .animatedAmount(budgetStore.displayListBudgetCell(stat.amount))
+            .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
             .accessibilityLabel("\(stat.label), \(budgetStore.displayBalance(stat.amount))")
     }
 
@@ -591,14 +591,14 @@ private struct ListAmountText: View {
     var isBalance = false
 
     var body: some View {
-        Text(budgetStore.displayListBudgetCell(amount))
+        Text(budgetStore.displayBudgetCell(amount))
             .font(.footnote.weight(isBalance ? .semibold : .regular))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(foregroundColor)
-            .animatedAmount(budgetStore.displayListBudgetCell(amount))
+            .animatedAmount(budgetStore.displayBudgetCell(amount))
             .padding(.horizontal, isBalance ? 5 : 0)
             .padding(.vertical, isBalance ? 2 : 0)
             .background {
@@ -632,17 +632,5 @@ extension View {
         case .clean, .detailed:
             self
         }
-    }
-}
-
-private extension BudgetStore {
-    @MainActor
-    func displayListBudgetCell(_ cents: Int) -> String {
-        hideBalances
-            ? Self.hiddenBalanceText
-            : CurrencyAmountFormat.symbolLessString(
-                cents: cents,
-                currencyCode: currencyCode
-            )
     }
 }
