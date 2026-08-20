@@ -61,11 +61,10 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(overview.waitForExistence(timeout: 5))
         XCTAssertTrue(spent.exists)
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
+        XCTAssertTrue(app.buttons["Group Totals"].exists)
         XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
                        "List uses the shared Budget Progress Bars setting")
-        XCTAssertFalse(app.buttons["Group Totals"].exists,
-                       "List group totals are always visible, not optional")
 
         app.buttons["Detailed"].tap()
         optionsMenu.tap()
