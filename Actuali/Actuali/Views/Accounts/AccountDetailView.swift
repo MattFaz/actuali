@@ -22,6 +22,7 @@ struct AccountDetailView: View {
     @State private var editingNote = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
+    @State private var cycleSpend: Int = 0
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -54,7 +55,19 @@ struct AccountDetailView: View {
     private func reload() async {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
+        await reloadCycleSpend()
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func reloadCycleSpend() async {
+        if let cycle = budgetStore.creditCardCycle(for: account.id) {
+            let range = cycle.cycleRange()
+            cycleSpend = await budgetStore.fetchCycleSpend(
+                accountId: account.id,
+                start: range.start,
+                end: range.end
+            )
+        }
     }
 
     private func reloadNote() async {
@@ -151,6 +164,21 @@ struct AccountDetailView: View {
                     breakdownRow("Cleared", amount: breakdown.cleared)
                     breakdownRow("Uncleared", amount: breakdown.uncleared)
                     breakdownRow("Reconciled", amount: breakdown.reconciled)
+                }
+            }
+
+            if let cycle = budgetStore.creditCardCycle(for: account.id), searchQuery == nil {
+                Section("Billing Cycle") {
+                    let range = cycle.cycleRange()
+                    let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
+                    let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
+                    let due = cycle.upcomingDueDate()
+                    let dueStr = Transaction.formattedDate(from: due.yyyymmdd, style: .abbreviated)
+                    let daysUntilDue = cycle.daysUntilDue()
+
+                    LabeledContent("Current Cycle", value: "\(startStr) – \(endStr)")
+                    LabeledContent("Cycle Spend", value: budgetStore.displayBalance(cycleSpend))
+                    LabeledContent("Payment Due", value: daysUntilDue == 0 ? "Today" : "\(dueStr) (\(daysUntilDue)d)")
                 }
             }
 
@@ -321,6 +349,7 @@ struct AccountDetailView: View {
                 // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                cycleSpend = 0
                 isSelecting = false
                 selectedTransactionIds.removeAll()
             } else if searchQuery != nil {

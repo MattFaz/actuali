@@ -479,6 +479,21 @@ struct SettingsView: View {
 
                     if budgetStore.currentBudgetId != nil {
                         NavigationLink {
+                            CreditCardsSettingsView()
+                        } label: {
+                            HStack {
+                                Text("Credit Cards & Billing Cycles")
+                                Spacer()
+                                if !budgetStore.creditCardStatementDays.isEmpty {
+                                    Text("\(budgetStore.creditCardStatementDays.count)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
                             RulesListView()
                         } label: {
                             Text("Rules")

@@ -529,6 +529,36 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Mappings from accountId -> statement closing day (1...31).
+    /// Persisted per budget in UserDefaults. An account with a statement day configured
+    /// is treated as a credit card with that billing cycle in Actuali.
+    var creditCardStatementDays: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardStatementDays_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    func setCreditCardStatementDay(accountId: String, statementDay: Int?) {
+        var days = creditCardStatementDays
+        if let statementDay {
+            days[accountId] = statementDay
+        } else {
+            days.removeValue(forKey: accountId)
+        }
+        creditCardStatementDays = days
+    }
+
+    func creditCardCycle(for accountId: String) -> CreditCardCycle? {
+        guard let day = creditCardStatementDays[accountId] else { return nil }
+        return CreditCardCycle(accountId: accountId, statementDay: day)
+    }
+
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
     /// or account name). Matching is deliberately conservative — a missed match falls back
     /// to the default account or an error the user can act on, while a wrong match logs
@@ -2521,6 +2551,16 @@ final class BudgetStore: ObservableObject {
     func balanceBreakdown(accountId: String) async -> AccountBalanceBreakdown? {
         guard let database else { return nil }
         return try? await database.balanceBreakdown(accountId: accountId)
+    }
+
+    /// Total charges in cents for an account within a billing cycle window.
+    func fetchCycleSpend(accountId: String, start: DayDate, end: DayDate) async -> Int {
+        guard let database else { return 0 }
+        return (try? await database.fetchAccountSpend(
+            accountId: accountId,
+            fromDate: start.yyyymmdd,
+            toDate: end.yyyymmdd
+        )) ?? 0
     }
 
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
