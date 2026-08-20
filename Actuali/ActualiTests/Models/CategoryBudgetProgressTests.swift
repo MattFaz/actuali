@@ -152,8 +152,8 @@ struct CategoryBudgetProgressTests {
             )
         )
 
-        #expect(BudgetTransferSheet.rankedCategories(context).map(\.categoryId)
+        #expect(context.rankedCategories.map(\.categoryId)
             == ["small", "large", "partial"])
-        #expect(!BudgetTransferSheet.canUseToBudget(context))
+        #expect(!context.canUseToBudget)
     }
 }

@@ -58,9 +58,22 @@
 		AC00000000000000000001DF /* ActualiWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ActualiWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		9BC4D953303766C60039054E /* Exceptions for "Actuali" folder in "Actuali" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Resources/sync.proto,
+			);
+			target = A7550B852EE7B4F7007026DC /* Actuali */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		A7550B882EE7B4F7007026DC /* Actuali */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				9BC4D953303766C60039054E /* Exceptions for "Actuali" folder in "Actuali" target */,
+			);
 			path = Actuali;
 			sourceTree = "<group>";
 		};

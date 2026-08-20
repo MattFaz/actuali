@@ -5,7 +5,7 @@ import XCTest
 /// the detailed PWA-style pills.
 final class BudgetDisplayStyleUITests: XCTestCase {
 
-    private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
+    @MainActor private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
         app.staticTexts
             .matching(NSPredicate(format: "label BEGINSWITH 'Budgeted:'"))
             .firstMatch

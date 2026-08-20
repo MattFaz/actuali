@@ -8,6 +8,39 @@ struct BudgetTransferContext: Identifiable {
     let category: CategoryBudget
     let budget: BudgetMonth
     var id: String { category.id }
+
+    /// Covering ranks sources that can fully solve the problem first, then
+    /// prefers the same group and the smallest sufficient balance. Partial
+    /// sources follow largest-first. Moving a surplus keeps table order.
+    var rankedCategories: [CategoryBudget] {
+        let candidates = budget.categoryBudgets
+            .filter { $0.categoryId != category.categoryId }
+            .filter { category.available < 0 ? $0.available > 0 : true }
+        guard category.available < 0 else {
+            return candidates.sorted {
+                ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder)
+            }
+        }
+        let needed = abs(category.available)
+        return candidates.sorted { lhs, rhs in
+            let lhsCovers = lhs.available >= needed
+            let rhsCovers = rhs.available >= needed
+            if lhsCovers != rhsCovers { return lhsCovers }
+            let lhsSameGroup = lhs.groupId == category.groupId
+            let rhsSameGroup = rhs.groupId == category.groupId
+            if lhsSameGroup != rhsSameGroup { return lhsSameGroup }
+            if lhs.available != rhs.available {
+                return lhsCovers ? lhs.available < rhs.available : lhs.available > rhs.available
+            }
+            return (lhs.groupSortOrder, lhs.categorySortOrder)
+                < (rhs.groupSortOrder, rhs.categorySortOrder)
+        }
+    }
+
+    var canUseToBudget: Bool {
+        guard let toBudget = budget.toBudget else { return false }
+        return category.available < 0 ? toBudget > 0 : true
+    }
 }
 
 /// Move budgeted funds between categories (GH #128). Adapts to the tapped
@@ -46,8 +79,8 @@ struct BudgetTransferSheet: View {
         // Overspent: default to covering from To Budget (like the web UI);
         // tracking budgets have no To Budget, so fall back to the first
         // category with funds. Surplus: default to sending back to To Budget.
-        let hasToBudget = Self.canUseToBudget(context)
-        let firstCategory = Self.rankedCategories(context).first.map { Endpoint.category($0.categoryId) }
+        let hasToBudget = context.canUseToBudget
+        let firstCategory = context.rankedCategories.first.map { Endpoint.category($0.categoryId) }
         _endpoint = State(initialValue: hasToBudget ? .toBudget : (firstCategory ?? .toBudget))
         // Prefill with the full amount in play: the overspending to cover,
         // or the surplus available to move.
@@ -58,45 +91,12 @@ struct BudgetTransferSheet: View {
         context.category.available < 0
     }
 
-    /// Covering ranks sources that can fully solve the problem first, then
-    /// prefers the same group and the smallest sufficient balance. Partial
-    /// sources follow largest-first. Moving a surplus keeps table order.
-    nonisolated static func rankedCategories(_ context: BudgetTransferContext) -> [CategoryBudget] {
-        let candidates = context.budget.categoryBudgets
-            .filter { $0.categoryId != context.category.categoryId }
-            .filter { context.category.available < 0 ? $0.available > 0 : true }
-        guard context.category.available < 0 else {
-            return candidates.sorted {
-                ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder)
-            }
-        }
-        let needed = abs(context.category.available)
-        return candidates.sorted { lhs, rhs in
-            let lhsCovers = lhs.available >= needed
-            let rhsCovers = rhs.available >= needed
-            if lhsCovers != rhsCovers { return lhsCovers }
-            let lhsSameGroup = lhs.groupId == context.category.groupId
-            let rhsSameGroup = rhs.groupId == context.category.groupId
-            if lhsSameGroup != rhsSameGroup { return lhsSameGroup }
-            if lhs.available != rhs.available {
-                return lhsCovers ? lhs.available < rhs.available : lhs.available > rhs.available
-            }
-            return (lhs.groupSortOrder, lhs.categorySortOrder)
-                < (rhs.groupSortOrder, rhs.categorySortOrder)
-        }
-    }
-
-    nonisolated static func canUseToBudget(_ context: BudgetTransferContext) -> Bool {
-        guard let toBudget = context.budget.toBudget else { return false }
-        return context.category.available < 0 ? toBudget > 0 : true
-    }
-
     private var eligibleCategories: [CategoryBudget] {
-        Self.rankedCategories(context)
+        context.rankedCategories
     }
 
     private var hasOptions: Bool {
-        Self.canUseToBudget(context) || !eligibleCategories.isEmpty
+        context.canUseToBudget || !eligibleCategories.isEmpty
     }
 
     /// Clamped to the amount actually being covered: this month's budget can
@@ -146,7 +146,7 @@ struct BudgetTransferSheet: View {
                 Section {
                     if hasOptions {
                         Picker(isCovering ? "From" : "To", selection: $endpoint) {
-                            if Self.canUseToBudget(context), let toBudget = context.budget.toBudget {
+                            if context.canUseToBudget, let toBudget = context.budget.toBudget {
                                 Text("To Budget (\(budgetStore.displayBalance(toBudget)))")
                                     .tag(Endpoint.toBudget)
                             }

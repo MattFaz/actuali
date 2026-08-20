@@ -119,7 +119,7 @@ struct ReportsTabView: View {
     /// the first live page (the web's ReportsDashboardRouter redirects to
     /// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback
     /// applies.
-    static func resolvePageId(selected: String?, pages: [DashboardPage]) -> String? {
+    nonisolated static func resolvePageId(selected: String?, pages: [DashboardPage]) -> String? {
         if let selected, pages.contains(where: { $0.id == selected }) {
             return selected
         }

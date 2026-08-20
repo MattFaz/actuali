@@ -140,7 +140,7 @@ struct BackgroundRefreshTests {
 
 private final class SubmitSpy: BackgroundTaskRequesting {
     var submitted: [BGTaskRequest] = []
-    var error: Error?
+    var error: (any Error)?
 
     func submit(_ taskRequest: BGTaskRequest) throws {
         if let error { throw error }

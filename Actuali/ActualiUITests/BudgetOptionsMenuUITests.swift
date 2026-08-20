@@ -5,7 +5,7 @@ import XCTest
 /// navigation-bar button.
 final class BudgetOptionsMenuUITests: XCTestCase {
 
-    private func launchBudgetTab(_ app: XCUIApplication) {
+    @MainActor private func launchBudgetTab(_ app: XCUIApplication) {
         // Seed the persisted toggles: they survive between launches for real
         // in the simulator, so start from a known state whatever earlier runs
         // left behind.
