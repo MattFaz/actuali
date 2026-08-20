@@ -127,12 +127,17 @@ struct SettingsView: View {
             dashboardPages = []
             return
         }
-        dashboardPages = (try? await database.fetchDashboardPages()) ?? []
+        // Bail on a failed or cancelled read rather than treating "no pages"
+        // as fact: a budget switch cancels this task mid-read and resumes
+        // after currentBudgetId has already flipped, so clearing the default
+        // here would wipe the *incoming* budget's preference.
+        guard let pages = try? await database.fetchDashboardPages() else { return }
+        dashboardPages = pages
         // A default naming a page that's since been deleted has no tag to
         // match in the picker, and the Reports tab already falls back to the
         // first page — so drop it rather than show a phantom selection.
         if let id = budgetStore.defaultDashboardPageId,
-           !dashboardPages.contains(where: { $0.id == id }) {
+           !pages.contains(where: { $0.id == id }) {
             budgetStore.defaultDashboardPageId = nil
         }
     }
@@ -711,6 +716,13 @@ struct SettingsView: View {
             // tab, so a plain .task only ever runs once.
             .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) {
                 await reloadDashboardPages()
+            }
+            // Sync mutates dashboard_pages in the already-open database, whose
+            // identity doesn't change — so the task above can't see it. Matters
+            // most on a fresh budget, where the database opens before the first
+            // sync lands any pages at all.
+            .onChange(of: budgetStore.lastSyncTime) {
+                Task { await reloadDashboardPages() }
             }
             // The background refresh task fires while the app is suspended —
             // same process, so the @State snapshot taken at launch never

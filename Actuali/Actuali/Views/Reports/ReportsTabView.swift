@@ -61,6 +61,16 @@ struct ReportsTabView: View {
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
             .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) { await reload() }
+            // This is a resident tab: nothing rebuilds it on the way back from
+            // Settings, and `reload` has already written the resolved page into
+            // `selectedPageId` — which outranks the new default. So changing the
+            // setting has to switch the dashboard itself, or it appears to do
+            // nothing until the next launch. Clearing it (nil) re-resolves to
+            // the first page.
+            .onChange(of: budgetStore.defaultDashboardPageId) { _, newValue in
+                selectedPageId = newValue
+                Task { await reload() }
+            }
             .refreshable {
                 await budgetStore.sync()
                 await reload()
