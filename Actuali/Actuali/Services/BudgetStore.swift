@@ -26,6 +26,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidCategoryName
     case invalidCategoryGroupName
     case categoryCreationFailed(String)
+    case categoryUpdateFailed(String)
     case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
@@ -76,6 +77,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter a category group name"
         case .categoryCreationFailed(let message):
             return "Failed to create category: \(message)"
+        case .categoryUpdateFailed(let message):
+            return "Failed to update category: \(message)"
         case .categoryGroupCreationFailed(let message):
             return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
@@ -303,6 +306,16 @@ final class BudgetStore: ObservableObject {
     @Published var showBudgetProgressBars: Bool = true {
         didSet {
             UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
+        }
+    }
+
+    /// Whether Budget shows the status filter strip above the category list.
+    /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
+    /// space on a phone, so a budget that never needs the filters can reclaim
+    /// it — hiding the strip drops any active filter with it.
+    @Published var showBudgetCheckInStrip: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetCheckInStrip, forKey: "showBudgetCheckInStrip")
         }
     }
 
@@ -891,6 +904,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
+        _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showBudgetCheckInStrip") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
@@ -1807,6 +1822,33 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
 
         return category
+    }
+
+    /// Rename a category without changing its group, sort order, budget, or
+    /// transactions. `month` is the month the caller is displaying: the shared
+    /// refresh below republishes the *current calendar* month, so a caller
+    /// browsing any other month has to have it restored — otherwise its rows
+    /// and its title disagree and the next amount edit lands on the wrong
+    /// month.
+    func renameCategory(id: String, name: String, month: String) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.renameCategory(id: id, name: trimmedName)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
@@ -3939,4 +3981,3 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
-
