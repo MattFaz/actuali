@@ -3,18 +3,18 @@ import SwiftUI
 import UIKit
 @testable import Actuali
 
-struct YNABBudgetPresentationTests {
-    @Test func ynabStyleRequiresAnOpaqueNavigationBar() {
-        #expect(BudgetNavigationBarAppearance(style: .ynab).isOpaque)
+struct ListBudgetPresentationTests {
+    @Test func listStyleRequiresAnOpaqueNavigationBar() {
+        #expect(BudgetNavigationBarAppearance(style: .list).isOpaque)
         #expect(!BudgetNavigationBarAppearance(style: .clean).isOpaque)
         #expect(!BudgetNavigationBarAppearance(style: .detailed).isOpaque)
     }
 
     @Test func summarySpacingDependsOnlyOnStyle() {
-        let ynabSpacing = BudgetSummarySpacing(style: .ynab)
-        #expect(ynabSpacing.horizontalPadding == 0)
-        #expect(ynabSpacing.topPadding == 0)
-        #expect(ynabSpacing.bottomPadding == 0)
+        let listSpacing = BudgetSummarySpacing(style: .list)
+        #expect(listSpacing.horizontalPadding == 0)
+        #expect(listSpacing.topPadding == 0)
+        #expect(listSpacing.bottomPadding == 0)
 
         for style in [BudgetDisplayStyle.clean, .detailed] {
             let spacing = BudgetSummarySpacing(style: style)
@@ -29,7 +29,7 @@ struct YNABBudgetPresentationTests {
         let totals = CategoryGroupTotals([
             category(budgeted: 50_000, spent: -31_500, available: 18_500),
         ])
-        let expenseHeader = YNABBudgetGroupHeader(
+        let expenseHeader = ListBudgetGroupHeader(
             name: "Essentials",
             isCollapsed: false,
             totals: totals,
@@ -38,7 +38,7 @@ struct YNABBudgetPresentationTests {
         )
         .environmentObject(store)
         .frame(width: 390)
-        let incomeHeader = YNABIncomeGroupHeader(
+        let incomeHeader = ListIncomeGroupHeader(
             name: "Income",
             totalBudgeted: 125_000,
             totalReceived: 110_000,
@@ -53,14 +53,14 @@ struct YNABBudgetPresentationTests {
 
     @Test @MainActor func categoryRowsKeepTheSourceListRowHeight() throws {
         let store = BudgetStore.previewInstance()
-        let expenseRow = YNABCategoryBudgetRow(
+        let expenseRow = ListCategoryBudgetRow(
             category: category(budgeted: 50_000, spent: -31_500, available: 18_500),
             showsSpent: false,
             showsProgressBars: false
         )
         .environmentObject(store)
         .frame(width: 390)
-        let incomeRow = YNABIncomeCategoryRow(
+        let incomeRow = ListIncomeCategoryRow(
             income: income(budgeted: 125_000, received: 110_000),
             showsBudgeted: true
         )
@@ -80,7 +80,7 @@ struct YNABBudgetPresentationTests {
             toBudget: 12_500
         )
 
-        let overview = YNABBudgetOverview(
+        let overview = ListBudgetOverview(
             budget: budget,
             showsSpent: false,
             currentMonth: "2026-08"
@@ -91,7 +91,7 @@ struct YNABBudgetPresentationTests {
             .init(label: "Budgeted", amount: 50_000),
             .init(label: "Balance", amount: 18_500),
         ])
-        #expect(YNABBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
+        #expect(ListBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
             .budgeted,
             .balance,
         ])
@@ -109,7 +109,7 @@ struct YNABBudgetPresentationTests {
             toBudget: nil
         )
 
-        let overview = YNABBudgetOverview(
+        let overview = ListBudgetOverview(
             budget: budget,
             showsSpent: true,
             currentMonth: "2026-08"
@@ -121,7 +121,7 @@ struct YNABBudgetPresentationTests {
             .init(label: "Spent", amount: -60_000),
             .init(label: "Projected", amount: 45_000),
         ])
-        #expect(YNABBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
+        #expect(ListBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
             .budgeted,
             .received,
         ])
@@ -139,7 +139,7 @@ struct YNABBudgetPresentationTests {
             toBudget: nil
         )
 
-        let overview = YNABBudgetOverview(
+        let overview = ListBudgetOverview(
             budget: budget,
             showsSpent: false,
             currentMonth: "2026-08"
@@ -149,13 +149,13 @@ struct YNABBudgetPresentationTests {
     }
 
     @Test func balanceToneDistinguishesEverySemanticStateAndPrivacyMasking() {
-        #expect(YNABBalanceTone(amount: -1, isMasked: false) == .negative)
-        #expect(YNABBalanceTone(amount: 0, isMasked: false) == .zero)
-        #expect(YNABBalanceTone(amount: 1, isMasked: false) == .positive)
-        #expect(YNABBalanceTone(amount: -1, isMasked: true) == .masked)
-        #expect(YNABBalanceTone(amount: 0, isMasked: true) == .masked)
-        #expect(YNABBalanceTone(amount: 1, isMasked: true) == .masked)
-        #expect(YNABBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
+        #expect(ListBalanceTone(amount: -1, isMasked: false) == .negative)
+        #expect(ListBalanceTone(amount: 0, isMasked: false) == .zero)
+        #expect(ListBalanceTone(amount: 1, isMasked: false) == .positive)
+        #expect(ListBalanceTone(amount: -1, isMasked: true) == .masked)
+        #expect(ListBalanceTone(amount: 0, isMasked: true) == .masked)
+        #expect(ListBalanceTone(amount: 1, isMasked: true) == .masked)
+        #expect(ListBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
     }
 
     private func category(budgeted: Int, spent: Int, available: Int) -> CategoryBudget {

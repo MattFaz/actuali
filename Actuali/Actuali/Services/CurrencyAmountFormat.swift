@@ -34,7 +34,7 @@ enum CurrencyAmountFormat {
     }
 
     /// Formats with the budget currency's native precision while omitting its
-    /// symbol. The YNAB table supplies the currency and meaning through its
+    /// symbol. The List table supplies the currency and meaning through its
     /// column headers, leaving more horizontal room for category names.
     @MainActor
     static func symbolLessString(

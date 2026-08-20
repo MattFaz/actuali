@@ -69,7 +69,7 @@ private struct BudgetListMetrics {
             topContentMargin = 16
             showsTopFade = true
             backgroundColor = Color(.systemGroupedBackground)
-        case .ynab:
+        case .list:
             sectionSpacing = .custom(0)
             horizontalContentMargin = 0
             topContentMargin = 0
@@ -83,7 +83,7 @@ struct BudgetNavigationBarAppearance: Equatable {
     let isOpaque: Bool
 
     init(style: BudgetDisplayStyle) {
-        isOpaque = style == .ynab
+        isOpaque = style == .list
     }
 }
 
@@ -93,7 +93,7 @@ struct BudgetSummarySpacing: Equatable {
     let bottomPadding: CGFloat
 
     init(style: BudgetDisplayStyle) {
-        if style == .ynab {
+        if style == .list {
             horizontalPadding = 0
             topPadding = 0
             bottomPadding = 0
@@ -176,8 +176,8 @@ struct BudgetView: View {
 
                         // The selected style owns only the monthly
                         // presentation; navigation and actions stay shared.
-                        if budgetStore.budgetDisplayStyle != .ynab
-                            || budgetStore.showYNABBudgetOverview {
+                        if budgetStore.budgetDisplayStyle != .list
+                            || budgetStore.showListBudgetOverview {
                             Group {
                                 switch budgetStore.budgetDisplayStyle {
                                 case .clean:
@@ -196,15 +196,15 @@ struct BudgetView: View {
                                             Capsule()
                                                 .fill(Color(.secondarySystemGroupedBackground))
                                         )
-                                case .ynab:
-                                    YNABBudgetSummary(
+                                case .list:
+                                    ListBudgetSummary(
                                         budget: budget,
-                                        showsSpent: budgetStore.showYNABSpentColumn
+                                        showsSpent: budgetStore.showListSpentColumn
                                     )
                                 }
                             }
                             // The summary stays pinned outside the List for
-                            // every style, including YNAB.
+                            // every style, including List.
                             .padding(.horizontal, summarySpacing.horizontalPadding)
                             .padding(.top, summarySpacing.topPadding)
                             .padding(.bottom, summarySpacing.bottomPadding)
@@ -310,13 +310,13 @@ struct BudgetView: View {
                                             }
                                         }
                                     }
-                                case .ynab:
+                                case .list:
                                     Section {
                                         if !isCollapsed {
                                             ForEach(group.categories) { category in
-                                                YNABCategoryBudgetRow(
+                                                ListCategoryBudgetRow(
                                                     category: category,
-                                                    showsSpent: budgetStore.showYNABSpentColumn,
+                                                    showsSpent: budgetStore.showListSpentColumn,
                                                     showsProgressBars: budgetStore.showBudgetProgressBars,
                                                     onShowDetails: { selectedCategory = $0 },
                                                     onEditBudget: { editingCategory = $0 },
@@ -326,11 +326,11 @@ struct BudgetView: View {
                                             }
                                         }
                                     } header: {
-                                        YNABBudgetGroupHeader(
+                                        ListBudgetGroupHeader(
                                             name: group.name,
                                             isCollapsed: isCollapsed,
                                             totals: group.totals,
-                                            showsSpent: budgetStore.showYNABSpentColumn,
+                                            showsSpent: budgetStore.showListSpentColumn,
                                             onToggleCollapse: { toggleCollapsed(group.id) }
                                         )
                                         .textCase(nil)
@@ -360,17 +360,17 @@ struct BudgetView: View {
                                             Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
                                         }
                                     }
-                                case .ynab:
+                                case .list:
                                     Section {
                                         ForEach(budget.incomeCategories) { income in
-                                            YNABIncomeCategoryRow(
+                                            ListIncomeCategoryRow(
                                                 income: income,
                                                 showsBudgeted: budget.isTrackingBudget,
                                                 onShowTransactions: showTransactions
                                             )
                                         }
                                     } header: {
-                                        YNABIncomeGroupHeader(
+                                        ListIncomeGroupHeader(
                                             name: budget.incomeCategories.first?.groupName ?? "Income",
                                             totalBudgeted: budget.totalBudgetedIncome,
                                             totalReceived: budget.totalIncome,

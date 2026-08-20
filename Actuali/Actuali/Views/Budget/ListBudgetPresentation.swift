@@ -1,13 +1,13 @@
 import Foundation
 
-enum YNABBudgetColumn: String, Equatable {
+enum ListBudgetColumn: String, Equatable {
     case budgeted = "Budgeted"
     case spent = "Spent"
     case balance = "Balance"
     case received = "Received"
 }
 
-enum YNABBalanceTone: Equatable {
+enum ListBalanceTone: Equatable {
     case negative
     case zero
     case positive
@@ -35,14 +35,14 @@ enum YNABBalanceTone: Equatable {
     }
 }
 
-struct YNABBudgetTableLayout: Equatable {
+struct ListBudgetTableLayout: Equatable {
     static let titleColumnWidth: CGFloat = 145
     static let amountColumnSpacing: CGFloat = 4
     static let categoryRowVerticalPadding: CGFloat = 12
     static let categoryRowMinimumHeight: CGFloat = 44
 
-    let expenseColumns: [YNABBudgetColumn]
-    let incomeColumns: [YNABBudgetColumn]
+    let expenseColumns: [ListBudgetColumn]
+    let incomeColumns: [ListBudgetColumn]
 
     init(isTrackingBudget: Bool, showsSpent: Bool) {
         expenseColumns = showsSpent
@@ -54,7 +54,7 @@ struct YNABBudgetTableLayout: Equatable {
     }
 }
 
-struct YNABBudgetOverview: Equatable {
+struct ListBudgetOverview: Equatable {
     struct Stat: Equatable {
         let label: String
         let amount: Int

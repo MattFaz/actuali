@@ -51,7 +51,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
-            "-showYNABBudgetOverview", "YES",
+            "-showListBudgetOverview", "YES",
         ]
         app.launch()
 
@@ -63,11 +63,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
                       "the budget toolbar should offer the options menu")
         optionsMenu.tap()
-        app.buttons["YNAB"].tap()
+        app.buttons["List"].tap()
         XCTAssertTrue(
-            app.descendants(matching: .any)["ynabBudgetOverview"]
+            app.descendants(matching: .any)["listBudgetOverview"]
                 .waitForExistence(timeout: 5),
-            "switching to YNAB replaces the Clean presentation live"
+            "switching to List replaces the Clean presentation live"
         )
 
         optionsMenu.tap()
@@ -98,38 +98,38 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testYNABStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
+    func testListStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
-            "-showYNABBudgetOverview", "YES",
-            "-showYNABSpentColumn", "NO",
+            "-budgetDisplayStyle", "list",
+            "-showListBudgetOverview", "YES",
+            "-showListSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let overview = app.descendants(matching: .any)["ynabBudgetOverview"]
+        let overview = app.descendants(matching: .any)["listBudgetOverview"]
         XCTAssertTrue(overview.waitForExistence(timeout: 10),
-                      "YNAB should render its source-style pinned overview")
+                      "List should render its source-style pinned overview")
         let checkInStrip = app.buttons["budgetFilter-all"]
         XCTAssertTrue(checkInStrip.waitForExistence(timeout: 5))
         XCTAssertLessThan(
             checkInStrip.frame.maxY,
             overview.frame.minY,
-            "the check-in strip should sit above the YNAB overview"
+            "the check-in strip should sit above the List overview"
         )
-        let essentials = app.buttons["ynabBudgetGroup.Essentials"]
+        let essentials = app.buttons["listBudgetGroup.Essentials"]
         XCTAssertTrue(essentials.exists,
-                      "YNAB should render a dedicated group header with totals")
+                      "List should render a dedicated group header with totals")
         let groceriesDetails = app.buttons["Details for Groceries"].firstMatch
         if essentials.label.contains("collapsed") {
             essentials.tap()
         }
         XCTAssertTrue(groceriesDetails.waitForExistence(timeout: 5))
         XCTAssertFalse(budgetedCaption(in: app).exists,
-                       "YNAB rows should not fall through to Clean")
+                       "List rows should not fall through to Clean")
 
         XCTAssertTrue(essentials.label.contains("budgeted"))
         XCTAssertTrue(essentials.label.contains("balance"))
@@ -158,27 +158,27 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testYNABTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
+    func testListTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-loadTrackingDemoData",
-            "-budgetDisplayStyle", "ynab",
-            "-showYNABBudgetOverview", "YES",
-            "-showYNABSpentColumn", "NO",
+            "-budgetDisplayStyle", "list",
+            "-showListBudgetOverview", "YES",
+            "-showListSpentColumn", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let overview = app.descendants(matching: .any)["ynabBudgetOverview"]
+        let overview = app.descendants(matching: .any)["listBudgetOverview"]
         XCTAssertTrue(overview.waitForExistence(timeout: 10))
         XCTAssertTrue(overview.staticTexts["Income"].exists)
         XCTAssertTrue(overview.staticTexts["Projected"].exists)
         XCTAssertFalse(overview.staticTexts["To Budget"].exists,
                        "tracking budgets have no To Budget value")
 
-        let incomeSection = app.descendants(matching: .any)["ynabIncomeSection"]
+        let incomeSection = app.descendants(matching: .any)["listIncomeSection"]
         var scrollsLeft = 12
         while !incomeSection.exists && scrollsLeft > 0 {
             app.swipeUp()
@@ -205,26 +205,26 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(salaryBudget.label.contains("$"))
         XCTAssertFalse(
             salaryBudget.elementType == .button,
-            "tracking Income budget remains read-only in YNAB"
+            "tracking Income budget remains read-only in List"
         )
     }
 
     @MainActor
-    func testYNABOptionalOverviewAndSharedProgressBarsAffectPresentation() throws {
+    func testListOptionalOverviewAndSharedProgressBarsAffectPresentation() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
-            "-showYNABBudgetOverview", "NO",
+            "-budgetDisplayStyle", "list",
+            "-showListBudgetOverview", "NO",
             "-showBudgetProgressBars", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let essentials = app.buttons["ynabBudgetGroup.Essentials"]
+        let essentials = app.buttons["listBudgetGroup.Essentials"]
         XCTAssertTrue(essentials.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)["ynabBudgetOverview"].exists,
+        XCTAssertFalse(app.descendants(matching: .any)["listBudgetOverview"].exists,
                        "the optional overview must leave no placeholder")
         let groceries = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Details for Groceries'")
@@ -268,12 +268,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testYNABAccessibilityDynamicTypeUsesStackedPresentation() throws {
+    func testListAccessibilityDynamicTypeUsesStackedPresentation() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
-            "-showYNABBudgetOverview", "YES",
+            "-budgetDisplayStyle", "list",
+            "-showListBudgetOverview", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
             "-UIPreferredContentSizeCategoryName",
@@ -282,7 +282,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.descendants(matching: .any)["ynabBudgetOverview.stacked"]
+            app.descendants(matching: .any)["listBudgetOverview.stacked"]
                 .waitForExistence(timeout: 10),
             "accessibility text sizes select the stacked overview"
         )
@@ -301,11 +301,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testYNABLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
+    func testListLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
+            "-budgetDisplayStyle", "list",
             "-hideBalances", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
@@ -319,7 +319,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(groceriesBudget.label.contains("••••"),
                       "privacy masking also covers action accessibility values")
 
-        let longGroup = app.buttons["ynabBudgetGroup.Health & Wellness"]
+        let longGroup = app.buttons["listBudgetGroup.Health & Wellness"]
         var scrollsLeft = 10
         while !longGroup.exists && scrollsLeft > 0 {
             app.swipeUp()

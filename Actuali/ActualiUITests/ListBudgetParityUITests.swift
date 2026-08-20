@@ -1,13 +1,13 @@
 import XCTest
 
-final class YNABBudgetParityUITests: XCTestCase {
+final class ListBudgetParityUITests: XCTestCase {
     @MainActor
     func testExpenseCellsReachExistingActionFlows() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
-            "-showYNABSpentColumn", "YES",
+            "-budgetDisplayStyle", "list",
+            "-showListSpentColumn", "YES",
             "-showBudgetProgressBars", "NO",
             "-initialTab", "1",
         ]
@@ -21,7 +21,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Next month"].exists)
 
         let add = app.navigationBars["Budget"].buttons["Add"]
-        XCTAssertTrue(add.exists, "YNAB keeps the shared category creation menu")
+        XCTAssertTrue(add.exists, "List keeps the shared category creation menu")
         add.tap()
         XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New Category Group"].exists)
@@ -76,7 +76,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
+            "-budgetDisplayStyle", "list",
             "-initialTab", "1",
         ]
         app.launch()
@@ -87,7 +87,7 @@ final class YNABBudgetParityUITests: XCTestCase {
 
         app.swipeLeft()
         XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
-                      "the shared horizontal gesture advances YNAB by one month")
+                      "the shared horizontal gesture advances List by one month")
         app.swipeRight()
         XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
     }
@@ -97,7 +97,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
+            "-budgetDisplayStyle", "list",
             "-initialTab", "1",
         ]
         app.launch()
@@ -119,7 +119,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "ynab",
+            "-budgetDisplayStyle", "list",
             "-showBudgetProgressBars", "YES",
             "-initialTab", "1",
         ]
@@ -167,7 +167,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         app.launchArguments = [
             "-loadDemoData",
             "-loadTrackingDemoData",
-            "-budgetDisplayStyle", "ynab",
+            "-budgetDisplayStyle", "list",
             "-initialTab", "1",
         ]
         app.launch()
@@ -209,7 +209,7 @@ final class YNABBudgetParityUITests: XCTestCase {
         revealing element: XCUIElement,
         in app: XCUIApplication
     ) {
-        let group = app.buttons["ynabBudgetGroup.\(name)"]
+        let group = app.buttons["listBudgetGroup.\(name)"]
         scrollUntilHittable(group, in: app)
         XCTAssertTrue(group.isHittable)
         if group.label.contains("collapsed") {

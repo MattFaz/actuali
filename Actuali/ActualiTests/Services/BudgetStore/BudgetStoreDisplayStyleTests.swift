@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// The Budget tab's layout preference must default to Clean, restore YNAB,
-/// and keep YNAB-only options independent from shared Budget preferences.
+/// The Budget tab's layout preference must default to Clean, restore List,
+/// and keep List-only options independent from shared Budget preferences.
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreDisplayStyleTests {
     private let styleKey = "budgetDisplayStyle"
-    private let ynabOptionKeys = [
-        "showYNABBudgetOverview",
-        "showYNABSpentColumn",
+    private let listOptionKeys = [
+        "showListBudgetOverview",
+        "showListSpentColumn",
     ]
 
     private func withSavedDefaults(for keys: [String], _ body: () -> Void) {
@@ -30,15 +30,15 @@ struct BudgetStoreDisplayStyleTests {
         body()
     }
 
-    @Test func persistedStyleRestoresYNABAndFallsBackToClean() throws {
+    @Test func persistedStyleRestoresListAndFallsBackToClean() throws {
         let suiteName = "BudgetStoreDisplayStyleTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
 
-        defaults.set("ynab", forKey: styleKey)
-        #expect(BudgetDisplayStyle.persisted(in: defaults) == .ynab)
+        defaults.set("list", forKey: styleKey)
+        #expect(BudgetDisplayStyle.persisted(in: defaults) == .list)
 
         defaults.set("table-3000", forKey: styleKey)
         #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
@@ -49,73 +49,73 @@ struct BudgetStoreDisplayStyleTests {
             let store = BudgetStore.previewInstance()
             store.budgetDisplayStyle = .detailed
             #expect(UserDefaults.standard.string(forKey: styleKey) == "detailed")
-            store.budgetDisplayStyle = .ynab
-            #expect(UserDefaults.standard.string(forKey: styleKey) == "ynab")
+            store.budgetDisplayStyle = .list
+            #expect(UserDefaults.standard.string(forKey: styleKey) == "list")
             store.budgetDisplayStyle = .clean
             #expect(UserDefaults.standard.string(forKey: styleKey) == "clean")
         }
     }
 
-    @Test func ynabOptionsAndSharedProgressPreferencePersist() {
+    @Test func listOptionsAndSharedProgressPreferencePersist() {
         let existingStyleKeys = [
             "showBudgetProgressBars",
             "showGroupTotals",
             "hideZeroBudgetCategories",
         ]
-        withSavedDefaults(for: ynabOptionKeys + existingStyleKeys) {
+        withSavedDefaults(for: listOptionKeys + existingStyleKeys) {
             UserDefaults.standard.set(true, forKey: "showGroupTotals")
             UserDefaults.standard.set(true, forKey: "hideZeroBudgetCategories")
 
             let store = BudgetStore.previewInstance()
-            #expect(store.showYNABBudgetOverview)
-            #expect(!store.showYNABSpentColumn)
+            #expect(store.showListBudgetOverview)
+            #expect(!store.showListSpentColumn)
             #expect(store.showBudgetProgressBars)
 
-            store.showYNABBudgetOverview = false
-            store.showYNABSpentColumn = true
+            store.showListBudgetOverview = false
+            store.showListSpentColumn = true
             store.showBudgetProgressBars = false
 
-            #expect(UserDefaults.standard.object(forKey: ynabOptionKeys[0]) as? Bool == false)
-            #expect(UserDefaults.standard.object(forKey: ynabOptionKeys[1]) as? Bool == true)
+            #expect(UserDefaults.standard.object(forKey: listOptionKeys[0]) as? Bool == false)
+            #expect(UserDefaults.standard.object(forKey: listOptionKeys[1]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[1]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[2]) as? Bool == true)
 
-            store.showYNABBudgetOverview = true
-            store.showYNABSpentColumn = false
+            store.showListBudgetOverview = true
+            store.showListSpentColumn = false
             store.showBudgetProgressBars = true
 
-            #expect(UserDefaults.standard.object(forKey: ynabOptionKeys[0]) as? Bool == true)
-            #expect(UserDefaults.standard.object(forKey: ynabOptionKeys[1]) as? Bool == false)
+            #expect(UserDefaults.standard.object(forKey: listOptionKeys[0]) as? Bool == true)
+            #expect(UserDefaults.standard.object(forKey: listOptionKeys[1]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == true)
         }
     }
 
-    @Test func ynabOptionsRestoreDefaultAndPersistedValues() throws {
-        let suiteName = "BudgetStoreYNABPreferencesTests.\(UUID().uuidString)"
+    @Test func listOptionsRestoreDefaultAndPersistedValues() throws {
+        let suiteName = "BudgetStoreListPreferencesTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        #expect(YNABBudgetViewPreferences.persisted(in: defaults) == .defaults)
+        #expect(ListBudgetViewPreferences.persisted(in: defaults) == .defaults)
 
-        defaults.set(false, forKey: ynabOptionKeys[0])
-        defaults.set(true, forKey: ynabOptionKeys[1])
+        defaults.set(false, forKey: listOptionKeys[0])
+        defaults.set(true, forKey: listOptionKeys[1])
 
-        #expect(YNABBudgetViewPreferences.persisted(in: defaults) == YNABBudgetViewPreferences(
+        #expect(ListBudgetViewPreferences.persisted(in: defaults) == ListBudgetViewPreferences(
             showOverview: false,
             showSpentColumn: true
         ))
     }
 
-    @Test func ynabOptionsAcceptStringBooleansFromLaunchArguments() throws {
-        let suiteName = "BudgetStoreYNABArgumentPreferencesTests.\(UUID().uuidString)"
+    @Test func listOptionsAcceptStringBooleansFromLaunchArguments() throws {
+        let suiteName = "BudgetStoreListArgumentPreferencesTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        defaults.set("NO", forKey: ynabOptionKeys[0])
-        defaults.set("YES", forKey: ynabOptionKeys[1])
+        defaults.set("NO", forKey: listOptionKeys[0])
+        defaults.set("YES", forKey: listOptionKeys[1])
 
-        #expect(YNABBudgetViewPreferences.persisted(in: defaults) == YNABBudgetViewPreferences(
+        #expect(ListBudgetViewPreferences.persisted(in: defaults) == ListBudgetViewPreferences(
             showOverview: false,
             showSpentColumn: true
         ))
@@ -124,7 +124,7 @@ struct BudgetStoreDisplayStyleTests {
     /// Raw values round-trip, and unknown raw values (from a future build)
     /// decode to nil so init falls back to the default rather than crashing.
     @Test func rawValueRoundTrip() {
-        #expect(BudgetDisplayStyle.ynab.rawValue == "ynab")
+        #expect(BudgetDisplayStyle.list.rawValue == "list")
         for style in BudgetDisplayStyle.allCases {
             #expect(BudgetDisplayStyle(rawValue: style.rawValue) == style)
         }

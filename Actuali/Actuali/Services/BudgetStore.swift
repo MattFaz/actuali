@@ -309,24 +309,24 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the YNAB Budget view style shows its pinned monthly overview.
+    /// Whether the List Budget view style shows its pinned monthly overview.
     /// This is independent of the Clean and Detailed summaries and defaults on.
-    @Published var showYNABBudgetOverview: Bool = true {
+    @Published var showListBudgetOverview: Bool = true {
         didSet {
             UserDefaults.standard.set(
-                showYNABBudgetOverview,
-                forKey: YNABBudgetViewPreferences.showOverviewKey
+                showListBudgetOverview,
+                forKey: ListBudgetViewPreferences.showOverviewKey
             )
         }
     }
 
-    /// Whether the YNAB Budget view style includes the Spent column.
+    /// Whether the List Budget view style includes the Spent column.
     /// The narrower two-amount layout is the default.
-    @Published var showYNABSpentColumn: Bool = false {
+    @Published var showListSpentColumn: Bool = false {
         didSet {
             UserDefaults.standard.set(
-                showYNABSpentColumn,
-                forKey: YNABBudgetViewPreferences.showSpentColumnKey
+                showListSpentColumn,
+                forKey: ListBudgetViewPreferences.showSpentColumnKey
             )
         }
     }
@@ -941,9 +941,9 @@ final class BudgetStore: ObservableObject {
         }
         _startTab = Published(initialValue: StartTab.persisted)
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.persisted())
-        let ynabPreferences = YNABBudgetViewPreferences.persisted()
-        _showYNABBudgetOverview = Published(initialValue: ynabPreferences.showOverview)
-        _showYNABSpentColumn = Published(initialValue: ynabPreferences.showSpentColumn)
+        let listPreferences = ListBudgetViewPreferences.persisted()
+        _showListBudgetOverview = Published(initialValue: listPreferences.showOverview)
+        _showListSpentColumn = Published(initialValue: listPreferences.showSpentColumn)
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(
