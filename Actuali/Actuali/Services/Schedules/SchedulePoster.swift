@@ -4,8 +4,10 @@ import os
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "SchedulePoster")
 
 /// The two server-visible writes the poster performs, abstracted so tests can
-/// record them. `SyncClient` is the production conformance.
-protocol SchedulePostingActions {
+/// record them. `SyncClient` is the production conformance. Sendable so the
+/// value can cross into the `SchedulePoster` actor without a data race (the
+/// production conformer is itself an actor).
+protocol SchedulePostingActions: Sendable {
     func createTransaction(_ transaction: Transaction) async throws
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws
 }

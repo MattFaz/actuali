@@ -1,6 +1,7 @@
 import Foundation
 import Testing
 import GRDB
+import Synchronization
 @testable import Actuali
 
 /// Recording fake for SchedulePostingActions. Mirrors the real SyncClient's
@@ -10,13 +11,32 @@ import GRDB
 /// override to the schedules_next_date row.
 private final class RecordingActions: SchedulePostingActions {
     let database: BudgetDatabase
-    var created: [Transaction] = []
-    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] = []
-    /// Schedule ids whose createTransaction should throw (schedule-level error).
-    var failingScheduleIds: Set<String> = []
-    /// Suspension before each create, simulating the network round-trip so
-    /// the concurrency test can force an overlap window.
-    var createDelayNanos: UInt64 = 0
+
+    /// All mutable recording state is guarded by a Mutex so the fake is
+    /// Sendable and can be shared between the test (@MainActor) and the
+    /// SchedulePoster actor, mirroring how the production conformer (the
+    /// SyncClient actor) is itself Sendable.
+    private struct State {
+        var created: [Transaction] = []
+        var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] = []
+        /// Schedule ids whose createTransaction should throw (schedule-level error).
+        var failingScheduleIds: Set<String> = []
+        /// Suspension before each create, simulating the network round-trip so
+        /// the concurrency test can force an overlap window.
+        var createDelayNanos: UInt64 = 0
+    }
+    private let state = Mutex(State())
+
+    var created: [Transaction] { state.withLock { $0.created } }
+    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] { state.withLock { $0.advances } }
+    var failingScheduleIds: Set<String> {
+        get { state.withLock { $0.failingScheduleIds } }
+        set { state.withLock { $0.failingScheduleIds = newValue } }
+    }
+    var createDelayNanos: UInt64 {
+        get { state.withLock { $0.createDelayNanos } }
+        set { state.withLock { $0.createDelayNanos = newValue } }
+    }
 
     struct FakeError: Error {}
 
@@ -28,8 +48,9 @@ private final class RecordingActions: SchedulePostingActions {
         if let schedule = transaction.schedule, failingScheduleIds.contains(schedule) {
             throw FakeError()
         }
-        if createDelayNanos > 0 {
-            try await Task.sleep(nanoseconds: createDelayNanos)
+        let delay = createDelayNanos
+        if delay > 0 {
+            try await Task.sleep(nanoseconds: delay)
         }
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
@@ -41,7 +62,7 @@ private final class RecordingActions: SchedulePostingActions {
                     transaction.cleared ? 1 : 0,
                 ])
         }
-        created.append(transaction)
+        state.withLock { $0.created.append(transaction) }
     }
 
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws {
@@ -52,7 +73,7 @@ private final class RecordingActions: SchedulePostingActions {
                 WHERE id = ?
                 """, arguments: [newNextDate, baseNextDateTs, nextDateRowId])
         }
-        advances.append((rowId: nextDateRowId, newNextDate: newNextDate, baseTs: baseNextDateTs))
+        state.withLock { $0.advances.append((rowId: nextDateRowId, newNextDate: newNextDate, baseTs: baseNextDateTs)) }
     }
 }
 
@@ -170,8 +191,12 @@ struct SchedulePosterTests {
     private func makePoster(_ db: BudgetDatabase) -> (SchedulePoster, RecordingActions, UserDefaults, String) {
         let actions = RecordingActions(database: db)
         let suite = UUID().uuidString
+        // UserDefaults isn't Sendable, so the poster gets its own instance and
+        // the test keeps a separate one backed by the same suite (they share
+        // the persistent domain) — avoids sending a shared reference into the
+        // SchedulePoster actor.
+        let poster = SchedulePoster(database: db, actions: actions, defaults: UserDefaults(suiteName: suite)!)
         let defaults = UserDefaults(suiteName: suite)!
-        let poster = SchedulePoster(database: db, actions: actions, defaults: defaults)
         return (poster, actions, defaults, suite)
     }
 
