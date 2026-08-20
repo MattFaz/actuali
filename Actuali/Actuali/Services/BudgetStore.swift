@@ -313,7 +313,32 @@ final class BudgetStore: ObservableObject {
     /// card look from the App Store screenshots.
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
-            UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+            UserDefaults.standard.set(
+                budgetDisplayStyle.rawValue,
+                forKey: BudgetDisplayStyle.defaultsKey
+            )
+        }
+    }
+
+    /// Whether the YNAB Budget view style shows its pinned monthly overview.
+    /// This is independent of the Clean and Detailed summaries and defaults on.
+    @Published var showYNABBudgetOverview: Bool = true {
+        didSet {
+            UserDefaults.standard.set(
+                showYNABBudgetOverview,
+                forKey: YNABBudgetViewPreferences.showOverviewKey
+            )
+        }
+    }
+
+    /// Whether the YNAB Budget view style includes the Spent column.
+    /// The narrower two-amount layout is the default.
+    @Published var showYNABSpentColumn: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showYNABSpentColumn,
+                forKey: YNABBudgetViewPreferences.showSpentColumnKey
+            )
         }
     }
 
@@ -1126,10 +1151,10 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        if let raw = UserDefaults.standard.string(forKey: "budgetDisplayStyle"),
-           let style = BudgetDisplayStyle(rawValue: raw) {
-            _budgetDisplayStyle = Published(initialValue: style)
-        }
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.persisted())
+        let ynabPreferences = YNABBudgetViewPreferences.persisted()
+        _showYNABBudgetOverview = Published(initialValue: ynabPreferences.showOverview)
+        _showYNABSpentColumn = Published(initialValue: ynabPreferences.showSpentColumn)
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard

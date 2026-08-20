@@ -74,4 +74,27 @@ struct CurrencyAmountFormatTests {
         #expect(standard == "¥1,234")
         #expect(narrow == "¥1,234")
     }
+
+    @MainActor
+    @Test func symbolLessPresentationKeepsCurrencyNativePrecision() {
+        let dollars = CurrencyAmountFormat.symbolLessString(
+            cents: 123_450,
+            currencyCode: "USD",
+            locale: enUS
+        )
+        let yen = CurrencyAmountFormat.symbolLessString(
+            cents: 123_450,
+            currencyCode: "JPY",
+            locale: enUS
+        )
+        let dinar = CurrencyAmountFormat.symbolLessString(
+            cents: 123_450,
+            currencyCode: "KWD",
+            locale: enUS
+        )
+
+        #expect(dollars == "1,234.50")
+        #expect(yen == "1,234")
+        #expect(dinar == "1,234.500")
+    }
 }

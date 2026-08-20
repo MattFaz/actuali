@@ -38,7 +38,9 @@ struct ActualiApp: App {
                 .task {
                     #if DEBUG
                     if CommandLine.arguments.contains("-loadDemoData") {
-                        await budgetStore.loadDemoData()
+                        await budgetStore.loadDemoData(
+                            tracking: CommandLine.arguments.contains("-loadTrackingDemoData")
+                        )
                     }
                     if CommandLine.arguments.contains("-connectedServerSettings") {
                         // Seed the view state directly: fetchRemoteBudgets owns
