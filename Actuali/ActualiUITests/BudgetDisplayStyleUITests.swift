@@ -102,12 +102,15 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         // Parking has no activity in the demo. Clearing its budget makes it
         // a real Not Funded check-in result through the normal write path.
         let editParking = app.buttons["Edit budgeted amount for Parking"]
-        var scrollsLeft = 8
+        // Slow swipes: the pinned summary and status strip leave a short List
+        // viewport, and a full-velocity swipe scrolls Parking straight past
+        // the hittable band and off the other side.
+        var scrollsLeft = 20
         while !editParking.isHittable && scrollsLeft > 0 {
-            app.swipeUp()
+            app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }
-        XCTAssertTrue(editParking.isHittable)
+        XCTAssertTrue(editParking.isHittable, "Parking's edit button not reachable")
         editParking.tap()
 
         let amount = app.textFields.firstMatch
@@ -118,9 +121,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(amount.waitForNonExistence(timeout: 5))
 
         for _ in 0..<8 { app.swipeDown() }
-        let notFunded = app.buttons["budgetFilter-unassigned"]
-        XCTAssertTrue(notFunded.waitForExistence(timeout: 10))
-        notFunded.tap()
+        tapBudgetFilter(app, "unassigned")
 
         XCTAssertTrue(app.buttons["Details for Parking"].waitForExistence(timeout: 5),
                       "the horizontal check-in filter keeps matching categories in the budget table")

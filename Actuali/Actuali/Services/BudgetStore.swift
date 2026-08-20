@@ -1795,8 +1795,12 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Rename a category without changing its group, sort order, budget, or
-    /// transactions.
-    func renameCategory(id: String, name: String) async throws {
+    /// transactions. `month` is the month the caller is displaying: the shared
+    /// refresh below republishes the *current calendar* month, so a caller
+    /// browsing any other month has to have it restored — otherwise its rows
+    /// and its title disagree and the next amount edit lands on the wrong
+    /// month.
+    func renameCategory(id: String, name: String, month: String) async throws {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmedName.isEmpty else {
             throw BudgetStoreError.invalidCategoryName
@@ -1814,6 +1818,7 @@ final class BudgetStore: ObservableObject {
         }
 
         await refreshDataOnly()
+        await fetchBudgetMonth(month)
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the

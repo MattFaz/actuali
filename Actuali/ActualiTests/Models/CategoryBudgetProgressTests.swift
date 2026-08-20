@@ -119,6 +119,7 @@ struct CategoryBudgetProgressTests {
         let overspent = makeCategory(budgeted: 0, spent: -100, available: -100)
         let unassigned = makeCategory(budgeted: 0, spent: 0, available: 0)
         let funded = makeCategory(budgeted: 100, spent: 0, available: 100)
+        let approaching = makeCategory(budgeted: 10000, spent: -8000, available: 2000)
 
         #expect(BudgetCategoryFilter.all.includes(funded))
         #expect(BudgetCategoryFilter.overspent.includes(overspent))
@@ -129,6 +130,9 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
         #expect(BudgetCategoryFilter.onTrack.includes(funded))
         #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
+        #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
+        #expect(!BudgetCategoryFilter.approachingLimit.includes(funded))
+        #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
     }
 
     @Test func monthKeysShiftAcrossTheYearBoundary() {

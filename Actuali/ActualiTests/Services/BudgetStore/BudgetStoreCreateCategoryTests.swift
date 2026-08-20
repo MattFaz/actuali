@@ -210,7 +210,7 @@ struct BudgetStoreCreateCategoryTests {
         defer { cleanup(url) }
         let store = try await makeStore(database: database)
 
-        try await store.renameCategory(id: "cat-groceries", name: "  Food  ")
+        try await store.renameCategory(id: "cat-groceries", name: "  Food  ", month: "2026-07")
 
         let renamed: String = try rows(
             path: url,
@@ -233,7 +233,7 @@ struct BudgetStoreCreateCategoryTests {
             name: "Fuel",
             groupName: "Daily"
         )) {
-            try await store.renameCategory(id: "cat-groceries", name: "Fuel")
+            try await store.renameCategory(id: "cat-groceries", name: "Fuel", month: "2026-07")
         }
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
     }

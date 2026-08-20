@@ -5,6 +5,7 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
     case needsAttention
     case overspent
     case unassigned
+    case approachingLimit
     case onTrack
 
     var id: Self { self }
@@ -19,6 +20,8 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
             category.progressState == .overspent
         case .unassigned:
             category.progressState == .unassigned
+        case .approachingLimit:
+            category.isApproachingLimit
         case .onTrack:
             category.progressState == .funded || category.progressState == .spending
         }

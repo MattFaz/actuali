@@ -124,6 +124,31 @@ struct BudgetView: View {
                         // the capsule's bottom corners (GH #165).
                         .padding(.bottom, 8)
 
+                        // The strip filters categories, so it can't express
+                        // uncategorized transactions — and the check-in card it
+                        // replaced held the only in-app route to that list
+                        // (otherwise reachable only from a notification tap).
+                        if budgetStore.uncategorizedCount > 0 {
+                            NavigationLink {
+                                UncategorizedTransactionsView()
+                            } label: {
+                                HStack {
+                                    Label(
+                                        "\(budgetStore.uncategorizedCount) uncategorized",
+                                        systemImage: "questionmark.circle.fill"
+                                    )
+                                    Spacer(minLength: 8)
+                                    Image(systemName: "chevron.right")
+                                        .font(.footnote.weight(.semibold))
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.orange)
+                            }
+                            .accessibilityIdentifier("budgetUncategorized")
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                        }
+
                         BudgetCheckInStrip(
                             budget: budget,
                             selection: $categoryFilter
@@ -610,8 +635,10 @@ struct BudgetCheckInStrip: View {
             "\(budget.isTrackingBudget ? "Over Budget" : "Overspent") \(count(for: filter))"
         case .unassigned:
             "\(budget.isTrackingBudget ? "No Budget" : "Not Funded") \(count(for: filter))"
+        case .approachingLimit:
+            "\(budget.isTrackingBudget ? "Near Budget" : "Almost Spent") \(count(for: filter))"
         case .onTrack:
-            "On Track \(count(for: filter))"
+            "\(budget.isTrackingBudget ? "Within Budget" : "On Track") \(count(for: filter))"
         }
     }
 
@@ -1166,6 +1193,14 @@ struct CategoryBudgetDetailSheet: View {
 
                 Section(
                     content: {
+                    // A suggestion overwrites this month's amount, so name the
+                    // month and show what's there now — otherwise the user
+                    // confirms a budget write blind.
+                    LabeledContent(MonthPicker.title(for: category.month)) {
+                        Text(budgetStore.displayBalance(category.budgeted))
+                            .monospacedDigit()
+                    }
+
                     if quickAssignSuggestions.isEmpty {
                         Text("No suggestions available")
                             .foregroundStyle(.secondary)
@@ -1193,7 +1228,7 @@ struct CategoryBudgetDetailSheet: View {
                         Text(isTracking ? "Quick Budget" : "Quick Assign")
                     },
                     footer: {
-                        Text("Suggestions use this category's existing Actual history and replace the current month's amount.")
+                        Text("Suggestions use this category's existing Actual history and replace the amount shown above.")
                     }
                 )
 
@@ -1273,7 +1308,11 @@ struct CategoryBudgetDetailSheet: View {
         isSavingName = true
         errorMessage = nil
         do {
-            try await budgetStore.renameCategory(id: category.categoryId, name: trimmedName)
+            try await budgetStore.renameCategory(
+                id: category.categoryId,
+                name: trimmedName,
+                month: category.month
+            )
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
