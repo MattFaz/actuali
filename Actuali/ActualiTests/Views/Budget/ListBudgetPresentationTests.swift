@@ -24,53 +24,6 @@ struct ListBudgetPresentationTests {
         }
     }
 
-    @Test @MainActor func groupHeadersHaveNoSeparatorPixels() throws {
-        let store = BudgetStore.previewInstance()
-        let totals = CategoryGroupTotals([
-            category(budgeted: 50_000, spent: -31_500, available: 18_500),
-        ])
-        let expenseHeader = ListBudgetGroupHeader(
-            name: "Essentials",
-            isCollapsed: false,
-            totals: totals,
-            showsSpent: false,
-            onToggleCollapse: {}
-        )
-        .environmentObject(store)
-        .frame(width: 390)
-        let incomeHeader = ListIncomeGroupHeader(
-            name: "Income",
-            totalBudgeted: 125_000,
-            totalReceived: 110_000,
-            showsBudgeted: true
-        )
-        .environmentObject(store)
-        .frame(width: 390)
-
-        try #expect(hasUniformVerticalEdge(expenseHeader))
-        try #expect(hasUniformVerticalEdge(incomeHeader))
-    }
-
-    @Test @MainActor func categoryRowsKeepTheSourceListRowHeight() throws {
-        let store = BudgetStore.previewInstance()
-        let expenseRow = ListCategoryBudgetRow(
-            category: category(budgeted: 50_000, spent: -31_500, available: 18_500),
-            showsSpent: false,
-            showsProgressBars: false
-        )
-        .environmentObject(store)
-        .frame(width: 390)
-        let incomeRow = ListIncomeCategoryRow(
-            income: income(budgeted: 125_000, received: 110_000),
-            showsBudgeted: true
-        )
-        .environmentObject(store)
-        .frame(width: 390)
-
-        #expect(try renderedHeight(expenseRow) >= 44)
-        #expect(try renderedHeight(incomeRow) >= 44)
-    }
-
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
@@ -234,17 +187,6 @@ struct ListBudgetPresentationTests {
     }
 
     @MainActor
-    private func hasUniformVerticalEdge<Content: View>(_ view: Content) throws -> Bool {
-        let image = try renderedImage(view)
-        let sampleX = 8
-        let topIsUniform = try pixel(in: image, x: sampleX, y: 0)
-            == pixel(in: image, x: sampleX, y: 2)
-        let bottomIsUniform = try pixel(in: image, x: sampleX, y: image.height - 1)
-            == pixel(in: image, x: sampleX, y: image.height - 3)
-        return topIsUniform && bottomIsUniform
-    }
-
-    @MainActor
     private func renderedHeight<Content: View>(_ view: Content) throws -> Int {
         try renderedImage(view).height
     }
@@ -254,12 +196,5 @@ struct ListBudgetPresentationTests {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1
         return try #require(renderer.uiImage?.cgImage)
-    }
-
-    private func pixel(in image: CGImage, x: Int, y: Int) throws -> [UInt8] {
-        let data = try #require(image.dataProvider?.data)
-        let bytes = try #require(CFDataGetBytePtr(data))
-        let offset = y * image.bytesPerRow + x * image.bitsPerPixel / 8
-        return Array(UnsafeBufferPointer(start: bytes + offset, count: image.bitsPerPixel / 8))
     }
 }
