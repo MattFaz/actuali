@@ -1,63 +1,64 @@
 import XCTest
 
-/// End-to-end check for the overspent badge's explanation (GH #138).
+/// End-to-end check for the overspent workflow (GH #138), now that the
+/// check-in card and its dedicated list are replaced by the status strip.
 ///
-/// Demo data has no overspent categories, so the notice must start hidden.
-/// Overspending Coffee through the real edit sheet must surface a
-/// overspent check-in result at the top of the Budget screen; tapping it
-/// must list Coffee with its negative balance, and covering it through the
-/// visible resolution action must clear the notice again.
+/// Demo data has no overspent categories, so the Overspent filter must start
+/// empty. Overspending Coffee through the real edit sheet must make the filter
+/// isolate Coffee in the budget table; covering it from Coffee's own balance
+/// must empty the filter again.
 final class OverspentCategoriesUITests: XCTestCase {
 
     @MainActor
-    func testNoticeExplainsOverspentCategories() throws {
+    func testOverspentFilterIsolatesAndResolvesOverspentCategories() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
         let budgetTab = app.tabBars.buttons["Budget"]
         XCTAssertTrue(budgetTab.waitForExistence(timeout: 10), "Budget tab not found")
+        XCTAssertTrue(app.buttons["Details for Groceries"].firstMatch.waitForExistence(timeout: 10),
+                      "budget table did not load")
 
-        // Demo data is within budget everywhere: no notice at launch.
-        let notice = app.buttons["budgetCheckInOverspent"]
-        XCTAssertFalse(notice.exists, "overspent notice shown with nothing overspent")
+        // Demo data is within budget everywhere: nothing to show.
+        tapBudgetFilter(app, "overspent")
+        let emptyState = app.staticTexts["No Matching Categories"]
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 10),
+                      "overspent filter matched something with nothing overspent")
+        attachScreenshot(app, name: "1-overspent-filter-empty")
 
         // Overspend Coffee by budgeting $1 against ~$19 already spent.
+        tapBudgetFilter(app, "all")
         setBudget(app, category: "Coffee", centsKeystrokes: "100")
         scrollToTop(app)
-        XCTAssertTrue(notice.waitForExistence(timeout: 10),
-                      "overspent notice did not appear after overspending Coffee")
-        attachScreenshot(app, name: "1-overspent-notice")
+        tapBudgetFilter(app, "overspent")
 
-        // The notice must explain itself: Coffee listed, in the red.
-        notice.tap()
-        let coffeeRow = app.buttons.containing(NSPredicate(format: "label CONTAINS 'Coffee'")).firstMatch
-        XCTAssertTrue(coffeeRow.waitForExistence(timeout: 5),
-                      "Coffee missing from the overspent list")
-        let resolveButton = app.buttons["Resolve overspending for Coffee"]
-        XCTAssertTrue(resolveButton.waitForExistence(timeout: 5),
-                      "overspent category should offer a visible resolution action")
-        attachScreenshot(app, name: "2-overspent-list")
+        // The filter must explain itself: Coffee in the table, nothing else.
+        let coffeeRow = app.buttons["Details for Coffee"].firstMatch
+        XCTAssertTrue(coffeeRow.waitForExistence(timeout: 10),
+                      "Coffee missing from the overspent filter")
+        XCTAssertFalse(app.buttons["Details for Groceries"].exists,
+                       "the overspent filter left a healthy category in the table")
+        attachScreenshot(app, name: "2-overspent-filtered")
 
-        // Rows drill into the month's transactions.
+        // Rows still drill into the month's transactions.
         coffeeRow.tap()
-        XCTAssertTrue(app.navigationBars["Coffee"].waitForExistence(timeout: 5),
-                      "tapping the overspent row did not open Coffee's transactions")
-        attachScreenshot(app, name: "3-category-transactions")
+        XCTAssertTrue(app.navigationBars["Edit Category"].waitForExistence(timeout: 5),
+                      "tapping the category name did not open the compact editor")
+        app.buttons["Cancel"].tap()
 
-        // Resolving is a visible, complete action—not a hidden swipe gesture.
-        app.navigationBars.buttons.firstMatch.tap() // back to the overspent list
-        resolveButton.tap()
+        // Resolving is a visible action on the row's own balance.
+        let cover = app.buttons["Cover overspending for Coffee"]
+        XCTAssertTrue(cover.waitForExistence(timeout: 5),
+                      "an overspent balance should offer a visible resolution action")
+        cover.tap()
         XCTAssertTrue(app.navigationBars["Cover Overspending"].waitForExistence(timeout: 5),
-                      "resolution action did not open the cover flow")
+                      "the balance did not open the cover flow")
         app.buttons["Move"].tap()
-        XCTAssertTrue(app.staticTexts["Nothing Overspent"].waitForExistence(timeout: 10),
-                      "covering the category should resolve the result immediately")
-        app.navigationBars.buttons.firstMatch.tap() // back to the budget
-        scrollToTop(app)
-        XCTAssertTrue(waitForNonExistence(of: notice, timeout: 10),
-                      "overspent check-in result still shown after covering it")
-        attachScreenshot(app, name: "4-notice-cleared")
+
+        XCTAssertTrue(emptyState.waitForExistence(timeout: 10),
+                      "Coffee still matched the overspent filter after covering it")
+        attachScreenshot(app, name: "3-overspent-filter-cleared")
     }
 
     /// Opens the category's edit-budget sheet and types a new amount.
@@ -88,23 +89,13 @@ final class OverspentCategoriesUITests: XCTestCase {
         XCTAssertTrue(field.waitForNonExistence(timeout: 5), "edit sheet did not dismiss")
     }
 
-    /// The notice lives at the top of the (possibly scrolled) budget list.
+    /// The status strip is pinned above the (possibly scrolled) budget list.
     @MainActor
     private func scrollToTop(_ app: XCUIApplication) {
         for _ in 0..<8 where !app.navigationBars["Budget"].isHittable {
             app.swipeDown()
         }
         app.swipeDown()
-    }
-
-    @MainActor
-    private func waitForNonExistence(of element: XCUIElement, timeout: TimeInterval) -> Bool {
-        let deadline = Date().addingTimeInterval(timeout)
-        while Date() < deadline {
-            if !element.exists { return true }
-            RunLoop.current.run(until: Date().addingTimeInterval(0.5))
-        }
-        return false
     }
 
     @MainActor

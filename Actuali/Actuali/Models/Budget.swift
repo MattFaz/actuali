@@ -24,43 +24,6 @@ struct BudgetMonth: Identifiable, Hashable {
         categoryBudgets.count(where: \.isOverspent)
     }
 
-    /// The categories behind `overspentCount`, worst first, so the badge can
-    /// be explained instead of leaving the user to hunt through the table
-    /// (GH #138).
-    var overspentCategories: [CategoryBudget] {
-        categoryBudgets
-            .filter(\.isOverspent)
-            .sorted { $0.available < $1.available }
-    }
-
-    /// Categories with neither assigned money nor carried balance/activity.
-    /// This is a check-in prompt, not a target calculation.
-    var unassignedCategories: [CategoryBudget] {
-        categoryBudgets
-            .filter { $0.progressState == .unassigned }
-            .sorted { ($0.groupSortOrder, $0.categorySortOrder) < ($1.groupSortOrder, $1.categorySortOrder) }
-    }
-
-    /// Healthy categories that have consumed at least 80% of their available
-    /// capacity. Overspent and fully spent categories have separate guidance.
-    var approachingLimitCategories: [CategoryBudget] {
-        categoryBudgets
-            .filter { !$0.isOverspent && $0.available > 0 && $0.spent < 0 && $0.progressFraction >= 0.8 }
-            .sorted { $0.progressFraction > $1.progressFraction }
-    }
-
-    /// Whether the monthly check-in has anything actionable to show. This is
-    /// intentionally independent of presentation preferences such as the
-    /// optional Budget tab badge. Money left to assign is not an issue here:
-    /// the check-in draws no row for it (the Budget summary already shows it),
-    /// so counting it would suppress "Budget looks good" under an empty list.
-    func hasCheckInIssues(uncategorizedCount: Int) -> Bool {
-        overspentCount > 0
-            || uncategorizedCount > 0
-            || !unassignedCategories.isEmpty
-            || !approachingLimitCategories.isEmpty
-    }
-
     var totalBudgeted: Int {
         categoryBudgets.reduce(0) { $0 + $1.budgeted }
     }
@@ -147,6 +110,13 @@ struct CategoryBudget: Identifiable, Hashable {
         let capacity = spentAmount + Double(max(available, 0))
         guard capacity > 0 else { return 0 }
         return min(spentAmount / capacity, 1)
+    }
+
+    /// Healthy but close to running out: at least 80% of what this category
+    /// had to spend is gone. Overspent and fully spent categories have their
+    /// own status, so they're excluded rather than double-counted here.
+    var isApproachingLimit: Bool {
+        !isOverspent && available > 0 && spent < 0 && progressFraction >= 0.8
     }
 
     /// A bar with no budget and no activity carries no information.

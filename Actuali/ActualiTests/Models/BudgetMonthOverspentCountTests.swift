@@ -43,56 +43,39 @@ struct BudgetMonthOverspentCountTests {
         #expect(makeMonth(availables: [0]).overspentCount == 0)
     }
 
-    @Test func overspendingAlwaysRequiresCheckIn() {
-        let month = makeMonth(availables: [-8500])
-        #expect(month.hasCheckInIssues(uncategorizedCount: 0))
+    // MARK: - isApproachingLimit (the "Almost Spent" filter chip)
+
+    @Test func eightyPercentSpentIsApproachingTheLimit() {
+        var category = makeCategory(id: "approaching", available: 2000)
+        category.budgeted = 10000
+        category.spent = -8000
+        #expect(category.isApproachingLimit)
     }
 
-    // Money left to assign has no check-in row (the Budget summary shows
-    // it), so it must not suppress "Budget looks good" either.
-    @Test func moneyLeftToAssignAloneIsNotACheckInIssue() {
-        var month = makeMonth(availables: [5000])
-        month.toBudget = 12000
-        #expect(!month.hasCheckInIssues(uncategorizedCount: 0))
+    @Test func plentyLeftIsNotApproachingTheLimit() {
+        var category = makeCategory(id: "healthy", available: 6000)
+        category.budgeted = 10000
+        category.spent = -4000
+        #expect(!category.isApproachingLimit)
     }
 
-    // MARK: - overspentCategories (the badge's explanation, GH #138)
+    // Overspent, fully spent and untouched categories each have their own
+    // chip, so none of them may also match "Almost Spent".
+    @Test func overspentAndFullySpentAndIdleAreNotApproachingTheLimit() {
+        var overspent = makeCategory(id: "overspent", available: -500)
+        overspent.budgeted = 10000
+        overspent.spent = -10500
+        #expect(!overspent.isApproachingLimit)
 
-    @Test func overspentCategoriesListsOnlyTheOnesInTheRed() {
-        let month = makeMonth(availables: [5000, -200, 0, -1])
-        #expect(month.overspentCategories.map(\.available) == [-200, -1])
-    }
+        var fullySpent = makeCategory(id: "spent", available: 0)
+        fullySpent.budgeted = 10000
+        fullySpent.spent = -10000
+        #expect(!fullySpent.isApproachingLimit)
 
-    @Test func overspentCategoriesOrdersWorstFirst() {
-        let month = makeMonth(availables: [-1, -5000, 300, -200])
-        #expect(month.overspentCategories.map(\.available) == [-5000, -200, -1])
-    }
-
-    @Test func overspentCategoriesIsEmptyWhenNothingIsOverspent() {
-        #expect(makeMonth(availables: [5000, 0]).overspentCategories.isEmpty)
-    }
-
-    @Test func checkInSeparatesUnassignedAndApproachingCategories() {
-        var unassigned = makeCategory(id: "unassigned", available: 0)
-        unassigned.budgeted = 0
-        unassigned.spent = 0
-
-        var approaching = makeCategory(id: "approaching", available: 1000)
-        approaching.budgeted = 10000
-        approaching.spent = -9000
-
-        var healthy = makeCategory(id: "healthy", available: 6000)
-        healthy.budgeted = 10000
-        healthy.spent = -4000
-
-        let month = BudgetMonth(
-            month: "2026-07",
-            categoryBudgets: [healthy, approaching, unassigned],
-            toBudget: 5000
-        )
-
-        #expect(month.unassignedCategories.map(\.categoryId) == ["unassigned"])
-        #expect(month.approachingLimitCategories.map(\.categoryId) == ["approaching"])
+        var idle = makeCategory(id: "idle", available: 10000)
+        idle.budgeted = 10000
+        idle.spent = 0
+        #expect(!idle.isApproachingLimit)
     }
 
     // MARK: - rolledOverOverspending
