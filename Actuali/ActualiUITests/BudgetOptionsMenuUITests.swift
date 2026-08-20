@@ -13,8 +13,8 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-hideZeroBudgetCategories", "NO",
-            "-showYNABBudgetOverview", "YES",
-            "-showYNABSpentColumn", "NO",
+            "-showListBudgetOverview", "YES",
+            "-showListSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-showGroupTotals", "YES",
         ]
@@ -31,29 +31,29 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "YNAB", "Expand All Groups",
+        for option in ["Clean", "Detailed", "List", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
                        "Hide Spent Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
-        for ynabOption in ["Show Overview", "Show Spent Column"] {
-            XCTAssertFalse(app.buttons[ynabOption].exists,
-                           "Clean should not offer the YNAB-only '\(ynabOption)' control")
+        for listOption in ["Show Overview", "Show Spent Column"] {
+            XCTAssertFalse(app.buttons[listOption].exists,
+                           "Clean should not offer the List-only '\(listOption)' control")
         }
         XCTAssertFalse(app.buttons["Group Totals"].exists,
                        "Group Totals remains exclusive to Detailed")
     }
 
     @MainActor
-    func testYNABControlsAreConditionalAndCorrectlyDefaulted() throws {
+    func testListControlsAreConditionalAndCorrectlyDefaulted() throws {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
-        app.buttons["YNAB"].tap()
+        app.buttons["List"].tap()
 
         optionsMenu.tap()
         let overview = app.buttons["Show Overview"]
@@ -63,9 +63,9 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
         XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
-                       "YNAB uses the shared Budget Progress Bars setting")
+                       "List uses the shared Budget Progress Bars setting")
         XCTAssertFalse(app.buttons["Group Totals"].exists,
-                       "YNAB group totals are always visible, not optional")
+                       "List group totals are always visible, not optional")
 
         app.buttons["Detailed"].tap()
         optionsMenu.tap()

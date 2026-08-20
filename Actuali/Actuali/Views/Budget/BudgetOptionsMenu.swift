@@ -54,17 +54,17 @@ struct BudgetOptionsMenu: View {
                     .tag(BudgetDisplayStyle.clean)
                 Label("Detailed", systemImage: "tablecells")
                     .tag(BudgetDisplayStyle.detailed)
-                Label("YNAB", systemImage: "rectangle.grid.1x2")
-                    .tag(BudgetDisplayStyle.ynab)
+                Label("List", systemImage: "rectangle.grid.1x2")
+                    .tag(BudgetDisplayStyle.list)
             }
             .pickerStyle(.inline)
 
-            if budgetStore.budgetDisplayStyle == .ynab {
+            if budgetStore.budgetDisplayStyle == .list {
                 Section {
-                    Toggle(isOn: $budgetStore.showYNABBudgetOverview) {
+                    Toggle(isOn: $budgetStore.showListBudgetOverview) {
                         Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
                     }
-                    Toggle(isOn: $budgetStore.showYNABSpentColumn) {
+                    Toggle(isOn: $budgetStore.showListSpentColumn) {
                         Label("Show Spent Column", systemImage: "tablecells.badge.ellipsis")
                     }
                 }
@@ -107,7 +107,7 @@ struct BudgetOptionsMenu: View {
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
-                // YNAB always shows source-style group totals; only Detailed
+                // List always shows source-style group totals; only Detailed
                 // makes them optional.
                 if budgetStore.budgetDisplayStyle == .detailed {
                     Toggle(isOn: $budgetStore.showGroupTotals) {

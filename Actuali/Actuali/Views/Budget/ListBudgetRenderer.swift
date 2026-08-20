@@ -1,13 +1,13 @@
 import SwiftUI
 
-struct YNABBudgetSummary: View {
+struct ListBudgetSummary: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let budget: BudgetMonth
     let showsSpent: Bool
 
-    private var overview: YNABBudgetOverview {
-        YNABBudgetOverview(
+    private var overview: ListBudgetOverview {
+        ListBudgetOverview(
             budget: budget,
             showsSpent: showsSpent,
             currentMonth: BudgetView.currentMonthString()
@@ -18,7 +18,7 @@ struct YNABBudgetSummary: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
-                    YNABOverviewStat(
+                    ListOverviewStat(
                         stat: overview.leading,
                         isResult: overview.leading.label == "To Budget",
                         alignment: .leading
@@ -28,25 +28,25 @@ struct YNABBudgetSummary: View {
                             Text(stat.label)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            YNABOverviewAmount(stat: stat, isResult: isResult(stat))
+                            ListOverviewAmount(stat: stat, isResult: isResult(stat))
                         }
                     }
                 }
             } else {
                 HStack(spacing: 0) {
-                    YNABOverviewStat(
+                    ListOverviewStat(
                         stat: overview.leading,
                         isResult: overview.leading.label == "To Budget",
                         alignment: .leading
                     )
                         .frame(
-                            width: YNABBudgetTableLayout.titleColumnWidth,
+                            width: ListBudgetTableLayout.titleColumnWidth,
                             alignment: .leading
                         )
 
-                    HStack(spacing: YNABBudgetTableLayout.amountColumnSpacing) {
+                    HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
                         ForEach(Array(overview.columns.enumerated()), id: \.offset) { _, stat in
-                            YNABOverviewStat(stat: stat, isResult: isResult(stat))
+                            ListOverviewStat(stat: stat, isResult: isResult(stat))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                     }
@@ -64,20 +64,20 @@ struct YNABBudgetSummary: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             dynamicTypeSize.isAccessibilitySize
-                ? "ynabBudgetOverview.stacked"
-                : "ynabBudgetOverview"
+                ? "listBudgetOverview.stacked"
+                : "listBudgetOverview"
         )
     }
 
-    private func isResult(_ stat: YNABBudgetOverview.Stat) -> Bool {
+    private func isResult(_ stat: ListBudgetOverview.Stat) -> Bool {
         stat.label == "Balance" || stat.label == "Projected" || stat.label == "Saved"
     }
 }
 
-private struct YNABOverviewStat: View {
+private struct ListOverviewStat: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let stat: YNABBudgetOverview.Stat
+    let stat: ListBudgetOverview.Stat
     let isResult: Bool
     var alignment: HorizontalAlignment = .trailing
 
@@ -90,33 +90,33 @@ private struct YNABOverviewStat: View {
                 .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.65)
                 .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
                 .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
-            YNABOverviewAmount(stat: stat, isResult: isResult)
+            ListOverviewAmount(stat: stat, isResult: isResult)
         }
     }
 }
 
-private struct YNABOverviewAmount: View {
+private struct ListOverviewAmount: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let stat: YNABBudgetOverview.Stat
+    let stat: ListBudgetOverview.Stat
     let isResult: Bool
 
     var body: some View {
-        Text(budgetStore.displayYNABBudgetCell(stat.amount))
+        Text(budgetStore.displayListBudgetCell(stat.amount))
             .font(.footnote.weight(.semibold))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
-            .animatedAmount(budgetStore.displayYNABBudgetCell(stat.amount))
+            .animatedAmount(budgetStore.displayListBudgetCell(stat.amount))
             .accessibilityLabel("\(stat.label), \(budgetStore.displayBalance(stat.amount))")
     }
 
     private var resultColor: Color {
         guard isResult else { return .primary }
-        switch YNABBalanceTone(amount: stat.amount, isMasked: budgetStore.hideBalances) {
+        switch ListBalanceTone(amount: stat.amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary
         case .positive: return .green
@@ -125,7 +125,7 @@ private struct YNABOverviewAmount: View {
     }
 }
 
-struct YNABBudgetGroupHeader: View {
+struct ListBudgetGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -135,11 +135,11 @@ struct YNABBudgetGroupHeader: View {
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
 
-    private var layout: YNABBudgetTableLayout {
-        YNABBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+    private var layout: ListBudgetTableLayout {
+        ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
     }
 
-    private var columns: [(YNABBudgetColumn, Int)] {
+    private var columns: [(ListBudgetColumn, Int)] {
         layout.expenseColumns.compactMap { column in
             switch column {
             case .budgeted: (column, totals.budgeted)
@@ -161,7 +161,7 @@ struct YNABBudgetGroupHeader: View {
                                 Text(column.rawValue)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                YNABAmountText(amount: amount, isBalance: column == .balance)
+                                ListAmountText(amount: amount, isBalance: column == .balance)
                             }
                         }
                     }
@@ -169,17 +169,17 @@ struct YNABBudgetGroupHeader: View {
                     HStack(spacing: 0) {
                         title
                             .frame(
-                                width: YNABBudgetTableLayout.titleColumnWidth,
+                                width: ListBudgetTableLayout.titleColumnWidth,
                                 alignment: .leading
                             )
-                        HStack(spacing: YNABBudgetTableLayout.amountColumnSpacing) {
+                        HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
                             ForEach(columns, id: \.0) { column, amount in
                                 VStack(alignment: .trailing, spacing: 2) {
                                     Text(column.rawValue)
                                         .font(.caption2)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.65)
-                                    YNABAmountText(amount: amount, isBalance: column == .balance)
+                                    ListAmountText(amount: amount, isBalance: column == .balance)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             }
@@ -197,7 +197,7 @@ struct YNABBudgetGroupHeader: View {
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("ynabBudgetGroup.\(name)")
+        .accessibilityIdentifier("listBudgetGroup.\(name)")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Toggles the group's categories")
     }
@@ -223,7 +223,7 @@ struct YNABBudgetGroupHeader: View {
     }
 }
 
-struct YNABCategoryBudgetRow: View {
+struct ListCategoryBudgetRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -235,8 +235,8 @@ struct YNABCategoryBudgetRow: View {
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
-    private var layout: YNABBudgetTableLayout {
-        YNABBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+    private var layout: ListBudgetTableLayout {
+        ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
     }
 
     private var includesSpentColumn: Bool {
@@ -257,26 +257,26 @@ struct YNABCategoryBudgetRow: View {
                 )
             }
         }
-        .padding(.vertical, YNABBudgetTableLayout.categoryRowVerticalPadding)
-        .frame(minHeight: YNABBudgetTableLayout.categoryRowMinimumHeight)
+        .padding(.vertical, ListBudgetTableLayout.categoryRowVerticalPadding)
+        .frame(minHeight: ListBudgetTableLayout.categoryRowMinimumHeight)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
-        .accessibilityIdentifier("ynabBudgetCategory.\(category.categoryId)")
+        .accessibilityIdentifier("listBudgetCategory.\(category.categoryId)")
     }
 
     private var compactContent: some View {
         HStack(spacing: 0) {
             detailButton
                 .frame(
-                    width: YNABBudgetTableLayout.titleColumnWidth,
+                    width: ListBudgetTableLayout.titleColumnWidth,
                     alignment: .leading
                 )
 
-            HStack(spacing: YNABBudgetTableLayout.amountColumnSpacing) {
+            HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
                 Button {
                     onEditBudget(category)
                 } label: {
-                    YNABAmountText(amount: category.budgeted)
+                    ListAmountText(amount: category.budgeted)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -286,7 +286,7 @@ struct YNABCategoryBudgetRow: View {
                     Button {
                         onShowTransactions(category, category.month)
                     } label: {
-                        YNABAmountText(amount: category.spent)
+                        ListAmountText(amount: category.spent)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .buttonStyle(.borderless)
@@ -296,7 +296,7 @@ struct YNABCategoryBudgetRow: View {
                 Button {
                     onMoveMoney(category)
                 } label: {
-                    YNABAmountText(amount: category.available, isBalance: true)
+                    ListAmountText(amount: category.available, isBalance: true)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -364,7 +364,7 @@ struct YNABCategoryBudgetRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
-            YNABAmountText(amount: amount, isBalance: isBalance)
+            ListAmountText(amount: amount, isBalance: isBalance)
         }
         .contentShape(Rectangle())
     }
@@ -388,7 +388,7 @@ struct YNABCategoryBudgetRow: View {
         let action = category.isOverspent
             ? "Cover overspending for \(category.categoryName)"
             : "Move money from \(category.categoryName)"
-        let tone = YNABBalanceTone(
+        let tone = ListBalanceTone(
             amount: category.available,
             isMasked: budgetStore.hideBalances
         )
@@ -396,7 +396,7 @@ struct YNABCategoryBudgetRow: View {
     }
 }
 
-struct YNABIncomeGroupHeader: View {
+struct ListIncomeGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -407,11 +407,11 @@ struct YNABIncomeGroupHeader: View {
     let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
 
-    private var layout: YNABBudgetTableLayout {
-        YNABBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
+    private var layout: ListBudgetTableLayout {
+        ListBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
     }
 
-    private var columns: [(YNABBudgetColumn, Int)] {
+    private var columns: [(ListBudgetColumn, Int)] {
         layout.incomeColumns.compactMap { column in
             switch column {
             case .budgeted: (column, totalBudgeted)
@@ -432,7 +432,7 @@ struct YNABIncomeGroupHeader: View {
                                 Text(column.rawValue)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                YNABAmountText(amount: amount)
+                                ListAmountText(amount: amount)
                             }
                         }
                     }
@@ -440,15 +440,15 @@ struct YNABIncomeGroupHeader: View {
                     HStack(spacing: 0) {
                         title
                             .frame(
-                                width: YNABBudgetTableLayout.titleColumnWidth,
+                                width: ListBudgetTableLayout.titleColumnWidth,
                                 alignment: .leading
                             )
-                        HStack(spacing: YNABBudgetTableLayout.amountColumnSpacing) {
+                        HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
                             ForEach(columns, id: \.0) { column, amount in
                                 VStack(alignment: .trailing, spacing: 2) {
                                     Text(column.rawValue)
                                         .font(.caption2)
-                                    YNABAmountText(amount: amount)
+                                    ListAmountText(amount: amount)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             }
@@ -466,7 +466,7 @@ struct YNABIncomeGroupHeader: View {
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("ynabIncomeSection")
+        .accessibilityIdentifier("listIncomeSection")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Toggles the income categories")
     }
@@ -492,7 +492,7 @@ struct YNABIncomeGroupHeader: View {
     }
 }
 
-struct YNABIncomeCategoryRow: View {
+struct ListIncomeCategoryRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -500,8 +500,8 @@ struct YNABIncomeCategoryRow: View {
     let showsBudgeted: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
-    private var layout: YNABBudgetTableLayout {
-        YNABBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
+    private var layout: ListBudgetTableLayout {
+        ListBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
     }
 
     private var includesBudgetedColumn: Bool {
@@ -523,7 +523,7 @@ struct YNABIncomeCategoryRow: View {
                             Text("Received")
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            YNABAmountText(amount: income.received)
+                            ListAmountText(amount: income.received)
                         }
                         .contentShape(Rectangle())
                     }
@@ -534,20 +534,20 @@ struct YNABIncomeCategoryRow: View {
                 HStack(spacing: 0) {
                     nameButton
                         .frame(
-                            width: YNABBudgetTableLayout.titleColumnWidth,
+                            width: ListBudgetTableLayout.titleColumnWidth,
                             alignment: .leading
                         )
-                    HStack(spacing: YNABBudgetTableLayout.amountColumnSpacing) {
+                    HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
                         if includesBudgetedColumn {
-                            YNABAmountText(amount: income.budgeted)
+                            ListAmountText(amount: income.budgeted)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                                 .accessibilityLabel(budgetedAccessibilityLabel)
-                                .accessibilityIdentifier("ynabIncomeBudgeted.\(income.categoryId)")
+                                .accessibilityIdentifier("listIncomeBudgeted.\(income.categoryId)")
                         }
                         Button {
                             onShowTransactions(income, income.month)
                         } label: {
-                            YNABAmountText(amount: income.received)
+                            ListAmountText(amount: income.received)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .buttonStyle(.borderless)
@@ -558,11 +558,11 @@ struct YNABIncomeCategoryRow: View {
                 }
             }
         }
-        .padding(.vertical, YNABBudgetTableLayout.categoryRowVerticalPadding)
-        .frame(minHeight: YNABBudgetTableLayout.categoryRowMinimumHeight)
+        .padding(.vertical, ListBudgetTableLayout.categoryRowVerticalPadding)
+        .frame(minHeight: ListBudgetTableLayout.categoryRowMinimumHeight)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
-        .accessibilityIdentifier("ynabIncomeCategory.\(income.categoryId)")
+        .accessibilityIdentifier("listIncomeCategory.\(income.categoryId)")
     }
 
     private var nameButton: some View {
@@ -584,11 +584,11 @@ struct YNABIncomeCategoryRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
-            YNABAmountText(amount: amount)
+            ListAmountText(amount: amount)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(budgetedAccessibilityLabel)
-        .accessibilityIdentifier("ynabIncomeBudgeted.\(income.categoryId)")
+        .accessibilityIdentifier("listIncomeBudgeted.\(income.categoryId)")
     }
 
     private var budgetedAccessibilityLabel: String {
@@ -600,7 +600,7 @@ struct YNABIncomeCategoryRow: View {
     }
 }
 
-private struct YNABAmountText: View {
+private struct ListAmountText: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -608,14 +608,14 @@ private struct YNABAmountText: View {
     var isBalance = false
 
     var body: some View {
-        Text(budgetStore.displayYNABBudgetCell(amount))
+        Text(budgetStore.displayListBudgetCell(amount))
             .font(.footnote.weight(isBalance ? .semibold : .regular))
             .monospacedDigit()
             .lineLimit(1)
             .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.35)
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(foregroundColor)
-            .animatedAmount(budgetStore.displayYNABBudgetCell(amount))
+            .animatedAmount(budgetStore.displayListBudgetCell(amount))
             .padding(.horizontal, isBalance ? 5 : 0)
             .padding(.vertical, isBalance ? 2 : 0)
             .background {
@@ -631,7 +631,7 @@ private struct YNABAmountText: View {
         guard isBalance else {
             return amount == 0 ? .secondary : .primary
         }
-        switch YNABBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
+        switch ListBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary
         case .positive: return .green
@@ -644,7 +644,7 @@ extension View {
     @ViewBuilder
     func budgetListStyle(for style: BudgetDisplayStyle) -> some View {
         switch style {
-        case .ynab:
+        case .list:
             listStyle(.plain)
         case .clean, .detailed:
             self
@@ -654,7 +654,7 @@ extension View {
 
 private extension BudgetStore {
     @MainActor
-    func displayYNABBudgetCell(_ cents: Int) -> String {
+    func displayListBudgetCell(_ cents: Int) -> String {
         hideBalances
             ? Self.hiddenBalanceText
             : CurrencyAmountFormat.symbolLessString(

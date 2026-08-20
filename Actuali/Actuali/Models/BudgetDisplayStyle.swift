@@ -3,12 +3,12 @@ import Foundation
 /// How the Budget tab lays out its summary and category rows (actios-96wa).
 /// `clean` is the card look from the App Store screenshots — category name
 /// with a large Available amount and Budgeted/Spent captions. `detailed` is
-/// the PWA-style table of Budgeted/Spent/Balance pill columns. `ynab` adapts
+/// the PWA-style table of Budgeted/Spent/Balance pill columns. `list` adapts
 /// the companion app's plain monthly table while retaining Actuali behavior.
 enum BudgetDisplayStyle: String, CaseIterable {
     case clean
     case detailed
-    case ynab
+    case list
 
     static let defaultsKey = "budgetDisplayStyle"
 
@@ -20,11 +20,11 @@ enum BudgetDisplayStyle: String, CaseIterable {
     }
 }
 
-struct YNABBudgetViewPreferences: Equatable {
-    static let showOverviewKey = "showYNABBudgetOverview"
-    static let showSpentColumnKey = "showYNABSpentColumn"
+struct ListBudgetViewPreferences: Equatable {
+    static let showOverviewKey = "showListBudgetOverview"
+    static let showSpentColumnKey = "showListSpentColumn"
 
-    static let defaults = YNABBudgetViewPreferences(
+    static let defaults = ListBudgetViewPreferences(
         showOverview: true,
         showSpentColumn: false
     )
@@ -32,8 +32,8 @@ struct YNABBudgetViewPreferences: Equatable {
     let showOverview: Bool
     let showSpentColumn: Bool
 
-    static func persisted(in defaults: UserDefaults = .standard) -> YNABBudgetViewPreferences {
-        YNABBudgetViewPreferences(
+    static func persisted(in defaults: UserDefaults = .standard) -> ListBudgetViewPreferences {
+        ListBudgetViewPreferences(
             showOverview: persistedBool(
                 forKey: showOverviewKey,
                 defaultValue: Self.defaults.showOverview,
