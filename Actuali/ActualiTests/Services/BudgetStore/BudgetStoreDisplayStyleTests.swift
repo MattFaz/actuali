@@ -130,4 +130,10 @@ struct BudgetStoreDisplayStyleTests {
         }
         #expect(BudgetDisplayStyle(rawValue: "table-3000") == nil)
     }
+
+    @Test func detailedAndListStylesSupportGroupTotals() {
+        #expect(!BudgetDisplayStyle.clean.supportsGroupTotals)
+        #expect(BudgetDisplayStyle.detailed.supportsGroupTotals)
+        #expect(BudgetDisplayStyle.list.supportsGroupTotals)
+    }
 }

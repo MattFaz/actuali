@@ -54,6 +54,32 @@ struct ListBudgetTableLayout: Equatable {
     }
 }
 
+struct ListBudgetGroupHeaderPresentation: Equatable {
+    struct Column: Equatable {
+        let type: ListBudgetColumn
+        let amount: Int
+    }
+
+    let columns: [Column]
+
+    init(totals: CategoryGroupTotals?, showsSpent: Bool) {
+        guard let totals else {
+            columns = []
+            return
+        }
+
+        let layout = ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+        columns = layout.expenseColumns.compactMap { column in
+            switch column {
+            case .budgeted: Column(type: column, amount: totals.budgeted)
+            case .spent: Column(type: column, amount: totals.spent)
+            case .balance: Column(type: column, amount: totals.balance)
+            case .received: nil
+            }
+        }
+    }
+}
+
 struct ListBudgetOverview: Equatable {
     struct Stat: Equatable {
         let label: String

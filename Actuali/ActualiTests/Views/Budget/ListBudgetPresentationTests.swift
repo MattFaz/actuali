@@ -71,6 +71,36 @@ struct ListBudgetPresentationTests {
         #expect(try renderedHeight(incomeRow) >= 44)
     }
 
+    @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
+        let store = BudgetStore.previewInstance()
+        let totals = CategoryGroupTotals([
+            category(budgeted: 50_000, spent: -31_500, available: 18_500),
+        ])
+
+        for showsSpent in [false, true] {
+            let visibleHeader = ListBudgetGroupHeader(
+                name: "Emergency Savings",
+                isCollapsed: false,
+                totals: totals,
+                showsSpent: showsSpent,
+                onToggleCollapse: {}
+            )
+            .environmentObject(store)
+            .frame(width: 390)
+            let hiddenHeader = ListBudgetGroupHeader(
+                name: "Emergency Savings",
+                isCollapsed: false,
+                totals: nil,
+                showsSpent: showsSpent,
+                onToggleCollapse: {}
+            )
+            .environmentObject(store)
+            .frame(width: 390)
+
+            #expect(try renderedHeight(visibleHeader) == renderedHeight(hiddenHeader))
+        }
+    }
+
     @Test func envelopeOverviewUsesToBudgetAndHidesSpentWithoutAPlaceholder() {
         let budget = BudgetMonth(
             month: "2026-08",
@@ -94,6 +124,23 @@ struct ListBudgetPresentationTests {
         #expect(ListBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
             .budgeted,
             .balance,
+        ])
+    }
+
+    @Test func groupHeaderPresentationOmitsEveryTotalWhenDisabled() {
+        let totals = CategoryGroupTotals([
+            category(budgeted: 50_000, spent: -31_500, available: 18_500),
+        ])
+
+        #expect(ListBudgetGroupHeaderPresentation(totals: nil, showsSpent: true).columns.isEmpty)
+        #expect(ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: false).columns == [
+            .init(type: .budgeted, amount: 50_000),
+            .init(type: .balance, amount: 18_500),
+        ])
+        #expect(ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: true).columns == [
+            .init(type: .budgeted, amount: 50_000),
+            .init(type: .spent, amount: -31_500),
+            .init(type: .balance, amount: 18_500),
         ])
     }
 

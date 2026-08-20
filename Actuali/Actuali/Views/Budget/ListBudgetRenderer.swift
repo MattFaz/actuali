@@ -131,23 +131,21 @@ struct ListBudgetGroupHeader: View {
 
     let name: String
     let isCollapsed: Bool
-    let totals: CategoryGroupTotals
+    let totals: CategoryGroupTotals?
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
 
-    private var layout: ListBudgetTableLayout {
-        ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+    private var presentation: ListBudgetGroupHeaderPresentation {
+        ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent)
     }
 
-    private var columns: [(ListBudgetColumn, Int)] {
-        layout.expenseColumns.compactMap { column in
-            switch column {
-            case .budgeted: (column, totals.budgeted)
-            case .spent: (column, totals.spent)
-            case .balance: (column, totals.balance)
-            case .received: nil
-            }
-        }
+    /// Keep the same column geometry when totals are hidden so toggling the
+    /// preference only changes the content, not the header's dimensions.
+    private var columnsForLayout: [ListBudgetGroupHeaderPresentation.Column] {
+        guard totals == nil else { return presentation.columns }
+        return ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+            .expenseColumns
+            .map { .init(type: $0, amount: 0) }
     }
 
     var body: some View {
@@ -156,14 +154,19 @@ struct ListBudgetGroupHeader: View {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 8) {
                         title
-                        ForEach(columns, id: \.0) { column, amount in
+                        ForEach(columnsForLayout, id: \.type) { column in
                             HStack {
-                                Text(column.rawValue)
+                                Text(column.type.rawValue)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                ListAmountText(amount: amount, isBalance: column == .balance)
+                                ListAmountText(
+                                    amount: column.amount,
+                                    isBalance: column.type == .balance
+                                )
                             }
                         }
+                        .opacity(totals == nil ? 0 : 1)
+                        .accessibilityHidden(totals == nil)
                     }
                 } else {
                     HStack(spacing: 0) {
@@ -173,19 +176,24 @@ struct ListBudgetGroupHeader: View {
                                 alignment: .leading
                             )
                         HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
-                            ForEach(columns, id: \.0) { column, amount in
+                            ForEach(columnsForLayout, id: \.type) { column in
                                 VStack(alignment: .trailing, spacing: 2) {
-                                    Text(column.rawValue)
+                                    Text(column.type.rawValue)
                                         .font(.caption2)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.65)
-                                    ListAmountText(amount: amount, isBalance: column == .balance)
+                                    ListAmountText(
+                                        amount: column.amount,
+                                        isBalance: column.type == .balance
+                                    )
                                 }
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .trailing)
                         .layoutPriority(1)
+                        .opacity(totals == nil ? 0 : 1)
+                        .accessibilityHidden(totals == nil)
                     }
                 }
             }
@@ -214,8 +222,9 @@ struct ListBudgetGroupHeader: View {
 
     private var accessibilityLabel: String {
         let state = isCollapsed ? "collapsed" : "expanded"
+        guard let totals else { return "\(name), \(state)" }
         var amounts = ["budgeted \(budgetStore.displayBalance(totals.budgeted))"]
-        if layout.expenseColumns.contains(.spent) {
+        if showsSpent {
             amounts.append("spent \(budgetStore.displayBalance(totals.spent))")
         }
         amounts.append("balance \(budgetStore.displayBalance(totals.balance))")
