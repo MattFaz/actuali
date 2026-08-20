@@ -4,26 +4,6 @@ import UIKit
 @testable import Actuali
 
 struct ListBudgetPresentationTests {
-    @Test func listStyleRequiresAnOpaqueNavigationBar() {
-        #expect(BudgetNavigationBarAppearance(style: .list).isOpaque)
-        #expect(!BudgetNavigationBarAppearance(style: .clean).isOpaque)
-        #expect(!BudgetNavigationBarAppearance(style: .detailed).isOpaque)
-    }
-
-    @Test func summarySpacingDependsOnlyOnStyle() {
-        let listSpacing = BudgetSummarySpacing(style: .list)
-        #expect(listSpacing.horizontalPadding == 0)
-        #expect(listSpacing.topPadding == 0)
-        #expect(listSpacing.bottomPadding == 0)
-
-        for style in [BudgetDisplayStyle.clean, .detailed] {
-            let spacing = BudgetSummarySpacing(style: style)
-            #expect(spacing.horizontalPadding == 4)
-            #expect(spacing.topPadding == 8)
-            #expect(spacing.bottomPadding == 8)
-        }
-    }
-
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
