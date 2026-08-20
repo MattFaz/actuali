@@ -60,14 +60,16 @@ struct AccountDetailView: View {
     }
 
     private func reloadCycleSpend() async {
-        if let cycle = budgetStore.creditCardCycle(for: account.id) {
-            let range = cycle.cycleRange()
-            cycleSpend = await budgetStore.fetchCycleSpend(
-                accountId: account.id,
-                start: range.start,
-                end: range.end
-            )
+        guard let cycle = budgetStore.creditCardCycle(for: account.id) else {
+            cycleSpend = 0
+            return
         }
+        let range = cycle.cycleRange()
+        cycleSpend = await budgetStore.fetchCycleSpend(
+            accountId: account.id,
+            start: range.start,
+            end: range.end
+        )
     }
 
     private func reloadNote() async {
@@ -372,6 +374,9 @@ struct AccountDetailView: View {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
             Task { await reload() }
+        }
+        .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
+            Task { await reloadCycleSpend() }
         }
         .refreshable {
             await budgetStore.sync()

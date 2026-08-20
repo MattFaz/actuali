@@ -556,7 +556,7 @@ final class BudgetStore: ObservableObject {
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let day = creditCardStatementDays[accountId] else { return nil }
-        return CreditCardCycle(accountId: accountId, statementDay: day)
+        return CreditCardCycle(statementDay: day)
     }
 
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",

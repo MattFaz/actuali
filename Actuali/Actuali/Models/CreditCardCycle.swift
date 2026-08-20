@@ -4,13 +4,12 @@ import Foundation
 /// Stored per-budget in UserDefaults (lazy / lightweight: `[accountId: statementDay]`).
 /// Due date is assumed to be 15 days after the statement closing date.
 struct CreditCardCycle: Equatable, Hashable {
-    let accountId: String
     /// Day of the month the statement closes (1...31).
     let statementDay: Int
 
     /// Fixed due date offset: 15 days after statement closing.
     /// ponytail: fixed 15-day offset simplifies UI and storage; upgrade path is per-card due offset.
-    var dueDayOffset: Int { 15 }
+    static let dueDayOffset = 15
 
     /// Clamps statement day to the given month's actual length.
     private func clampedDay(year: Int, month: Int) -> Int {
@@ -43,16 +42,9 @@ struct CreditCardCycle: Equatable, Hashable {
         }
     }
 
-    /// The statement closing date that just completed (prior statement) or closes this month.
+    /// The statement that closed before the active cycle started.
     func previousStatementDate(for today: DayDate = .today()) -> DayDate {
-        let currentMonthCloseDay = clampedDay(year: today.year, month: today.month)
-        if today.day > currentMonthCloseDay {
-            return DayDate(year: today.year, month: today.month, day: currentMonthCloseDay)
-        } else {
-            let prevMonth = today.adding(months: -1)
-            let prevDay = clampedDay(year: prevMonth.year, month: prevMonth.month)
-            return DayDate(year: prevMonth.year, month: prevMonth.month, day: prevDay)
-        }
+        cycleRange(for: today).start.adding(days: -1)
     }
 
     /// Next upcoming payment due date.
@@ -60,12 +52,12 @@ struct CreditCardCycle: Equatable, Hashable {
     /// returns that due date. Otherwise, returns the due date for the upcoming cycle.
     func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
         let prevStatement = previousStatementDate(for: today)
-        let prevDue = prevStatement.adding(days: dueDayOffset)
+        let prevDue = prevStatement.adding(days: Self.dueDayOffset)
         if today <= prevDue {
             return prevDue
         }
         let currentCycleEnd = cycleRange(for: today).end
-        return currentCycleEnd.adding(days: dueDayOffset)
+        return currentCycleEnd.adding(days: Self.dueDayOffset)
     }
 
     /// Days remaining until the current billing cycle closes.

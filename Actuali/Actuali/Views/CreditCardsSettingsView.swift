@@ -16,13 +16,15 @@ struct CreditCardsSettingsView: View {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
         return budgetStore.creditCardStatementDays.compactMap { accountId, statementDay in
             guard let account = accountsById[accountId], !account.closed else { return nil }
-            return (account: account, cycle: CreditCardCycle(accountId: accountId, statementDay: statementDay))
+            return (account: account, cycle: CreditCardCycle(statementDay: statementDay))
         }.sorted { $0.account.name < $1.account.name }
     }
 
     private var unconfiguredAccounts: [Account] {
         let configuredIds = Set(budgetStore.creditCardStatementDays.keys)
-        return activeAccounts.filter { !configuredIds.contains($0.id) }
+        return budgetStore.accounts
+            .filter { !$0.closed && !configuredIds.contains($0.id) }
+            .sorted { ($0.type == .credit ? 0 : 1, $0.name) < ($1.type == .credit ? 0 : 1, $1.name) }
     }
 
     var body: some View {
@@ -80,8 +82,8 @@ struct CreditCardsSettingsView: View {
     }
 
     private func deleteCard(at offsets: IndexSet) {
-        for index in offsets {
-            let accountId = configuredCards[index].account.id
+        let cards = configuredCards
+        for accountId in offsets.map({ cards[$0].account.id }) {
             budgetStore.setCreditCardStatementDay(accountId: accountId, statementDay: nil)
         }
     }
@@ -217,7 +219,7 @@ private struct CreditCardCycleRow: View {
             }
         }
         .padding(.vertical, 4)
-        .task {
+        .task(id: cycle.statementDay) {
             cycleSpend = await budgetStore.fetchCycleSpend(
                 accountId: account.id,
                 start: cycleRange.start,
