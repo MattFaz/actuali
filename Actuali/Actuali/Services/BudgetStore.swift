@@ -247,6 +247,10 @@ final class BudgetStore: ObservableObject {
         UserDefaults.standard.set(code, forKey: Self.currencyCodeCacheKey(for: budgetId))
     }
 
+    private func forgetCachedCurrencyCode(for budgetId: String) {
+        UserDefaults.standard.removeObject(forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
     /// User-initiated currency changes (the Settings picker) go through
     /// here, not a direct `currencyCode = ...` assignment: it also persists
     /// the choice into the budget's own `preferences` table via sync, so it
@@ -1185,6 +1189,7 @@ final class BudgetStore: ObservableObject {
                     try? EncryptionKeyManager.remove(fileId: fileId)
                 }
                 try? fileManager.deleteBudget(local.id)
+                forgetCachedCurrencyCode(for: local.id)
             }
         }
 
@@ -1359,12 +1364,6 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
-        // A fresh budget download can predate the CRDT preference messages
-        // that its first sync will apply. Show this budget's last confirmed
-        // code during that short window. A budget without a cached or stored
-        // preference retains the current fallback currency.
-        let cachedCurrencyCode = cachedCurrencyCode(for: budgetId)
-        currencyCode = cachedCurrencyCode ?? currencyCode
 
         var db: BudgetDatabase?
         do {
@@ -1394,19 +1393,17 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            // The downloaded SQLite snapshot can predate the following CRDT
-            // sync. When a cached value already exists, keep showing it —
-            // the sync that always runs right after this load corrects it
-            // moments later via refreshDataOnly() (unconditional, so this
-            // can never get stuck on a wrong value either — GH #59/#297).
-            // With no cache yet (first time loading this budget), the fresh
-            // snapshot is still the best answer available, so show it now
-            // rather than leaving the previous budget's value on screen.
+            // The database stays authoritative whenever it has an answer, so a
+            // currency changed on another client always wins here. The cache
+            // only covers the gap: a freshly downloaded snapshot can predate
+            // the CRDT preference messages that carry the setting, and without
+            // it the previous budget's currency would stay on screen until the
+            // first sync lands (GH #297).
             if let fetchedCurrencyCode {
-                if cachedCurrencyCode == nil {
-                    currencyCode = fetchedCurrencyCode
-                }
+                currencyCode = fetchedCurrencyCode
                 cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+            } else if let cached = cachedCurrencyCode(for: budgetId) {
+                currencyCode = cached
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
@@ -1542,6 +1539,7 @@ final class BudgetStore: ObservableObject {
     private func refreshDataOnly() async {
         guard let database else { return }
         let budgetId = currentBudgetId
+        let currencyCodeBefore = currencyCode
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -1556,20 +1554,14 @@ final class BudgetStore: ObservableObject {
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
-            // Read this last so a Settings change cannot be overwritten by a
-            // stale currency value fetched before the other asynchronous reads.
+            // Re-read here too: a sync can bring in a currency set on another
+            // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
             guard self.database === database, self.currentBudgetId == budgetId else { return }
 
-            if let fetchedCurrencyCode {
-                currencyCode = fetchedCurrencyCode
-                if let budgetId {
-                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
-                }
-            }
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
@@ -1578,6 +1570,18 @@ final class BudgetStore: ObservableObject {
             currentBudgetMonth = fetchedBudgetMonth
             widgetBudgetMonth = fetchedBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
+            // Last in the batch: assigning this publishes a widget snapshot,
+            // which must see the balances above rather than the previous
+            // refresh's. Skipped when the user picked a currency in Settings
+            // while the reads above were in flight — that choice is newer than
+            // anything this snapshot holds, and the write it kicked off will
+            // come back on the next refresh.
+            if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
+                currencyCode = fetchedCurrencyCode
+                if let budgetId {
+                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+                }
+            }
             dataVersion += 1
 
             await loadSchedules()
