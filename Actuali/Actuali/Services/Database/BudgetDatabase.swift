@@ -3218,7 +3218,7 @@ final class BudgetDatabase: Sendable {
               maxDistanceMeters.isFinite, maxDistanceMeters > 0 else {
             return []
         }
-        // GRDB's `Row` isn't `Sendable`, so it can't escape the `read` closure
+// GRDB's `Row` isn't `Sendable`, so it can't escape the `read` closure
         // across the async boundary under Swift 6. Map rows into `NearbyPayee`
         // (a Sendable domain type) inside the closure and only let that cross;
         // the distance filtering then runs on the mapped values below.
