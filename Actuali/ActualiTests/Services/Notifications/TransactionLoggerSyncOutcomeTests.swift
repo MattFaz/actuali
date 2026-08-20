@@ -192,10 +192,10 @@ struct TransactionLoggerSyncOutcomeTests {
         #expect(!result.synced)
 
         let queue = try DatabaseQueue(path: url.path)
-        let rows = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT id FROM transactions WHERE tombstone = 0")
+        let ids = try await queue.read { db in
+            try String.fetchAll(db, sql: "SELECT id FROM transactions WHERE tombstone = 0")
         }
-        #expect(rows.count == 1)
-        #expect(rows.first?["id"] == result.transaction.id)
+        #expect(ids.count == 1)
+        #expect(ids.first == result.transaction.id)
     }
 }
