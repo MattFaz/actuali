@@ -25,12 +25,21 @@ xcodebuild test \
   -scheme Actuali \
   -destination 'platform=iOS Simulator,name=<any installed iPhone simulator>' \
   -skip-testing:ActualiUITests
+# List what's available with: xcrun simctl list devices available | grep iPhone
 
 # Regenerate protobuf (only if sync.proto changes — never hand-edit Generated/)
 protoc --swift_out=Actuali/Actuali/Generated/ Actuali/Actuali/Resources/sync.proto
 ```
 
 Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves dependencies (GRDB, SwiftProtobuf, ZIPFoundation) on first build.
+
+### Notes for agents
+
+- **Always pass an explicit timeout** on `xcodebuild` (600000 ms is safe). A full `xcodebuild test` exceeds the default 2-minute shell limit and will be killed mid-run, which looks like a build failure but isn't.
+- **Reuse the existing simulator; don't `simctl create`/`delete` per run.** Resolve the UDID once from `xcrun simctl list devices available` and reuse it. Booting a fresh device costs more than the test run.
+- **Narrow the test run.** `-only-testing:ActualiTests/SomeTests` for a single suite; `-skip-testing:ActualiUITests` is the CI-equivalent full run. Don't run UI tests to validate a unit-level change.
+- **Pipe to a filter, don't read raw output.** `xcodebuild ... 2>&1 | grep -E 'error:|warning:|\*\* (TEST|BUILD) (SUCCEEDED|FAILED) \*\*'` — full xcodebuild output is tens of thousands of lines.
+- CI is GitHub Actions. `gh pr checks` exits **8** when checks are still pending — that is a state, not a failure, so don't retry on it. To wait, use `gh pr checks <pr> --watch` rather than polling in a loop.
 
 `SWIFT_VERSION = 5.0` on the Xcode 26 toolchain — Swift 6 strict concurrency migration is a separate tracked effort; don't flip it as a side effect of other work.
 
