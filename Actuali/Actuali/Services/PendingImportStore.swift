@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 import os
 
@@ -14,20 +15,21 @@ final class PendingImportStore: ObservableObject {
 
     var count: Int { imports.count }
 
-    private let fileURL: URL = {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-        return docs.appendingPathComponent("pending_imports.json")
-    }()
+    private let fileURL: URL
 
     private init() {
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        self.fileURL = docs.appendingPathComponent("pending_imports.json")
         load()
     }
 
+    #if DEBUG
     /// Test-only initializer that reads from a custom path.
     init(fileURL: URL) {
         self.fileURL = fileURL
         load()
     }
+    #endif
 
     func add(_ item: PendingImport) {
         imports.insert(item, at: 0)

@@ -8,6 +8,10 @@ struct PendingImportsView: View {
     @ObservedObject private var store = PendingImportStore.shared
     @Environment(\.dismiss) private var dismiss
 
+    @State private var editingItem: PendingImport?
+    @State private var errorMessage: String?
+    @State private var isProcessing = false
+
     var body: some View {
         NavigationStack {
             Group {
@@ -20,22 +24,27 @@ struct PendingImportsView: View {
                 } else {
                     List {
                         ForEach(store.imports) { item in
-                            PendingImportRow(item: item, onApprove: { approve(item) })
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        withAnimation { store.remove(id: item.id) }
-                                    } label: {
-                                        Label("Dismiss", systemImage: "trash")
-                                    }
+                            Button {
+                                editingItem = item
+                            } label: {
+                                PendingImportRow(item: item)
+                            }
+                            .buttonStyle(.plain)
+                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                Button(role: .destructive) {
+                                    withAnimation { store.remove(id: item.id) }
+                                } label: {
+                                    Label("Dismiss", systemImage: "trash")
                                 }
-                                .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                                    Button {
-                                        approve(item)
-                                    } label: {
-                                        Label("Approve", systemImage: "checkmark")
-                                    }
-                                    .tint(.green)
+                            }
+                            .swipeActions(edge: .leading, allowsFullSwipe: true) {
+                                Button {
+                                    approve(item)
+                                } label: {
+                                    Label("Approve", systemImage: "checkmark")
                                 }
+                                .tint(.green)
+                            }
                         }
 
                         if store.count > 1 {
@@ -43,9 +52,15 @@ struct PendingImportsView: View {
                                 Button {
                                     approveAll()
                                 } label: {
-                                    Label("Approve All", systemImage: "checkmark.circle.fill")
-                                        .frame(maxWidth: .infinity)
+                                    if isProcessing {
+                                        ProgressView()
+                                            .frame(maxWidth: .infinity)
+                                    } else {
+                                        Label("Approve All", systemImage: "checkmark.circle.fill")
+                                            .frame(maxWidth: .infinity)
+                                    }
                                 }
+                                .disabled(isProcessing)
                             }
                         }
                     }
@@ -58,69 +73,108 @@ struct PendingImportsView: View {
                     Button("Done") { dismiss() }
                 }
             }
+            .alert("Import Failed", isPresented: Binding(
+                get: { errorMessage != nil },
+                set: { if !$0 { errorMessage = nil } }
+            )) {
+                Button("OK") {}
+            } message: {
+                if let errorMessage {
+                    Text(errorMessage)
+                }
+            }
+            .sheet(item: $editingItem) { item in
+                NavigationStack {
+                    editView(for: item)
+                }
+            }
         }
     }
 
     // MARK: - Actions
 
     private func approve(_ item: PendingImport) {
+        let approver = PendingImportApprover(store: budgetStore)
         Task {
-            await logImport(item)
-            await MainActor.run {
-                withAnimation { store.remove(id: item.id) }
+            do {
+                _ = try await approver.approve(item)
+                await MainActor.run {
+                    withAnimation { store.remove(id: item.id) }
+                }
+            } catch {
+                await MainActor.run {
+                    errorMessage = error.localizedDescription
+                }
             }
         }
     }
 
     private func approveAll() {
+        let approver = PendingImportApprover(store: budgetStore)
         let items = store.imports
+        isProcessing = true
+
         Task {
+            var failedCount = 0
             for item in items {
-                await logImport(item)
+                do {
+                    _ = try await approver.approve(item)
+                    await MainActor.run {
+                        withAnimation { store.remove(id: item.id) }
+                    }
+                } catch {
+                    failedCount += 1
+                }
             }
             await MainActor.run {
-                withAnimation { store.removeAll() }
+                isProcessing = false
+                if failedCount > 0 {
+                    errorMessage = "\(failedCount) transaction(s) could not be approved. Please check their details."
+                }
             }
         }
     }
 
-    @MainActor
-    private func logImport(_ item: PendingImport) async {
-        guard let amount = item.amount, amount > 0 else { return }
-
-        let store = budgetStore
-        await store.ensureBudgetReady()
-
-        // Resolve account from card hint, then default.
-        var accountId: String?
-        if let hint = item.cardHint, !hint.isEmpty {
-            accountId = await store.resolveAccountId(hint: hint)
-        }
-        if accountId == nil {
-            accountId = store.defaultAccountId
-        }
-        guard let resolvedAccountId = accountId else { return }
-
-        // Verify the account is open.
-        let accounts = await store.accountsForIntent()
-        guard accounts.contains(where: { $0.id == resolvedAccountId && !$0.closed }) else { return }
-
-        guard let cents = Transaction.cents(fromDollars: amount) else { return }
-        let amountCents = item.isIncome ? cents : -cents
-
-        do {
-            let _ = try await TransactionLogger(store: store).logTransaction(
-                accountId: resolvedAccountId,
-                amountCents: amountCents,
-                rawMerchant: item.payee ?? "Unknown",
-                notes: nil,
+    @ViewBuilder
+    private func editView(for item: PendingImport) -> some View {
+        let targetAccountId = resolveAccountId(for: item)
+        if let accountId = targetAccountId {
+            AddTransactionView(
+                accountId: accountId,
+                payee: item.payee ?? "",
+                amountCents: item.amount.flatMap { Transaction.cents(fromDollars: $0) },
                 date: item.date,
+                notes: item.rawText,
+                categoryId: nil,
+                isIncome: item.isIncome,
                 cleared: true
             )
-        } catch {
-            // ponytail: silent failure for now; the item stays removed.
-            // Upgrade path: re-add with error state or show an alert.
+            .environmentObject(budgetStore)
+            .onDisappear {
+                // When dismissed after save or manual review, user can dismiss the pending item
+            }
+        } else {
+            ContentUnavailableView(
+                "No Accounts",
+                systemImage: "banknote",
+                description: Text("Please add an account before editing this import.")
+            )
         }
+    }
+
+    private func resolveAccountId(for item: PendingImport) -> String? {
+        if let hint = item.cardHint, !hint.isEmpty {
+            for account in budgetStore.accounts where !account.closed {
+                if account.name.localizedCaseInsensitiveContains(hint) {
+                    return account.id
+                }
+            }
+        }
+        if let defaultId = budgetStore.defaultAccountId,
+           budgetStore.accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
+            return defaultId
+        }
+        return budgetStore.accounts.first(where: { !$0.closed })?.id
     }
 }
 
@@ -128,7 +182,6 @@ struct PendingImportsView: View {
 
 private struct PendingImportRow: View {
     let item: PendingImport
-    let onApprove: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -155,10 +208,12 @@ private struct PendingImportRow: View {
                     .foregroundStyle(.secondary)
             }
 
-            Text(item.rawText)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
-                .lineLimit(2)
+            if !item.rawText.isEmpty {
+                Text(item.rawText)
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(2)
+            }
         }
         .padding(.vertical, 4)
     }

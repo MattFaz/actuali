@@ -3,45 +3,49 @@ import Testing
 
 struct TransactionTextParserTests {
 
-    // MARK: - Fallback parser (amount extraction)
+    // MARK: - Deterministic Fallback Parser Tests
 
-    @Test func parsesIndianUPIMessage() async {
-        let text = "₹450 debited from A/C XX9876 to SWIGGY via UPI on 20-08-26"
-        let result = await TransactionTextParser.parse(text)
+    @Test func parsesIndianUPIMessage() {
+        let text = "A/c XX9876 debited by Rs.500.00 on 20-08-26 to SWIGGY via UPI"
+        let result = TransactionTextParser.parseWithFallback(text)
+        #expect(result.amount == 500.00)
         #expect(result.cardHint == "9876")
         #expect(result.isIncome == false)
-        // Payee extraction is best-effort; verify it's non-nil at minimum.
-        #expect(result.payee != nil)
+        #expect(result.payee == "SWIGGY")
     }
 
-    @Test func parsesUSCreditCardMessage() async {
-        let text = "You paid $18.50 at Starbucks on card ending 4321"
-        let result = await TransactionTextParser.parse(text)
+    @Test func parsesUSCreditCardMessage() {
+        let text = "Card ending 4321: $18.50 at Starbucks"
+        let result = TransactionTextParser.parseWithFallback(text)
         #expect(result.amount == 18.50)
         #expect(result.cardHint == "4321")
         #expect(result.isIncome == false)
         #expect(result.payee == "Starbucks")
     }
 
-    @Test func parsesRefundAsIncome() async {
+    @Test func parsesRefundAsIncomeAndDoesNotCaptureCardAsMerchant() {
         let text = "Refund of $25.00 from Amazon credited to card 5555"
-        let result = await TransactionTextParser.parse(text)
+        let result = TransactionTextParser.parseWithFallback(text)
         #expect(result.amount == 25.0)
         #expect(result.isIncome == true)
+        #expect(result.cardHint == "5555")
+        // "card 5555" must NOT be extracted as payee
+        #expect(result.payee != "card 5555")
     }
 
-    @Test func emptyTextReturnsNils() async {
-        let result = await TransactionTextParser.parse("")
+    @Test func emptyTextReturnsNils() {
+        let result = TransactionTextParser.parseWithFallback("")
         #expect(result.amount == nil)
         #expect(result.payee == nil)
         #expect(result.cardHint == nil)
     }
 
-    @Test func toPendingImportPreservesFields() async {
+    @Test func toPendingImportPreservesFields() {
         let text = "Paid $10 at Coffee Shop using card ending 1234"
-        let parsed = await TransactionTextParser.parse(text)
+        let parsed = TransactionTextParser.parseWithFallback(text)
         let pending = parsed.toPendingImport()
         #expect(pending.rawText == text)
         #expect(pending.cardHint == "1234")
+        #expect(pending.amount == 10.0)
     }
 }
