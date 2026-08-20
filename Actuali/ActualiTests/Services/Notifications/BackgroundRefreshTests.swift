@@ -112,7 +112,7 @@ struct BackgroundRefreshTests {
         #expect(task.completions == [true])
     }
 
-    @Test func handleExpirationCancelsSyncAndStillCompletes() async {
+    @Test @MainActor func handleExpirationCancelsSyncAndStillCompletes() async {
         let task = TaskSpy()
         let defaults = makeIsolatedDefaults()
 
