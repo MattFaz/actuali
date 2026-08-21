@@ -94,6 +94,9 @@ struct PendingImportsView: View {
     // MARK: - Actions
 
     private func approve(_ item: PendingImport) {
+        // Ignore a per-row swipe while Approve All is running: both paths log
+        // and remove by id, so overlapping them could log the same item twice.
+        guard !isProcessing else { return }
         let approver = PendingImportApprover(store: budgetStore)
         Task {
             do {
@@ -101,6 +104,11 @@ struct PendingImportsView: View {
                 await MainActor.run {
                     withAnimation { store.remove(id: item.id) }
                 }
+            } catch PendingImportApprover.ApproveError.noAccountAvailable {
+                // Can't confidently pick an account (no card match, no default).
+                // Send the user to the review form to choose one rather than
+                // dead-ending on an error — same destination as tapping the row.
+                await MainActor.run { editingItem = item }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -147,12 +155,10 @@ struct PendingImportsView: View {
                 notes: item.rawText,
                 categoryId: nil,
                 isIncome: item.isIncome,
-                cleared: true
+                cleared: true,
+                onSaved: { store.remove(id: item.id) }
             )
             .environmentObject(budgetStore)
-            .onDisappear {
-                // When dismissed after save or manual review, user can dismiss the pending item
-            }
         } else {
             ContentUnavailableView(
                 "No Accounts",

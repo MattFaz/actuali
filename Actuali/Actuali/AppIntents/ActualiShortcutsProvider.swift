@@ -94,4 +94,3 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
         )
     }
 }
-

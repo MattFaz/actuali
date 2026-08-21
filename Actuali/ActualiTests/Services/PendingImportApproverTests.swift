@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -7,8 +8,54 @@ struct PendingImportApproverTests {
 
     private func makeStore() -> BudgetStore {
         let store = BudgetStore.previewInstance()
-        store.currentBudgetId = "test-budget"
+        // Unique per test: `defaultAccountId` is UserDefaults keyed by budget id,
+        // and these tests run in parallel — a shared id lets one test's default
+        // account bleed into another's resolution.
+        store.currentBudgetId = "test-budget-\(UUID().uuidString)"
         return store
+    }
+
+    /// Non-async so GRDB's `write` resolves to its synchronous overload.
+    private func makeDatabaseFile() throws -> (BudgetDatabase, URL) {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE transactions (
+                    id TEXT PRIMARY KEY, starting_balance_flag INTEGER DEFAULT 0,
+                    isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
+                    acct TEXT, category TEXT, amount INTEGER, description TEXT,
+                    notes TEXT, date INTEGER, imported_description TEXT,
+                    financial_id TEXT, transferred_id TEXT, sort_order REAL,
+                    tombstone INTEGER DEFAULT 0, cleared INTEGER DEFAULT 0,
+                    reconciled INTEGER DEFAULT 0, parent_id TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT,
+                    transfer_acct TEXT, tombstone INTEGER DEFAULT 0)
+                """)
+            try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
+            try db.execute(sql: """
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
+                    timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL,
+                    row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL)
+                """)
+        }
+        return (try BudgetDatabase(path: url), url)
+    }
+
+    /// A store with a real (temp-file) budget database wired, so the approve
+    /// success path can write and the resulting signed amount can be checked.
+    private func makeWritableStore() async throws -> (BudgetStore, URL) {
+        let (database, url) = try makeDatabaseFile()
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = makeStore()
+        store.configureForTesting(database: database, syncClient: syncClient)
+        return (store, url)
     }
 
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
@@ -61,5 +108,37 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.accountClosed) {
             try await approver.approve(item)
         }
+    }
+
+    @Test func logsExpenseAsNegativeAndRoutesByCardHint() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+
+        let approver = PendingImportApprover(store: store)
+        // cardHint matches the account name, so resolution uses the hint route,
+        // not the default account.
+        let item = PendingImport(amount: 18.50, payee: "Starbucks", cardHint: "Checking",
+                                 isIncome: false, rawText: "msg")
+
+        let result = try await approver.approve(item)
+
+        #expect(result.transaction.accountId == "acct_checking")
+        #expect(result.transaction.amount == -1850)
+    }
+
+    @Test func logsIncomeAsPositiveViaDefaultAccount() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        store.defaultAccountId = "acct_checking"
+
+        let approver = PendingImportApprover(store: store)
+        let item = PendingImport(amount: 25.0, payee: "Employer", isIncome: true, rawText: "msg")
+
+        let result = try await approver.approve(item)
+
+        #expect(result.transaction.accountId == "acct_checking")
+        #expect(result.transaction.amount == 2500)
     }
 }
