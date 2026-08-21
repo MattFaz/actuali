@@ -38,7 +38,9 @@ struct ActualiApp: App {
                 .task {
                     #if DEBUG
                     if CommandLine.arguments.contains("-loadDemoData") {
-                        await budgetStore.loadDemoData()
+                        await budgetStore.loadDemoData(
+                            tracking: CommandLine.arguments.contains("-loadTrackingDemoData")
+                        )
                     }
                     // Stands in for coordinates the Add Transaction form would
                     // have recorded, so PayeeLocationsUITests can clear them.

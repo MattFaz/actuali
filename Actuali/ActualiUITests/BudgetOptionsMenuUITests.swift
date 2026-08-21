@@ -13,6 +13,10 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-hideZeroBudgetCategories", "NO",
+            "-showListBudgetOverview", "YES",
+            "-showListSpentColumn", "NO",
+            "-showBudgetProgressBars", "NO",
+            "-showGroupTotals", "YES",
         ]
         app.launch()
         app.tabBars.buttons["Budget"].tap()
@@ -27,12 +31,48 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "Expand All Groups",
+        for option in ["Clean", "Detailed", "List", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
                        "Hide Spent Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
+        for listOption in ["Show Overview", "Show Spent Column"] {
+            XCTAssertFalse(app.buttons[listOption].exists,
+                           "Clean should not offer the List-only '\(listOption)' control")
+        }
+        XCTAssertFalse(app.buttons["Group Totals"].exists,
+                       "Group Totals remains exclusive to Detailed")
+    }
+
+    @MainActor
+    func testListControlsAreConditionalAndCorrectlyDefaulted() throws {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
+        optionsMenu.tap()
+        app.buttons["List"].tap()
+
+        optionsMenu.tap()
+        let overview = app.buttons["Show Overview"]
+        let spent = app.buttons["Show Spent Column"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 5))
+        XCTAssertTrue(spent.exists)
+        XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
+        XCTAssertTrue(app.buttons["Group Totals"].exists)
+        XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
+        XCTAssertFalse(app.buttons["Progress Indicators"].exists,
+                       "List uses the shared Budget Progress Bars setting")
+
+        app.buttons["Detailed"].tap()
+        optionsMenu.tap()
+        XCTAssertTrue(app.buttons["Group Totals"].waitForExistence(timeout: 5),
+                      "Detailed keeps its existing Group Totals control")
+        XCTAssertFalse(app.buttons["Show Overview"].exists)
+        XCTAssertFalse(app.buttons["Show Spent Column"].exists)
+        XCTAssertFalse(app.buttons["Progress Indicators"].exists)
     }
 
     /// The strip costs a row of vertical space on a phone, so it's optional.

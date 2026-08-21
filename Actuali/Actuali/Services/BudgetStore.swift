@@ -302,7 +302,32 @@ final class BudgetStore: ObservableObject {
     /// card look from the App Store screenshots.
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
-            UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+            UserDefaults.standard.set(
+                budgetDisplayStyle.rawValue,
+                forKey: BudgetDisplayStyle.defaultsKey
+            )
+        }
+    }
+
+    /// Whether the List Budget view style shows its pinned monthly overview.
+    /// This is independent of the Clean and Detailed summaries and defaults on.
+    @Published var showListBudgetOverview: Bool = true {
+        didSet {
+            UserDefaults.standard.set(
+                showListBudgetOverview,
+                forKey: ListBudgetViewPreferences.showOverviewKey
+            )
+        }
+    }
+
+    /// Whether the List Budget view style includes the Spent column.
+    /// The narrower two-amount layout is the default.
+    @Published var showListSpentColumn: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showListSpentColumn,
+                forKey: ListBudgetViewPreferences.showSpentColumnKey
+            )
         }
     }
 
@@ -340,7 +365,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the detailed style's group headers total their columns.
+    /// Whether the Detailed and List styles' group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -915,14 +940,17 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        if let raw = UserDefaults.standard.string(forKey: "budgetDisplayStyle"),
-           let style = BudgetDisplayStyle(rawValue: raw) {
-            _budgetDisplayStyle = Published(initialValue: style)
-        }
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.persisted())
+        let listPreferences = ListBudgetViewPreferences.persisted()
+        _showListBudgetOverview = Published(initialValue: listPreferences.showOverview)
+        _showListSpentColumn = Published(initialValue: listPreferences.showSpentColumn)
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
-        _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showBudgetProgressBars = Published(
+            initialValue: UserDefaults.standard.object(forKey: "showBudgetProgressBars") == nil
+                ? true
+                : UserDefaults.standard.bool(forKey: "showBudgetProgressBars")
+        )
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
@@ -931,8 +959,7 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
-        _hideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "hideBalances") as? Bool ?? false)
+        _hideBalances = Published(initialValue: UserDefaults.standard.bool(forKey: "hideBalances"))
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.

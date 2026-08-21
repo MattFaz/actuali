@@ -50,8 +50,21 @@ struct BudgetOptionsMenu: View {
                     .tag(BudgetDisplayStyle.clean)
                 Label("Detailed", systemImage: "tablecells")
                     .tag(BudgetDisplayStyle.detailed)
+                Label("List", systemImage: "rectangle.grid.1x2")
+                    .tag(BudgetDisplayStyle.list)
             }
             .pickerStyle(.inline)
+
+            if budgetStore.budgetDisplayStyle == .list {
+                Section {
+                    Toggle(isOn: $budgetStore.showListBudgetOverview) {
+                        Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
+                    }
+                    Toggle(isOn: $budgetStore.showListSpentColumn) {
+                        Label("Show Spent Column", systemImage: "tablecells.badge.ellipsis")
+                    }
+                }
+            }
 
             if let expandAllGroups, let collapseAllGroups {
                 Section {
@@ -67,9 +80,7 @@ struct BudgetOptionsMenu: View {
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
-                // Only the detailed style has columns for a group header to
-                // total, so the clean style doesn't offer the switch.
-                if budgetStore.budgetDisplayStyle == .detailed {
+                if budgetStore.budgetDisplayStyle.supportsGroupTotals {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
                         Label("Group Totals", systemImage: "sum")
                     }

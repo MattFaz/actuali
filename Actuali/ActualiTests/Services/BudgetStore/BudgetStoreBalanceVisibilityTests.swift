@@ -20,6 +20,23 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideBalances = true
         #expect(store.displayBalance(123456) == BudgetStore.hiddenBalanceText)
         #expect(store.displayBalanceWholeUnits(123456) == BudgetStore.hiddenBalanceText)
+        #expect(store.displayBudgetCell(123456) == BudgetStore.hiddenBalanceText)
+    }
+
+    @Test func budgetCellsUseCurrencyNativePrecision() {
+        let store = BudgetStore.previewInstance()
+        store.hideBalances = false
+
+        for currencyCode in ["JPY", "KWD"] {
+            store.currencyCode = currencyCode
+            #expect(
+                store.displayBudgetCell(123_450)
+                    == CurrencyAmountFormat.symbolLessString(
+                        cents: 123_450,
+                        currencyCode: currencyCode
+                    )
+            )
+        }
     }
 
     /// The mask must never leak a digit, sign, or currency symbol for any
