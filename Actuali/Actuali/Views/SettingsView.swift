@@ -874,19 +874,17 @@ struct SettingsView: View {
                 Text("You're connected! Choose which budget to load onto this device.")
             }
             .task {
-                #if DEBUG
-                guard !CommandLine.arguments.contains("-connectedServerSettings") else { return }
-                #endif
                 if budgetStore.isConnected {
                     await budgetStore.fetchRemoteBudgets()
                     promptBudgetSelectionIfNeeded()
                 }
             }
             .onChange(of: budgetStore.isConnected) { _, isConnected in
-                #if DEBUG
-                guard !CommandLine.arguments.contains("-connectedServerSettings") else { return }
-                #endif
-                if isConnected {
+                if !isConnected {
+                    // Drafts belong to the session that ended. A later
+                    // connection must start from its own saved addresses.
+                    editingServerConnection = false
+                } else {
                     Task {
                         await budgetStore.fetchRemoteBudgets()
                         promptBudgetSelectionIfNeeded()

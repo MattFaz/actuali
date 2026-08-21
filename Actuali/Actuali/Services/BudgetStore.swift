@@ -1200,13 +1200,34 @@ final class BudgetStore: ObservableObject {
         error = nil
         defer { isLoading = false }
 
+        let previousServerURL = serverURL
+        let previousFallbackServerURL = fallbackServerURL
         do {
             try await serverClient.configure(
                 serverURL: normalized,
                 fallbackServerURL: normalizedFallback
             )
+            if normalized != previousServerURL {
+                do {
+                    _ = try await serverClient.fetchLoginMethods()
+                } catch let probeError as ActualServerError where probeError.isConnectionFailure {
+                    // A transport failure means the replacement address cannot
+                    // be used. Restore the live client before leaving the saved
+                    // connection untouched.
+                    try? await serverClient.configure(
+                        serverURL: previousServerURL,
+                        fallbackServerURL: previousFallbackServerURL
+                    )
+                    self.error = probeError.localizedDescription
+                    return false
+                } catch {
+                    // A server that answers but lacks this endpoint is reachable;
+                    // older Actual versions and route-stripping proxies are valid.
+                }
+            }
             serverURL = normalized
             fallbackServerURL = normalizedFallback
+            refreshPayeeLocationSupport()
             return true
         } catch {
             self.error = error.localizedDescription
@@ -1398,6 +1419,12 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
+        #if DEBUG
+        // This UI test seeds a connected session without a server behind it.
+        // Keep the production view lifecycle intact while avoiding a request
+        // that can only time out and raise an unrelated alert.
+        if CommandLine.arguments.contains("-connectedServerSettings") { return }
+        #endif
         isLoading = true
         error = nil
 

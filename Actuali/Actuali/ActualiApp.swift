@@ -41,10 +41,10 @@ struct ActualiApp: App {
                         await budgetStore.loadDemoData()
                     }
                     if CommandLine.arguments.contains("-connectedServerSettings") {
-                        _ = await budgetStore.updateServerConnection(
-                            serverURL: "https://primary.example.com",
-                            fallbackServerURL: ""
-                        )
+                        // Seed the view state directly: fetchRemoteBudgets owns
+                        // the single test seam that suppresses network work.
+                        budgetStore.serverURL = "https://primary.example.com"
+                        budgetStore.fallbackServerURL = ""
                         budgetStore.isConnected = true
                     }
                     // Stands in for coordinates the Add Transaction form would
