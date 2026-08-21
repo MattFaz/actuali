@@ -129,7 +129,7 @@ struct ReportsTabView: View {
     /// dashboard configured in Settings (GH #223), otherwise the first live
     /// page (the web's ReportsDashboardRouter redirects to dashboardPages[0]),
     /// otherwise nil so the pre-pages pageless fallback applies.
-    static func resolvePageId(
+    nonisolated static func resolvePageId(
         selected: String?,
         configuredDefault: String? = nil,
         pages: [DashboardPage]

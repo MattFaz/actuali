@@ -989,7 +989,7 @@ struct AmountInputField: UIViewRepresentable {
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         items.append(UIBarButtonItem(
-            title: "Done", style: .done,
+            title: "Done", style: .prominent,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items
