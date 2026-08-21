@@ -29,6 +29,8 @@ struct AccountsListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
+    @State private var showingPendingImports = false
+    @StateObject private var pendingImportStore = PendingImportStore.shared
     /// Split layout only. Starts on All Accounts so the detail column has
     /// something in it at launch instead of an empty pane.
     @State private var selection: AccountSelection? = .allAccounts
@@ -327,12 +329,35 @@ struct AccountsListView: View {
                     .accessibilityLabel("Accounts options")
                     .accessibilityHint("Account list display options")
                 }
+                if pendingImportStore.count > 0 {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button {
+                            showingPendingImports = true
+                        } label: {
+                            Image(systemName: "tray.and.arrow.down")
+                                .overlay(alignment: .topTrailing) {
+                                    Text("\(pendingImportStore.count)")
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(3)
+                                        .background(.red, in: Circle())
+                                        .offset(x: 6, y: -6)
+                                }
+                        }
+                        .accessibilityLabel("Pending imports")
+                        .accessibilityValue("\(pendingImportStore.count) pending")
+                    }
+                }
                 ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)
                 }
             }
             .sheet(isPresented: $showingAddAccount) {
                 AddAccountView()
+                    .environmentObject(budgetStore)
+            }
+            .sheet(isPresented: $showingPendingImports) {
+                PendingImportsView()
                     .environmentObject(budgetStore)
             }
             .onAppear {

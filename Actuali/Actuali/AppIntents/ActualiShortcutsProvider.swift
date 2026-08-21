@@ -81,5 +81,16 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             shortTitle: "List Accounts",
             systemImageName: "creditcard.fill"
         )
+
+        AppShortcut(
+            intent: ParseAndQueueTransactionIntent(),
+            phrases: [
+                "Import transaction from text in \(.applicationName)",
+                "Parse transaction in \(.applicationName)",
+                "Queue transaction in \(.applicationName)",
+            ],
+            shortTitle: "Import from Text",
+            systemImageName: "tray.and.arrow.down"
+        )
     }
 }
