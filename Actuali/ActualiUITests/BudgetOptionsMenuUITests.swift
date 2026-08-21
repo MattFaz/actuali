@@ -35,6 +35,38 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testLongMenuOptionsStayOnOneLine() throws {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
+        optionsMenu.tap()
+
+        let clean = app.buttons["Clean"]
+        let collapse = app.buttons["Collapse Groups"]
+        let hideSpent = app.buttons["Hide Spent"]
+        XCTAssertTrue(clean.waitForExistence(timeout: 5))
+        XCTAssertTrue(collapse.waitForExistence(timeout: 5))
+        XCTAssertTrue(hideSpent.waitForExistence(timeout: 5))
+        XCTAssertEqual(collapse.frame.height, clean.frame.height, accuracy: 2)
+        XCTAssertEqual(hideSpent.frame.height, clean.frame.height, accuracy: 2)
+        let singleLineHeight = clean.frame.height
+
+        // Verify the Accounts menu uses the same compact single-line layout.
+        app.terminate()
+        app.launchArguments = ["-loadDemoData"]
+        app.launch()
+        app.tabBars.buttons["Accounts"].tap()
+        let accountsMenu = app.buttons["Accounts options"]
+        XCTAssertTrue(accountsMenu.waitForExistence(timeout: 10))
+        accountsMenu.tap()
+        let hideClosed = app.buttons["Hide Closed"]
+        XCTAssertTrue(hideClosed.waitForExistence(timeout: 5))
+        XCTAssertLessThanOrEqual(hideClosed.frame.height, singleLineHeight + 2)
+    }
+
     /// The strip costs a row of vertical space on a phone, so it's optional.
     /// Starting state isn't asserted: the setting persists live in the
     /// simulator and a default-true preference can't be seeded from a launch
