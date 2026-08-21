@@ -8,7 +8,7 @@ name: AI Code Review
 # level as the diff; worst case is a bad review comment.
 on:
   pull_request_target:
-    types: [opened, ready_for_review]
+    types: [opened, ready_for_review, labeled]
     branches: [main]
 
 permissions:
@@ -17,7 +17,10 @@ permissions:
 
 jobs:
   review:
-    if: github.repository == 'MattFaz/actuali' && !github.event.pull_request.draft
+    if: >-
+      github.repository == 'MattFaz/actuali' &&
+      !github.event.pull_request.draft &&
+      (github.event.action != 'labeled' || github.event.label.name == 'ai-review')
     runs-on: ubuntu-latest
     steps:
       # The test-merge ref = PR head merged into current main, so the review
@@ -102,3 +105,11 @@ jobs:
           claude_args: |
             --model claude-opus-5
             --allowedTools "Read,Write,Skill,Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
+
+      # When the run was triggered by the ai-review label, drop it so a
+      # re-review is just re-adding the label. always() so it clears even if
+      # the review step failed.
+      - if: ${{ always() && github.event.action == 'labeled' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh pr edit ${{ github.event.pull_request.number }} --repo ${{ github.repository }} --remove-label ai-review

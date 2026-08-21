@@ -9,8 +9,8 @@ enum ActualServerError: LocalizedError {
     case invalidResponse
     case httpError(statusCode: Int, message: String?)
     case unauthorized
-    case networkError(Error)
-    case decodingError(Error)
+    case networkError(any Error)
+    case decodingError(any Error)
     case fileNotFound
     case authProxyBlocked
 
@@ -52,7 +52,7 @@ enum ActualServerError: LocalizedError {
     /// on. Left to itself, CFNetwork surfaces strings like "TLS Error caused
     /// the secure connection to fail" or a bare `NSURLErrorDomain error -1200`,
     /// which tell the user nothing about what to change.
-    static func connectionFailureMessage(for error: Error) -> String {
+    static func connectionFailureMessage(for error: any Error) -> String {
         guard let urlError = error as? URLError else {
             return "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help."
         }

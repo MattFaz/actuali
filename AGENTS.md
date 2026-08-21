@@ -41,7 +41,15 @@ Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves depen
 - **Pipe to a filter, don't read raw output.** `xcodebuild ... 2>&1 | grep -E 'error:|warning:|\*\* (TEST|BUILD) (SUCCEEDED|FAILED) \*\*'` — full xcodebuild output is tens of thousands of lines.
 - CI is GitHub Actions. `gh pr checks` exits **8** when checks are still pending — that is a state, not a failure, so don't retry on it. To wait, use `gh pr checks <pr> --watch` rather than polling in a loop.
 
-`SWIFT_VERSION = 5.0` on the Xcode 26 toolchain — Swift 6 strict concurrency migration is a separate tracked effort; don't flip it as a side effect of other work.
+### Concurrency (Swift 6)
+
+`SWIFT_VERSION = 6.0` on every target, with `SWIFT_STRICT_CONCURRENCY = complete` on the app target and the `SWIFT_UPCOMING_FEATURE_*` flags set at project level. New code is checked for data races: keep UI state on `@MainActor` and I/O in actors rather than reaching for `@unchecked Sendable`. The three existing escape hatches each carry a comment justifying them — add a new one only with the same.
+
+Three rules cover most of what the compiler will stop you on:
+
+- **GRDB `Row` is not `Sendable`, so it can't leave a `read`/`write` closure.** Map rows into a `Sendable` type *inside* the closure and let only that cross the boundary — a domain type where one exists (`BudgetDatabase.nearbyPayees`), otherwise a small local projection or tuple (see `BudgetDatabaseSplitTests.SplitRow`). Don't widen the closure's return to `Any`.
+- **`BudgetDatabase` keeps a strict async/sync split.** Async methods use `try await dbQueue.read`; the synchronous write path uses `try dbQueue.read` and must not suspend (`fetchNote` vs `notesTableExists`). Keep the two apart: under `NONISOLATED_NONSENDING_BY_DEFAULT` a `nonisolated async` body runs on the *caller's* actor, so a blocking DB call in an async method can now block the main thread.
+- **Pure static helpers on `View` types need `nonisolated`.** They otherwise inherit `@MainActor` from the conformance, which forces `@MainActor` onto every test that calls them (`MonthPicker.title`, `ReportsTabView.resolvePageId`, `RuleIdMultiPicker.toggling`). Mark the helper, don't annotate the test. If a helper needs main-actor state it isn't pure — move it onto the model instead, as `BudgetTransferContext.rankedCategories` does.
 
 ## Architecture
 
