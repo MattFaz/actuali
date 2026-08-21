@@ -142,7 +142,7 @@ struct BudgetView: View {
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
             }
-            .sheet(item: $newBudgetItem, onDismiss: reloadAfterCreating) { item in
+            .sheet(item: $newBudgetItem) { item in
                 switch item {
                 case .category:
                     NewCategorySheet(groupId: firstSelectableGroupId ?? "")
@@ -445,9 +445,6 @@ struct BudgetView: View {
             // fired a sync.
             .refreshable {
                 await budgetStore.sync()
-                // sync() refreshes the current calendar month; re-fetch in
-                // case the user is viewing another.
-                await budgetStore.fetchBudgetMonth(selectedMonth)
             }
             .contentMargins(.horizontal, 4, for: .scrollContent)
             // The rest of the gap under the pinned summary — this part
@@ -517,15 +514,6 @@ struct BudgetView: View {
         let visible = budgetStore.categoryGroups.filter { !$0.hidden }
         return visible.min { $0.sortOrder < $1.sortOrder }?.id
     }
-
-    /// `createCategory`/`createCategoryGroup` refresh the current calendar
-    /// month; if the table is showing a different one, fetch that too so the
-    /// new row appears without a pull-to-refresh.
-    private func reloadAfterCreating() {
-        guard selectedMonth != Self.currentMonthString() else { return }
-        Task { await budgetStore.fetchBudgetMonth(selectedMonth) }
-    }
-
 
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).

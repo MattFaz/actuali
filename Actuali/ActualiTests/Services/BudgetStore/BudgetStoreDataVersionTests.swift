@@ -178,5 +178,8 @@ struct BudgetStoreDataVersionTests {
 
         #expect(store.error == nil)
         #expect(store.currentBudgetMonth?.month == "2026-06")
+        // Widgets always show the current calendar month, even while the app
+        // is browsing a historical budget.
+        #expect(store.widgetBudgetMonth?.month == BudgetView.currentMonthString())
     }
 }

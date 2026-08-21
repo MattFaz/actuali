@@ -1479,6 +1479,7 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
+        let requestedMonthBeforeLoad = requestedBudgetMonth
 
         var db: BudgetDatabase?
         do {
@@ -1528,8 +1529,13 @@ final class BudgetStore: ObservableObject {
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            requestedBudgetMonth = currentMonth
-            currentBudgetMonth = fetchedBudgetMonth
+            // A month selected while the database reads were in flight is
+            // newer than this initial current-month snapshot. Leave that
+            // request and its fetch result intact instead of replacing it.
+            if requestedBudgetMonth == requestedMonthBeforeLoad {
+                requestedBudgetMonth = currentMonth
+                currentBudgetMonth = fetchedBudgetMonth
+            }
             widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
             publishWidgetSnapshot()
@@ -1670,10 +1676,7 @@ final class BudgetStore: ObservableObject {
             // Foreground sync must not silently replace a historical month
             // with the current calendar month while the toolbar still shows
             // the user's selection (GH #328).
-            let displayedMonth = requestedBudgetMonth ?? currentBudgetMonth?.month ?? currentMonth
-            if requestedBudgetMonth == nil {
-                requestedBudgetMonth = displayedMonth
-            }
+            let displayedMonth = requestedBudgetMonth ?? currentMonth
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
             let fetchedWidgetBudgetMonth: BudgetMonth
             if displayedMonth == currentMonth {
@@ -1690,16 +1693,19 @@ final class BudgetStore: ObservableObject {
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
-            guard self.database === database,
-                  self.currentBudgetId == budgetId,
-                  requestedBudgetMonth == displayedMonth else { return }
+            guard self.database === database, self.currentBudgetId == budgetId else { return }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            currentBudgetMonth = fetchedBudgetMonth
+            // A month selected while these reads were in flight owns the
+            // Budget tab now. Its fetch publishes separately, while the rest
+            // of this valid refresh snapshot must still reach the app.
+            if requestedBudgetMonth == displayedMonth {
+                currentBudgetMonth = fetchedBudgetMonth
+            }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             // Last in the batch: assigning this publishes a widget snapshot,
