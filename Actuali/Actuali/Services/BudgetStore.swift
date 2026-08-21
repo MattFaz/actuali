@@ -382,6 +382,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether displayed currency amounts omit their fractional digits.
+    /// The underlying cent values remain unchanged; this is presentation only.
+    @Published var hideDecimalPlaces: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideDecimalPlaces, forKey: "hideDecimalPlaces")
+            publishWidgetSnapshot()
+        }
+    }
+
     /// Whether Budget hides categories with no budget left this month.
     /// Persisted to UserDefaults, defaults to off.
     @Published var hideZeroBudgetCategories: Bool = false {
@@ -1061,6 +1070,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
@@ -4167,12 +4178,14 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Currency Formatting
 
-    /// Format an amount in cents to a currency string using the budget's currency
+    /// Format an amount in cents to a currency string using the budget's currency.
+    /// Respects the device's display-only decimal-place preference.
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol)
+                                    narrowSymbol: useNarrowCurrencySymbol,
+                                    wholeUnits: hideDecimalPlaces)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
