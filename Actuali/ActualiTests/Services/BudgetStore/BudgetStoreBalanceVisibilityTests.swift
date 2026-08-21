@@ -47,7 +47,10 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideDecimalPlaces = true
 
         #expect(store.displayBalance(123_456) == store.formatCurrencyWholeUnits(123_456))
-        #expect(store.formatCurrency(123_456) == store.formatCurrencyWholeUnits(123_456))
+        // Exact-value workflows such as reconciliation and split remainders
+        // deliberately bypass the display preference.
+        #expect(store.formatCurrency(123_456) != store.formatCurrencyWholeUnits(123_456))
+        #expect(store.displaySpentCaption(-123_456) == store.formatCurrencyWholeUnits(123_456))
 
         store.hideDecimalPlaces = false
         let standard = CurrencyAmountFormat.string(

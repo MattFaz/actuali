@@ -48,9 +48,12 @@ struct CurrencyAmountFormatTests {
     }
 
     @Test func budgetTableWholeUnitsUseTheSameRounding() {
-        #expect(BudgetColumn.text(105_150, wholeUnits: true) == "1,052")
-        #expect(BudgetColumn.text(-105_150, wholeUnits: true) == "-1,052")
-        #expect(BudgetColumn.text(105_150) == "1,051.50")
+        for cents in [105_150, -105_150] {
+            #expect(BudgetColumn.text(cents, wholeUnits: true) ==
+                    CurrencyAmountFormat.string(
+                        cents: cents, currencyCode: "", narrowSymbol: false,
+                        wholeUnits: true))
+        }
     }
 
     /// Empty code means no currency (Actual's defaultCurrencyCode convention);

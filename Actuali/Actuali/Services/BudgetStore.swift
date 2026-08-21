@@ -440,7 +440,8 @@ final class BudgetStore: ObservableObject {
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
+        guard !hideBalances else { return Self.hiddenBalanceText }
+        return hideDecimalPlaces ? formatCurrencyWholeUnits(cents) : formatCurrency(cents)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
@@ -455,9 +456,13 @@ final class BudgetStore: ObservableObject {
     /// deposits can't masquerade as spending (GH #102).
     func displaySpentCaption(_ spentCents: Int) -> String {
         guard !hideBalances else { return Self.hiddenBalanceText }
+        let magnitude = spentCents > 0 ? spentCents : -spentCents
+        let text = hideDecimalPlaces
+            ? formatCurrencyWholeUnits(magnitude)
+            : formatCurrency(magnitude)
         return spentCents > 0
-            ? "+\(formatCurrency(spentCents))"
-            : formatCurrency(-spentCents)
+            ? "+\(text)"
+            : text
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -4179,13 +4184,11 @@ final class BudgetStore: ObservableObject {
     // MARK: - Currency Formatting
 
     /// Format an amount in cents to a currency string using the budget's currency.
-    /// Respects the device's display-only decimal-place preference.
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol,
-                                    wholeUnits: hideDecimalPlaces)
+                                    narrowSymbol: useNarrowCurrencySymbol)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
