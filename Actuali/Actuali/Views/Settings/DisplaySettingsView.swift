@@ -143,18 +143,8 @@ struct DisplaySettingsView: View {
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
-        // Keyed to the open database so the pages re-load when the budget
-        // finishes opening and when it's switched — Settings is a resident
-        // tab, so a plain .task only ever runs once.
-        .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) {
+        .task {
             await reloadDashboardPages()
-        }
-        // Sync mutates dashboard_pages in the already-open database, whose
-        // identity doesn't change — so the task above can't see it. Matters
-        // most on a fresh budget, where the database opens before the first
-        // sync lands any pages at all.
-        .onChange(of: budgetStore.lastSyncTime) {
-            Task { await reloadDashboardPages() }
         }
     }
 

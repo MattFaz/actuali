@@ -121,7 +121,9 @@ struct TransactionAutomationSettingsView: View {
             } header: {
                 Text("Payees & Accounts")
             } footer: {
-                if !budgetStore.payeeLocationWritesEnabled && budgetStore.currentBudgetId != nil {
+                if !budgetStore.payeeLocationWritesEnabled
+                    && budgetStore.currentBudgetId != nil
+                    && budgetStore.isConnected {
                     Text("Payee locations require Actual Server 26.4.0 or later.")
                 }
             }

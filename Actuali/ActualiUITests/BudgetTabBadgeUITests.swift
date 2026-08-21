@@ -12,7 +12,10 @@ final class BudgetTabBadgeUITests: XCTestCase {
     @MainActor
     func testBadgeTracksOverspentCategories() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = [
+            "-loadDemoData", "-initialTab", "1",
+            "-showOverspentBadge", "YES",
+        ]
         app.launch()
 
         let budgetTab = app.tabBars.buttons["Budget"]

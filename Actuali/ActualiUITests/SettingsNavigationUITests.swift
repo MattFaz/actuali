@@ -2,6 +2,37 @@ import XCTest
 
 final class SettingsNavigationUITests: XCTestCase {
     @MainActor
+    private func assertExpectedContent(for destination: String, in app: XCUIApplication) {
+        let content: XCUIElement
+        switch destination {
+        case "Connection & Data":
+            content = app.textFields["Server URL"]
+        case "Budget View":
+            content = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'View Style'")
+            ).firstMatch
+        case "Transactions & Automation":
+            content = app.switches["Conventional Amount Entry"]
+        case "Display":
+            content = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'Currency'")
+            ).firstMatch
+        case "Privacy":
+            content = app.switches["Hide Balances"]
+        case "About":
+            content = app.staticTexts["Version"]
+        default:
+            XCTFail("No representative content assertion for \(destination)")
+            return
+        }
+
+        XCTAssertTrue(
+            content.waitForExistence(timeout: 5),
+            "\(destination) opened without its expected content"
+        )
+    }
+
+    @MainActor
     func testHubOpensEverySettingsDestination() throws {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
@@ -24,6 +55,7 @@ final class SettingsNavigationUITests: XCTestCase {
                 navigationBar.waitForExistence(timeout: 5),
                 "\(destination) screen did not open"
             )
+            assertExpectedContent(for: destination, in: app)
             navigationBar.buttons.element(boundBy: 0).tap()
         }
     }

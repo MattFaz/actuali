@@ -24,7 +24,7 @@ final class PayeeLocationsUITests: XCTestCase {
     func testScreenIsReachableFromSettingsWhenServerSupportsLocations() throws {
         let app = XCUIApplication()
         // Demo data leaves serverURL empty, so the cache key has an empty suffix.
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4",
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
                                "-payeeLocationWritesEnabled_", "1"]
         app.launch()
 
@@ -51,7 +51,7 @@ final class PayeeLocationsUITests: XCTestCase {
     @MainActor
     func testClearsOneLocationThenTheRest() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4",
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
                                "-payeeLocationWritesEnabled_", "1",
                                "-seedPayeeLocations"]
         app.launch()
@@ -110,7 +110,10 @@ final class PayeeLocationsUITests: XCTestCase {
     @MainActor
     func testScreenIsHiddenWhenServerLacksLocationSupport() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launchArguments = [
+            "-loadDemoData", "-initialTab", "4", "-serverURL", "",
+            "-payeeLocationWritesEnabled_", "0",
+        ]
         app.launch()
 
         let transactionSettings = app.buttons["Transactions & Automation"]
