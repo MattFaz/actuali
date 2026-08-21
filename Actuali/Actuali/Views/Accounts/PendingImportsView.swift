@@ -155,7 +155,7 @@ struct PendingImportsView: View {
                 notes: item.rawText,
                 categoryId: nil,
                 isIncome: item.isIncome,
-                cleared: true,
+                cleared: false,
                 onSaved: { store.remove(id: item.id) }
             )
             .environmentObject(budgetStore)
@@ -169,18 +169,12 @@ struct PendingImportsView: View {
     }
 
     private func resolveAccountId(for item: PendingImport) -> String? {
-        if let hint = item.cardHint, !hint.isEmpty {
-            for account in budgetStore.accounts where !account.closed {
-                if account.name.localizedCaseInsensitiveContains(hint) {
-                    return account.id
-                }
-            }
-        }
-        if let defaultId = budgetStore.defaultAccountId,
-           budgetStore.accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
-            return defaultId
-        }
-        return budgetStore.accounts.first(where: { !$0.closed })?.id
+        guard let hint = item.cardHint, !hint.isEmpty else { return nil }
+        return BudgetStore.resolveAccountId(
+            hint: hint,
+            accounts: budgetStore.accounts,
+            cardMappings: budgetStore.cardAccountMappings
+        )
     }
 }
 
