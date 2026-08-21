@@ -169,9 +169,9 @@ struct BudgetDatabaseDashboardTests {
 }
 
 // Resolution of which dashboard page the Reports tab shows: a still-live
-// explicit selection wins, otherwise the first live page (matching the web's
-// ReportsDashboardRouter redirect to dashboardPages[0]), otherwise nil so the
-// pre-pages pageless fallback applies.
+// explicit selection wins, then the dashboard configured in Settings, then the
+// first live page (matching the web's ReportsDashboardRouter redirect to
+// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback applies.
 struct ReportsPageSelectionTests {
 
     private let pages = [
@@ -193,5 +193,39 @@ struct ReportsPageSelectionTests {
 
     @Test func isNilWhenNoLivePages() {
         #expect(ReportsTabView.resolvePageId(selected: "anything", pages: []) == nil)
+    }
+
+    @Test func opensConfiguredDefaultWhenNothingSelected() {
+        #expect(ReportsTabView.resolvePageId(
+            selected: nil,
+            configuredDefault: "page-second",
+            pages: pages
+        ) == "page-second")
+    }
+
+    // A live in-session selection is a deliberate switch, so it outranks the
+    // setting until the tab is rebuilt.
+    @Test func selectionOutranksConfiguredDefault() {
+        #expect(ReportsTabView.resolvePageId(
+            selected: "page-main",
+            configuredDefault: "page-second",
+            pages: pages
+        ) == "page-main")
+    }
+
+    @Test func ignoresConfiguredDefaultForDeletedPage() {
+        #expect(ReportsTabView.resolvePageId(
+            selected: nil,
+            configuredDefault: "page-deleted",
+            pages: pages
+        ) == "page-main")
+    }
+
+    @Test func ignoresConfiguredDefaultWhenNoLivePages() {
+        #expect(ReportsTabView.resolvePageId(
+            selected: nil,
+            configuredDefault: "page-main",
+            pages: []
+        ) == nil)
     }
 }

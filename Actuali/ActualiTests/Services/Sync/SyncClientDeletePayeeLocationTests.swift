@@ -58,15 +58,16 @@ struct SyncClientDeletePayeeLocationTests {
         }
         #expect(tombstone == 1)
 
-        let messages = try await queue.read { db in
+        let messages = try await queue.read { db -> [(dataset: String, row: String, column: String, value: String)] in
             try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
+                .map { (dataset: $0["dataset"], row: $0["row"], column: $0["column"], value: $0["value"]) }
         }
         #expect(messages.count == 1)
         let message = try #require(messages.first)
-        #expect(message["dataset"] == "payee_locations")
-        #expect(message["row"] == "loc-1")
-        #expect(message["column"] == "tombstone")
-        #expect(message["value"] == "N:1")
+        #expect(message.dataset == "payee_locations")
+        #expect(message.row == "loc-1")
+        #expect(message.column == "tombstone")
+        #expect(message.value == "N:1")
     }
 
     @Test func deleteThrowsWhenNotConfigured() async throws {

@@ -8,6 +8,10 @@ struct AddTransactionView: View {
     @Environment(\.isPresented) private var isPresented
 
     private let editing: Transaction?
+    /// Called after a successful save (not on cancel). Lets a presenting flow
+    /// react to the write — e.g. the pending-imports inbox clears the queued
+    /// item only once its edited copy actually reaches the budget.
+    private let onSaved: (() -> Void)?
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -44,9 +48,11 @@ struct AddTransactionView: View {
         notes: String = "",
         categoryId: String? = nil,
         isIncome: Bool = false,
-        cleared: Bool = false
+        cleared: Bool = false,
+        onSaved: (() -> Void)? = nil
     ) {
         self.editing = nil
+        self.onSaved = onSaved
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -66,6 +72,7 @@ struct AddTransactionView: View {
     /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
+        self.onSaved = nil
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -722,6 +729,7 @@ struct AddTransactionView: View {
 
         do {
             try await budgetStore.saveTransaction(form, editing: editing)
+            onSaved?()
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the
@@ -989,7 +997,7 @@ struct AmountInputField: UIViewRepresentable {
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         items.append(UIBarButtonItem(
-            title: "Done", style: .done,
+            title: "Done", style: .prominent,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items

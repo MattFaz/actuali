@@ -191,6 +191,28 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(insertion.category.groupId == "grp-bills")
     }
 
+    @Test func categoryRenameValidationKeepsNamesUniqueWithinTheGroup() throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try db.validateCategoryRename(id: "cat-groceries", name: "Food")
+        #expect(throws: BudgetDatabase.CategoryWriteError.duplicateCategoryName(
+            name: "fuel",
+            groupName: "Daily"
+        )) {
+            try db.validateCategoryRename(id: "cat-groceries", name: "fuel")
+        }
+    }
+
+    @Test func anUnknownCategoryCannotBeRenamed() throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        #expect(throws: BudgetDatabase.CategoryWriteError.categoryNotFound) {
+            try db.validateCategoryRename(id: "cat-gone", name: "New Name")
+        }
+    }
+
     @Test func anUnknownGroupIsRefused() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }

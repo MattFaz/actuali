@@ -5,7 +5,7 @@ import XCTest
 /// navigation-bar button.
 final class BudgetOptionsMenuUITests: XCTestCase {
 
-    private func launchBudgetTab(_ app: XCUIApplication) {
+    @MainActor private func launchBudgetTab(_ app: XCUIApplication) {
         // Seed the persisted toggles: they survive between launches for real
         // in the simulator, so start from a known state whatever earlier runs
         // left behind.
@@ -28,10 +28,48 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         optionsMenu.tap()
 
         for option in ["Clean", "Detailed", "Expand All Groups",
-                       "Collapse All Groups", "Hide Spent Categories"] {
+                       "Collapse All Groups", "Status Filters",
+                       "Hide Spent Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
+    }
+
+    /// The strip costs a row of vertical space on a phone, so it's optional.
+    /// Starting state isn't asserted: the setting persists live in the
+    /// simulator and a default-true preference can't be seeded from a launch
+    /// argument, so this flips whatever it finds and puts it back.
+    @MainActor
+    func testStatusFilterStripTogglesFromTheMenu() throws {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
+        let statusFilters = app.buttons["Status Filters"]
+        let allChip = app.buttons["budgetFilter-all"]
+
+        optionsMenu.tap()
+        XCTAssertTrue(statusFilters.waitForExistence(timeout: 5))
+        let startedShown = statusFilters.isSelected
+        XCTAssertEqual(allChip.exists, startedShown,
+                       "the strip's visibility should match the menu toggle")
+
+        statusFilters.tap()
+        if startedShown {
+            XCTAssertTrue(allChip.waitForNonExistence(timeout: 5),
+                          "turning the toggle off should hide the strip")
+        } else {
+            XCTAssertTrue(allChip.waitForExistence(timeout: 5),
+                          "turning the toggle on should show the strip")
+        }
+
+        // Restore, so the live-persisted setting doesn't leak into other tests.
+        optionsMenu.tap()
+        XCTAssertTrue(statusFilters.waitForExistence(timeout: 5))
+        statusFilters.tap()
+        XCTAssertEqual(allChip.waitForExistence(timeout: 5), startedShown,
+                       "toggling back should restore the original state")
     }
 
     @MainActor

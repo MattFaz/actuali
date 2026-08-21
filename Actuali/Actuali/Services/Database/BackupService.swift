@@ -23,10 +23,10 @@ enum Backup: Identifiable, Equatable {
 }
 
 enum BackupError: LocalizedError {
-    case snapshotFailed(Error)
-    case archiveCreationFailed(Error)
+    case snapshotFailed(any Error)
+    case archiveCreationFailed(any Error)
     case backupNotFound(String)
-    case restoreFailed(Error)
+    case restoreFailed(any Error)
 
     var errorDescription: String? {
         switch self {

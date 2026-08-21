@@ -26,6 +26,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidCategoryName
     case invalidCategoryGroupName
     case categoryCreationFailed(String)
+    case categoryUpdateFailed(String)
     case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
@@ -76,6 +77,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "Enter a category group name"
         case .categoryCreationFailed(let message):
             return "Failed to create category: \(message)"
+        case .categoryUpdateFailed(let message):
+            return "Failed to update category: \(message)"
         case .categoryGroupCreationFailed(let message):
             return "Failed to create category group: \(message)"
         case .ruleNeedsCondition:
@@ -230,6 +233,24 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    private static func currencyCodeCacheKey(for budgetId: String) -> String {
+        "currencyCode.\(budgetId)"
+    }
+
+    private func cachedCurrencyCode(for budgetId: String) -> String? {
+        UserDefaults.standard.string(forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
+    private func cacheCurrencyCode(_ code: String, for budgetId: String) {
+        // Keep an explicit empty value too: it is Actual's meaningful "None"
+        // preference, distinct from a budget we have never cached.
+        UserDefaults.standard.set(code, forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
+    private func forgetCachedCurrencyCode(for budgetId: String) {
+        UserDefaults.standard.removeObject(forKey: Self.currencyCodeCacheKey(for: budgetId))
+    }
+
     /// User-initiated currency changes (the Settings picker) go through
     /// here, not a direct `currencyCode = ...` assignment: it also persists
     /// the choice into the budget's own `preferences` table via sync, so it
@@ -239,6 +260,9 @@ final class BudgetStore: ObservableObject {
     /// exactly what keeps this from looping back on itself.
     func setCurrencyCode(_ code: String) async {
         currencyCode = code
+        if let currentBudgetId {
+            cacheCurrencyCode(code, for: currentBudgetId)
+        }
         guard let syncClient else { return }
         do {
             try await syncClient.updateCurrencyCode(code)
@@ -303,6 +327,16 @@ final class BudgetStore: ObservableObject {
     @Published var showBudgetProgressBars: Bool = true {
         didSet {
             UserDefaults.standard.set(showBudgetProgressBars, forKey: "showBudgetProgressBars")
+        }
+    }
+
+    /// Whether Budget shows the status filter strip above the category list.
+    /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
+    /// space on a phone, so a budget that never needs the filters can reclaim
+    /// it — hiding the strip drops any active filter with it.
+    @Published var showBudgetCheckInStrip: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showBudgetCheckInStrip, forKey: "showBudgetCheckInStrip")
         }
     }
 
@@ -463,6 +497,24 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Dashboard page the Reports tab opens on (GH #223). nil means the first
+    /// live page, matching the web app's ReportsDashboardRouter.
+    var defaultDashboardPageId: String? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return UserDefaults.standard.string(forKey: "defaultDashboardPageId_\(budgetId)")
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            if let value = newValue {
+                UserDefaults.standard.set(value, forKey: "defaultDashboardPageId_\(budgetId)")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "defaultDashboardPageId_\(budgetId)")
+            }
+            objectWillChange.send()
+        }
+    }
+
     /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
     /// Persisted per budget in UserDefaults.
     var cardAccountMappings: [String: String] {
@@ -475,6 +527,118 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(newValue, forKey: "cardAccountMappings_\(budgetId)")
             objectWillChange.send()
         }
+    }
+
+    /// Mappings from accountId -> statement closing day (1...31).
+    /// Persisted per budget in UserDefaults. An account with a statement day configured
+    /// is treated as a credit card with that billing cycle in Actuali.
+    var creditCardStatementDays: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardStatementDays_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Mappings from accountId -> days between statement closing and payment due.
+    /// A card missing an entry predates the setting and falls back to
+    /// `CreditCardCycle.defaultDueOffsetDays`.
+    var creditCardDueOffsets: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardDueOffsets_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Mappings from accountId -> credit limit in cents (positive). Optional per
+    /// card: without one there is no available-credit figure to show.
+    var creditCardLimits: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardLimits_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Statement days whose account still exists and is open — what the Credit
+    /// Cards screen lists and what the Settings badge counts. Closed and deleted
+    /// accounts keep their stored config (reopening restores the cycle) but drop
+    /// out of both, so the two can never disagree.
+    var activeCreditCardStatementDays: [String: Int] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// Writes a card's cycle config. A nil `statementDay` stops tracking the
+    /// account and clears everything stored for it, the limit included.
+    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
+        var days = creditCardStatementDays
+        var offsets = creditCardDueOffsets
+        if let statementDay {
+            days[accountId] = statementDay
+            offsets[accountId] = dueOffsetDays
+        } else {
+            days.removeValue(forKey: accountId)
+            offsets.removeValue(forKey: accountId)
+            var limits = creditCardLimits
+            limits.removeValue(forKey: accountId)
+            creditCardLimits = limits
+        }
+        creditCardStatementDays = days
+        creditCardDueOffsets = offsets
+    }
+
+    /// The limit is written on its own so no caller can erase it by leaving an
+    /// argument off a cycle update. A nil `cents` clears it.
+    func setCreditLimit(accountId: String, cents: Int?) {
+        var limits = creditCardLimits
+        if let cents {
+            limits[accountId] = cents
+        } else {
+            limits.removeValue(forKey: accountId)
+        }
+        creditCardLimits = limits
+    }
+
+    func creditCardCycle(for accountId: String) -> CreditCardCycle? {
+        guard let day = creditCardStatementDays[accountId] else { return nil }
+        return CreditCardCycle(
+            statementDay: day,
+            dueOffsetDays: creditCardDueOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
+        )
+    }
+
+    /// The cycle to *display* for an account: nil unless it is a tracked card
+    /// whose account still exists and is open. A closed card has no payment
+    /// coming up, so every surface hides it through this one predicate rather
+    /// than each re-deciding what counts as active.
+    func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return creditCardCycle(for: accountId)
+    }
+
+    /// Credit still available on a tracked card: the limit less what is owed.
+    /// Actual holds a card's balance negative while money is owed, so the two
+    /// add. nil unless the account is an active tracked card with a limit set.
+    func availableCredit(for accountId: String) -> Int? {
+        guard let limit = creditCardLimits[accountId],
+              activeCreditCardCycle(for: accountId) != nil,
+              let account = accounts.first(where: { $0.id == accountId })
+        else { return nil }
+        return limit + account.balance
     }
 
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
@@ -873,6 +1037,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
+        _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showBudgetCheckInStrip") as? Bool ?? true)
         _showOverspentBadge = Published(initialValue: UserDefaults.standard
             .object(forKey: "showOverspentBadge") as? Bool ?? true)
         _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
@@ -1085,7 +1251,9 @@ final class BudgetStore: ObservableObject {
                 returnURL: OpenIDAuthenticator.returnURL,
                 firstTimePassword: firstTimePassword
             )
-            let authenticator = OpenIDAuthenticator()
+            guard let authenticator = OpenIDAuthenticator.make() else {
+                throw OpenIDAuthError.noWindow
+            }
             let token = try await authenticator.authenticate(authorizationURL: authURL)
 
             await serverClient.setToken(token)
@@ -1135,6 +1303,7 @@ final class BudgetStore: ObservableObject {
                     try? EncryptionKeyManager.remove(fileId: fileId)
                 }
                 try? fileManager.deleteBudget(local.id)
+                forgetCachedCurrencyCode(for: local.id)
             }
         }
 
@@ -1320,7 +1489,8 @@ final class BudgetStore: ObservableObject {
             // Fetch all data into locals first, then publish in one batch so
             // the UI never sees a torn snapshot if another load interleaves
             // at a suspension point.
-            // Currency code from preferences (use if non-empty, else keep UserDefaults value)
+            // Nil means the budget has no currency preference; an empty value
+            // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedAccounts = try await openedDb.fetchAccounts()
@@ -1337,8 +1507,17 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            if let code = fetchedCurrencyCode, !code.isEmpty {
-                currencyCode = code
+            // The database stays authoritative whenever it has an answer, so a
+            // currency changed on another client always wins here. The cache
+            // only covers the gap: a freshly downloaded snapshot can predate
+            // the CRDT preference messages that carry the setting, and without
+            // it the previous budget's currency would stay on screen until the
+            // first sync lands (GH #297).
+            if let fetchedCurrencyCode {
+                currencyCode = fetchedCurrencyCode
+                cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+            } else if let cached = cachedCurrencyCode(for: budgetId) {
+                currencyCode = cached
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
@@ -1473,6 +1652,8 @@ final class BudgetStore: ObservableObject {
     /// Use this after local changes to update the UI
     private func refreshDataOnly() async {
         guard let database else { return }
+        let budgetId = currentBudgetId
+        let currencyCodeBefore = currencyCode
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -1487,10 +1668,13 @@ final class BudgetStore: ObservableObject {
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
+            // Re-read here too: a sync can bring in a currency set on another
+            // client, and nothing else republishes it (GH #297).
+            let fetchedCurrencyCode = try await database.fetchCurrencyCode()
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
-            guard self.database === database else { return }
+            guard self.database === database, self.currentBudgetId == budgetId else { return }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
@@ -1500,6 +1684,18 @@ final class BudgetStore: ObservableObject {
             currentBudgetMonth = fetchedBudgetMonth
             widgetBudgetMonth = fetchedBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
+            // Last in the batch: assigning this publishes a widget snapshot,
+            // which must see the balances above rather than the previous
+            // refresh's. Skipped when the user picked a currency in Settings
+            // while the reads above were in flight — that choice is newer than
+            // anything this snapshot holds, and the write it kicked off will
+            // come back on the next refresh.
+            if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
+                currencyCode = fetchedCurrencyCode
+                if let budgetId {
+                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
+                }
+            }
             dataVersion += 1
 
             await loadSchedules()
@@ -1789,6 +1985,33 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
 
         return category
+    }
+
+    /// Rename a category without changing its group, sort order, budget, or
+    /// transactions. `month` is the month the caller is displaying: the shared
+    /// refresh below republishes the *current calendar* month, so a caller
+    /// browsing any other month has to have it restored — otherwise its rows
+    /// and its title disagree and the next amount edit lands on the wrong
+    /// month.
+    func renameCategory(id: String, name: String, month: String) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.renameCategory(id: id, name: trimmedName)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
     }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
@@ -2200,7 +2423,7 @@ final class BudgetStore: ObservableObject {
 
     /// Duplicate multiple transactions.
     func duplicateTransactions(_ transactions: [Transaction]) async {
-        guard let syncClient else {
+        guard syncClient != nil else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
@@ -2412,6 +2635,16 @@ final class BudgetStore: ObservableObject {
     func balanceBreakdown(accountId: String) async -> AccountBalanceBreakdown? {
         guard let database else { return nil }
         return try? await database.balanceBreakdown(accountId: accountId)
+    }
+
+    /// Total charges in cents for an account within a billing cycle window.
+    func fetchCycleSpend(accountId: String, start: DayDate, end: DayDate) async -> Int {
+        guard let database else { return 0 }
+        return (try? await database.fetchAccountSpend(
+            accountId: accountId,
+            fromDate: start.yyyymmdd,
+            toDate: end.yyyymmdd
+        )) ?? 0
     }
 
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
@@ -3921,4 +4154,3 @@ final class BudgetStore: ObservableObject {
         Self.yearMonthFormatter.string(from: Date())
     }
 }
-

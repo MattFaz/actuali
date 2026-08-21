@@ -135,13 +135,15 @@ struct BudgetStoreSetBudgetAmountTests {
         try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
 
         let queue = try DatabaseQueue(path: path.path)
-        let rows = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets")
+        let budgets = try await queue.read { db -> [BudgetRow] in
+            try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets").map { row in
+                BudgetRow(id: row["id"], amount: row["amount"])
+            }
         }
-        #expect(rows.count == 1)
-        let row = try #require(rows.first)
-        #expect(row["id"] == "202607-cat-groceries")
-        #expect(row["amount"] == 2550)
+        #expect(budgets.count == 1)
+        let budget = try #require(budgets.first)
+        #expect(budget.id == "202607-cat-groceries")
+        #expect(budget.amount == 2550)
 
         // The published month must reflect the edit without a manual refresh.
         let month = try #require(store.currentBudgetMonth)
@@ -168,6 +170,25 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(groceries.budgeted == -10000)
     }
 
+    // A rename runs the shared data refresh, which republishes the *current
+    // calendar* month. Any other displayed month has to survive it, or the
+    // table's rows stop matching its title and the next amount edit lands on
+    // the wrong month.
+    @Test func renamingACategoryKeepsTheDisplayedMonthPublished() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-groceries", amountCents: 2550)
+        try await store.renameCategory(id: "cat-groceries", name: "Food", month: "2026-07")
+
+        let month = try #require(store.currentBudgetMonth)
+        #expect(month.month == "2026-07")
+        let renamed = try #require(month.categoryBudgets.first { $0.categoryId == "cat-groceries" })
+        #expect(renamed.categoryName == "Food")
+        #expect(renamed.budgeted == 2550)
+    }
+
     @Test func withoutSyncClientThrowsSyncNotConfigured() async throws {
         let store = BudgetStore.previewInstance()
 
@@ -175,4 +196,11 @@ struct BudgetStoreSetBudgetAmountTests {
             try await store.setBudgetAmount(month: "2026-07", categoryId: "cat-1", amountCents: 100)
         }
     }
+}
+
+/// Sendable snapshot of a zero_budgets row, extracted inside the GRDB read
+/// closure so no non-Sendable `Row` crosses the async boundary.
+private struct BudgetRow: Sendable {
+    let id: String
+    let amount: Int
 }
