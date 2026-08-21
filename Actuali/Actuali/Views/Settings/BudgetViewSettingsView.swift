@@ -8,6 +8,7 @@ struct BudgetViewSettingsView: View {
             // The Budget options menu keeps these as contextual shortcuts;
             // Settings exposes the same store-backed preferences so they can
             // also be managed outside the Budget tab.
+            // #GH-332 is an issue for adding customizablity to this to prevent redundancy
             Section {
                 Picker("View Style", selection: $budgetStore.budgetDisplayStyle) {
                     Text("Clean").tag(BudgetDisplayStyle.clean)
