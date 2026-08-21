@@ -1182,7 +1182,7 @@ struct BudgetGroupHeader: View {
                     )
                 } else if let receivedTotal {
                     if labelsReceivedTotal {
-                        Text("Received \(budgetStore.displayBalance(receivedTotal))")
+                        Text("Received \(receivedText(receivedTotal))")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -1216,6 +1216,14 @@ struct BudgetGroupHeader: View {
             spent \(budgetStore.displayBalance(totals.spent)), \
             balance \(budgetStore.displayBalance(totals.balance))
             """
+    }
+
+    /// Detailed tables omit currency symbols from every numeric column; the
+    /// clean layout keeps the app-wide currency formatting used by its rows.
+    private func receivedText(_ amount: Int) -> String {
+        reservesTwoLines
+            ? budgetStore.displayBudgetCell(amount)
+            : budgetStore.displayBalance(amount)
     }
 }
 
