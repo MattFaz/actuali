@@ -34,6 +34,19 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testAddMenuUsesConciseLabels() throws {
+        let app = XCUIApplication()
+        launchBudgetTab(app)
+
+        let addMenu = app.navigationBars["Budget"].buttons["Add"]
+        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
+        addMenu.tap()
+
+        XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["New Category Group"].waitForExistence(timeout: 5))
+    }
+
     /// The strip costs a row of vertical space on a phone, so it's optional.
     /// Starting state isn't asserted: the setting persists live in the
     /// simulator and a default-true preference can't be seeded from a launch
