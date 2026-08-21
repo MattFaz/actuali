@@ -28,6 +28,10 @@ final class PayeeLocationsUITests: XCTestCase {
                                "-payeeLocationWritesEnabled_", "1"]
         app.launch()
 
+        let transactionSettings = app.buttons["Transactions & Automation"]
+        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
+        transactionSettings.tap()
+
         let row = app.buttons["Payee Locations"]
         scrollTo(row, in: app)
         XCTAssertTrue(row.waitForExistence(timeout: 5),
@@ -51,6 +55,10 @@ final class PayeeLocationsUITests: XCTestCase {
                                "-payeeLocationWritesEnabled_", "1",
                                "-seedPayeeLocations"]
         app.launch()
+
+        let transactionSettings = app.buttons["Transactions & Automation"]
+        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
+        transactionSettings.tap()
 
         let row = app.buttons["Payee Locations"]
         scrollTo(row, in: app)
@@ -105,7 +113,11 @@ final class PayeeLocationsUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
-        // Walk the whole Settings form; neither the row nor the toggle appears.
+        let transactionSettings = app.buttons["Transactions & Automation"]
+        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
+        transactionSettings.tap()
+
+        // Walk the whole destination form; neither the row nor the toggle appears.
         let row = app.buttons["Payee Locations"]
         let toggle = app.switches["Record Payee Locations"]
         scrollTo(row, in: app)
