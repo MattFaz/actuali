@@ -260,11 +260,16 @@ struct BudgetView: View {
         // used to be mistaken for one (it steps the month, not the
         // navigation stack).
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 8) {
+            // The glyphs are ~14pt, so each one gets padded out to the 44pt
+            // minimum touch target and the stack drops its spacing — the
+            // padding is what separates them now.
+            HStack(spacing: 0) {
                 Button {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
                 } label: {
                     Image(systemName: "chevron.left")
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                 }
                 .accessibilityLabel("Previous month")
 
@@ -274,9 +279,15 @@ struct BudgetView: View {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                 } label: {
                     Image(systemName: "chevron.right")
+                        .frame(width: 44, height: 44)
+                        .contentShape(.rect)
                 }
                 .accessibilityLabel("Next month")
             }
+            // The wider hit targets make the group too big for the toolbar to
+            // center on its own, so it claims the whole title region and
+            // centers the stepper inside it.
+            .frame(maxWidth: .infinity)
         }
         // Creation, unlike everything in the options menu, changes the budget
         // rather than the view of it — so it gets its own button (GH #284).
