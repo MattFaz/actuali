@@ -878,6 +878,24 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Total charges / debits in cents for an account between two dates (inclusive).
+    /// Amounts in Actual are negative for expenses, so this sums negative transactions and returns positive cents.
+    func fetchAccountSpend(accountId: String, fromDate: Int, toDate: Int) async throws -> Int {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0)
+                FROM transactions t
+                LEFT JOIN transactions p ON p.id = t.parent_id
+                WHERE t.acct = ?
+                  AND t.date >= ?
+                  AND t.date <= ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND \(Self.aliveChildPredicate(parent: "p"))
+                  AND (t.isParent = 0 OR t.isParent IS NULL)
+                """, arguments: [accountId, fromDate, toDate]) ?? 0
+        }
+    }
+
     /// Every live cleared-but-not-yet-reconciled row in an account — parents
     /// and children included, because locking marks each stored row the way
     /// upstream's ungrouped batch update does. No display joins: callers

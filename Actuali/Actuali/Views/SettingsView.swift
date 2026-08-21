@@ -479,6 +479,24 @@ struct SettingsView: View {
 
                     if budgetStore.currentBudgetId != nil {
                         NavigationLink {
+                            CreditCardsSettingsView()
+                        } label: {
+                            HStack {
+                                Text("Credit Cards & Billing Cycles")
+                                Spacer()
+                                // Same predicate the screen itself lists, so the
+                                // badge can't promise cards the list won't show.
+                                let cardCount = budgetStore.activeCreditCardStatementDays.count
+                                if cardCount > 0 {
+                                    Text("\(cardCount)")
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
                             RulesListView()
                         } label: {
                             Text("Rules")

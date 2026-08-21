@@ -11,6 +11,7 @@ struct AccountDetailView: View {
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
+    @State private var showingBillingCycle = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -22,6 +23,7 @@ struct AccountDetailView: View {
     @State private var editingNote = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
+    @State private var cycleSpend: Int = 0
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -54,7 +56,21 @@ struct AccountDetailView: View {
     private func reload() async {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
+        await reloadCycleSpend()
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func reloadCycleSpend() async {
+        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else {
+            cycleSpend = 0
+            return
+        }
+        let range = cycle.cycleRange()
+        cycleSpend = await budgetStore.fetchCycleSpend(
+            accountId: account.id,
+            start: range.start,
+            end: range.end
+        )
     }
 
     private func reloadNote() async {
@@ -107,14 +123,17 @@ struct AccountDetailView: View {
     }
 
     private func breakdownRow(_ title: String, amount: Int) -> some View {
-        let text = budgetStore.displayBalance(amount)
-        return HStack {
+        breakdownRow(title, value: budgetStore.displayBalance(amount))
+    }
+
+    private func breakdownRow(_ title: String, value: String) -> some View {
+        HStack {
             Text(title)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text(text)
+            Text(value)
                 .foregroundStyle(.secondary)
-                .animatedAmount(text)
+                .animatedAmount(value)
         }
         .font(.subheadline)
     }
@@ -151,6 +170,42 @@ struct AccountDetailView: View {
                     breakdownRow("Cleared", amount: breakdown.cleared)
                     breakdownRow("Uncleared", amount: breakdown.uncleared)
                     breakdownRow("Reconciled", amount: breakdown.reconciled)
+                }
+            }
+
+            if let cycle = budgetStore.activeCreditCardCycle(for: account.id), searchQuery == nil {
+                Section {
+                    let range = cycle.cycleRange()
+                    let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
+                    let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
+                    let dueSummary = cycle.dueSummary()
+
+                    // Collapsed by default like the balance breakdown above, but
+                    // the due date rides on the header row rather than hiding —
+                    // it's the part of this section worth acting on.
+                    Button {
+                        withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
+                    } label: {
+                        HStack {
+                            Text("Billing Cycle")
+                            Spacer()
+                            Text(dueSummary)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingBillingCycle ? 180 : 0))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Billing Cycle, \(dueSummary)")
+                    .accessibilityHint(showingBillingCycle ? "Hides the billing cycle details" : "Shows the current cycle dates and spend")
+
+                    if showingBillingCycle {
+                        breakdownRow("Current Cycle", value: "\(startStr) – \(endStr)")
+                        breakdownRow("Cycle Spend", value: budgetStore.displayBalance(cycleSpend))
+                    }
                 }
             }
 
@@ -321,6 +376,7 @@ struct AccountDetailView: View {
                 // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                cycleSpend = 0
                 isSelecting = false
                 selectedTransactionIds.removeAll()
             } else if searchQuery != nil {
@@ -343,6 +399,9 @@ struct AccountDetailView: View {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
             Task { await reload() }
+        }
+        .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
+            Task { await reloadCycleSpend() }
         }
         .refreshable {
             await budgetStore.sync()
