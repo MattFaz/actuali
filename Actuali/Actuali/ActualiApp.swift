@@ -40,6 +40,13 @@ struct ActualiApp: App {
                     if CommandLine.arguments.contains("-loadDemoData") {
                         await budgetStore.loadDemoData()
                     }
+                    if CommandLine.arguments.contains("-connectedServerSettings") {
+                        _ = await budgetStore.updateServerConnection(
+                            serverURL: "https://primary.example.com",
+                            fallbackServerURL: ""
+                        )
+                        budgetStore.isConnected = true
+                    }
                     // Stands in for coordinates the Add Transaction form would
                     // have recorded, so PayeeLocationsUITests can clear them.
                     if CommandLine.arguments.contains("-seedPayeeLocations") {

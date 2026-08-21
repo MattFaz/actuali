@@ -1173,6 +1173,47 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// Reconfigures an authenticated session without logging out or touching
+    /// its downloaded budget. Publish the new addresses only after both URLs
+    /// validate and the live client accepts them.
+    @discardableResult
+    func updateServerConnection(
+        serverURL newServerURL: String,
+        fallbackServerURL newFallbackServerURL: String
+    ) async -> Bool {
+        let normalized = Self.normalizedServerURL(newServerURL)
+        let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
+        guard !normalized.isEmpty else {
+            error = "Please enter a server URL"
+            return false
+        }
+        guard Self.isValidServerURL(normalized) else {
+            error = ActualServerError.invalidURL.localizedDescription
+            return false
+        }
+        guard normalizedFallback.isEmpty || Self.isValidServerURL(normalizedFallback) else {
+            error = ActualServerError.invalidFallbackURL.localizedDescription
+            return false
+        }
+
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        do {
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
+            serverURL = normalized
+            fallbackServerURL = normalizedFallback
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     /// Trims whitespace and prepends `https://` if the user omitted a scheme.
     /// Empty input stays empty so callers can still detect "missing URL".
     static func normalizedServerURL(_ raw: String) -> String {
@@ -1182,6 +1223,11 @@ final class BudgetStore: ObservableObject {
             return trimmed
         }
         return "https://" + trimmed
+    }
+
+    private nonisolated static func isValidServerURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw) else { return false }
+        return url.scheme != nil && url.host != nil
     }
 
     func login(password: String) async {
