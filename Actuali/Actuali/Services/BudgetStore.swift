@@ -559,6 +559,20 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Mappings from accountId -> credit limit in cents (positive). Optional per
+    /// card: without one there is no available-credit figure to show.
+    var creditCardLimits: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardLimits_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
     /// Statement days whose account still exists and is open — what the Credit
     /// Cards screen lists and what the Settings badge counts. Closed and deleted
     /// accounts keep their stored config (reopening restores the cycle) but drop
@@ -568,11 +582,18 @@ final class BudgetStore: ObservableObject {
         return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
     }
 
-    /// Writes both halves of a card's config. A nil `statementDay` stops
-    /// tracking the account and clears its offset too.
-    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
+    /// Writes a card's whole config. A nil `statementDay` stops tracking the
+    /// account and clears its offset and limit too; a nil `creditLimit` clears
+    /// just the limit.
+    func setCreditCard(
+        accountId: String,
+        statementDay: Int?,
+        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
+        creditLimit: Int? = nil
+    ) {
         var days = creditCardStatementDays
         var offsets = creditCardDueOffsets
+        var limits = creditCardLimits
         if let statementDay {
             days[accountId] = statementDay
             offsets[accountId] = dueOffsetDays
@@ -580,8 +601,14 @@ final class BudgetStore: ObservableObject {
             days.removeValue(forKey: accountId)
             offsets.removeValue(forKey: accountId)
         }
+        if let creditLimit, statementDay != nil {
+            limits[accountId] = creditLimit
+        } else {
+            limits.removeValue(forKey: accountId)
+        }
         creditCardStatementDays = days
         creditCardDueOffsets = offsets
+        creditCardLimits = limits
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -599,6 +626,17 @@ final class BudgetStore: ObservableObject {
     func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
         return creditCardCycle(for: accountId)
+    }
+
+    /// Credit still available on a tracked card: the limit less what is owed.
+    /// Actual holds a card's balance negative while money is owed, so the two
+    /// add. nil unless the account is an active tracked card with a limit set.
+    func availableCredit(for accountId: String) -> Int? {
+        guard let limit = creditCardLimits[accountId],
+              activeCreditCardCycle(for: accountId) != nil,
+              let account = accounts.first(where: { $0.id == accountId })
+        else { return nil }
+        return limit + account.balance
     }
 
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",

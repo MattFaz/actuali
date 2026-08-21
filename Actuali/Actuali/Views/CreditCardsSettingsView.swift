@@ -8,6 +8,9 @@ struct CreditCardsSettingsView: View {
     @State private var selectedAccountId = ""
     @State private var selectedStatementDay = 15
     @State private var selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+    /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
+    /// Empty means "no limit set".
+    @State private var selectedLimitText = ""
 
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
@@ -43,6 +46,7 @@ struct CreditCardsSettingsView: View {
                             selectedAccountId = item.account.id
                             selectedStatementDay = item.cycle.statementDay
                             selectedDueOffset = item.cycle.dueOffsetDays
+                            selectedLimitText = limitText(for: item.account.id)
                             editingAccountId = item.account.id
                         } label: {
                             CreditCardCycleRow(account: item.account, cycle: item.cycle)
@@ -61,6 +65,7 @@ struct CreditCardsSettingsView: View {
                         }
                         selectedStatementDay = 15
                         selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+                        selectedLimitText = ""
                         showingAddSheet = true
                     } label: {
                         Label("Add Credit Card", systemImage: "plus")
@@ -116,10 +121,20 @@ struct CreditCardsSettingsView: View {
                             Text(days == 1 ? "1 day" : "\(days) days").tag(days)
                         }
                     }
+
+                    HStack {
+                        Text("Credit Limit")
+                        Spacer()
+                        AmountInputField(
+                            text: $selectedLimitText,
+                            conventionalAmountEntry: budgetStore.conventionalAmountEntry,
+                            alignment: .right
+                        )
+                    }
                 } header: {
                     Text("Card Details")
                 } footer: {
-                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.")
+                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
                 }
 
                 if isEditing {
@@ -145,7 +160,8 @@ struct CreditCardsSettingsView: View {
                         budgetStore.setCreditCard(
                             accountId: selectedAccountId,
                             statementDay: selectedStatementDay,
-                            dueOffsetDays: selectedDueOffset
+                            dueOffsetDays: selectedDueOffset,
+                            creditLimit: enteredLimitCents
                         )
                         showingAddSheet = false
                         editingAccountId = nil
@@ -154,6 +170,20 @@ struct CreditCardsSettingsView: View {
                 }
             }
         }
+    }
+
+    /// nil for an empty, unparseable, or non-positive entry — all of which mean
+    /// "no limit" rather than an error worth blocking the save on.
+    private var enteredLimitCents: Int? {
+        guard let dollars = AmountParser.parse(selectedLimitText),
+              let cents = Transaction.cents(fromDollars: dollars),
+              cents > 0 else { return nil }
+        return cents
+    }
+
+    private func limitText(for accountId: String) -> String {
+        guard let cents = budgetStore.creditCardLimits[accountId], cents != 0 else { return "" }
+        return String(format: "%.2f", Double(cents) / 100.0)
     }
 
     private static let ordinalFormatter: NumberFormatter = {
