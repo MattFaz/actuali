@@ -448,6 +448,8 @@ struct SettingsView: View {
 
                     Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
 
+                    Toggle("Hide Decimal Places", isOn: $budgetStore.hideDecimalPlaces)
+
                     // Meaningless against servers that predate payee
                     // locations (< 26.4.0), so hidden there.
                     if budgetStore.payeeLocationWritesEnabled {
@@ -506,9 +508,9 @@ struct SettingsView: View {
                     Text("Preferences")
                 } footer: {
                     if budgetStore.currencyCode.isEmpty {
-                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Hide Decimal Places rounds displayed amounts to whole units without changing their values. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Hide Decimal Places rounds displayed amounts to whole units without changing their values. Start Page takes effect the next time the app opens.")
                     }
                 }
                 
