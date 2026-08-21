@@ -10,6 +10,10 @@ final class ServerConnectionEditingUITests: XCTestCase {
         ]
         app.launch()
 
+        let connectionData = app.buttons["Connection & Data"]
+        XCTAssertTrue(connectionData.waitForExistence(timeout: 10))
+        connectionData.tap()
+
         let edit = app.buttons["Edit"]
         XCTAssertTrue(edit.waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["Connected"].exists)
