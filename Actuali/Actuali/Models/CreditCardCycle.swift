@@ -96,4 +96,15 @@ struct CreditCardCycle: Equatable, Hashable {
         let due = upcomingDueDate(for: today)
         return max(0, today.days(until: due))
     }
+
+    /// One-line payment summary ("Due 30 Aug 2026 (9d)"). Shared by the Credit
+    /// Cards row and the account detail header so the two can't word the same
+    /// fact differently.
+    func dueSummary(for today: DayDate = .today()) -> String {
+        let days = daysUntilDue(for: today)
+        if days == 0 { return "Due today" }
+        if days == 1 { return "Due tomorrow" }
+        let dueStr = Transaction.formattedDate(from: upcomingDueDate(for: today).yyyymmdd, style: .abbreviated)
+        return "Due \(dueStr) (\(days)d)"
+    }
 }

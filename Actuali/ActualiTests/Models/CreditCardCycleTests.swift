@@ -141,6 +141,17 @@ struct CreditCardCycleTests {
         #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 3, day: 16))
     }
 
+    /// Both the Credit Cards row and the account detail header render this, so
+    /// the near-term wording is worth pinning.
+    @Test func dueSummaryReadsAsPlainEnglishNearTheDueDate() {
+        let cycle = CreditCardCycle(statementDay: 15)
+        // Feb 15 statement + 15 days = Mar 2, 2026.
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 3, day: 2)) == "Due today")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 3, day: 1)) == "Due tomorrow")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasPrefix("Due "))
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasSuffix("(10d)"))
+    }
+
     // MARK: - Store Persistence
 
     /// Points the store at throwaway budget ids and clears every key they touch,

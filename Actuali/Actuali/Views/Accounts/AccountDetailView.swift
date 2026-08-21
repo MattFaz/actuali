@@ -11,6 +11,7 @@ struct AccountDetailView: View {
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
+    @State private var showingBillingCycle = false
     @State private var searchText = ""
     @State private var showingAddTransaction = false
     @State private var showingReconcile = false
@@ -122,14 +123,17 @@ struct AccountDetailView: View {
     }
 
     private func breakdownRow(_ title: String, amount: Int) -> some View {
-        let text = budgetStore.displayBalance(amount)
-        return HStack {
+        breakdownRow(title, value: budgetStore.displayBalance(amount))
+    }
+
+    private func breakdownRow(_ title: String, value: String) -> some View {
+        HStack {
             Text(title)
                 .foregroundStyle(.secondary)
             Spacer()
-            Text(text)
+            Text(value)
                 .foregroundStyle(.secondary)
-                .animatedAmount(text)
+                .animatedAmount(value)
         }
         .font(.subheadline)
     }
@@ -170,17 +174,38 @@ struct AccountDetailView: View {
             }
 
             if let cycle = budgetStore.activeCreditCardCycle(for: account.id), searchQuery == nil {
-                Section("Billing Cycle") {
+                Section {
                     let range = cycle.cycleRange()
                     let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
                     let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
-                    let due = cycle.upcomingDueDate()
-                    let dueStr = Transaction.formattedDate(from: due.yyyymmdd, style: .abbreviated)
-                    let daysUntilDue = cycle.daysUntilDue()
+                    let dueSummary = cycle.dueSummary()
 
-                    LabeledContent("Current Cycle", value: "\(startStr) – \(endStr)")
-                    LabeledContent("Cycle Spend", value: budgetStore.displayBalance(cycleSpend))
-                    LabeledContent("Payment Due", value: daysUntilDue == 0 ? "Today" : "\(dueStr) (\(daysUntilDue)d)")
+                    // Collapsed by default like the balance breakdown above, but
+                    // the due date rides on the header row rather than hiding —
+                    // it's the part of this section worth acting on.
+                    Button {
+                        withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
+                    } label: {
+                        HStack {
+                            Text("Billing Cycle")
+                            Spacer()
+                            Text(dueSummary)
+                                .fontWeight(.semibold)
+                            Image(systemName: "chevron.down")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.tertiary)
+                                .rotationEffect(.degrees(showingBillingCycle ? 180 : 0))
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Billing Cycle, \(dueSummary)")
+                    .accessibilityHint(showingBillingCycle ? "Hides the billing cycle details" : "Shows the current cycle dates and spend")
+
+                    if showingBillingCycle {
+                        breakdownRow("Current Cycle", value: "\(startStr) – \(endStr)")
+                        breakdownRow("Cycle Spend", value: budgetStore.displayBalance(cycleSpend))
+                    }
                 }
             }
 

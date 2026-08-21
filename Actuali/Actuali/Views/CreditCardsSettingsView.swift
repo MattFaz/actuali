@@ -185,19 +185,6 @@ private struct CreditCardCycleRow: View {
         return "\(startStr) – \(endStr)"
     }
 
-    private var dueDateText: String {
-        let due = cycle.upcomingDueDate()
-        let dueStr = Transaction.formattedDate(from: due.yyyymmdd, style: .abbreviated)
-        let days = cycle.daysUntilDue()
-        if days == 0 {
-            return "Due today"
-        } else if days == 1 {
-            return "Due tomorrow"
-        } else {
-            return "Due \(dueStr) (\(days)d)"
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
@@ -224,7 +211,7 @@ private struct CreditCardCycleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Label(dueDateText, systemImage: "clock")
+                Label(cycle.dueSummary(), systemImage: "clock")
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.orange)
             }
