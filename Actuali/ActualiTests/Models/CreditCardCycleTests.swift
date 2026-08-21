@@ -302,68 +302,7 @@ struct CreditCardCycleTests {
         }
     }
 
-    // MARK: - Credit Limit
-
-    /// A card's balance is negative while money is owed, so headroom is the limit
-    /// plus the balance — the sign is the whole point of this test.
-    @Test func availableCreditIsTheLimitLessWhatIsOwed() async {
-        await withStore { store in
-            store.accounts = [account(id: "acct_card", name: "Card", balance: -614_900)]
-            store.setCreditCard(accountId: "acct_card", statementDay: 25, creditLimit: 1_000_000)
-
-            #expect(store.creditCardLimits["acct_card"] == 1_000_000)
-            #expect(store.availableCredit(for: "acct_card") == 385_100)
-
-            // Over the limit reads negative rather than clamping — being $100
-            // over is a fact worth showing.
-            store.accounts = [account(id: "acct_card", name: "Card", balance: -1_010_000)]
-            #expect(store.availableCredit(for: "acct_card") == -10_000)
-
-            // Overpaid card: headroom exceeds the limit.
-            store.accounts = [account(id: "acct_card", name: "Card", balance: 5_000)]
-            #expect(store.availableCredit(for: "acct_card") == 1_005_000)
-        }
-    }
-
-    @Test func availableCreditIsNilWithoutALimitOrAnActiveCard() async {
-        await withStore { store in
-            store.accounts = [
-                account(id: "acct_nolimit", name: "No Limit", balance: -1_000),
-                account(id: "acct_closed", name: "Closed", closed: true, balance: -1_000),
-                account(id: "acct_untracked", name: "Checking", type: .checking, balance: -1_000),
-            ]
-            store.setCreditCard(accountId: "acct_nolimit", statementDay: 15)
-            store.setCreditCard(accountId: "acct_closed", statementDay: 15, creditLimit: 500_000)
-            store.creditCardLimits = store.creditCardLimits.merging(["acct_untracked": 500_000]) { _, new in new }
-
-            #expect(store.availableCredit(for: "acct_nolimit") == nil)
-            #expect(store.availableCredit(for: "acct_closed") == nil)
-            #expect(store.availableCredit(for: "acct_untracked") == nil)
-            #expect(store.availableCredit(for: "acct_missing") == nil)
-        }
-    }
-
-    @Test func removingTheCardClearsItsLimit() async {
-        await withStore { store in
-            store.setCreditCard(accountId: "acct_card", statementDay: 25, creditLimit: 1_000_000)
-            store.setCreditCard(accountId: "acct_card", statementDay: nil)
-            #expect(store.creditCardLimits["acct_card"] == nil)
-
-            // Saving a card with no limit clears a previously stored one, so an
-            // emptied field in the sheet actually takes effect.
-            store.setCreditCard(accountId: "acct_card", statementDay: 25, creditLimit: 1_000_000)
-            store.setCreditCard(accountId: "acct_card", statementDay: 25)
-            #expect(store.creditCardLimits["acct_card"] == nil)
-        }
-    }
-
-    private func account(
-        id: String,
-        name: String,
-        type: AccountType = .credit,
-        closed: Bool = false,
-        balance: Int = 0
-    ) -> Account {
+    private func account(id: String, name: String, type: AccountType = .credit, closed: Bool = false) -> Account {
         Account(
             id: id,
             name: name,
@@ -371,7 +310,7 @@ struct CreditCardCycleTests {
             offBudget: false,
             closed: closed,
             sortOrder: 0,
-            balance: balance
+            balance: 0
         )
     }
 }

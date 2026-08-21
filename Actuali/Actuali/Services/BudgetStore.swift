@@ -582,32 +582,34 @@ final class BudgetStore: ObservableObject {
         return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
     }
 
-    /// Writes a card's whole config. A nil `statementDay` stops tracking the
-    /// account and clears its offset and limit too; a nil `creditLimit` clears
-    /// just the limit.
-    func setCreditCard(
-        accountId: String,
-        statementDay: Int?,
-        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
-        creditLimit: Int? = nil
-    ) {
+    /// Writes a card's cycle config. A nil `statementDay` stops tracking the
+    /// account and clears everything stored for it, the limit included.
+    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
         var days = creditCardStatementDays
         var offsets = creditCardDueOffsets
-        var limits = creditCardLimits
         if let statementDay {
             days[accountId] = statementDay
             offsets[accountId] = dueOffsetDays
         } else {
             days.removeValue(forKey: accountId)
             offsets.removeValue(forKey: accountId)
-        }
-        if let creditLimit, statementDay != nil {
-            limits[accountId] = creditLimit
-        } else {
+            var limits = creditCardLimits
             limits.removeValue(forKey: accountId)
+            creditCardLimits = limits
         }
         creditCardStatementDays = days
         creditCardDueOffsets = offsets
+    }
+
+    /// The limit is written on its own so no caller can erase it by leaving an
+    /// argument off a cycle update. A nil `cents` clears it.
+    func setCreditLimit(accountId: String, cents: Int?) {
+        var limits = creditCardLimits
+        if let cents {
+            limits[accountId] = cents
+        } else {
+            limits.removeValue(forKey: accountId)
+        }
         creditCardLimits = limits
     }
 
