@@ -60,8 +60,7 @@ struct BudgetStoreLoginProbeTests {
 
         await store.checkLoginMethods()
 
-        let message = try? #require(store.error)
-        #expect(message?.localizedCaseInsensitiveContains("certificate") == true)
+        #expect(store.error?.localizedCaseInsensitiveContains("certificate") == true)
     }
 
     /// Password login still has to be offered after a connection failure, so

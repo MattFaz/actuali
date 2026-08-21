@@ -30,12 +30,12 @@ protocol PositionSource: Sendable {
 /// Async facade over CoreLocation with a 60 s position cache (matching the
 /// upstream web client's LocationService.CACHE_DURATION).
 actor LocationProvider {
-    private let source: PositionSource
+    private let source: any PositionSource
     private var cached: (position: Coordinates, at: ContinuousClock.Instant)?
     private let cacheDuration: Duration = .seconds(60)
     private let clock = ContinuousClock()
 
-    init(source: PositionSource = CoreLocationSource()) {
+    init(source: any PositionSource = CoreLocationSource()) {
         self.source = source
     }
 

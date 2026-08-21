@@ -3,7 +3,7 @@ import XCTest
 /// Budget layout preferences exercised through the user-visible Budget tab.
 final class BudgetDisplayStyleUITests: XCTestCase {
 
-    private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
+    @MainActor private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
         app.staticTexts
             .matching(NSPredicate(format: "label BEGINSWITH 'Budgeted:'"))
             .firstMatch

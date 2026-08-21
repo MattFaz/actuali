@@ -1166,7 +1166,9 @@ final class BudgetStore: ObservableObject {
                 returnURL: OpenIDAuthenticator.returnURL,
                 firstTimePassword: firstTimePassword
             )
-            let authenticator = OpenIDAuthenticator()
+            guard let authenticator = OpenIDAuthenticator.make() else {
+                throw OpenIDAuthError.noWindow
+            }
             let token = try await authenticator.authenticate(authorizationURL: authURL)
 
             await serverClient.setToken(token)
@@ -2336,7 +2338,7 @@ final class BudgetStore: ObservableObject {
 
     /// Duplicate multiple transactions.
     func duplicateTransactions(_ transactions: [Transaction]) async {
-        guard let syncClient else {
+        guard syncClient != nil else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
