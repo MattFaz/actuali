@@ -165,6 +165,7 @@ struct CreditCardCycleTests {
             for id in budgetIds {
                 UserDefaults.standard.removeObject(forKey: "creditCardStatementDays_\(id)")
                 UserDefaults.standard.removeObject(forKey: "creditCardDueOffsets_\(id)")
+                UserDefaults.standard.removeObject(forKey: "creditCardLimits_\(id)")
             }
             UserDefaults.standard.set(savedDefault, forKey: "currentBudgetId")
         }

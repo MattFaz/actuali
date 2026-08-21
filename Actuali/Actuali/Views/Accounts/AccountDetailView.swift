@@ -29,6 +29,14 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
+    /// Limit and headroom for a tracked card with a limit set, else nil. Read
+    /// once so the visible row and the breakdown row can't disagree.
+    private var creditHeadroom: (limit: Int, available: Int)? {
+        guard let available = budgetStore.availableCredit(for: account.id),
+              let limit = budgetStore.creditCardLimits[account.id] else { return nil }
+        return (limit, available)
+    }
+
     private var searchQuery: String? {
         let trimmed = searchText.trimmingCharacters(in: .whitespaces)
         return trimmed.isEmpty ? nil : trimmed
@@ -166,10 +174,20 @@ struct AccountDetailView: View {
                 .accessibilityLabel("Current Balance, \(budgetStore.displayBalance(currentBalance))")
                 .accessibilityHint(showingBreakdown ? "Hides the balance breakdown" : "Shows cleared, uncleared, and reconciled balances")
 
+                // Headroom on a tracked card with a limit set — the figure a
+                // card's balance is actually judged against, so it stays visible
+                // rather than hiding behind the disclosure.
+                if let headroom = creditHeadroom {
+                    breakdownRow("Available Credit", amount: headroom.available)
+                }
+
                 if showingBreakdown, let breakdown {
                     breakdownRow("Cleared", amount: breakdown.cleared)
                     breakdownRow("Uncleared", amount: breakdown.uncleared)
                     breakdownRow("Reconciled", amount: breakdown.reconciled)
+                    if let headroom = creditHeadroom {
+                        breakdownRow("Credit Limit", amount: headroom.limit)
+                    }
                 }
             }
 
@@ -274,6 +292,11 @@ struct AccountDetailView: View {
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
+        // The header sections (balance, billing cycle, note) are one or two rows
+        // each, so the stock inset-grouped gaps pushed the transactions off
+        // screen. Tighter spacing top and between.
+        .contentMargins(.top, 8, for: .scrollContent)
+        .listSectionSpacing(.compact)
         .readableWidth()
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
