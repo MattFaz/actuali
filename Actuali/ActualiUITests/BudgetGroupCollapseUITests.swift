@@ -93,19 +93,29 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         ]
         app.launch()
 
+        let groceries = app.buttons["Details for Groceries"].firstMatch
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                      "demo data should load before scrolling to the income group")
+
+        let incomeGroupName = "Income"
+        let anyHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), ")
+        ).firstMatch
         let expandedHeader = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Source of Fund, expanded'")
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), expanded")
         ).firstMatch
         let collapsedHeader = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Source of Fund, collapsed'")
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), collapsed")
         ).firstMatch
         let salary = app.buttons["All transactions for Salary"]
 
         var scrollsLeft = 20
-        while !expandedHeader.isHittable && !collapsedHeader.isHittable && scrollsLeft > 0 {
+        while !anyHeader.waitForExistence(timeout: 2) && scrollsLeft > 0 {
             app.swipeUp(velocity: .slow)
             scrollsLeft -= 1
         }
+        XCTAssertTrue(anyHeader.waitForExistence(timeout: 10),
+                      "the income group header should be reachable")
         if collapsedHeader.isHittable {
             collapsedHeader.tap()
         }

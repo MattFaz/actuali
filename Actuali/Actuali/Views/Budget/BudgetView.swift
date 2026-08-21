@@ -56,7 +56,18 @@ private extension BudgetStore {
 }
 
 struct BudgetView: View {
-    private static let incomeGroupCollapseID = "__income_group__"
+    static let incomeGroupCollapseID = "__income_group__"
+
+    /// IDs controlled by Expand/Collapse All for the budget currently shown.
+    /// Kept pure so the income-group participation has non-UI test coverage.
+    nonisolated static func displayedGroupIDs(
+        groupIDs: [String],
+        hasIncome: Bool
+    ) -> Set<String> {
+        var ids = Set(groupIDs)
+        if hasIncome { ids.insert(incomeGroupCollapseID) }
+        return ids
+    }
 
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
@@ -85,19 +96,19 @@ struct BudgetView: View {
     // Expand/collapse all touch only the displayed budget's groups; ids
     // remembered for other budget files stay put (GH #130).
     private func collapseAllGroups() {
-        var displayedGroupIDs = Set(groupedCategories.map(\.id))
-        if budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false {
-            displayedGroupIDs.insert(Self.incomeGroupCollapseID)
-        }
+        let displayedGroupIDs = Self.displayedGroupIDs(
+            groupIDs: groupedCategories.map(\.id),
+            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+        )
         let groups = collapsedGroups.union(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
     private func expandAllGroups() {
-        var displayedGroupIDs = Set(groupedCategories.map(\.id))
-        if budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false {
-            displayedGroupIDs.insert(Self.incomeGroupCollapseID)
-        }
+        let displayedGroupIDs = Self.displayedGroupIDs(
+            groupIDs: groupedCategories.map(\.id),
+            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+        )
         let groups = collapsedGroups.subtracting(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
@@ -243,7 +254,7 @@ struct BudgetView: View {
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
-        let name = "Source of Fund"
+        let name = budget.incomeCategories.first?.groupName ?? "Income"
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
@@ -261,7 +272,6 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     receivedTotal: budget.totalIncome,
-                    labelsReceivedTotal: true,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     }
@@ -274,10 +284,10 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     receivedTotal: budget.totalIncome,
-                    labelsReceivedTotal: true,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     },
+                    usesTableNumberFormat: true,
                     reservesTwoLines: true
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
@@ -1137,10 +1147,10 @@ struct BudgetGroupHeader: View {
     /// money received. It occupies the trailing column where expense groups
     /// show their balance.
     var receivedTotal: Int? = nil
-    /// Clean group headers retain the income-specific "Received" context;
-    /// detailed headers use the compact amount pill shared by the table.
-    var labelsReceivedTotal = false
     let onToggleCollapse: () -> Void
+    /// Detailed tables omit currency symbols from their numeric columns;
+    /// clean headers retain the app-wide currency presentation.
+    var usesTableNumberFormat = false
     /// The detailed style reserves two lines so group rows stay equal-height
     /// whether names wrap or not (GH #252); the clean style's plain section
     /// titles keep their natural height.
@@ -1181,18 +1191,11 @@ struct BudgetGroupHeader: View {
                         color: totals.balance < 0 ? .red : (totals.balance == 0 ? .secondary : .green)
                     )
                 } else if let receivedTotal {
-                    if labelsReceivedTotal {
-                        Text("Received \(receivedText(receivedTotal))")
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.75)
-                    } else {
-                        BudgetAmountPill(
-                            text: budgetStore.displayBudgetCell(receivedTotal),
-                            color: receivedTotal > 0 ? .green : .secondary
-                        )
-                    }
+                    Text("Received \(receivedText(receivedTotal))")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
             }
             .contentShape(Rectangle())
@@ -1218,10 +1221,8 @@ struct BudgetGroupHeader: View {
             """
     }
 
-    /// Detailed tables omit currency symbols from every numeric column; the
-    /// clean layout keeps the app-wide currency formatting used by its rows.
     private func receivedText(_ amount: Int) -> String {
-        reservesTwoLines
+        usesTableNumberFormat
             ? budgetStore.displayBudgetCell(amount)
             : budgetStore.displayBalance(amount)
     }
