@@ -243,7 +243,7 @@ struct BudgetView: View {
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
-        let name = budget.incomeCategories.first?.groupName ?? "Income"
+        let name = "Source of Fund"
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
@@ -274,6 +274,7 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     receivedTotal: budget.totalIncome,
+                    labelsReceivedTotal: true,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     },

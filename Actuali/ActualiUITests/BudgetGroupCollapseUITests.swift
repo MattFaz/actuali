@@ -94,10 +94,10 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         app.launch()
 
         let expandedHeader = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Income, expanded'")
+            NSPredicate(format: "label BEGINSWITH 'Source of Fund, expanded'")
         ).firstMatch
         let collapsedHeader = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Income, collapsed'")
+            NSPredicate(format: "label BEGINSWITH 'Source of Fund, collapsed'")
         ).firstMatch
         let salary = app.buttons["All transactions for Salary"]
 
