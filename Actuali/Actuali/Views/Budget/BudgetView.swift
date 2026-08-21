@@ -56,6 +56,8 @@ private extension BudgetStore {
 }
 
 struct BudgetView: View {
+    private static let incomeGroupCollapseID = "__income_group__"
+
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
@@ -83,12 +85,20 @@ struct BudgetView: View {
     // Expand/collapse all touch only the displayed budget's groups; ids
     // remembered for other budget files stay put (GH #130).
     private func collapseAllGroups() {
-        let groups = collapsedGroups.union(groupedCategories.map(\.id))
+        var displayedGroupIDs = Set(groupedCategories.map(\.id))
+        if budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false {
+            displayedGroupIDs.insert(Self.incomeGroupCollapseID)
+        }
+        let groups = collapsedGroups.union(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
     private func expandAllGroups() {
-        let groups = collapsedGroups.subtracting(groupedCategories.map(\.id))
+        var displayedGroupIDs = Set(groupedCategories.map(\.id))
+        if budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false {
+            displayedGroupIDs.insert(Self.incomeGroupCollapseID)
+        }
+        let groups = collapsedGroups.subtracting(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
@@ -232,21 +242,55 @@ struct BudgetView: View {
     /// `List` so the body stays within the compiler's type-check budget.
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
-        Section {
-            ForEach(budget.incomeCategories) { income in
-                IncomeCategoryRow(
-                    income: income,
-                    // Only tracking budgets budget income;
-                    // envelope budgets just receive it.
-                    showsBudgeted: budget.toBudget == nil,
-                    onShowTransactions: showTransactions
+        let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
+        let name = budget.incomeCategories.first?.groupName ?? "Income"
+        if budgetStore.budgetDisplayStyle == .clean {
+            Section {
+                if !isCollapsed {
+                    ForEach(budget.incomeCategories) { income in
+                        IncomeCategoryRow(
+                            income: income,
+                            showsBudgeted: budget.toBudget == nil,
+                            isDetailed: false,
+                            onShowTransactions: showTransactions
+                        )
+                    }
+                }
+            } header: {
+                BudgetGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    receivedTotal: budget.totalIncome,
+                    labelsReceivedTotal: true,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    }
                 )
+                .textCase(nil)
             }
-        } header: {
-            HStack {
-                Text(budget.incomeCategories.first?.groupName ?? "Income")
-                Spacer()
-                Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+        } else {
+            Section {
+                BudgetGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    receivedTotal: budget.totalIncome,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    },
+                    reservesTwoLines: true
+                )
+                .listRowBackground(Color(.tertiarySystemFill))
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
+                if !isCollapsed {
+                    ForEach(budget.incomeCategories) { income in
+                        IncomeCategoryRow(
+                            income: income,
+                            showsBudgeted: budget.toBudget == nil,
+                            isDetailed: true,
+                            onShowTransactions: showTransactions
+                        )
+                    }
+                }
             }
         }
     }
@@ -1088,6 +1132,13 @@ struct BudgetGroupHeader: View {
     /// The detailed style totals its columns here; the clean style's header
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
+    /// Income groups use the same header shell but have one meaningful total:
+    /// money received. It occupies the trailing column where expense groups
+    /// show their balance.
+    var receivedTotal: Int? = nil
+    /// Clean group headers retain the income-specific "Received" context;
+    /// detailed headers use the compact amount pill shared by the table.
+    var labelsReceivedTotal = false
     let onToggleCollapse: () -> Void
     /// The detailed style reserves two lines so group rows stay equal-height
     /// whether names wrap or not (GH #252); the clean style's plain section
@@ -1128,6 +1179,19 @@ struct BudgetGroupHeader: View {
                         // group that lands on zero doesn't read as healthy.
                         color: totals.balance < 0 ? .red : (totals.balance == 0 ? .secondary : .green)
                     )
+                } else if let receivedTotal {
+                    if labelsReceivedTotal {
+                        Text("Received \(budgetStore.displayBalance(receivedTotal))")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    } else {
+                        BudgetAmountPill(
+                            text: budgetStore.displayBudgetCell(receivedTotal),
+                            color: receivedTotal > 0 ? .green : .secondary
+                        )
+                    }
                 }
             }
             .contentShape(Rectangle())
@@ -1142,6 +1206,9 @@ struct BudgetGroupHeader: View {
     /// formatting, not the table's symbol-less cells, reads better aloud.
     private var accessibilityLabel: String {
         let state = isCollapsed ? "collapsed" : "expanded"
+        if let receivedTotal {
+            return "\(name), \(state), received \(budgetStore.displayBalance(receivedTotal))"
+        }
         guard let totals else { return "\(name), \(state)" }
         return """
             \(name), \(state), \
@@ -1157,26 +1224,36 @@ struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
     var showsBudgeted = false
+    var isDetailed = false
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: isDetailed ? BudgetColumn.spacing : 8) {
                 Button {
                     onShowTransactions(income, nil)
                 } label: {
-                    TwoLineName(text: income.categoryName, font: .body)
+                    TwoLineName(
+                        text: income.categoryName,
+                        font: isDetailed ? .subheadline : .body,
+                        minimumScaleFactor: 0.85
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(income.categoryName)")
 
                 Spacer()
 
-                Button {
-                    onShowTransactions(income, income.month)
-                } label: {
-                    Text(budgetStore.displayBalance(income.received))
-                        .foregroundColor(income.received > 0 ? .green : .secondary)
+                Button { onShowTransactions(income, income.month) } label: {
+                    if isDetailed {
+                        BudgetAmountPill(
+                            text: budgetStore.displayBudgetCell(income.received),
+                            color: income.received > 0 ? .green : .secondary
+                        )
+                    } else {
+                        Text(budgetStore.displayBalance(income.received))
+                            .foregroundColor(income.received > 0 ? .green : .secondary)
+                    }
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
@@ -1187,7 +1264,12 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+        .listRowInsets(EdgeInsets(
+            top: 4,
+            leading: isDetailed ? 12 : 16,
+            bottom: 4,
+            trailing: 16
+        ))
     }
 }
 

@@ -74,4 +74,47 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "expand all should restore the category rows")
     }
+
+    @MainActor
+    func testIncomeGroupMatchesCollapseBehaviorInCleanStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "clean")
+    }
+
+    @MainActor
+    func testIncomeGroupMatchesCollapseBehaviorInDetailedStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "detailed")
+    }
+
+    @MainActor
+    private func assertIncomeGroupCollapses(displayStyle: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", displayStyle, "-initialTab", "1",
+        ]
+        app.launch()
+
+        let expandedHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Income, expanded'")
+        ).firstMatch
+        let collapsedHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Income, collapsed'")
+        ).firstMatch
+        let salary = app.buttons["All transactions for Salary"]
+
+        var scrollsLeft = 20
+        while !expandedHeader.isHittable && !collapsedHeader.isHittable && scrollsLeft > 0 {
+            app.swipeUp(velocity: .slow)
+            scrollsLeft -= 1
+        }
+        if collapsedHeader.isHittable {
+            collapsedHeader.tap()
+        }
+
+        XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
+        XCTAssertTrue(salary.waitForExistence(timeout: 10))
+        expandedHeader.tap()
+
+        XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
+        XCTAssertFalse(salary.exists, "collapsing Income should hide its categories")
+    }
 }
