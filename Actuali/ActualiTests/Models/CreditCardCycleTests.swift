@@ -39,7 +39,52 @@ struct CreditCardCycleTests {
         #expect(end == DayDate(year: 2026, month: 2, day: 28))
     }
 
-    @Test func upcomingDueDateFifteenDaysAfterPreviousStatement() {
+    @Test func cycleRangeStartsDayAfterAClampedPreviousStatement() {
+        let cycle = CreditCardCycle(statementDay: 31)
+        // Today is Mar 1, 2026: the Feb statement clamped to Feb 28, so the
+        // active cycle starts Mar 1 rather than repeating a Feb 31 that never
+        // existed.
+        let today = DayDate(year: 2026, month: 3, day: 1)
+        let (start, end) = cycle.cycleRange(for: today)
+
+        #expect(start == DayDate(year: 2026, month: 3, day: 1))
+        #expect(end == DayDate(year: 2026, month: 3, day: 31))
+        #expect(cycle.previousStatementDate(for: today) == DayDate(year: 2026, month: 2, day: 28))
+    }
+
+    @Test func cycleRangeClosesTodayWhenTodayIsTheStatementDay() {
+        let cycle = CreditCardCycle(statementDay: 15)
+        let today = DayDate(year: 2026, month: 2, day: 15)
+        let (start, end) = cycle.cycleRange(for: today)
+
+        #expect(start == DayDate(year: 2026, month: 1, day: 16))
+        #expect(end == today)
+        #expect(cycle.daysRemainingInCycle(for: today) == 0)
+    }
+
+    @Test func cycleRangeRollsForwardOverYearEnd() {
+        let cycle = CreditCardCycle(statementDay: 15)
+        // Today is Dec 20, 2026 -> the cycle closes in January of the next year.
+        let today = DayDate(year: 2026, month: 12, day: 20)
+        let (start, end) = cycle.cycleRange(for: today)
+
+        #expect(start == DayDate(year: 2026, month: 12, day: 16))
+        #expect(end == DayDate(year: 2027, month: 1, day: 15))
+    }
+
+    @Test func cycleRangeRollsBackwardOverYearEnd() {
+        let cycle = CreditCardCycle(statementDay: 15)
+        // Today is Jan 10, 2027 -> the cycle opened in December of the prior year.
+        let today = DayDate(year: 2027, month: 1, day: 10)
+        let (start, end) = cycle.cycleRange(for: today)
+
+        #expect(start == DayDate(year: 2026, month: 12, day: 16))
+        #expect(end == DayDate(year: 2027, month: 1, day: 15))
+    }
+
+    // MARK: - Payment Due Dates
+
+    @Test func upcomingDueDateUsesTheConfiguredOffsetAfterPreviousStatement() {
         let cycle = CreditCardCycle(statementDay: 15)
         // Today is Feb 20, 2026: Feb 15 statement closed, due in 15 days (Mar 2, 2026)
         let today = DayDate(year: 2026, month: 2, day: 20)
@@ -59,32 +104,201 @@ struct CreditCardCycleTests {
         #expect(cycle.daysUntilDue(for: today) == 25)
     }
 
+    @Test func upcomingDueDateHonoursALongerPerCardOffset() {
+        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 25)
+        // Today is Feb 20, 2026: Feb 15 statement + 25 days = Mar 12.
+        let today = DayDate(year: 2026, month: 2, day: 20)
+
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 3, day: 12))
+        #expect(cycle.daysUntilDue(for: today) == 20)
+    }
+
+    /// A 45-day offset leaves two statements awaiting payment at once, so the
+    /// next payment belongs to the *older* one. Returning the most recent
+    /// statement's due date would skip a payment the user still owes.
+    @Test func upcomingDueDatePicksTheEarliestStatementStillAwaitingPayment() {
+        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 45)
+        let today = DayDate(year: 2026, month: 2, day: 20)
+
+        // Jan 15 statement -> due Mar 1; Feb 15 statement -> due Apr 1.
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 3, day: 1))
+        #expect(cycle.daysUntilDue(for: today) == 9)
+    }
+
+    @Test func upcomingDueDateAdvancesOnceTheEarliestPendingDuePasses() {
+        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 45)
+        // Mar 2 is one day past the Jan 15 statement's Mar 1 due date, so the
+        // Feb 15 statement's Apr 1 due date is now the next one.
+        let today = DayDate(year: 2026, month: 3, day: 2)
+
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 4, day: 1))
+    }
+
+    @Test func upcomingDueDateTerminatesAtTheWidestOffset() {
+        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: CreditCardCycle.maxDueOffsetDays)
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        // Dec 15 statement + 60 days = Feb 13 (passed), so Jan 15 + 60 is next.
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 3, day: 16))
+    }
+
     // MARK: - Store Persistence
 
-    private func withStore(_ body: @MainActor (BudgetStore) async -> Void) async {
+    /// Points the store at throwaway budget ids and clears every key they touch,
+    /// so a run can't leak card config into the real app's defaults.
+    private func withStore(
+        budgetIds: [String] = ["test-budget"],
+        _ body: @MainActor (BudgetStore) async -> Void
+    ) async {
         let savedDefault = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer {
-            UserDefaults.standard.removeObject(forKey: "creditCardStatementDays_test-budget")
+            for id in budgetIds {
+                UserDefaults.standard.removeObject(forKey: "creditCardStatementDays_\(id)")
+                UserDefaults.standard.removeObject(forKey: "creditCardDueOffsets_\(id)")
+            }
             UserDefaults.standard.set(savedDefault, forKey: "currentBudgetId")
         }
         let store = BudgetStore.previewInstance()
-        store.currentBudgetId = "test-budget"
+        store.currentBudgetId = budgetIds[0]
         await body(store)
     }
 
     @Test func statementDaysPersistInUserDefaults() async {
         await withStore { store in
-            store.setCreditCardStatementDay(accountId: "acct_chase", statementDay: 18)
-            store.setCreditCardStatementDay(accountId: "acct_apple", statementDay: 31)
+            store.setCreditCard(accountId: "acct_chase", statementDay: 18)
+            store.setCreditCard(accountId: "acct_apple", statementDay: 31)
 
             #expect(store.creditCardStatementDays["acct_chase"] == 18)
             #expect(store.creditCardStatementDays["acct_apple"] == 31)
             #expect(store.creditCardCycle(for: "acct_chase")?.statementDay == 18)
 
             // Remove card
-            store.setCreditCardStatementDay(accountId: "acct_chase", statementDay: nil)
+            store.setCreditCard(accountId: "acct_chase", statementDay: nil)
             #expect(store.creditCardStatementDays["acct_chase"] == nil)
             #expect(store.creditCardCycle(for: "acct_chase") == nil)
         }
+    }
+
+    @Test func dueOffsetPersistsAndClearsWithTheCard() async {
+        await withStore { store in
+            store.setCreditCard(accountId: "acct_anz", statementDay: 20, dueOffsetDays: 45)
+
+            #expect(store.creditCardDueOffsets["acct_anz"] == 45)
+            #expect(store.creditCardCycle(for: "acct_anz")?.dueOffsetDays == 45)
+
+            // Removing the card must not leave the offset behind to be picked up
+            // by a later card on the same account.
+            store.setCreditCard(accountId: "acct_anz", statementDay: nil)
+            #expect(store.creditCardDueOffsets["acct_anz"] == nil)
+        }
+    }
+
+    /// Cards configured before the offset was per-card have a statement day and
+    /// no offset; they must keep working on the previous fixed 15 days.
+    @Test func cardWithNoStoredOffsetFallsBackToTheDefault() async {
+        await withStore { store in
+            UserDefaults.standard.set(
+                ["acct_legacy": 10],
+                forKey: "creditCardStatementDays_test-budget"
+            )
+
+            let cycle = store.creditCardCycle(for: "acct_legacy")
+            #expect(cycle?.statementDay == 10)
+            #expect(cycle?.dueOffsetDays == CreditCardCycle.defaultDueOffsetDays)
+        }
+    }
+
+    @Test func cardConfigIsScopedToTheBudgetThatSetIt() async {
+        await withStore(budgetIds: ["budget-a", "budget-b"]) { store in
+            store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25)
+
+            store.currentBudgetId = "budget-b"
+            #expect(store.creditCardStatementDays.isEmpty)
+            #expect(store.creditCardDueOffsets.isEmpty)
+            #expect(store.creditCardCycle(for: "acct_chase") == nil)
+
+            store.currentBudgetId = "budget-a"
+            #expect(store.creditCardStatementDays["acct_chase"] == 18)
+            #expect(store.creditCardCycle(for: "acct_chase")?.dueOffsetDays == 25)
+        }
+    }
+
+    @Test func cardConfigIsUnreachableWithNoOpenBudget() async {
+        await withStore { store in
+            store.setCreditCard(accountId: "acct_chase", statementDay: 18)
+
+            store.currentBudgetId = nil
+            #expect(store.creditCardStatementDays.isEmpty)
+            #expect(store.creditCardCycle(for: "acct_chase") == nil)
+
+            // The setter has nowhere to write, so it must not trap or leak into
+            // another budget's keys.
+            store.setCreditCard(accountId: "acct_other", statementDay: 3)
+            #expect(store.creditCardStatementDays.isEmpty)
+
+            store.currentBudgetId = "test-budget"
+            #expect(store.creditCardStatementDays == ["acct_chase": 18])
+        }
+    }
+
+    /// The Settings badge and the Credit Cards list both read this, so a closed
+    /// or deleted account must drop out of it — otherwise the badge counts cards
+    /// the list refuses to show.
+    @Test func activeStatementDaysExcludeClosedAndMissingAccounts() async {
+        await withStore { store in
+            store.accounts = [
+                account(id: "acct_open", name: "Open Card"),
+                account(id: "acct_closed", name: "Closed Card", closed: true),
+            ]
+            store.setCreditCard(accountId: "acct_open", statementDay: 15)
+            store.setCreditCard(accountId: "acct_closed", statementDay: 20)
+            store.setCreditCard(accountId: "acct_deleted", statementDay: 25)
+
+            #expect(store.creditCardStatementDays.count == 3)
+            #expect(store.activeCreditCardStatementDays == ["acct_open": 15])
+
+            // Reopening the account restores its cycle rather than losing it.
+            store.accounts = [
+                account(id: "acct_open", name: "Open Card"),
+                account(id: "acct_closed", name: "Closed Card"),
+            ]
+            #expect(store.activeCreditCardStatementDays.count == 2)
+        }
+    }
+
+    /// The account detail screen reads this rather than `creditCardCycle(for:)`,
+    /// so a closed card can't keep advertising a payment due date there after it
+    /// has dropped off the Credit Cards screen.
+    @Test func activeCycleIsNilForClosedAndMissingAccounts() async {
+        await withStore { store in
+            store.accounts = [
+                account(id: "acct_open", name: "Open Card"),
+                account(id: "acct_closed", name: "Closed Card", closed: true),
+                account(id: "acct_untracked", name: "Everyday Checking", type: .checking),
+            ]
+            store.setCreditCard(accountId: "acct_open", statementDay: 15, dueOffsetDays: 25)
+            store.setCreditCard(accountId: "acct_closed", statementDay: 20)
+            store.setCreditCard(accountId: "acct_deleted", statementDay: 25)
+
+            #expect(store.activeCreditCardCycle(for: "acct_open")?.dueOffsetDays == 25)
+            #expect(store.activeCreditCardCycle(for: "acct_closed") == nil)
+            #expect(store.activeCreditCardCycle(for: "acct_deleted") == nil)
+            // Open, but never marked as a card.
+            #expect(store.activeCreditCardCycle(for: "acct_untracked") == nil)
+
+            // The closed card's config survives, so reopening restores it.
+            #expect(store.creditCardCycle(for: "acct_closed")?.statementDay == 20)
+        }
+    }
+
+    private func account(id: String, name: String, type: AccountType = .credit, closed: Bool = false) -> Account {
+        Account(
+            id: id,
+            name: name,
+            type: type,
+            offBudget: false,
+            closed: closed,
+            sortOrder: 0,
+            balance: 0
+        )
     }
 }

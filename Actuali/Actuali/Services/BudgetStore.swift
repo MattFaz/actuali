@@ -544,19 +544,61 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    func setCreditCardStatementDay(accountId: String, statementDay: Int?) {
+    /// Mappings from accountId -> days between statement closing and payment due.
+    /// A card missing an entry predates the setting and falls back to
+    /// `CreditCardCycle.defaultDueOffsetDays`.
+    var creditCardDueOffsets: [String: Int] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            UserDefaults.standard.set(newValue, forKey: "creditCardDueOffsets_\(budgetId)")
+            objectWillChange.send()
+        }
+    }
+
+    /// Statement days whose account still exists and is open — what the Credit
+    /// Cards screen lists and what the Settings badge counts. Closed and deleted
+    /// accounts keep their stored config (reopening restores the cycle) but drop
+    /// out of both, so the two can never disagree.
+    var activeCreditCardStatementDays: [String: Int] {
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
+    }
+
+    /// Writes both halves of a card's config. A nil `statementDay` stops
+    /// tracking the account and clears its offset too.
+    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
         var days = creditCardStatementDays
+        var offsets = creditCardDueOffsets
         if let statementDay {
             days[accountId] = statementDay
+            offsets[accountId] = dueOffsetDays
         } else {
             days.removeValue(forKey: accountId)
+            offsets.removeValue(forKey: accountId)
         }
         creditCardStatementDays = days
+        creditCardDueOffsets = offsets
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let day = creditCardStatementDays[accountId] else { return nil }
-        return CreditCardCycle(statementDay: day)
+        return CreditCardCycle(
+            statementDay: day,
+            dueOffsetDays: creditCardDueOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
+        )
+    }
+
+    /// The cycle to *display* for an account: nil unless it is a tracked card
+    /// whose account still exists and is open. A closed card has no payment
+    /// coming up, so every surface hides it through this one predicate rather
+    /// than each re-deciding what counts as active.
+    func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
+        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
+        return creditCardCycle(for: accountId)
     }
 
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",

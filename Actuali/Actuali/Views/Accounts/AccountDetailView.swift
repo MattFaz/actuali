@@ -60,7 +60,7 @@ struct AccountDetailView: View {
     }
 
     private func reloadCycleSpend() async {
-        guard let cycle = budgetStore.creditCardCycle(for: account.id) else {
+        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else {
             cycleSpend = 0
             return
         }
@@ -169,7 +169,7 @@ struct AccountDetailView: View {
                 }
             }
 
-            if let cycle = budgetStore.creditCardCycle(for: account.id), searchQuery == nil {
+            if let cycle = budgetStore.activeCreditCardCycle(for: account.id), searchQuery == nil {
                 Section("Billing Cycle") {
                     let range = cycle.cycleRange()
                     let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)

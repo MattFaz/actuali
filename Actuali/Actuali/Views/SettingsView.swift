@@ -484,8 +484,11 @@ struct SettingsView: View {
                             HStack {
                                 Text("Credit Cards & Billing Cycles")
                                 Spacer()
-                                if !budgetStore.creditCardStatementDays.isEmpty {
-                                    Text("\(budgetStore.creditCardStatementDays.count)")
+                                // Same predicate the screen itself lists, so the
+                                // badge can't promise cards the list won't show.
+                                let cardCount = budgetStore.activeCreditCardStatementDays.count
+                                if cardCount > 0 {
+                                    Text("\(cardCount)")
                                         .foregroundStyle(.secondary)
                                 }
                             }

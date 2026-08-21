@@ -1,15 +1,29 @@
 import Foundation
 
 /// Billing cycle and statement date logic for credit card accounts.
-/// Stored per-budget in UserDefaults (lazy / lightweight: `[accountId: statementDay]`).
-/// Due date is assumed to be 15 days after the statement closing date.
+/// Stored per-budget in UserDefaults (lazy / lightweight: `[accountId: statementDay]`
+/// plus `[accountId: dueOffsetDays]`).
 struct CreditCardCycle: Equatable, Hashable {
     /// Day of the month the statement closes (1...31).
     let statementDay: Int
 
-    /// Fixed due date offset: 15 days after statement closing.
-    /// ponytail: fixed 15-day offset simplifies UI and storage; upgrade path is per-card due offset.
-    static let dueDayOffset = 15
+    /// Days between the statement closing and the payment due date. The
+    /// interest-free period is set by the issuer, not the network — US cards
+    /// cluster around 21-25 days while Australian ones commonly run 25 or 45 —
+    /// so it is configured per card rather than assumed.
+    let dueOffsetDays: Int
+
+    /// Applied to cards configured before the offset became per-card.
+    static let defaultDueOffsetDays = 15
+
+    /// Widest offset the picker offers; also bounds the pending-statement walk
+    /// in `upcomingDueDate`.
+    static let maxDueOffsetDays = 60
+
+    init(statementDay: Int, dueOffsetDays: Int = Self.defaultDueOffsetDays) {
+        self.statementDay = statementDay
+        self.dueOffsetDays = dueOffsetDays
+    }
 
     /// Clamps statement day to the given month's actual length.
     private func clampedDay(year: Int, month: Int) -> Int {
@@ -48,16 +62,27 @@ struct CreditCardCycle: Equatable, Hashable {
     }
 
     /// Next upcoming payment due date.
-    /// If the bill for the most recent statement (statementDate + 15 days) hasn't passed yet,
-    /// returns that due date. Otherwise, returns the due date for the upcoming cycle.
+    ///
+    /// Statements close monthly but the due offset can run longer than a cycle
+    /// (45+ days is common outside the US), so more than one closed statement
+    /// can be awaiting payment at once. The next payment is the earliest one
+    /// whose due date hasn't passed, so this walks back through closed
+    /// statements rather than assuming only the most recent one is pending.
     func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
-        let prevStatement = previousStatementDate(for: today)
-        let prevDue = prevStatement.adding(days: Self.dueDayOffset)
-        if today <= prevDue {
-            return prevDue
+        // Fallback: everything already closed is paid or past due, so the next
+        // payment covers the cycle now running.
+        var due = cycleRange(for: today).end.adding(days: dueOffsetDays)
+        var statement = previousStatementDate(for: today)
+        // A statement can only be pending while its due date is within
+        // `dueOffsetDays` of today, which spans at most one cycle per whole
+        // month of offset — the extra step is the one that ends the walk.
+        for _ in 0...(dueOffsetDays / 28 + 1) {
+            let statementDue = statement.adding(days: dueOffsetDays)
+            guard today <= statementDue else { break }
+            due = statementDue
+            statement = previousStatementDate(for: statement)
         }
-        let currentCycleEnd = cycleRange(for: today).end
-        return currentCycleEnd.adding(days: Self.dueDayOffset)
+        return due
     }
 
     /// Days remaining until the current billing cycle closes.

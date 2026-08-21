@@ -7,16 +7,14 @@ struct CreditCardsSettingsView: View {
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
     @State private var selectedStatementDay = 15
-
-    private var activeAccounts: [Account] {
-        budgetStore.accounts.filter { !$0.closed }
-    }
+    @State private var selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
 
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
-        return budgetStore.creditCardStatementDays.compactMap { accountId, statementDay in
-            guard let account = accountsById[accountId], !account.closed else { return nil }
-            return (account: account, cycle: CreditCardCycle(statementDay: statementDay))
+        return budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
+            guard let account = accountsById[accountId],
+                  let cycle = budgetStore.creditCardCycle(for: accountId) else { return nil }
+            return (account: account, cycle: cycle)
         }.sorted { $0.account.name < $1.account.name }
     }
 
@@ -30,7 +28,7 @@ struct CreditCardsSettingsView: View {
     var body: some View {
         List {
             Section {
-                Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates (assumed 15 days after statement closing).")
+                Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates.")
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -44,6 +42,7 @@ struct CreditCardsSettingsView: View {
                         Button {
                             selectedAccountId = item.account.id
                             selectedStatementDay = item.cycle.statementDay
+                            selectedDueOffset = item.cycle.dueOffsetDays
                             editingAccountId = item.account.id
                         } label: {
                             CreditCardCycleRow(account: item.account, cycle: item.cycle)
@@ -61,6 +60,7 @@ struct CreditCardsSettingsView: View {
                             selectedAccountId = first.id
                         }
                         selectedStatementDay = 15
+                        selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
                         showingAddSheet = true
                     } label: {
                         Label("Add Credit Card", systemImage: "plus")
@@ -84,7 +84,7 @@ struct CreditCardsSettingsView: View {
     private func deleteCard(at offsets: IndexSet) {
         let cards = configuredCards
         for accountId in offsets.map({ cards[$0].account.id }) {
-            budgetStore.setCreditCardStatementDay(accountId: accountId, statementDay: nil)
+            budgetStore.setCreditCard(accountId: accountId, statementDay: nil)
         }
     }
 
@@ -110,16 +110,22 @@ struct CreditCardsSettingsView: View {
                             Text(dayOrdinal(day)).tag(day)
                         }
                     }
+
+                    Picker("Payment Due After", selection: $selectedDueOffset) {
+                        ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
+                            Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                        }
+                    }
                 } header: {
                     Text("Card Details")
                 } footer: {
-                    Text("Payment due date is automatically calculated as 15 days after the statement closing date.")
+                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.")
                 }
 
                 if isEditing {
                     Section {
                         Button("Remove Credit Card Tracking", role: .destructive) {
-                            budgetStore.setCreditCardStatementDay(accountId: selectedAccountId, statementDay: nil)
+                            budgetStore.setCreditCard(accountId: selectedAccountId, statementDay: nil)
                             editingAccountId = nil
                         }
                     }
@@ -136,9 +142,10 @@ struct CreditCardsSettingsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        budgetStore.setCreditCardStatementDay(
+                        budgetStore.setCreditCard(
                             accountId: selectedAccountId,
-                            statementDay: selectedStatementDay
+                            statementDay: selectedStatementDay,
+                            dueOffsetDays: selectedDueOffset
                         )
                         showingAddSheet = false
                         editingAccountId = nil
@@ -149,10 +156,14 @@ struct CreditCardsSettingsView: View {
         }
     }
 
-    private func dayOrdinal(_ n: Int) -> String {
+    private static let ordinalFormatter: NumberFormatter = {
         let formatter = NumberFormatter()
         formatter.numberStyle = .ordinal
-        return formatter.string(from: NSNumber(value: n)) ?? "\(n)th"
+        return formatter
+    }()
+
+    private func dayOrdinal(_ n: Int) -> String {
+        Self.ordinalFormatter.string(from: NSNumber(value: n)) ?? "\(n)th"
     }
 }
 
@@ -219,7 +230,9 @@ private struct CreditCardCycleRow: View {
             }
         }
         .padding(.vertical, 4)
-        .task(id: cycle.statementDay) {
+        // dataVersion is in the key so a transaction landing while this screen
+        // is open refreshes the spend, the way AccountDetailView's reload does.
+        .task(id: [cycle.statementDay, budgetStore.dataVersion]) {
             cycleSpend = await budgetStore.fetchCycleSpend(
                 accountId: account.id,
                 start: cycleRange.start,
