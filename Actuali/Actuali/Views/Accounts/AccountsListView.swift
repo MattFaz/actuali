@@ -323,6 +323,7 @@ struct AccountsListView: View {
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label("Hide Closed", systemImage: "archivebox")
                         }
+                        .accessibilityLabel("Hide Closed Accounts")
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }

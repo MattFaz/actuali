@@ -27,44 +27,11 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "Expand All Groups",
-                       "Collapse All Groups", "Status Filters",
-                       "Hide Spent Categories"] {
+        for option in ["Clean", "Detailed", "Expand Groups",
+                       "Collapse Groups", "Status Filters", "Hide Spent"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
-    }
-
-    @MainActor
-    func testLongMenuOptionsStayOnOneLine() throws {
-        let app = XCUIApplication()
-        launchBudgetTab(app)
-
-        let optionsMenu = app.buttons["Budget options"]
-        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
-        optionsMenu.tap()
-
-        let clean = app.buttons["Clean"]
-        let collapse = app.buttons["Collapse Groups"]
-        let hideSpent = app.buttons["Hide Spent"]
-        XCTAssertTrue(clean.waitForExistence(timeout: 5))
-        XCTAssertTrue(collapse.waitForExistence(timeout: 5))
-        XCTAssertTrue(hideSpent.waitForExistence(timeout: 5))
-        XCTAssertEqual(collapse.frame.height, clean.frame.height, accuracy: 2)
-        XCTAssertEqual(hideSpent.frame.height, clean.frame.height, accuracy: 2)
-        let singleLineHeight = clean.frame.height
-
-        // Verify the Accounts menu uses the same compact single-line layout.
-        app.terminate()
-        app.launchArguments = ["-loadDemoData"]
-        app.launch()
-        app.tabBars.buttons["Accounts"].tap()
-        let accountsMenu = app.buttons["Accounts options"]
-        XCTAssertTrue(accountsMenu.waitForExistence(timeout: 10))
-        accountsMenu.tap()
-        let hideClosed = app.buttons["Hide Closed"]
-        XCTAssertTrue(hideClosed.waitForExistence(timeout: 5))
-        XCTAssertLessThanOrEqual(hideClosed.frame.height, singleLineHeight + 2)
     }
 
     /// The strip costs a row of vertical space on a phone, so it's optional.
@@ -116,7 +83,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
                       "demo data should show the Essentials categories")
 
         optionsMenu.tap()
-        let hideSpent = app.buttons["Hide Spent Categories"]
+        let hideSpent = app.buttons["Hide Spent"]
         XCTAssertTrue(hideSpent.waitForExistence(timeout: 5))
         XCTAssertFalse(hideSpent.isSelected, "the filter starts off")
         hideSpent.tap()

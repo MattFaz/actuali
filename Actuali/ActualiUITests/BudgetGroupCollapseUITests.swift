@@ -48,7 +48,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
                       "the budget toolbar should offer the options menu")
         menuButton.tap()
 
-        let collapseAll = app.buttons["Collapse All Groups"]
+        let collapseAll = app.buttons["Collapse Groups"]
         XCTAssertTrue(collapseAll.waitForExistence(timeout: 10))
         collapseAll.tap()
 
@@ -61,7 +61,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         menuButton.tap()
 
-        let expandAll = app.buttons["Expand All Groups"]
+        let expandAll = app.buttons["Expand Groups"]
         XCTAssertTrue(expandAll.waitForExistence(timeout: 10))
         expandAll.tap()
 
