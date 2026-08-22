@@ -83,6 +83,9 @@ struct SettingsView: View {
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
     @State private var confirmBackupOverBaseline = false
     @State private var dashboardPages: [DashboardPage] = []
+    @State private var editingServerConnection = false
+    @State private var editedServerURL = ""
+    @State private var editedFallbackServerURL = ""
 
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
@@ -198,23 +201,90 @@ struct SettingsView: View {
         }
     }
 
+    private func beginEditingServerConnection() {
+        editedServerURL = budgetStore.serverURL
+        editedFallbackServerURL = budgetStore.fallbackServerURL
+        editingServerConnection = true
+    }
+
+    private func saveServerConnection() {
+        Task {
+            let saved = await budgetStore.updateServerConnection(
+                serverURL: editedServerURL,
+                fallbackServerURL: editedFallbackServerURL
+            )
+            if saved { editingServerConnection = false }
+        }
+    }
+
+    private var serverConnectionHeader: some View {
+        HStack {
+            Text("Server Connection")
+            Spacer()
+            if budgetStore.isConnected {
+                if editingServerConnection {
+                    Button("Cancel", role: .cancel) {
+                        editingServerConnection = false
+                    }
+                    Divider()
+                        .frame(height: 16)
+                    Button("Save") { saveServerConnection() }
+                        .disabled(
+                            editedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                                || budgetStore.isLoading
+                        )
+                } else {
+                    Button("Edit") { beginEditingServerConnection() }
+                }
+            }
+        }
+        .font(.body)
+        .textCase(nil)
+    }
+
+    @ViewBuilder
+    private func serverURLFields(
+        serverURL: Binding<String>,
+        fallbackServerURL: Binding<String>
+    ) -> some View {
+        TextField("Server URL", text: serverURL)
+            .textContentType(.URL)
+            .autocapitalization(.none)
+            .keyboardType(.URL)
+            .accessibilityHint("Example: https://actual.example.com")
+
+        TextField("Fallback server URL (optional)", text: fallbackServerURL)
+            .textContentType(.URL)
+            .autocapitalization(.none)
+            .keyboardType(.URL)
+            .accessibilityHint("Used when the primary server cannot be reached")
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Server URL", text: $budgetStore.serverURL)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                        .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Example: https://actual.example.com")
-
-                    TextField("Fallback server URL (optional)", text: $budgetStore.fallbackServerURL)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                        .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Used when the primary server cannot be reached")
+                    if budgetStore.isConnected {
+                        if editingServerConnection {
+                            serverURLFields(
+                                serverURL: $editedServerURL,
+                                fallbackServerURL: $editedFallbackServerURL
+                            )
+                        } else {
+                            LabeledContent("Server URL", value: budgetStore.serverURL)
+                            LabeledContent(
+                                "Fallback Server URL",
+                                value: budgetStore.fallbackServerURL.isEmpty
+                                    ? "None"
+                                    : budgetStore.fallbackServerURL
+                            )
+                        }
+                    } else {
+                        serverURLFields(
+                            serverURL: $budgetStore.serverURL,
+                            fallbackServerURL: $budgetStore.fallbackServerURL
+                        )
+                    }
 
                     if !budgetStore.isConnected {
                         // Show the password field before probing, when password
@@ -304,7 +374,7 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Server Connection")
+                    serverConnectionHeader
                 } footer: {
                     if !budgetStore.isConnected {
                         Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
@@ -810,7 +880,11 @@ struct SettingsView: View {
                 }
             }
             .onChange(of: budgetStore.isConnected) { _, isConnected in
-                if isConnected {
+                if !isConnected {
+                    // Drafts belong to the session that ended. A later
+                    // connection must start from its own saved addresses.
+                    editingServerConnection = false
+                } else {
                     Task {
                         await budgetStore.fetchRemoteBudgets()
                         promptBudgetSelectionIfNeeded()
