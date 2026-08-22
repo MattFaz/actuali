@@ -181,6 +181,108 @@ struct KeyInfoResponse: Codable, Sendable {
     }
 }
 
+// MARK: - Bank sync (server-hosted SimpleFIN)
+
+/// An error the `/simplefin/*` routes report. They answer HTTP 200 and put
+/// the failure in `data`, so a status-code check alone never sees these.
+struct ServerBankSyncError: Decodable, Sendable, Equatable {
+    let errorType: String?
+    let errorCode: String?
+    let reason: String?
+
+    /// Actual's `bank_sync_status` vocabulary for this failure — the same
+    /// mapping upstream's `getBankSyncStatusFromError` applies, so an account
+    /// this device failed to sync reads the same in the web UI.
+    var bankSyncStatus: String {
+        switch errorCode {
+        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": return "reauth-required"
+        case "ACCOUNT_NEEDS_ATTENTION": return "attention-required"
+        case "RATE_LIMIT_EXCEEDED": return "rate-limit-exceeded"
+        case "TIMED_OUT": return "timed-out"
+        case "ACCOUNT_MISSING": return "account-missing"
+        default: return "failed"
+        }
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case errorType = "error_type"
+        case errorCode = "error_code"
+        case reason
+    }
+}
+
+/// One account's slice of a `/simplefin/transactions` response.
+struct ServerBankSyncAccountDownload: Decodable, Sendable {
+    /// The account's balance *as of now*, in cents, despite the name — see
+    /// upstream `processBankSyncDownload`, which calls the same field
+    /// "actually the current balance".
+    let startingBalance: Int?
+    let transactions: Transactions?
+
+    struct Transactions: Decodable, Sendable {
+        let all: [ServerBankSyncTransaction]?
+    }
+}
+
+/// The server's already-normalized transaction shape — not raw SimpleFIN.
+/// The bridge's own fields have been renamed and its dates turned into
+/// `YYYY-MM-DD` strings by the time they reach us.
+struct ServerBankSyncTransaction: Decodable, Sendable {
+    let transactionId: String?
+    let date: String?
+    let payeeName: String?
+    let notes: String?
+    let booked: Bool?
+    let transactionAmount: Amount?
+
+    struct Amount: Decodable, Sendable {
+        let amount: String?
+    }
+}
+
+/// A whole `/simplefin/transactions` response body. The payload is keyed by
+/// account id, with `errors` alongside, so it needs dynamic-key decoding.
+struct ServerBankSyncDownloads: Decodable, Sendable {
+    var accounts: [String: ServerBankSyncAccountDownload] = [:]
+    var errors: [String: [ServerBankSyncError]] = [:]
+    /// Set when the request failed as a whole (a rejected access key, say),
+    /// in which case `data` *is* the error object rather than containing one.
+    var failure: ServerBankSyncError?
+
+    init(from decoder: any Decoder) throws {
+        // A whole-request failure decodes cleanly here too — every field is
+        // optional — so it only counts as one when it names a code.
+        let possibleFailure = try? ServerBankSyncError(from: decoder)
+        failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
+
+        let container = try decoder.container(keyedBy: DynamicKey.self)
+        for key in container.allKeys {
+            switch key.stringValue {
+            case "errors":
+                errors = (try? container.decode([String: [ServerBankSyncError]].self, forKey: key)) ?? [:]
+            case "error_type", "error_code", "reason", "status":
+                continue
+            default:
+                // An account the bridge didn't return comes back as null, and
+                // decoding it simply doesn't contribute an entry.
+                if let download = try? container.decode(
+                    ServerBankSyncAccountDownload.self, forKey: key
+                ) {
+                    accounts[key.stringValue] = download
+                }
+            }
+        }
+    }
+
+    private struct DynamicKey: CodingKey {
+        var stringValue: String
+        var intValue: Int? { nil }
+        init?(stringValue: String) { self.stringValue = stringValue }
+        init?(intValue: Int) { nil }
+    }
+}
+
+
 /// Version gate for features that depend on the server's Actual release.
 enum ServerVersion {
     /// payee_locations shipped in Actual 26.4.0. Writing those CRDT messages
@@ -739,6 +841,132 @@ actor ActualServerClient {
         }
         return ServerKeyInfo(id: key.id, salt: key.salt, test: key.test)
     }
+    
+    // MARK: - Bank sync (server-hosted SimpleFIN)
+
+    /// Whether the server has its own SimpleFIN credentials, or nil when it
+    /// has no `/simplefin` routes at all (an Actual release that predates
+    /// them, or a reverse proxy that strips them). Callers treat nil as "this
+    /// server can't do bank sync" and fall back to the device's own key —
+    /// which is why a route that isn't there and a server that can't be
+    /// reached must not look the same: the latter throws.
+    func simpleFINStatus() async throws -> Bool? {
+        let response: SimpleFINStatusResponse? = try await postBankSync(
+            path: "/simplefin/status", body: EmptyBody()
+        )
+        return response?.data?.configured
+    }
+
+    /// Every account the server's SimpleFIN connection covers, in the raw
+    /// bridge shape (the route passes it through untouched).
+    func simpleFINAccounts() async throws -> [SimpleFINAccount] {
+        guard let response: SimpleFINServerAccountsResponse = try await postBankSync(
+            path: "/simplefin/accounts", body: EmptyBody()
+        ) else {
+            throw ActualServerError.invalidResponse
+        }
+        if let failure = response.data?.failure {
+            throw ActualServerError.httpError(
+                statusCode: 200, message: failure.reason ?? failure.errorCode
+            )
+        }
+        return response.data?.accounts ?? []
+    }
+
+    /// Transactions for the named accounts, each from its own start date.
+    /// - Parameters:
+    ///   - accountIds: the provider's account ids (`accounts.account_id`).
+    ///   - startDates: `YYYY-MM-DD`, one per account id and the same length —
+    ///     the route rejects a mismatch.
+    func simpleFINTransactions(
+        accountIds: [String],
+        startDates: [String]
+    ) async throws -> ServerBankSyncDownloads {
+        guard accountIds.count == startDates.count else {
+            throw ActualServerError.invalidResponse
+        }
+        // Always the array form, even for one account: it keeps the response
+        // shape the same, and the single-account form buries an error where
+        // the account's data would be.
+        let body = SimpleFINTransactionsRequest(accountId: accountIds, startDate: startDates)
+        guard let response: SimpleFINTransactionsResponse = try await postBankSync(
+            path: "/simplefin/transactions", body: body
+        ) else {
+            throw ActualServerError.invalidResponse
+        }
+        guard let data = response.data else { throw ActualServerError.invalidResponse }
+        return data
+    }
+
+    private struct EmptyBody: Encodable {}
+
+    private struct SimpleFINTransactionsRequest: Encodable {
+        let accountId: [String]
+        let startDate: [String]
+    }
+
+    private struct SimpleFINStatusResponse: Decodable {
+        let data: StatusData?
+        struct StatusData: Decodable { let configured: Bool? }
+    }
+
+    private struct SimpleFINServerAccountsResponse: Decodable {
+        let data: AccountsData?
+
+        struct AccountsData: Decodable {
+            let accounts: [SimpleFINAccount]?
+            let failure: ServerBankSyncError?
+
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.container(keyedBy: CodingKeys.self)
+                accounts = try? container.decodeIfPresent([SimpleFINAccount].self, forKey: .accounts)
+                let possibleFailure = try? ServerBankSyncError(from: decoder)
+                failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
+            }
+
+            private enum CodingKeys: String, CodingKey { case accounts }
+        }
+    }
+
+    private struct SimpleFINTransactionsResponse: Decodable {
+        let data: ServerBankSyncDownloads?
+    }
+
+    /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
+    /// isn't there; throws for everything else.
+    private func postBankSync<Body: Encodable, Response: Decodable>(
+        path: String,
+        body: Body
+    ) async throws -> Response? {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        var request = makeRequest(serverURL.appendingPathComponent(path))
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(body)
+
+        let (data, response) = try await send(request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        // The route genuinely isn't served here — not a failure, just an older
+        // server. 501 covers proxies that answer unimplemented paths that way.
+        if [404, 405, 501].contains(httpResponse.statusCode) { return nil }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
+            )
+        }
+        do {
+            return try JSONDecoder().decode(Response.self, from: data)
+        } catch {
+            throw ActualServerError.decodingError(error)
+        }
+    }
+
 
     // MARK: - Sync
 

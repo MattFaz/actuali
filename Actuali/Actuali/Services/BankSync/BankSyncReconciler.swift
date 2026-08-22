@@ -201,6 +201,24 @@ enum BankSyncReconciler {
         let year = 100 * centuries + years - 4800 + months / 10
         return year * 10000 + month * 100 + day
     }
+    
+    /// `YYYYMMDD` for the `YYYY-MM-DD` strings the Actual server's bank-sync
+    /// routes speak, or nil if it isn't one.
+    static func day(fromISO iso: String) -> Int? {
+        let parts = iso.split(separator: "-")
+        guard parts.count == 3,
+              let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
+              (1...12).contains(month), (1...31).contains(day) else { return nil }
+        return year * 10000 + month * 100 + day
+    }
+
+    /// The inverse, for the `startDate` those routes take.
+    static func isoString(from yyyymmdd: Int) -> String {
+        String(
+            format: "%04d-%02d-%02d",
+            yyyymmdd / 10000, (yyyymmdd % 10000) / 100, yyyymmdd % 100
+        )
+    }
 }
 
 // MARK: - Normalization
@@ -219,25 +237,51 @@ extension BankSyncCandidate {
             importedId: transaction.id,
             date: SimpleFINAmount.day(fromTimestamp: transaction.effectiveTimestamp),
             amount: amount,
-            payeeName: Self.payeeName(for: transaction),
+            payeeName: Self.payeeName(from: [
+                transaction.payee, transaction.description, transaction.memo
+            ]),
             payeeId: nil,
-            notes: Self.notes(for: transaction),
+            notes: Self.notes(from: transaction.description),
             cleared: transaction.isBooked
         )
     }
 
-    /// The bridge's `payee` when it has one. Not every bridge fills it in, so
-    /// fall back to the description rather than importing a nameless payee.
-    private static func payeeName(for transaction: SimpleFINTransaction) -> String {
-        for candidate in [transaction.payee, transaction.description, transaction.memo] {
+    /// The same, from the shape the Actual server's `/simplefin/transactions`
+    /// route returns — already renamed and date-formatted by the time it
+    /// reaches us, so the raw bridge fields aren't available here.
+    init?(serverBankSync transaction: ServerBankSyncTransaction) {
+        guard let importedId = transaction.transactionId,
+              let iso = transaction.date,
+              let date = BankSyncReconciler.day(fromISO: iso),
+              let raw = transaction.transactionAmount?.amount,
+              let amount = SimpleFINAmount.cents(from: raw) else { return nil }
+        self.init(
+            importedId: importedId,
+            date: date,
+            amount: amount,
+            payeeName: Self.payeeName(from: [transaction.payeeName, transaction.notes]),
+            payeeId: nil,
+            notes: Self.notes(from: transaction.notes),
+            // The route only omits `booked` for shapes it never sends; treat a
+            // missing value as posted rather than importing everything
+            // uncleared.
+            cleared: transaction.booked ?? true
+        )
+    }
+
+    /// The first name with anything in it. Not every bridge fills in a payee,
+    /// and importing a nameless one would be worse than reusing the
+    /// description.
+    private static func payeeName(from candidates: [String?]) -> String {
+        for candidate in candidates {
             let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             if !trimmed.isEmpty { return trimmed }
         }
         return "Unknown"
     }
 
-    private static func notes(for transaction: SimpleFINTransaction) -> String? {
-        let trimmed = transaction.description?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    private static func notes(from raw: String?) -> String? {
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmed.isEmpty else { return nil }
         // Escape `#` the way upstream does, so a bank's own "#" in a
         // description doesn't silently become a tag (see TagFilter, where a
