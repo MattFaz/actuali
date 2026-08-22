@@ -36,7 +36,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleInvalidPattern(pattern: String)
     case ruleOwnedBySchedule
     case ruleNotSerializable
-
+    case bankSyncNotConfigured        // ← add
+    
     var errorDescription: String? {
         switch self {
         case .syncNotConfigured:
@@ -97,6 +98,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "This rule belongs to a schedule. Delete the schedule instead."
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
+        case .bankSyncNotConfigured:                                              // ← add
+            return "SimpleFIN isn't set up yet. Connect it in Settings first."     // ← add
         }
     }
 }
@@ -194,6 +197,14 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+    /// Accounts wired up to a bank feed, refreshed alongside the rest of the
+    /// budget so the accounts tab knows which rows can be synced.
+    @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
+    /// Whether this device has claimed a SimpleFIN access key.
+    @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
+    /// True for the length of a bank sync, so the UI can show progress and
+    /// keep a second sync from starting on top of the first.
+    @Published private(set) var isBankSyncing = false
 
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
@@ -987,6 +998,12 @@ final class BudgetStore: ObservableObject {
     func setServerClientForTesting(_ client: ActualServerClient) {
         serverClient = client
     }
+    
+    /// Test-only: swap in a SimpleFIN client wired to a stub transport so the
+    /// bank sync path can be exercised without a reachable bridge.
+    func setSimpleFINClientForTesting(_ client: SimpleFINClient) {
+        simpleFINClient = client
+    }
 
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
@@ -1699,6 +1716,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
 
             await loadSchedules()
+            await loadBankSyncAccounts()       // ← add
             publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
@@ -2156,6 +2174,322 @@ final class BudgetStore: ObservableObject {
     /// were imported before. Read-only convenience for `WalletImportView`.
     func walletFinancialIds(accountId: String) -> Set<String> {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
+    }
+    
+    // MARK: - Bank Sync (SimpleFIN)
+
+    /// Talks to the SimpleFIN bridge directly, with an access key this device
+    /// claimed for itself — see `SimpleFINClient` for why that rather than
+    /// going through the Actual server's own SimpleFIN support.
+    private var simpleFINClient = SimpleFINClient()
+
+    /// How far back a sync reaches when an account has nothing to anchor to.
+    /// 89 days ago through today inclusive is 90 days, the window upstream
+    /// settled on because several bank integrations won't serve more.
+    private static let bankSyncMaxLookbackDays = 89
+
+    /// What one run of `syncBankAccounts` did.
+    struct BankSyncResult: Equatable {
+        var accountsSynced = 0
+        var added = 0
+        var updated = 0
+        /// Anything worth telling the person about: a bank connection that
+        /// needs re-authenticating, an account SimpleFIN no longer knows.
+        /// A run can succeed for some accounts and report problems for others.
+        var problems: [String] = []
+
+        /// What to show when the run finishes. Problems come last so the
+        /// counts above them still read as what did work.
+        var summary: String {
+            var lines: [String] = []
+            if added > 0 {
+                lines.append("Imported \(added) new transaction\(added == 1 ? "" : "s").")
+            }
+            if updated > 0 {
+                lines.append("Matched \(updated) transaction\(updated == 1 ? "" : "s") you already had.")
+            }
+            // Only claim there was nothing to do when nothing went wrong
+            // either — otherwise the problems below say what happened.
+            if lines.isEmpty, problems.isEmpty {
+                lines.append(accountsSynced == 0
+                    ? "No linked accounts to sync."
+                    : "Everything is already up to date.")
+            }
+            return (lines + problems).joined(separator: "\n\n")
+        }
+    }
+
+    /// The last bank sync's outcome, waiting to be shown. Held here rather
+    /// than in a view because the sync is kicked off from a toolbar menu that
+    /// is gone by the time it finishes.
+    @Published var bankSyncSummary: String?
+
+    /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
+    /// entry point — `syncBankAccounts` is the one that throws.
+    func runBankSync(accountIds: [String] = []) async {
+        do {
+            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
+        } catch {
+            bankSyncSummary = error.localizedDescription
+        }
+    }
+
+    /// Exchange a SimpleFIN setup token for the access key every later sync
+    /// uses. Setup tokens are single-use, so this only ever runs once per
+    /// token.
+    func connectSimpleFIN(setupToken: String) async throws {
+        let accessKey = try await simpleFINClient.claimAccessKey(setupToken: setupToken)
+        try SimpleFINCredentials.save(accessKey)
+        isSimpleFINConfigured = true
+    }
+
+    /// Forget this device's access key. Accounts stay linked — the link lives
+    /// in the budget file, so the web UI (and this device, once a new token is
+    /// claimed) can still sync them.
+    func disconnectSimpleFIN() throws {
+        try SimpleFINCredentials.clear()
+        isSimpleFINConfigured = false
+    }
+
+    /// Every account the access key covers, for the linking screen. Balances
+    /// only — asking the bridge for transactions here would be work nobody
+    /// looks at.
+    func fetchSimpleFINAccounts() async throws -> SimpleFINAccountSet {
+        guard let accessKey = SimpleFINCredentials.accessKey else {
+            throw BudgetStoreError.bankSyncNotConfigured
+        }
+        return try await simpleFINClient.fetchAccounts(accessKey: accessKey)
+    }
+
+    func loadBankSyncAccounts() async {
+        guard let database else {
+            bankSyncAccounts = []
+            return
+        }
+        bankSyncAccounts = (try? await database.fetchBankSyncAccounts()) ?? []
+    }
+
+    /// The bank feed an account is wired up to, if any.
+    func bankSyncAccount(forAccountId accountId: String) -> BankSyncAccount? {
+        bankSyncAccounts.first { $0.id == accountId }
+    }
+
+    func linkBankAccount(accountId: String, to remote: SimpleFINAccount) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.linkAccount(
+            accountId: accountId,
+            externalAccountId: remote.id,
+            source: .simpleFin,
+            institutionId: remote.org.bankId ?? remote.org.displayName,
+            institutionName: remote.org.displayName
+        )
+        await refreshDataOnly()
+    }
+
+    func unlinkBankAccount(accountId: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.unlinkAccount(accountId: accountId)
+        await refreshDataOnly()
+    }
+
+    /// Download and import transactions for the linked accounts.
+    /// - Parameter accountIds: which accounts to sync; empty syncs every
+    ///   linked one, which is what the accounts tab's sync button does.
+    @discardableResult
+    func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        guard let accessKey = SimpleFINCredentials.accessKey else {
+            throw BudgetStoreError.bankSyncNotConfigured
+        }
+        // A second run on top of the first would re-download the same window
+        // and race the first one's writes.
+        guard !isBankSyncing else { return BankSyncResult() }
+
+        let targets = bankSyncAccounts.filter {
+            $0.source == .simpleFin && !$0.closed
+                && (accountIds.isEmpty || accountIds.contains($0.id))
+        }
+        guard !targets.isEmpty else { return BankSyncResult() }
+
+        isBankSyncing = true
+        defer { isBankSyncing = false }
+
+        // An account that already has history only needs the window since its
+        // earliest transaction; one that has none takes the full lookback.
+        let lookbackFloor = BankSyncReconciler.day(
+            Transaction.yyyymmdd(from: Date()), offsetBy: -Self.bankSyncMaxLookbackDays
+        )
+        var oldestDates: [String: Int] = [:]
+        for target in targets {
+            // Both "the read failed" and "the account has no transactions"
+            // mean the same thing here: take the full lookback.
+            oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
+        }
+        // One request covers every account, so it has to reach back as far as
+        // the hungriest of them; each account drops the surplus itself.
+        let earliest = targets
+            .map { max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor) }
+            .min() ?? lookbackFloor
+
+        let downloaded = try await simpleFINClient.fetchAccounts(
+            accessKey: accessKey,
+            accountIds: targets.map(\.externalAccountId),
+            startDate: earliest
+        )
+
+        var result = BankSyncResult()
+        result.problems = downloaded.errors
+        // One rules/context fetch for the whole run, not one per row.
+        let prepared = await syncClient.prepareRules()
+
+        for target in targets {
+            guard let remote = downloaded.accounts.first(where: { $0.id == target.externalAccountId }) else {
+                result.problems.append(
+                    "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
+                )
+                continue
+            }
+            do {
+                let outcome = try await importBankSync(
+                    remote,
+                    into: target,
+                    startDay: max(lookbackFloor, oldestDates[target.id] ?? lookbackFloor),
+                    isFirstSync: oldestDates[target.id] == nil,
+                    prepared: prepared
+                )
+                result.added += outcome.added
+                result.updated += outcome.updated
+                result.accountsSynced += 1
+            } catch {
+                result.problems.append("\(target.name): \(error.localizedDescription)")
+            }
+        }
+
+        await refreshDataOnly()
+        return result
+    }
+
+    /// Fold one account's download into the budget: match what we already
+    /// have, insert what we don't.
+    private func importBankSync(
+        _ remote: SimpleFINAccount,
+        into target: BankSyncAccount,
+        startDay: Int,
+        isFirstSync: Bool,
+        prepared: PreparedRules
+    ) async throws -> (added: Int, updated: Int) {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+
+        var candidates = remote.transactions
+            .compactMap(BankSyncCandidate.init(simpleFIN:))
+            .filter { $0.date >= startDay }
+
+        if isFirstSync {
+            try await insertStartingBalance(for: target, remote: remote, candidates: candidates)
+        }
+        guard !candidates.isEmpty else { return (0, 0) }
+
+        // Resolve payees by name without creating any: the payee pass compares
+        // ids, and a name the budget doesn't have yet can't match anything.
+        // The payees the inserts need are created below, once it's settled
+        // which downloads are actually new.
+        var payeeIdsByName: [String: String] = [:]
+        for index in candidates.indices {
+            let name = candidates[index].payeeName
+            if let cached = payeeIdsByName[name] {
+                candidates[index].payeeId = cached
+            } else if let payee = (try? database.payee(named: name)) ?? nil {
+                payeeIdsByName[name] = payee.id
+                candidates[index].payeeId = payee.id
+            }
+        }
+
+        let dates = candidates.map(\.date)
+        let window = try await database.bankSyncWindow(
+            accountId: target.id,
+            from: BankSyncReconciler.day(
+                dates.min() ?? startDay, offsetBy: -BankSyncReconciler.fuzzyMatchDayRadius
+            ),
+            to: BankSyncReconciler.day(
+                dates.max() ?? startDay, offsetBy: BankSyncReconciler.fuzzyMatchDayRadius
+            )
+        )
+
+        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
+
+        try await syncClient.applyBankSyncUpdates(plan.updates)
+
+        // Oldest first: sort_order is stamped at insert, so inserting in date
+        // order leaves the newest transaction at the top of the account.
+        for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
+            let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
+            let transaction = Transaction(
+                id: UUID().uuidString,
+                accountId: target.id,
+                date: candidate.date,
+                amount: candidate.amount,
+                payeeId: payeeId,
+                payeeName: candidate.payeeName,
+                categoryId: nil,
+                categoryName: nil,
+                notes: candidate.notes,
+                cleared: candidate.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: false,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: nil,  // Set to Date.now() during insert
+                importedPayee: candidate.payeeName,
+                financialId: candidate.importedId
+            )
+            try await syncClient.createTransaction(transaction, prepared: prepared)
+        }
+
+        return (plan.inserts.count, plan.updates.count)
+    }
+
+    /// Give a freshly linked account the opening balance its imported history
+    /// starts from. Actual has no stored balance field, so without this the
+    /// account would be short everything that happened before the sync window
+    /// (upstream `processBankSyncDownload`, initial sync).
+    private func insertStartingBalance(
+        for target: BankSyncAccount,
+        remote: SimpleFINAccount,
+        candidates: [BankSyncCandidate]
+    ) async throws {
+        guard let syncClient, let balance = remote.balanceCents else { return }
+        // SimpleFIN reports the balance as of now, so what the account opened
+        // with is what's left once everything about to be imported is taken
+        // back off it.
+        let opening = balance - candidates.reduce(0) { $0 + $1.amount }
+        guard opening != 0 else { return }
+
+        let payee = try await findOrCreatePayee(name: "Starting Balance")
+        let category = target.offBudget ? nil : startingBalanceCategory()
+
+        let transaction = Transaction(
+            id: UUID().uuidString,
+            accountId: target.id,
+            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
+            amount: opening,
+            payeeId: payee.id,
+            payeeName: payee.name,
+            categoryId: category?.id,
+            categoryName: category?.name,
+            notes: nil,
+            cleared: true,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil,
+            startingBalanceFlag: true
+        )
+        // Rules never see an opening balance, same as account creation's.
+        try await syncClient.createTransaction(transaction, applyRules: false)
     }
 
     /// Create a paired transfer between two accounts. Writes both legs with linked

@@ -679,12 +679,22 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    NavigationLink {                                                  // ← add block
+                        BankSyncSetupView()
+                    } label: {
+                        Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
+                    }
+
                     NavigationLink {
                         WalletAutomationView()
                     } label: {
                         Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
                     }
                     if WalletImportView.isSupported {
+                        Text("Connect SimpleFIN to import transactions straight from your bank, set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                        } else {
+                            Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                        }
                         Button {
                             showingWalletImport = true
                         } label: {
