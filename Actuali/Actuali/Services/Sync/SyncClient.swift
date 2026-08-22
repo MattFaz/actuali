@@ -555,7 +555,8 @@ actor SyncClient {
     }
 
     /// Cut an account loose from its bank feed. The transactions it already
-    /// imported stay — only the link goes, matching the web UI's unlink.
+    /// imported stay — only the link goes, matching the web UI's unlink, which
+    /// clears the cached balances and the status badge along with the pointer.
     func unlinkAccount(accountId: String) async throws {
         guard let database else { throw SyncError.notConfigured }
 
@@ -567,23 +568,54 @@ actor SyncClient {
             fields: [
                 ("account_id", nil),
                 ("account_sync_source", nil),
-                ("bank", nil)
+                ("bank", nil),
+                ("balance_current", nil),
+                ("balance_available", nil),
+                ("balance_limit", nil),
+                ("bank_sync_status", nil)
             ]
         )
 
-        for msg in try database.applyBankSyncLink(
-            accountId: accountId,
-            externalAccountId: nil,
-            syncSource: nil,
-            bank: nil,
-            messages: messages
-        ) {
+        for msg in try database.applyBankSyncUnlink(accountId: accountId, messages: messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
         try saveClock()
 
         await automaticSync()
+    }
+
+    /// Record what a bank sync did on each account it touched — `last_sync`
+    /// and `bank_sync_status`, the two columns every Actual client stamps, so
+    /// a sync run here reads the same in the web UI.
+    func recordBankSyncStatus(
+        _ statuses: [(accountId: String, lastSync: String?, status: String)]
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !statuses.isEmpty else { return }
+
+        var messages: [CRDTMessage] = []
+        for entry in statuses {
+            var fields: [(column: String, value: (any Sendable)?)] = [
+                ("bank_sync_status", entry.status)
+            ]
+            // Only stamp last_sync when there was a sync to stamp — see
+            // BudgetDatabase.applyBankSyncStatus.
+            if let lastSync = entry.lastSync {
+                fields.append(("last_sync", lastSync))
+            }
+            messages += try await messageGenerator.messages(
+                dataset: "accounts", row: entry.accountId, fields: fields
+            )
+        }
+
+        for msg in try database.applyBankSyncStatus(statuses, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
     }
 
     /// Fold a bank download into the transactions it matched (optimistic

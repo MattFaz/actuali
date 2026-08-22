@@ -2546,21 +2546,21 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Point an account at a provider's account (or, with nil arguments, cut
-    /// it loose), writing the institution row it points at alongside it, with
-    /// all of their CRDT messages, in one SQLite transaction. The institution
-    /// row is rewritten whether or not it already existed — the caller reads
-    /// the existing one first, so a rewrite restates what's already there.
+    /// Point an account at a provider's account, writing the institution row
+    /// it points at alongside it, with all of their CRDT messages, in one
+    /// SQLite transaction. The institution row is rewritten whether or not it
+    /// already existed — the caller reads the existing one first, so a rewrite
+    /// restates what's already there.
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncLink(
         accountId: String,
-        externalAccountId: String?,
-        syncSource: String?,
-        bank: Bank?,
+        externalAccountId: String,
+        syncSource: String,
+        bank: Bank,
         messages: [CRDTMessage]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
-            if let bank, try db.tableExists("banks") {
+            if try db.tableExists("banks") {
                 try db.execute(sql: """
                     INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
                     VALUES (?, ?, ?, ?)
@@ -2570,7 +2570,53 @@ final class BudgetDatabase: Sendable {
                 UPDATE accounts
                 SET account_id = ?, account_sync_source = ?, bank = ?
                 WHERE id = ?
-                """, arguments: [externalAccountId, syncSource, bank?.id, accountId])
+                """, arguments: [externalAccountId, syncSource, bank.id, accountId])
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Cut an account loose from its bank feed. Clears every column upstream's
+    /// own unlink clears, not just the three that point at the provider: a
+    /// left-behind `bank_sync_status` would keep showing an error badge in the
+    /// web UI for an account that no longer syncs at all.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncUnlink(accountId: String, messages: [CRDTMessage]) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = NULL, account_sync_source = NULL, bank = NULL,
+                    balance_current = NULL, balance_available = NULL, balance_limit = NULL,
+                    bank_sync_status = NULL
+                WHERE id = ?
+                """, arguments: [accountId])
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Stamp what a sync did on the account, the way every other Actual client
+    /// does, so the web UI's "last synced" and status badge reflect a sync
+    /// this device ran.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncStatus(
+        _ statuses: [(accountId: String, lastSync: String?, status: String)],
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            for entry in statuses {
+                // A failed sync leaves last_sync alone rather than nulling it:
+                // "we last had good data at X" stays true, and upstream does
+                // the same (it only writes bank_sync_status on failure).
+                guard let lastSync = entry.lastSync else {
+                    try db.execute(
+                        sql: "UPDATE accounts SET bank_sync_status = ? WHERE id = ?",
+                        arguments: [entry.status, entry.accountId]
+                    )
+                    continue
+                }
+                try db.execute(sql: """
+                    UPDATE accounts SET last_sync = ?, bank_sync_status = ? WHERE id = ?
+                    """, arguments: [lastSync, entry.status, entry.accountId])
+            }
             return try Self.insertMessageRows(db, messages)
         }
     }
