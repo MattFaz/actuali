@@ -321,8 +321,9 @@ struct AccountsListView: View {
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
-                            Label("Hide Closed Accounts", systemImage: "archivebox")
+                            Label("Hide Closed", systemImage: "archivebox")
                         }
+                        .accessibilityLabel("Hide Closed Accounts")
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }

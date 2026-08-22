@@ -360,8 +360,9 @@ struct BudgetView: View {
                     Button {
                         newBudgetItem = .group
                     } label: {
-                        Label("New Category Group", systemImage: "folder")
+                        Label("New Group", systemImage: "folder")
                     }
+                    .accessibilityLabel("New Category Group")
                 } label: {
                     Image(systemName: "plus")
                 }

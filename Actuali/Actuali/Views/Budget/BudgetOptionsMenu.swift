@@ -56,10 +56,10 @@ struct BudgetOptionsMenu: View {
             if let expandAllGroups, let collapseAllGroups {
                 Section {
                     Button(action: expandAllGroups) {
-                        Label("Expand All Groups", systemImage: "chevron.down")
+                        Label("Expand Groups", systemImage: "chevron.down")
                     }
                     Button(action: collapseAllGroups) {
-                        Label("Collapse All Groups", systemImage: "chevron.right")
+                        Label("Collapse Groups", systemImage: "chevron.right")
                     }
                 }
             }
@@ -78,8 +78,9 @@ struct BudgetOptionsMenu: View {
                     Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
                 Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
-                    Label("Hide Spent Categories", systemImage: "line.3.horizontal.decrease")
+                    Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
                 }
+                .accessibilityLabel("Hide Spent Categories")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
