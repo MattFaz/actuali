@@ -447,9 +447,18 @@ struct BudgetView: View {
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.orange)
+                    // Reads as a full-width row like the List section it used
+                    // to live in (GH #29 / #305), not a stray line of text.
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 4)
                 .padding(.bottom, 8)
             }
 
