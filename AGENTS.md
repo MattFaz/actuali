@@ -104,7 +104,7 @@ Before writing code, stop at the first rung that holds:
 Rules:
 - Match the style, naming, and idioms of the surrounding code. Read neighboring files before writing new ones.
 - Keep it simple (KISS): prefer the smallest change that solves the problem. No abstractions that weren't explicitly requested, no speculative feature flags or configuration for needs that don't exist yet.
-- No boilerplate nobody asked for. No new dependency if it can be avoided. Deletion over addition. Boring over clever. Fewest files possible.
+- No boilerplate nobody asked for. Deletion over addition. Boring over clever. Fewest files possible.
 - Don't repeat yourself (DRY): before writing a helper, search for an existing one — this codebase already has utilities for amounts, dates, and database access. But don't force abstractions to unify code that is only coincidentally similar.
 - Question complex requests: "Do you actually need X, or does Y cover it?"
 - Pick the edge-case-correct option when two stdlib approaches are the same size (lazy means less code, not the flimsier algorithm).
@@ -115,8 +115,8 @@ Rules:
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
 
 Not lazy about:
-- Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, real-world platform calibration, or anything explicitly requested.
-- Lazy code without its check is unfinished: non-trivial logic must have test coverage (runnable tests via Swift Testing `@Test` / `#expect`). Trivial one-liners need no test.
+- Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.
+- Lazy code without its check is unfinished: every behavior change needs test coverage (Swift Testing `@Test` / `#expect`), as the Testing section states. Do not skip the test because the change is small.
 - When adding a new feature, update the website (`website/` — feature highlights, guides, or support docs) so users are aware of it and documentation stays in sync.
 
 ## Testing
