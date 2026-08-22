@@ -2,11 +2,13 @@ import SwiftUI
 
 private let simpleFINBridgeURL = URL(string: "https://bridge.simplefin.org/")!
 
-/// Set up SimpleFIN on this device and wire its accounts to budget accounts.
+/// Set up SimpleFIN and wire its accounts to budget accounts.
 ///
-/// Two states: before a setup token is claimed it's a paste field, after it's
-/// the list of accounts the bridge serves, each either linked to a budget
-/// account or waiting to be.
+/// Two states. With a connection available — the server's own, or one claimed
+/// on this device — it lists the accounts the bridge serves, each either
+/// linked to a budget account or waiting to be. With neither, it's a paste
+/// field for a setup token. Which connection is in play is worth saying out
+/// loud: only the server's is shared with the web app.
 struct BankSyncSetupView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -14,16 +16,13 @@ struct BankSyncSetupView: View {
     @State private var isConnecting = false
     @State private var isLoadingAccounts = false
     @State private var remoteAccounts: [SimpleFINAccount] = []
-    /// Problems the bridge reported alongside the accounts — a connection that
-    /// needs re-authenticating, most often.
-    @State private var bridgeErrors: [String] = []
     @State private var errorMessage: String?
     @State private var linkTarget: SimpleFINAccount?
     @State private var showingDisconnectConfirmation = false
 
     var body: some View {
         List {
-            if budgetStore.isSimpleFINConfigured {
+            if budgetStore.canSyncBanks {
                 connectedSections
             } else {
                 setupSection
@@ -32,7 +31,10 @@ struct BankSyncSetupView: View {
         .navigationTitle("Bank Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            if budgetStore.isSimpleFINConfigured, remoteAccounts.isEmpty {
+            // Which half of this screen applies depends on whether the server
+            // does SimpleFIN itself, so ask before deciding.
+            await budgetStore.refreshBankSyncSource()
+            if budgetStore.canSyncBanks, remoteAccounts.isEmpty {
                 await loadRemoteAccounts()
             }
         }
@@ -85,7 +87,7 @@ struct BankSyncSetupView: View {
         } header: {
             Text("SimpleFIN")
         } footer: {
-            Text("SimpleFIN gives apps read-only access to your bank. Create a token at bridge.simplefin.org and paste it here — it can only be claimed once, so use a fresh one if another app already has it.")
+            Text("SimpleFIN gives apps read-only access to your bank. Create a token at bridge.simplefin.org and paste it here — it can only be claimed once, so use a fresh one if another app already has it.\n\nIf you set SimpleFIN up on your Actual server instead, this app uses that connection automatically and you won't need a token here at all.")
         }
 
         Section {
@@ -99,14 +101,19 @@ struct BankSyncSetupView: View {
 
     @ViewBuilder
     private var connectedSections: some View {
-        if !bridgeErrors.isEmpty {
-            Section {
-                ForEach(bridgeErrors, id: \.self) { message in
-                    Label(message, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.orange)
-                }
-            } header: {
-                Text("Needs attention")
+        Section {
+            Label(
+                budgetStore.serverProvidesBankSync
+                    ? "Using your server's SimpleFIN connection"
+                    : "Using this device's SimpleFIN connection",
+                systemImage: budgetStore.serverProvidesBankSync ? "server.rack" : "iphone"
+            )
+            .foregroundStyle(.secondary)
+        } footer: {
+            if budgetStore.serverProvidesBankSync {
+                Text("Your Actual server holds the SimpleFIN credentials, so this app and the web app share one connection — accounts you link in either place work in both.")
+            } else {
+                Text("Your server has no SimpleFIN connection of its own, so this device uses the token you gave it. Accounts you link here still appear in the web app, but it needs its own SimpleFIN setup to sync them.")
             }
         }
 
@@ -144,10 +151,12 @@ struct BankSyncSetupView: View {
             }
             .disabled(isLoadingAccounts)
 
-            Button(role: .destructive) {
-                showingDisconnectConfirmation = true
-            } label: {
-                Label("Disconnect SimpleFIN", systemImage: "minus.circle")
+            if budgetStore.isSimpleFINConfigured {
+                Button(role: .destructive) {
+                    showingDisconnectConfirmation = true
+                } label: {
+                    Label("Disconnect this device", systemImage: "minus.circle")
+                }
             }
         }
     }
@@ -210,9 +219,7 @@ struct BankSyncSetupView: View {
         isLoadingAccounts = true
         defer { isLoadingAccounts = false }
         do {
-            let set = try await budgetStore.fetchSimpleFINAccounts()
-            remoteAccounts = set.accounts
-            bridgeErrors = set.errors
+            remoteAccounts = try await budgetStore.fetchBankAccounts()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -222,7 +229,6 @@ struct BankSyncSetupView: View {
         do {
             try budgetStore.disconnectSimpleFIN()
             remoteAccounts = []
-            bridgeErrors = []
         } catch {
             errorMessage = error.localizedDescription
         }

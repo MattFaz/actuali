@@ -2178,9 +2178,9 @@ final class BudgetStore: ObservableObject {
     
     // MARK: - Bank Sync (SimpleFIN)
 
-    /// Talks to the SimpleFIN bridge directly, with an access key this device
-    /// claimed for itself — see `SimpleFINClient` for why that rather than
-    /// going through the Actual server's own SimpleFIN support.
+    /// Talks to a SimpleFIN bridge directly, with a key claimed on this
+    /// device. Only used when the server has no SimpleFIN of its own — see
+    /// `makeBankSyncProvider`.
     private var simpleFINClient = SimpleFINClient()
 
     /// How far back a sync reaches when an account has nothing to anchor to.
@@ -2224,6 +2224,60 @@ final class BudgetStore: ObservableObject {
     /// is gone by the time it finishes.
     @Published var bankSyncSummary: String?
 
+    /// Whether the Actual server has a SimpleFIN connection of its own, as of
+    /// the last check. Refreshed by `refreshBankSyncSource()` and by every
+    /// sync.
+    @Published private(set) var serverProvidesBankSync = false
+
+    /// Whether a bank sync can run at all — through the server's connection or
+    /// one claimed on this device.
+    var canSyncBanks: Bool { serverProvidesBankSync || isSimpleFINConfigured }
+
+    /// Ask the server whether it does SimpleFIN, so the setup screen knows
+    /// which half of itself to show. Failures leave the flag alone: an
+    /// unreachable server isn't evidence either way.
+    func refreshBankSyncSource() async {
+        if let configured = try? await serverClient.simpleFINStatus() {
+            serverProvidesBankSync = configured == true
+        }
+    }
+
+    /// Where this sync's data comes from.
+    ///
+    /// The server's own connection wins whenever it has one. The two
+    /// credentials can't be shared — Actual keeps the server's access key in
+    /// its secrets store, deliberately out of the budget file — so preferring
+    /// the server is what keeps the web UI and this app in agreement: nobody
+    /// needs a second setup token, and a link made here is one the server can
+    /// actually service.
+    private func makeBankSyncProvider() async throws -> any BankSyncProvider {
+        let deviceKey = SimpleFINCredentials.accessKey
+        do {
+            // nil means the route isn't served here — an older server, or a
+            // proxy that strips it. Not a failure, just not an option.
+            if try await serverClient.simpleFINStatus() == true {
+                serverProvidesBankSync = true
+                return ActualServerBankSyncProvider(client: serverClient)
+            }
+            serverProvidesBankSync = false
+        } catch {
+            // The server couldn't be answered for. A key claimed on this
+            // device still reaches the bridge, so use it rather than failing.
+            guard let deviceKey else {
+                // With no key either: a server we genuinely couldn't reach is
+                // worth saying so, but anything else (no server configured, no
+                // session) just means bank sync isn't set up here.
+                if let serverError = error as? ActualServerError, serverError.isConnectionFailure {
+                    throw error
+                }
+                throw BudgetStoreError.bankSyncNotConfigured
+            }
+            return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
+        }
+        guard let deviceKey else { throw BudgetStoreError.bankSyncNotConfigured }
+        return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
+    }
+
     /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
     /// entry point — `syncBankAccounts` is the one that throws.
     func runBankSync(accountIds: [String] = []) async {
@@ -2234,9 +2288,9 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Exchange a SimpleFIN setup token for the access key every later sync
-    /// uses. Setup tokens are single-use, so this only ever runs once per
-    /// token.
+    /// Exchange a SimpleFIN setup token for an access key this device keeps.
+    /// Only needed when the server has no SimpleFIN connection of its own.
+    /// Setup tokens are single-use, so this runs once per token.
     func connectSimpleFIN(setupToken: String) async throws {
         let accessKey = try await simpleFINClient.claimAccessKey(setupToken: setupToken)
         try SimpleFINCredentials.save(accessKey)
@@ -2251,14 +2305,9 @@ final class BudgetStore: ObservableObject {
         isSimpleFINConfigured = false
     }
 
-    /// Every account the access key covers, for the linking screen. Balances
-    /// only — asking the bridge for transactions here would be work nobody
-    /// looks at.
-    func fetchSimpleFINAccounts() async throws -> SimpleFINAccountSet {
-        guard let accessKey = SimpleFINCredentials.accessKey else {
-            throw BudgetStoreError.bankSyncNotConfigured
-        }
-        return try await simpleFINClient.fetchAccounts(accessKey: accessKey)
+    /// Every account the active connection covers, for the linking screen.
+    func fetchBankAccounts() async throws -> [SimpleFINAccount] {
+        try await makeBankSyncProvider().accounts()
     }
 
     func loadBankSyncAccounts() async {
@@ -2298,9 +2347,6 @@ final class BudgetStore: ObservableObject {
     @discardableResult
     func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        guard let accessKey = SimpleFINCredentials.accessKey else {
-            throw BudgetStoreError.bankSyncNotConfigured
-        }
         // A second run on top of the first would re-download the same window
         // and race the first one's writes.
         guard !isBankSyncing else { return BankSyncResult() }
@@ -2314,6 +2360,8 @@ final class BudgetStore: ObservableObject {
         isBankSyncing = true
         defer { isBankSyncing = false }
 
+        let provider = try await makeBankSyncProvider()
+
         // An account that already has history only needs the window since its
         // earliest transaction; one that has none takes the full lookback.
         let lookbackFloor = BankSyncReconciler.day(
@@ -2325,45 +2373,61 @@ final class BudgetStore: ObservableObject {
             // mean the same thing here: take the full lookback.
             oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
         }
-        // One request covers every account, so it has to reach back as far as
-        // the hungriest of them; each account drops the surplus itself.
-        let earliest = targets
-            .map { max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor) }
-            .min() ?? lookbackFloor
 
-        let downloaded = try await simpleFINClient.fetchAccounts(
-            accessKey: accessKey,
-            accountIds: targets.map(\.externalAccountId),
-            startDate: earliest
-        )
+        let downloaded = try await provider.download(targets.map {
+            BankSyncTarget(
+                externalId: $0.externalAccountId,
+                startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
+            )
+        })
 
         var result = BankSyncResult()
-        result.problems = downloaded.errors
+        result.problems = downloaded.problems
         // One rules/context fetch for the whole run, not one per row.
         let prepared = await syncClient.prepareRules()
+        let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
+        var statuses: [(accountId: String, lastSync: String?, status: String)] = []
 
         for target in targets {
-            guard let remote = downloaded.accounts.first(where: { $0.id == target.externalAccountId }) else {
-                result.problems.append(
-                    "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
-                )
+            guard let download = downloaded.byAccount[target.externalAccountId] else {
+                // A connection-level problem already explains why nothing came
+                // back; don't also tell them to relink an account that's fine.
+                if downloaded.problems.isEmpty {
+                    result.problems.append(
+                        "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
+                    )
+                    statuses.append((target.id, nil, "account-missing"))
+                } else {
+                    statuses.append((target.id, nil, "failed"))
+                }
                 continue
+            }
+            // A problem doesn't mean nothing came through — import whatever
+            // did, and say what went wrong alongside it.
+            if let problem = download.problem {
+                result.problems.append("\(target.name): \(problem)")
             }
             do {
                 let outcome = try await importBankSync(
-                    remote,
+                    download,
                     into: target,
-                    startDay: max(lookbackFloor, oldestDates[target.id] ?? lookbackFloor),
                     isFirstSync: oldestDates[target.id] == nil,
                     prepared: prepared
                 )
                 result.added += outcome.added
                 result.updated += outcome.updated
                 result.accountsSynced += 1
+                statuses.append((target.id, syncedAt, download.status))
             } catch {
                 result.problems.append("\(target.name): \(error.localizedDescription)")
+                statuses.append((target.id, nil, "failed"))
             }
         }
+
+        // The same two columns every other Actual client stamps, so the web
+        // UI's "last synced" and status badge reflect this run. Never worth
+        // failing the sync over — the transactions are already in.
+        try? await syncClient.recordBankSyncStatus(statuses)
 
         await refreshDataOnly()
         return result
@@ -2372,22 +2436,27 @@ final class BudgetStore: ObservableObject {
     /// Fold one account's download into the budget: match what we already
     /// have, insert what we don't.
     private func importBankSync(
-        _ remote: SimpleFINAccount,
+        _ download: BankSyncDownload,
         into target: BankSyncAccount,
-        startDay: Int,
         isFirstSync: Bool,
         prepared: SyncClient.PreparedRules
     ) async throws -> (added: Int, updated: Int) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
 
-        var candidates = remote.transactions
-            .compactMap(BankSyncCandidate.init(simpleFIN:))
-            .filter { $0.date >= startDay }
+        // The provider already dropped anything older than this account's own
+        // start day — one request covers every account, so it reaches back as
+        // far as the hungriest of them.
+        var candidates = download.candidates
 
         if isFirstSync {
-            try await insertStartingBalance(for: target, remote: remote, candidates: candidates)
+            try await insertStartingBalance(
+                for: target,
+                currentBalanceCents: download.currentBalanceCents,
+                candidates: candidates
+            )
         }
-        guard !candidates.isEmpty else { return (0, 0) }
+        guard let earliest = candidates.map(\.date).min(),
+              let latest = candidates.map(\.date).max() else { return (0, 0) }
 
         // Resolve payees by name without creating any: the payee pass compares
         // ids, and a name the budget doesn't have yet can't match anything.
@@ -2404,15 +2473,10 @@ final class BudgetStore: ObservableObject {
             }
         }
 
-        let dates = candidates.map(\.date)
         let window = try await database.bankSyncWindow(
             accountId: target.id,
-            from: BankSyncReconciler.day(
-                dates.min() ?? startDay, offsetBy: -BankSyncReconciler.fuzzyMatchDayRadius
-            ),
-            to: BankSyncReconciler.day(
-                dates.max() ?? startDay, offsetBy: BankSyncReconciler.fuzzyMatchDayRadius
-            )
+            from: BankSyncReconciler.day(earliest, offsetBy: -BankSyncReconciler.fuzzyMatchDayRadius),
+            to: BankSyncReconciler.day(latest, offsetBy: BankSyncReconciler.fuzzyMatchDayRadius)
         )
 
         let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
@@ -2455,13 +2519,12 @@ final class BudgetStore: ObservableObject {
     /// (upstream `processBankSyncDownload`, initial sync).
     private func insertStartingBalance(
         for target: BankSyncAccount,
-        remote: SimpleFINAccount,
+        currentBalanceCents: Int?,
         candidates: [BankSyncCandidate]
     ) async throws {
-        guard let syncClient, let balance = remote.balanceCents else { return }
-        // SimpleFIN reports the balance as of now, so what the account opened
-        // with is what's left once everything about to be imported is taken
-        // back off it.
+        guard let syncClient, let balance = currentBalanceCents else { return }
+        // The balance is as of now, so what the account opened with is what's
+        // left once everything about to be imported is taken back off it.
         let opening = balance - candidates.reduce(0) { $0 + $1.amount }
         guard opening != 0 else { return }
 
