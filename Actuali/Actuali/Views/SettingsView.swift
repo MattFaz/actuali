@@ -72,6 +72,7 @@ struct SettingsView: View {
         ("R", "ZAR")
     ]
     @State private var password = ""
+    @State private var isPasswordVisible = false
     @State private var showingResetSyncConfirm = false
     @State private var showingDisconnectConfirm = false
     @State private var showingWalletImport = false
@@ -223,12 +224,28 @@ struct SettingsView: View {
                         if budgetStore.availableLoginMethods.isEmpty
                             || budgetStore.passwordLoginActive
                             || budgetStore.requiresServerPassword {
-                            SecureField(
-                                budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
-                                    ? "Server password (first sign-in)"
-                                    : "Password",
-                                text: $password
-                            )
+                            let placeholder = budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
+                                ? "Server password (first sign-in)"
+                                : "Password"
+                            HStack {
+                                Group {
+                                    if isPasswordVisible {
+                                        TextField(placeholder, text: $password)
+                                            .autocorrectionDisabled()
+                                            .textInputAutocapitalization(.never)
+                                    } else {
+                                        SecureField(placeholder, text: $password)
+                                    }
+                                }
+                                Button {
+                                    isPasswordVisible.toggle()
+                                } label: {
+                                    Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                        .foregroundStyle(.secondary)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+                            }
                         }
 
                         Button("Connect") {
