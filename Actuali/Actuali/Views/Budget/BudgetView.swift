@@ -315,15 +315,29 @@ struct BudgetView: View {
         // used to be mistaken for one (it steps the month, not the
         // navigation stack).
         ToolbarItem(placement: .principal) {
-            // The glyphs are ~14pt, so each one gets padded out to the 44pt
-            // minimum touch target and the stack drops its spacing — the
-            // padding is what separates them now.
+            // UIKit centers a title view only while it stays under ~140pt
+            // next to these two trailing buttons; one point over and it
+            // left-aligns the whole stepper against the leading edge instead.
+            // That cliff has been hit twice — GH #234, then again by #319
+            // padding both chevrons out to 44pt wide (44 + 44 + a 78pt
+            // "Aug 2026" = 166). So the width is the budget: the touch target
+            // grows downward to 44pt and stays 30pt wide, giving 138 total.
+            // `.frame(maxWidth: .infinity)` can't buy centering back — the
+            // title view is sized to fit its content, so the frame has no
+            // extra width to center in.
+            //
+            // ponytail: 138 of ~140 is all the headroom there is, and the slot
+            // shrinks as the trailing buttons scale, so raised text sizes still
+            // left-align (measured at XXXL). Anything that needs a bigger
+            // stepper — a third trailing button, unabbreviated months, real
+            // Dynamic Type support — has to leave the bar for a pinned header
+            // row above the summary card, where centering is real layout.
             HStack(spacing: 0) {
                 Button {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
+                        .frame(width: 30, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Previous month")
@@ -334,15 +348,11 @@ struct BudgetView: View {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                 } label: {
                     Image(systemName: "chevron.right")
-                        .frame(width: 44, height: 44)
+                        .frame(width: 30, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Next month")
             }
-            // The wider hit targets make the group too big for the toolbar to
-            // center on its own, so it claims the whole title region and
-            // centers the stepper inside it.
-            .frame(maxWidth: .infinity)
         }
         // Creation, unlike everything in the options menu, changes the budget
         // rather than the view of it — so it gets its own button (GH #284).
