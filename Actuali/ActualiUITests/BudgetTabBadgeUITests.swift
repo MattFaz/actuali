@@ -12,7 +12,10 @@ final class BudgetTabBadgeUITests: XCTestCase {
     @MainActor
     func testBadgeTracksOverspentCategories() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = [
+            "-loadDemoData", "-initialTab", "1",
+            "-showOverspentBadge", "YES",
+        ]
         app.launch()
 
         let budgetTab = app.tabBars.buttons["Budget"]
@@ -32,6 +35,9 @@ final class BudgetTabBadgeUITests: XCTestCase {
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
         app.tabBars.buttons["Settings"].tap()
+        let budgetView = app.buttons["Budget View"]
+        XCTAssertTrue(budgetView.waitForExistence(timeout: 5), "Budget View settings not found")
+        budgetView.tap()
         let toggle = app.switches["Overspent Badge"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
         tapSwitch(toggle)
