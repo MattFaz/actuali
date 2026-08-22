@@ -195,7 +195,7 @@ struct BudgetTransferSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .presentationDetents([.fraction(0.70)])
         .interactiveDismissDisabled(isSaving)
     }
 
