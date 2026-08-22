@@ -155,7 +155,7 @@ struct PendingImportsView: View {
                 notes: item.rawText,
                 categoryId: nil,
                 isIncome: item.isIncome,
-                cleared: true,
+                cleared: false,
                 onSaved: { store.remove(id: item.id) }
             )
             .environmentObject(budgetStore)
