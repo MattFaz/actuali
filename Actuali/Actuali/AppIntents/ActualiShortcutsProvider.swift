@@ -5,7 +5,9 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
 
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
-            intent: LogTransactionIntent(),
+            // Voice invocation is the one surface where the spoken confirmation is
+            // wanted; see LogTransactionIntent.showConfirmation.
+            intent: LogTransactionIntent(showConfirmation: true),
             phrases: [
                 "Log transaction in \(.applicationName)",
                 "Log transaction to \(\.$account) in \(.applicationName)",
