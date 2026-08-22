@@ -28,9 +28,11 @@ struct ConnectionDataSettingsView: View {
 
 private struct ServerConnectionSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.scenePhase) private var scenePhase
     @State private var password = ""
     @State private var isPasswordVisible = false
     @State private var showingDisconnectConfirm = false
+    @FocusState private var passwordFocused: Bool
 
     var body: some View {
         Section {
@@ -75,17 +77,22 @@ private struct ServerConnectionSettingsSection: View {
                         ? "Server password (first sign-in)"
                         : "Password"
                     HStack {
-                        Group {
-                            if isPasswordVisible {
-                                TextField(placeholder, text: $password)
-                                    .autocorrectionDisabled()
-                                    .textInputAutocapitalization(.never)
-                            } else {
-                                SecureField(placeholder, text: $password)
-                            }
+                        if isPasswordVisible {
+                            TextField(placeholder, text: $password)
+                                .autocorrectionDisabled()
+                                .textInputAutocapitalization(.never)
+                                .focused($passwordFocused)
+                        } else {
+                            SecureField(placeholder, text: $password)
+                                .focused($passwordFocused)
                         }
                         Button {
                             isPasswordVisible.toggle()
+                            // Swapping SecureField for TextField makes a new
+                            // view, so the keyboard drops unless focus is
+                            // re-asked for after SwiftUI installs the new one
+                            // — same tick is too early.
+                            Task { passwordFocused = true }
                         } label: {
                             Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
                                 .foregroundStyle(.secondary)
@@ -172,6 +179,11 @@ private struct ServerConnectionSettingsSection: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
+        }
+        // Re-hide before iOS snapshots the screen for the app switcher, so a
+        // revealed password doesn't land in that on-disk snapshot.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active { isPasswordVisible = false }
         }
     }
 }
