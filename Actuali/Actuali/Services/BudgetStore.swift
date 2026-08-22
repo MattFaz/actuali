@@ -646,10 +646,26 @@ final class BudgetStore: ObservableObject {
     /// to the default account or an error the user can act on, while a wrong match logs
     /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
+        Self.resolveAccountId(
+            hint: hint,
+            accounts: await accountsForIntent(),
+            cardMappings: cardAccountMappings
+        )
+    }
+
+    /// Pure-function account resolution shared by both the async path
+    /// (`PendingImportApprover`) and the synchronous `@ViewBuilder` path
+    /// (`PendingImportsView`). `nonisolated static` so unit tests can call
+    /// it without a full store setup.
+    nonisolated static func resolveAccountId(
+        hint: String,
+        accounts: [Account],
+        cardMappings: [String: String]
+    ) -> String? {
         let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
 
-        let activeAccounts = await accountsForIntent().filter { !$0.closed }
+        let activeAccounts = accounts.filter { !$0.closed }
         guard !activeAccounts.isEmpty else { return nil }
         let activeIds = Set(activeAccounts.map(\.id))
 
@@ -657,7 +673,7 @@ final class BudgetStore: ObservableObject {
         //    and multi-match resolution is deterministic (Dictionary order isn't). Only
         //    hint-contains-key: the reverse direction would let a one-character hint
         //    match any keyword.
-        let mappingsByLongestKey = cardAccountMappings
+        let mappingsByLongestKey = cardMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
             .filter { !$0.key.isEmpty }

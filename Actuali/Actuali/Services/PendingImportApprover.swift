@@ -79,7 +79,10 @@ final class PendingImportApprover {
                 rawMerchant: item.payee ?? "Unknown",
                 notes: nil,
                 date: item.date,
-                cleared: true
+                // Uncleared until the user reconciles: parsed messages aren't
+                // bank-confirmed. Matches upstream Actual, where manual entries
+                // start uncleared and bank sync sets cleared from `booked`.
+                cleared: false
             )
             return result
         } catch {
