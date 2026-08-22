@@ -1,6 +1,10 @@
 import Testing
 @testable import Actuali
 
+/// Covers `PendingImportsView.seedAccountId` — the edit form's account seed
+/// chain: strict hint resolution, then default account, then first open
+/// account. The strict matcher itself is covered by
+/// `BudgetStoreAccountMappingTests`.
 struct PendingImportsResolveAccountTests {
 
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
@@ -8,71 +12,77 @@ struct PendingImportsResolveAccountTests {
                 sortOrder: 0, balance: 0)
     }
 
-    // MARK: - Card mapping resolution
-
     @Test func resolvesViaCardMapping() {
-        let accounts = [account("acct_hsbc", "HSBC"), account("acct_cash", "Cash")]
-        let mappings = ["1234": "acct_hsbc"]
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = BudgetStore.resolveAccountId(
-            hint: "1234", accounts: accounts, cardMappings: mappings)
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "1234", accounts: accounts,
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
         #expect(result == "acct_hsbc")
     }
 
-    @Test func prefersLongestMappingKey() {
-        let accounts = [account("acct1", "A"), account("acct2", "B")]
-        let mappings = ["12": "acct1", "1234": "acct2"]
+    @Test func mappingBeatsDefaultAccount() {
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = BudgetStore.resolveAccountId(
-            hint: "1234", accounts: accounts, cardMappings: mappings)
-        #expect(result == "acct2")
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "1234", accounts: accounts,
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: "acct_cash")
+        #expect(result == "acct_hsbc")
     }
 
-    @Test func skipsMappingForClosedAccount() {
-        let accounts = [account("acct1", "HSBC", closed: true), account("acct2", "Cash")]
-        let mappings = ["1234": "acct1"]
+    @Test func unmatchedHintFallsBackToDefaultAccount() {
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = BudgetStore.resolveAccountId(
-            hint: "1234", accounts: accounts, cardMappings: mappings)
-        // Mapping points to closed account — should not match
-        #expect(result == nil)
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "9999", accounts: accounts,
+            cardMappings: [:], defaultAccountId: "acct_hsbc")
+        #expect(result == "acct_hsbc")
     }
 
-    // MARK: - Account name fallback
+    @Test func missingHintFallsBackToDefaultAccount() {
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-    @Test func matchesExactAccountName() {
-        let accounts = [account("acct1", "Checking")]
-        let result = BudgetStore.resolveAccountId(
-            hint: "Checking", accounts: accounts, cardMappings: [:])
-        #expect(result == "acct1")
+        let result = PendingImportsView.seedAccountId(
+            cardHint: nil, accounts: accounts,
+            cardMappings: [:], defaultAccountId: "acct_hsbc")
+        #expect(result == "acct_hsbc")
     }
 
-    @Test func matchesAccountNameByWholeWords() {
-        let accounts = [account("acct1", "Checking")]
-        let result = BudgetStore.resolveAccountId(
-            hint: "Checking Account", accounts: accounts, cardMappings: [:])
-        #expect(result == "acct1")
+    @Test func mappingToClosedAccountFallsThrough() {
+        // The strict resolver must skip a mapping that points at a closed
+        // account; the seed chain then lands on the first open account.
+        let accounts = [account("acct_old", "Old Card", closed: true), account("acct_cash", "Cash")]
+
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "1234", accounts: accounts,
+            cardMappings: ["1234": "acct_old"], defaultAccountId: nil)
+        #expect(result == "acct_cash")
     }
 
-    @Test func doesNotMatchSubstringInsideLargerWord() {
-        let accounts = [account("acct1", "Cash")]
-        // "cashback" contains "cash" as substring, not as a word
-        let result = BudgetStore.resolveAccountId(
-            hint: "HSBC cashback card", accounts: accounts, cardMappings: [:])
-        #expect(result == nil)
+    @Test func closedDefaultFallsBackToFirstOpenAccount() {
+        let accounts = [account("acct_old", "Old", closed: true), account("acct_cash", "Cash")]
+
+        let result = PendingImportsView.seedAccountId(
+            cardHint: nil, accounts: accounts,
+            cardMappings: [:], defaultAccountId: "acct_old")
+        #expect(result == "acct_cash")
     }
 
-    @Test func returnsNilWhenNoOpenAccounts() {
-        let accounts = [account("acct1", "Cash", closed: true)]
-        let result = BudgetStore.resolveAccountId(
-            hint: "Cash", accounts: accounts, cardMappings: [:])
-        #expect(result == nil)
+    @Test func noDefaultFallsBackToFirstOpenAccount() {
+        let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
+
+        let result = PendingImportsView.seedAccountId(
+            cardHint: nil, accounts: accounts,
+            cardMappings: [:], defaultAccountId: nil)
+        #expect(result == "acct_cash")
     }
 
-    @Test func returnsNilForEmptyHint() {
-        let accounts = [account("acct1", "Cash")]
-        let result = BudgetStore.resolveAccountId(
-            hint: "  ", accounts: accounts, cardMappings: [:])
+    @Test func returnsNilOnlyWhenNoOpenAccounts() {
+        let accounts = [account("acct_old", "Old", closed: true)]
+
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "1234", accounts: accounts,
+            cardMappings: ["1234": "acct_old"], defaultAccountId: "acct_old")
         #expect(result == nil)
     }
 
@@ -83,10 +93,10 @@ struct PendingImportsResolveAccountTests {
         // Parser extracts cardHint "1234", mapping routes to HSBC.
         // Before the fix: fell through to Cash (first account).
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
-        let mappings = ["1234": "acct_hsbc"]
 
-        let result = BudgetStore.resolveAccountId(
-            hint: "1234", accounts: accounts, cardMappings: mappings)
+        let result = PendingImportsView.seedAccountId(
+            cardHint: "1234", accounts: accounts,
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
         #expect(result == "acct_hsbc")
     }
 }
