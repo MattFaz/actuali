@@ -336,6 +336,16 @@ struct AccountDetailView: View {
                     }
                 }
             }
+            if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        Task { await budgetStore.runBankSync(accountIds: [account.id]) }
+                    } label: {
+                        Label("Sync from Bank", systemImage: "building.columns")
+                    }
+                    .disabled(budgetStore.isBankSyncing)
+                }
+            }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
