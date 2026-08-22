@@ -56,6 +56,19 @@ private extension BudgetStore {
 }
 
 struct BudgetView: View {
+    static let incomeGroupCollapseID = "__income_group__"
+
+    /// IDs controlled by Expand/Collapse All for the budget currently shown.
+    /// Kept pure so the income-group participation has non-UI test coverage.
+    nonisolated static func displayedGroupIDs(
+        groupIDs: [String],
+        hasIncome: Bool
+    ) -> Set<String> {
+        var ids = Set(groupIDs)
+        if hasIncome { ids.insert(incomeGroupCollapseID) }
+        return ids
+    }
+
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
@@ -83,12 +96,20 @@ struct BudgetView: View {
     // Expand/collapse all touch only the displayed budget's groups; ids
     // remembered for other budget files stay put (GH #130).
     private func collapseAllGroups() {
-        let groups = collapsedGroups.union(groupedCategories.map(\.id))
+        let displayedGroupIDs = Self.displayedGroupIDs(
+            groupIDs: groupedCategories.map(\.id),
+            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+        )
+        let groups = collapsedGroups.union(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
     private func expandAllGroups() {
-        let groups = collapsedGroups.subtracting(groupedCategories.map(\.id))
+        let displayedGroupIDs = Self.displayedGroupIDs(
+            groupIDs: groupedCategories.map(\.id),
+            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+        )
+        let groups = collapsedGroups.subtracting(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
@@ -142,7 +163,7 @@ struct BudgetView: View {
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
             }
-            .sheet(item: $newBudgetItem, onDismiss: reloadAfterCreating) { item in
+            .sheet(item: $newBudgetItem) { item in
                 switch item {
                 case .category:
                     NewCategorySheet(groupId: firstSelectableGroupId ?? "")
@@ -232,21 +253,55 @@ struct BudgetView: View {
     /// `List` so the body stays within the compiler's type-check budget.
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
-        Section {
-            ForEach(budget.incomeCategories) { income in
-                IncomeCategoryRow(
-                    income: income,
-                    // Only tracking budgets budget income;
-                    // envelope budgets just receive it.
-                    showsBudgeted: budget.toBudget == nil,
-                    onShowTransactions: showTransactions
+        let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
+        let name = budget.incomeCategories.first?.groupName ?? "Income"
+        if budgetStore.budgetDisplayStyle == .clean {
+            Section {
+                if !isCollapsed {
+                    ForEach(budget.incomeCategories) { income in
+                        IncomeCategoryRow(
+                            income: income,
+                            showsBudgeted: budget.toBudget == nil,
+                            isDetailed: false,
+                            onShowTransactions: showTransactions
+                        )
+                    }
+                }
+            } header: {
+                BudgetGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    receivedTotal: budget.totalIncome,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    }
                 )
+                .textCase(nil)
             }
-        } header: {
-            HStack {
-                Text(budget.incomeCategories.first?.groupName ?? "Income")
-                Spacer()
-                Text("Received \(budgetStore.displayBalance(budget.totalIncome))")
+        } else {
+            Section {
+                BudgetGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    receivedTotal: budget.totalIncome,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    },
+                    usesTableNumberFormat: true,
+                    reservesTwoLines: true
+                )
+                .listRowBackground(Color(.tertiarySystemFill))
+                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
+                if !isCollapsed {
+                    ForEach(budget.incomeCategories) { income in
+                        IncomeCategoryRow(
+                            income: income,
+                            showsBudgeted: budget.toBudget == nil,
+                            isDetailed: true,
+                            onShowTransactions: showTransactions
+                        )
+                    }
+                }
             }
         }
     }
@@ -260,15 +315,29 @@ struct BudgetView: View {
         // used to be mistaken for one (it steps the month, not the
         // navigation stack).
         ToolbarItem(placement: .principal) {
-            // The glyphs are ~14pt, so each one gets padded out to the 44pt
-            // minimum touch target and the stack drops its spacing — the
-            // padding is what separates them now.
+            // UIKit centers a title view only while it stays under ~140pt
+            // next to these two trailing buttons; one point over and it
+            // left-aligns the whole stepper against the leading edge instead.
+            // That cliff has been hit twice — GH #234, then again by #319
+            // padding both chevrons out to 44pt wide (44 + 44 + a 78pt
+            // "Aug 2026" = 166). So the width is the budget: the touch target
+            // grows downward to 44pt and stays 30pt wide, giving 138 total.
+            // `.frame(maxWidth: .infinity)` can't buy centering back — the
+            // title view is sized to fit its content, so the frame has no
+            // extra width to center in.
+            //
+            // ponytail: 138 of ~140 is all the headroom there is, and the slot
+            // shrinks as the trailing buttons scale, so raised text sizes still
+            // left-align (measured at XXXL). Anything that needs a bigger
+            // stepper — a third trailing button, unabbreviated months, real
+            // Dynamic Type support — has to leave the bar for a pinned header
+            // row above the summary card, where centering is real layout.
             HStack(spacing: 0) {
                 Button {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
                 } label: {
                     Image(systemName: "chevron.left")
-                        .frame(width: 44, height: 44)
+                        .frame(width: 30, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Previous month")
@@ -279,15 +348,11 @@ struct BudgetView: View {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: 1)
                 } label: {
                     Image(systemName: "chevron.right")
-                        .frame(width: 44, height: 44)
+                        .frame(width: 30, height: 44)
                         .contentShape(.rect)
                 }
                 .accessibilityLabel("Next month")
             }
-            // The wider hit targets make the group too big for the toolbar to
-            // center on its own, so it claims the whole title region and
-            // centers the stepper inside it.
-            .frame(maxWidth: .infinity)
         }
         // Creation, unlike everything in the options menu, changes the budget
         // rather than the view of it — so it gets its own button (GH #284).
@@ -392,9 +457,18 @@ struct BudgetView: View {
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.orange)
+                    // Reads as a full-width row like the List section it used
+                    // to live in (GH #29 / #305), not a stray line of text.
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(
+                        RoundedRectangle(cornerRadius: 16)
+                            .fill(Color(.secondarySystemGroupedBackground))
+                    )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                .padding(.horizontal, 12)
+                .padding(.horizontal, 4)
                 .padding(.bottom, 8)
             }
 
@@ -445,9 +519,6 @@ struct BudgetView: View {
             // fired a sync.
             .refreshable {
                 await budgetStore.sync()
-                // sync() refreshes the current calendar month; re-fetch in
-                // case the user is viewing another.
-                await budgetStore.fetchBudgetMonth(selectedMonth)
             }
             .contentMargins(.horizontal, 4, for: .scrollContent)
             // The rest of the gap under the pinned summary — this part
@@ -517,15 +588,6 @@ struct BudgetView: View {
         let visible = budgetStore.categoryGroups.filter { !$0.hidden }
         return visible.min { $0.sortOrder < $1.sortOrder }?.id
     }
-
-    /// `createCategory`/`createCategoryGroup` refresh the current calendar
-    /// month; if the table is showing a different one, fetch that too so the
-    /// new row appears without a pull-to-refresh.
-    private func reloadAfterCreating() {
-        guard selectedMonth != Self.currentMonthString() else { return }
-        Task { await budgetStore.fetchBudgetMonth(selectedMonth) }
-    }
-
 
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
@@ -1088,7 +1150,14 @@ struct BudgetGroupHeader: View {
     /// The detailed style totals its columns here; the clean style's header
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
+    /// Income groups use the same header shell but have one meaningful total:
+    /// money received. It occupies the trailing column where expense groups
+    /// show their balance.
+    var receivedTotal: Int? = nil
     let onToggleCollapse: () -> Void
+    /// Detailed tables omit currency symbols from their numeric columns;
+    /// clean headers retain the app-wide currency presentation.
+    var usesTableNumberFormat = false
     /// The detailed style reserves two lines so group rows stay equal-height
     /// whether names wrap or not (GH #252); the clean style's plain section
     /// titles keep their natural height.
@@ -1128,6 +1197,12 @@ struct BudgetGroupHeader: View {
                         // group that lands on zero doesn't read as healthy.
                         color: totals.balance < 0 ? .red : (totals.balance == 0 ? .secondary : .green)
                     )
+                } else if let receivedTotal {
+                    Text("Received \(receivedText(receivedTotal))")
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
                 }
             }
             .contentShape(Rectangle())
@@ -1142,12 +1217,21 @@ struct BudgetGroupHeader: View {
     /// formatting, not the table's symbol-less cells, reads better aloud.
     private var accessibilityLabel: String {
         let state = isCollapsed ? "collapsed" : "expanded"
+        if let receivedTotal {
+            return "\(name), \(state), received \(budgetStore.displayBalance(receivedTotal))"
+        }
         guard let totals else { return "\(name), \(state)" }
         return """
             \(name), \(state), \
             spent \(budgetStore.displayBalance(totals.spent)), \
             balance \(budgetStore.displayBalance(totals.balance))
             """
+    }
+
+    private func receivedText(_ amount: Int) -> String {
+        usesTableNumberFormat
+            ? budgetStore.displayBudgetCell(amount)
+            : budgetStore.displayBalance(amount)
     }
 }
 
@@ -1157,26 +1241,36 @@ struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
     var showsBudgeted = false
+    var isDetailed = false
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack {
+            HStack(spacing: isDetailed ? BudgetColumn.spacing : 8) {
                 Button {
                     onShowTransactions(income, nil)
                 } label: {
-                    TwoLineName(text: income.categoryName, font: .body)
+                    TwoLineName(
+                        text: income.categoryName,
+                        font: isDetailed ? .subheadline : .body,
+                        minimumScaleFactor: 0.85
+                    )
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("All transactions for \(income.categoryName)")
 
                 Spacer()
 
-                Button {
-                    onShowTransactions(income, income.month)
-                } label: {
-                    Text(budgetStore.displayBalance(income.received))
-                        .foregroundColor(income.received > 0 ? .green : .secondary)
+                Button { onShowTransactions(income, income.month) } label: {
+                    if isDetailed {
+                        BudgetAmountPill(
+                            text: budgetStore.displayBudgetCell(income.received),
+                            color: income.received > 0 ? .green : .secondary
+                        )
+                    } else {
+                        Text(budgetStore.displayBalance(income.received))
+                            .foregroundColor(income.received > 0 ? .green : .secondary)
+                    }
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
@@ -1187,7 +1281,12 @@ struct IncomeCategoryRow: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+        .listRowInsets(EdgeInsets(
+            top: 4,
+            leading: isDetailed ? 12 : 16,
+            bottom: 4,
+            trailing: 16
+        ))
     }
 }
 
