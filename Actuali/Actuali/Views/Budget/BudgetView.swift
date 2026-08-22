@@ -41,8 +41,9 @@ enum BudgetColumn {
     /// Cell text for the budget table: a plain grouped number without the
     /// currency symbol, like the PWA's budget table — "USD 1,850.00" in
     /// every cell would drown the category names on a phone.
-    static func text(_ cents: Int) -> String {
-        (Double(cents) / 100.0).formatted(.number.precision(.fractionLength(2)))
+    static func text(_ cents: Int, wholeUnits: Bool = false) -> String {
+        (Double(cents) / 100.0).formatted(
+            .number.precision(.fractionLength(wholeUnits ? 0 : 2)))
     }
 }
 
@@ -51,7 +52,7 @@ private extension BudgetStore {
     /// Lives here rather than on the store proper so the table's
     /// symbol-less number format stays private to this file.
     func displayBudgetCell(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : BudgetColumn.text(cents)
+        hideBalances ? Self.hiddenBalanceText : BudgetColumn.text(cents, wholeUnits: hideDecimalPlaces)
     }
 }
 
