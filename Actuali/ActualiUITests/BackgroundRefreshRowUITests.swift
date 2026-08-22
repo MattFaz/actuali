@@ -17,7 +17,11 @@ final class BackgroundRefreshRowUITests: XCTestCase {
                                "-stampBackgroundRefreshOnBackground"]
         app.launch()
 
-        // The Sync section sits below the fold; SwiftUI forms only create
+        let connectionAndData = app.buttons["Connection & Data"]
+        XCTAssertTrue(connectionAndData.waitForExistence(timeout: 5))
+        connectionAndData.tap()
+
+        // The Sync section sits below the fold in its destination; SwiftUI forms only create
         // rows on screen, so scroll until the row exists.
         let row = app.staticTexts["Last Background Refresh"]
         var swipes = 0
