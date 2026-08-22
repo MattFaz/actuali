@@ -229,7 +229,6 @@ final class BudgetDatabase: Sendable {
         (1780606215004, "accounts", "last_sync", [],
          "ALTER TABLE accounts ADD COLUMN last_sync TEXT")
     ]
-    ]
 
     // Tables added upstream after the original budget file was created. These run
     // unconditionally so CRDT messages targeting these tables have somewhere to land.
@@ -326,7 +325,6 @@ final class BudgetDatabase: Sendable {
         1780606215002, // second half of upstream index migration 1780606215001
         1780606215003, // locally minted accounts.account_sync_source backfill   // ← add
         1780606215004, // locally minted accounts.last_sync backfill             // ← add
-    ]
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the

@@ -11,7 +11,7 @@ private let issueTrackerURL = URL(string: "https://github.com/MattFaz/actuali/is
 struct SettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.scenePhase) private var scenePhase
-
+    
     /// Every currency in Actual's loot-core currencies list, plus a few
     /// user-requested extras Actual lacks (AMD, BDT, NOK, NZD, ZAR). Sorted by
     /// code. Display-only — all budget math is currency-agnostic integer
@@ -83,7 +83,7 @@ struct SettingsView: View {
     @State private var refreshRequestError = BackgroundRefreshStatus().lastScheduleError
     @State private var confirmBackupOverBaseline = false
     @State private var dashboardPages: [DashboardPage] = []
-
+    
     /// Persists the opt-in and requests permission on enable. Background
     /// refresh runs regardless of this toggle (it keeps data fresh for
     /// everyone); only notification posting is gated on it.
@@ -101,13 +101,13 @@ struct SettingsView: View {
             }
         )
     }
-
+    
     private func enableTransactionNotifications() async {
         let center = UNUserNotificationCenter.current()
         let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
         notificationPermissionDenied = !granted
     }
-
+    
     /// Permission can change in the Settings app while we're backgrounded;
     /// re-check whenever the screen appears.
     private func refreshNotificationPermissionState() async {
@@ -115,13 +115,13 @@ struct SettingsView: View {
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         notificationPermissionDenied = status == .denied
     }
-
+    
     private func reloadBackgroundRefreshStatus() {
         let status = BackgroundRefreshStatus()
         lastBackgroundRefresh = status.lastRun
         refreshRequestError = status.lastScheduleError
     }
-
+    
     private func reloadDashboardPages() async {
         guard let database = budgetStore.databaseForLogger else {
             dashboardPages = []
@@ -141,13 +141,13 @@ struct SettingsView: View {
             budgetStore.defaultDashboardPageId = nil
         }
     }
-
+    
     private static var appVersion: String {
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "Unknown"
         let build = Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "Unknown"
         return "\(version) (\(build))"
     }
-
+    
     /// Routes the picker's selection through `setCurrencyCode`, which
     /// persists the choice into the budget's own `preferences` table (not
     /// just UserDefaults) so it survives a relaunch (GH #59).
@@ -159,7 +159,7 @@ struct SettingsView: View {
             }
         )
     }
-
+    
     private var budgetPickerBinding: Binding<String?> {
         Binding(
             get: {
@@ -181,7 +181,7 @@ struct SettingsView: View {
             }
         )
     }
-
+    
     private func openBudget(_ budget: BudgetStore.RemoteBudget) {
         if budget.isEncrypted && EncryptionKeyManager.load(fileId: budget.id) == nil {
             budgetToUnlock = budget
@@ -189,7 +189,7 @@ struct SettingsView: View {
             Task { await budgetStore.downloadBudget(budget) }
         }
     }
-
+    
     /// One-time nudge after connecting: surface budget selection so a fresh
     /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
@@ -197,320 +197,512 @@ struct SettingsView: View {
             showingBudgetSelectPrompt = true
         }
     }
+    
+    // Extracted from `body` because the combined Form was too large for the
+    // type-checker to solve in reasonable time.
+    @ViewBuilder
+    private var preferencesSection: some View {
+        Section {
+            Picker("Currency", selection: currencyPickerBinding) {
+                // Empty code = no currency, matching Actual's
+                // defaultCurrencyCode convention. Amounts render as
+                // plain numbers.
+                Text("None").tag("")
+                ForEach(Self.currencyOptions, id: \.code) { option in
+                    Text("\(option.symbol) \(option.code)").tag(option.code)
+                }
+            }
 
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Server URL", text: $budgetStore.serverURL)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                        .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Example: https://actual.example.com")
+            // Meaningless with no currency selected, so hidden there.
+            if !budgetStore.currencyCode.isEmpty {
+                Toggle("Symbol Only", isOn: $budgetStore.useNarrowCurrencySymbol)
+            }
 
-                    TextField("Fallback server URL (optional)", text: $budgetStore.fallbackServerURL)
-                        .textContentType(.URL)
-                        .autocapitalization(.none)
-                        .keyboardType(.URL)
-                        .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Used when the primary server cannot be reached")
+            Picker("Appearance", selection: $budgetStore.appearanceMode) {
+                ForEach(AppearanceMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
 
-                    if !budgetStore.isConnected {
-                        // Show the password field before probing, when password
-                        // login is active, or when the first OpenID sign-in needs
-                        // the server password (no owner yet).
-                        if budgetStore.availableLoginMethods.isEmpty
-                            || budgetStore.passwordLoginActive
-                            || budgetStore.requiresServerPassword {
-                            SecureField(
-                                budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
-                                    ? "Server password (first sign-in)"
-                                    : "Password",
-                                text: $password
+            Picker("Start Page", selection: $budgetStore.startTab) {
+                ForEach(StartTab.allCases) { tab in
+                    Text(tab.label).tag(tab)
+                }
+            }
+
+            // Nothing to choose between with one page, and the picker
+            // would only ever offer the page already on screen.
+            if dashboardPages.count > 1 {
+                Picker("Default Dashboard", selection: $budgetStore.defaultDashboardPageId) {
+                    Text("First Dashboard").tag(nil as String?)
+                    ForEach(dashboardPages) { page in
+                        Text(page.name.isEmpty ? "Untitled" : page.name).tag(page.id as String?)
+                    }
+                }
+            }
+
+            Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+                ForEach(TransactionDisplayMode.allCases) { mode in
+                    Text(mode.label).tag(mode)
+                }
+            }
+
+            Picker("Uncategorized Action", selection: $budgetStore.uncategorizedTapAction) {
+                ForEach(UncategorizedTapAction.allCases) { action in
+                    Text(action.label).tag(action)
+                }
+            }
+
+            Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
+
+            Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
+
+            Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
+
+            Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
+
+            // Meaningless against servers that predate payee
+            // locations (< 26.4.0), so hidden there.
+            if budgetStore.payeeLocationWritesEnabled {
+                Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+
+                // Clearing needs the same >= 26.4.0 server, so this
+                // lives inside the gate too (GH #147).
+                NavigationLink {
+                    PayeeLocationsView()
+                } label: {
+                    Text("Payee Locations")
+                }
+            }
+
+            if budgetStore.currentBudgetId != nil {
+                NavigationLink {
+                    CardAccountMappingsView()
+                } label: {
+                    HStack {
+                        Text("Card & Account Mappings")
+                        Spacer()
+                        if !budgetStore.cardAccountMappings.isEmpty {
+                            Text("\(budgetStore.cardAccountMappings.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if budgetStore.currentBudgetId != nil {
+                NavigationLink {
+                    CreditCardsSettingsView()
+                } label: {
+                    HStack {
+                        Text("Credit Cards & Billing Cycles")
+                        Spacer()
+                        // Same predicate the screen itself lists, so the
+                        // badge can't promise cards the list won't show.
+                        let cardCount = budgetStore.activeCreditCardStatementDays.count
+                        if cardCount > 0 {
+                            Text("\(cardCount)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+            }
+
+            if budgetStore.currentBudgetId != nil {
+                NavigationLink {
+                    RulesListView()
+                } label: {
+                    Text("Rules")
+                }
+            }
+        } header: {
+            Text("Preferences")
+        } footer: {
+            if budgetStore.currencyCode.isEmpty {
+                Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+            } else {
+                Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+            }
+        }
+    }
+
+    // Extracted from `body` for the same type-checker reason as
+    // `preferencesSection`.
+    @ViewBuilder
+    private var syncSection: some View {
+        if budgetStore.currentBudgetId != nil {
+            Section("Sync") {
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    switch budgetStore.syncState {
+                    case .idle:
+                        Text("Idle")
+                            .foregroundStyle(.secondary)
+                    case .syncing:
+                        HStack(spacing: 4) {
+                            ProgressView()
+                                .scaleEffect(0.7)
+                            Text("Syncing...")
+                                .foregroundStyle(.secondary)
+                        }
+                    case .offline:
+                        Text("Offline")
+                            .foregroundStyle(.orange)
+                    case .error:
+                        Text("Error")
+                            .foregroundStyle(.red)
+                    }
+                }
+
+                if case let .error(message) = budgetStore.syncState {
+                    Text(message)
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                if budgetStore.syncDetachedByRestore {
+                    Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+
+                if let lastSync = budgetStore.lastSyncTime {
+                    HStack {
+                        Text("Last Sync")
+                        Spacer()
+                        Text(lastSync, style: .relative)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Diagnostic: "Never" (or a stale time) with Background
+                // App Refresh enabled usually means the app was
+                // force-quit — iOS won't run the task until next launch.
+                HStack {
+                    Text("Last Background Refresh")
+                    Spacer()
+                    if let lastBackgroundRefresh {
+                        Text(lastBackgroundRefresh, style: .relative)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text("Never")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                // Distinguishes "the app never asked for a wake" from
+                // "iOS never granted one": a stale row above with no
+                // footnote here points at the system or device
+                // settings, not the app. Hidden while submits succeed
+                // (the common case — we resubmit on every activation).
+                if let refreshRequestError {
+                    Text("Refresh request failed: \(refreshRequestError)")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                }
+
+                Button("Sync Now") {
+                    Task {
+                        await budgetStore.sync()
+                    }
+                }
+                .disabled(budgetStore.syncState == .syncing)
+
+                if case .error = budgetStore.syncState {
+                    Button("Reset Sync State", role: .destructive) {
+                        showingResetSyncConfirm = true
+                    }
+                    .disabled(budgetStore.syncState == .syncing)
+                }
+            }
+        }
+    }
+
+    // Extracted from `body` for the same type-checker reason as
+    // `preferencesSection`.
+    @ViewBuilder
+    private var backupsSection: some View {
+        if budgetStore.currentBudgetId != nil {
+            Section {
+                NavigationLink {
+                    BackupListView()
+                } label: {
+                    HStack {
+                        Text("Backups")
+                        Spacer()
+                        if !budgetStore.backups.isEmpty {
+                            Text("\(budgetStore.backups.count)")
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+
+                Button("Back Up Now") {
+                    if budgetStore.isViewingBackup {
+                        confirmBackupOverBaseline = true
+                    } else {
+                        Task { await budgetStore.makeBackupNow() }
+                    }
+                }
+                .confirmationDialog(
+                    "Back up the restored data?",
+                    isPresented: $confirmBackupOverBaseline,
+                    titleVisibility: .visible
+                ) {
+                    Button("Back Up", role: .destructive) {
+                        Task { await budgetStore.makeBackupNow() }
+                    }
+                    Button("Cancel", role: .cancel) {}
+                } message: {
+                    Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
+                }
+            } header: {
+                Text("Backups")
+            } footer: {
+                // No cadence promise — iOS can't run a 15-minute
+                // background timer (plan D2).
+                Text("Backups are stored on this device. One is taken automatically when you leave the app.")
+            }
+            .task { await budgetStore.refreshBackups() }
+        }
+    }
+
+    // Extracted from `body` for the same type-checker reason as
+    // `preferencesSection`.
+    @ViewBuilder
+    private var notificationsSection: some View {
+        Section {
+            Toggle("New Transaction Alerts", isOn: transactionNotificationsBinding)
+
+            if notificationPermissionDenied {
+                Button("Open Settings to Allow Notifications") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) {
+                        UIApplication.shared.open(url)
+                    }
+                }
+            }
+        } header: {
+            Text("Notifications")
+        } footer: {
+            if notificationPermissionDenied {
+                Text("Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered.")
+            } else {
+                Text("Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh.")
+            }
+        }
+    }
+
+    // Extracted from `body` for the same type-checker reason as
+    // `preferencesSection`.
+    @ViewBuilder
+    private var serverConnectionSection: some View {
+        Section {
+            TextField("Server URL", text: $budgetStore.serverURL)
+                .textContentType(.URL)
+                .autocapitalization(.none)
+                .keyboardType(.URL)
+                .disabled(budgetStore.isConnected)
+                .accessibilityHint("Example: https://actual.example.com")
+
+            TextField("Fallback server URL (optional)", text: $budgetStore.fallbackServerURL)
+                .textContentType(.URL)
+                .autocapitalization(.none)
+                .keyboardType(.URL)
+                .disabled(budgetStore.isConnected)
+                .accessibilityHint("Used when the primary server cannot be reached")
+
+            if !budgetStore.isConnected {
+                // Show the password field before probing, when password
+                // login is active, or when the first OpenID sign-in needs
+                // the server password (no owner yet).
+                if budgetStore.availableLoginMethods.isEmpty
+                    || budgetStore.passwordLoginActive
+                    || budgetStore.requiresServerPassword {
+                    SecureField(
+                        budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
+                        ? "Server password (first sign-in)"
+                        : "Password",
+                        text: $password
+                    )
+                }
+
+                Button("Connect") {
+                    Task {
+                        await budgetStore.connect()
+                        guard budgetStore.error == nil else { return }
+                        // Discover available auth methods, then log in with
+                        // password directly when that's the active method.
+                        await budgetStore.checkLoginMethods()
+                        // A probe that couldn't reach the server has
+                        // already explained why; don't repeat the same
+                        // failure as a login attempt.
+                        guard budgetStore.error == nil else { return }
+                        if budgetStore.passwordLoginActive && !password.isEmpty {
+                            await budgetStore.login(password: password)
+                        }
+                    }
+                }
+                .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
+
+                if budgetStore.supportsOpenIDLogin {
+                    Button("Sign in with OpenID") {
+                        Task {
+                            await budgetStore.loginWithOpenID(
+                                firstTimePassword: password.isEmpty ? nil : password
                             )
                         }
+                    }
+                    .disabled(budgetStore.isLoading
+                              || (budgetStore.requiresServerPassword && password.isEmpty))
+                }
 
-                        Button("Connect") {
-                            Task {
-                                await budgetStore.connect()
-                                guard budgetStore.error == nil else { return }
-                                // Discover available auth methods, then log in with
-                                // password directly when that's the active method.
-                                await budgetStore.checkLoginMethods()
-                                // A probe that couldn't reach the server has
-                                // already explained why; don't repeat the same
-                                // failure as a login attempt.
-                                guard budgetStore.error == nil else { return }
-                                if budgetStore.passwordLoginActive && !password.isEmpty {
-                                    await budgetStore.login(password: password)
-                                }
-                            }
+                Menu("Try the demo budget") {
+                    Button("Envelope budget") {
+                        Task { await budgetStore.loadDemoData() }
+                    }
+                    Button("Tracking budget") {
+                        Task { await budgetStore.loadDemoData(tracking: true) }
+                    }
+                }
+                .disabled(budgetStore.isLoading)
+
+                NavigationLink {
+                    CustomHeadersEditor(headers: $budgetStore.customHeaders)
+                } label: {
+                    HStack {
+                        Text("Custom HTTP headers")
+                        Spacer()
+                        let count = budgetStore.customHeaders.filter {
+                            !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
+                        }.count
+                        if count > 0 {
+                            Text("\(count)")
+                                .foregroundStyle(.secondary)
                         }
-                        .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
+                    }
+                }
+            } else {
+                HStack {
+                    Text("Status")
+                    Spacer()
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(.green)
+                            .frame(width: 8, height: 8)
+                        Text("Connected")
+                            .foregroundStyle(.secondary)
+                    }
+                }
 
-                        if budgetStore.supportsOpenIDLogin {
-                            Button("Sign in with OpenID") {
-                                Task {
-                                    await budgetStore.loginWithOpenID(
-                                        firstTimePassword: password.isEmpty ? nil : password
-                                    )
-                                }
-                            }
-                            .disabled(budgetStore.isLoading
-                                || (budgetStore.requiresServerPassword && password.isEmpty))
+                Button("Disconnect", role: .destructive) {
+                    showingDisconnectConfirm = true
+                }
+            }
+        } header: {
+            Text("Server Connection")
+        } footer: {
+            if !budgetStore.isConnected {
+                Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
+            }
+        }
+    }
+
+    // Extracted from `body` for the same type-checker reason as
+    // `preferencesSection`.
+    @ViewBuilder
+    private var budgetSelectionSection: some View {
+        // Shown while connected OR while a budget is loaded without a
+        // session (demo, offline): the Default Account row below must
+        // stay reachable in both.
+        if budgetStore.isConnected || budgetStore.currentBudgetId != nil {
+            Section {
+                if budgetStore.isConnected {
+                    Picker("Budget", selection: budgetPickerBinding) {
+                        // Placeholder until a budget is chosen — deliberately
+                        // not offered again afterwards, so "None" can't be
+                        // (re)selected.
+                        if budgetPickerBinding.wrappedValue == nil {
+                            Text("Select a Budget").tag(nil as String?)
                         }
-
-                        Menu("Try the demo budget") {
-                            Button("Envelope budget") {
-                                Task { await budgetStore.loadDemoData() }
-                            }
-                            Button("Tracking budget") {
-                                Task { await budgetStore.loadDemoData(tracking: true) }
-                            }
+                        // Render a placeholder tag for the current cloudFileId
+                        // when remoteBudgets hasn't loaded yet (or doesn't
+                        // include it), so SwiftUI can match the selection
+                        // and we don't get an "invalid selection" warning.
+                        if let currentId = budgetPickerBinding.wrappedValue,
+                           !budgetStore.remoteBudgets.contains(where: { $0.id == currentId }) {
+                            Text(budgetStore.remoteBudgets.isEmpty ? "Loading…" : "Unknown")
+                                .tag(currentId as String?)
                         }
-                        .disabled(budgetStore.isLoading)
+                        ForEach(budgetStore.remoteBudgets.filter { !$0.isEncrypted }) { budget in
+                            Text(budget.name).tag(budget.id as String?)
+                        }
+                    }
+                    .disabled(budgetStore.downloadingBudgetId != nil)
 
-                        NavigationLink {
-                            CustomHeadersEditor(headers: $budgetStore.customHeaders)
+                    ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
+                        Button {
+                            openBudget(budget)
                         } label: {
                             HStack {
-                                Text("Custom HTTP headers")
+                                Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                                Text(budget.name)
                                 Spacer()
-                                let count = budgetStore.customHeaders.filter {
-                                    !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
-                                }.count
-                                if count > 0 {
-                                    Text("\(count)")
-                                        .foregroundStyle(.secondary)
+                                if budgetStore.downloadingBudgetId == budget.id {
+                                    ProgressView()
                                 }
                             }
                         }
+                        .disabled(budgetStore.downloadingBudgetId != nil)
+                    }
+
+                    if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                        Button("Refresh Budgets") {
+                            Task { await budgetStore.fetchRemoteBudgets() }
+                        }
+                    }
+                }
+
+                // Lives up here rather than under Preferences because
+                // it's the natural next step after choosing a budget —
+                // Shortcuts and Wallet automation can't post without
+                // it (GH #122).
+                if budgetStore.currentBudgetId != nil {
+                    Picker("Default Account", selection: $budgetStore.defaultAccountId) {
+                        Text("None").tag(nil as String?)
+                        ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
+                            Text(account.name).tag(account.id as String?)
+                        }
+                    }
+                }
+            } header: {
+                Text("Budget")
+            } footer: {
+                if budgetStore.currentBudgetId == nil {
+                    if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                        Text("No budgets were found on your server. Create one in Actual Budget, then tap Refresh Budgets.")
                     } else {
-                        HStack {
-                            Text("Status")
-                            Spacer()
-                            HStack(spacing: 4) {
-                                Circle()
-                                    .fill(.green)
-                                    .frame(width: 8, height: 8)
-                                Text("Connected")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        Button("Disconnect", role: .destructive) {
-                            showingDisconnectConfirm = true
-                        }
+                        Text("Select a budget to load it onto this device. The app stays empty until one is chosen.")
                     }
-                } header: {
-                    Text("Server Connection")
-                } footer: {
-                    if !budgetStore.isConnected {
-                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
-                    }
+                } else {
+                    Text("New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen.")
                 }
+            }
+        }
+    }
 
-                // Shown while connected OR while a budget is loaded without a
-                // session (demo, offline): the Default Account row below must
-                // stay reachable in both.
-                if budgetStore.isConnected || budgetStore.currentBudgetId != nil {
-                    Section {
-                        if budgetStore.isConnected {
-                            Picker("Budget", selection: budgetPickerBinding) {
-                                // Placeholder until a budget is chosen — deliberately
-                                // not offered again afterwards, so "None" can't be
-                                // (re)selected.
-                                if budgetPickerBinding.wrappedValue == nil {
-                                    Text("Select a Budget").tag(nil as String?)
-                                }
-                                // Render a placeholder tag for the current cloudFileId
-                                // when remoteBudgets hasn't loaded yet (or doesn't
-                                // include it), so SwiftUI can match the selection
-                                // and we don't get an "invalid selection" warning.
-                                if let currentId = budgetPickerBinding.wrappedValue,
-                                   !budgetStore.remoteBudgets.contains(where: { $0.id == currentId }) {
-                                    Text(budgetStore.remoteBudgets.isEmpty ? "Loading…" : "Unknown")
-                                        .tag(currentId as String?)
-                                }
-                                ForEach(budgetStore.remoteBudgets.filter { !$0.isEncrypted }) { budget in
-                                    Text(budget.name).tag(budget.id as String?)
-                                }
-                            }
-                            .disabled(budgetStore.downloadingBudgetId != nil)
-
-                            ForEach(budgetStore.remoteBudgets.filter { $0.isEncrypted }) { budget in
-                                Button {
-                                    openBudget(budget)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                                        Text(budget.name)
-                                        Spacer()
-                                        if budgetStore.downloadingBudgetId == budget.id {
-                                            ProgressView()
-                                        }
-                                    }
-                                }
-                                .disabled(budgetStore.downloadingBudgetId != nil)
-                            }
-
-                            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
-                                Button("Refresh Budgets") {
-                                    Task { await budgetStore.fetchRemoteBudgets() }
-                                }
-                            }
-                        }
-
-                        // Lives up here rather than under Preferences because
-                        // it's the natural next step after choosing a budget —
-                        // Shortcuts and Wallet automation can't post without
-                        // it (GH #122).
-                        if budgetStore.currentBudgetId != nil {
-                            Picker("Default Account", selection: $budgetStore.defaultAccountId) {
-                                Text("None").tag(nil as String?)
-                                ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
-                                    Text(account.name).tag(account.id as String?)
-                                }
-                            }
-                        }
-                    } header: {
-                        Text("Budget")
-                    } footer: {
-                        if budgetStore.currentBudgetId == nil {
-                            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
-                                Text("No budgets were found on your server. Create one in Actual Budget, then tap Refresh Budgets.")
-                            } else {
-                                Text("Select a budget to load it onto this device. The app stays empty until one is chosen.")
-                            }
-                        } else {
-                            Text("New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen.")
-                        }
-                    }
-                }
-
-                Section {
-                    Picker("Currency", selection: currencyPickerBinding) {
-                        // Empty code = no currency, matching Actual's
-                        // defaultCurrencyCode convention. Amounts render as
-                        // plain numbers.
-                        Text("None").tag("")
-                        ForEach(Self.currencyOptions, id: \.code) { option in
-                            Text("\(option.symbol) \(option.code)").tag(option.code)
-                        }
-                    }
-
-                    // Meaningless with no currency selected, so hidden there.
-                    if !budgetStore.currencyCode.isEmpty {
-                        Toggle("Symbol Only", isOn: $budgetStore.useNarrowCurrencySymbol)
-                    }
-
-                    Picker("Appearance", selection: $budgetStore.appearanceMode) {
-                        ForEach(AppearanceMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-
-                    Picker("Start Page", selection: $budgetStore.startTab) {
-                        ForEach(StartTab.allCases) { tab in
-                            Text(tab.label).tag(tab)
-                        }
-                    }
-
-                    // Nothing to choose between with one page, and the picker
-                    // would only ever offer the page already on screen.
-                    if dashboardPages.count > 1 {
-                        Picker("Default Dashboard", selection: $budgetStore.defaultDashboardPageId) {
-                            Text("First Dashboard").tag(nil as String?)
-                            ForEach(dashboardPages) { page in
-                                Text(page.name.isEmpty ? "Untitled" : page.name).tag(page.id as String?)
-                            }
-                        }
-                    }
-
-                    Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
-                        ForEach(TransactionDisplayMode.allCases) { mode in
-                            Text(mode.label).tag(mode)
-                        }
-                    }
-                    
-                    Picker("Uncategorized Action", selection: $budgetStore.uncategorizedTapAction) {
-                        ForEach(UncategorizedTapAction.allCases) { action in
-                            Text(action.label).tag(action)
-                        }
-                    }
-
-                    Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
-
-                    Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
-
-                    Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
-
-                    Toggle("Hide Balances", isOn: $budgetStore.hideBalances)
-
-                    // Meaningless against servers that predate payee
-                    // locations (< 26.4.0), so hidden there.
-                    if budgetStore.payeeLocationWritesEnabled {
-                        Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
-
-                        // Clearing needs the same >= 26.4.0 server, so this
-                        // lives inside the gate too (GH #147).
-                        NavigationLink {
-                            PayeeLocationsView()
-                        } label: {
-                            Text("Payee Locations")
-                        }
-                    }
-
-                    if budgetStore.currentBudgetId != nil {
-                        NavigationLink {
-                            CardAccountMappingsView()
-                        } label: {
-                            HStack {
-                                Text("Card & Account Mappings")
-                                Spacer()
-                                if !budgetStore.cardAccountMappings.isEmpty {
-                                    Text("\(budgetStore.cardAccountMappings.count)")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-
-                    if budgetStore.currentBudgetId != nil {
-                        NavigationLink {
-                            CreditCardsSettingsView()
-                        } label: {
-                            HStack {
-                                Text("Credit Cards & Billing Cycles")
-                                Spacer()
-                                // Same predicate the screen itself lists, so the
-                                // badge can't promise cards the list won't show.
-                                let cardCount = budgetStore.activeCreditCardStatementDays.count
-                                if cardCount > 0 {
-                                    Text("\(cardCount)")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
-                    }
-
-                    if budgetStore.currentBudgetId != nil {
-                        NavigationLink {
-                            RulesListView()
-                        } label: {
-                            Text("Rules")
-                        }
-                    }
-                } header: {
-                    Text("Preferences")
-                } footer: {
-                    if budgetStore.currencyCode.isEmpty {
-                        Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
-                    } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
-                    }
-                }
+    // Split from the modifier chain in `body` so the two halves type-check
+    // independently — together they exceed the solver's budget.
+    private var settingsForm: some View {
+        NavigationStack {
+            Form {
+                serverConnectionSection
+                
+                budgetSelectionSection
+                
+                preferencesSection
                 
                 Section {
                     NavigationLink {
@@ -518,173 +710,25 @@ struct SettingsView: View {
                     } label: {
                         Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                     }
-
+                    
                     Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
                     Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
                 }
-
-                if budgetStore.currentBudgetId != nil {
-                    Section("Sync") {
-                        HStack {
-                            Text("Status")
-                            Spacer()
-                            switch budgetStore.syncState {
-                            case .idle:
-                                Text("Idle")
-                                    .foregroundStyle(.secondary)
-                            case .syncing:
-                                HStack(spacing: 4) {
-                                    ProgressView()
-                                        .scaleEffect(0.7)
-                                    Text("Syncing...")
-                                        .foregroundStyle(.secondary)
-                                }
-                            case .offline:
-                                Text("Offline")
-                                    .foregroundStyle(.orange)
-                            case .error:
-                                Text("Error")
-                                    .foregroundStyle(.red)
-                            }
-                        }
-
-                        if case let .error(message) = budgetStore.syncState {
-                            Text(message)
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-                        
-                        if budgetStore.syncDetachedByRestore {
-                            Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                        }
-
-                        if let lastSync = budgetStore.lastSyncTime {
-                            HStack {
-                                Text("Last Sync")
-                                Spacer()
-                                Text(lastSync, style: .relative)
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        // Diagnostic: "Never" (or a stale time) with Background
-                        // App Refresh enabled usually means the app was
-                        // force-quit — iOS won't run the task until next launch.
-                        HStack {
-                            Text("Last Background Refresh")
-                            Spacer()
-                            if let lastBackgroundRefresh {
-                                Text(lastBackgroundRefresh, style: .relative)
-                                    .foregroundStyle(.secondary)
-                            } else {
-                                Text("Never")
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-
-                        // Distinguishes "the app never asked for a wake" from
-                        // "iOS never granted one": a stale row above with no
-                        // footnote here points at the system or device
-                        // settings, not the app. Hidden while submits succeed
-                        // (the common case — we resubmit on every activation).
-                        if let refreshRequestError {
-                            Text("Refresh request failed: \(refreshRequestError)")
-                                .font(.footnote)
-                                .foregroundStyle(.secondary)
-                                .textSelection(.enabled)
-                        }
-
-                        Button("Sync Now") {
-                            Task {
-                                await budgetStore.sync()
-                            }
-                        }
-                        .disabled(budgetStore.syncState == .syncing)
-
-                        if case .error = budgetStore.syncState {
-                            Button("Reset Sync State", role: .destructive) {
-                                showingResetSyncConfirm = true
-                            }
-                            .disabled(budgetStore.syncState == .syncing)
-                        }
-                    }
-                }
                 
-                if budgetStore.currentBudgetId != nil {
-                    Section {
-                        NavigationLink {
-                            BackupListView()
-                        } label: {
-                            HStack {
-                                Text("Backups")
-                                Spacer()
-                                if !budgetStore.backups.isEmpty {
-                                    Text("\(budgetStore.backups.count)")
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                        }
+                syncSection
 
-                        Button("Back Up Now") {
-                            if budgetStore.isViewingBackup {
-                                confirmBackupOverBaseline = true
-                            } else {
-                                Task { await budgetStore.makeBackupNow() }
-                            }
-                        }
-                        .confirmationDialog(
-                            "Back up the restored data?",
-                            isPresented: $confirmBackupOverBaseline,
-                            titleVisibility: .visible
-                        ) {
-                            Button("Back Up", role: .destructive) {
-                                Task { await budgetStore.makeBackupNow() }
-                            }
-                            Button("Cancel", role: .cancel) {}
-                        } message: {
-                            Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
-                        }
-                    } header: {
-                        Text("Backups")
-                    } footer: {
-                        // No cadence promise — iOS can't run a 15-minute
-                        // background timer (plan D2).
-                        Text("Backups are stored on this device. One is taken automatically when you leave the app.")
-                    }
-                    .task { await budgetStore.refreshBackups() }
-                }
+                backupsSection
 
-                Section {
-                    Toggle("New Transaction Alerts", isOn: transactionNotificationsBinding)
-
-                    if notificationPermissionDenied {
-                        Button("Open Settings to Allow Notifications") {
-                            if let url = URL(string: UIApplication.openSettingsURLString) {
-                                UIApplication.shared.open(url)
-                            }
-                        }
-                    }
-                } header: {
-                    Text("Notifications")
-                } footer: {
-                    if notificationPermissionDenied {
-                        Text("Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered.")
-                    } else {
-                        Text("Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh.")
-                    }
-                }
-
+                notificationsSection
+                
                 Section {
                     NavigationLink {                                                  // ← add block
                         BankSyncSetupView()
                     } label: {
                         Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
                     }
-
+                    
                     NavigationLink {
                         WalletAutomationView()
                     } label: {
@@ -692,14 +736,13 @@ struct SettingsView: View {
                     }
                     if WalletImportView.isSupported {
                         Text("Connect SimpleFIN to import transactions straight from your bank, set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
-                        } else {
-                            Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
-                        }
-                        Button {
-                            showingWalletImport = true
-                        } label: {
-                            Label("Import Wallet Transactions", systemImage: "square.and.arrow.down")
-                        }
+                    } else {
+                        Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    }
+                    Button {
+                        showingWalletImport = true
+                    } label: {
+                        Label("Import Wallet Transactions", systemImage: "square.and.arrow.down")
                     }
                 } header: {
                     Text("Automations")
@@ -732,99 +775,103 @@ struct SettingsView: View {
                     Text("About")
                 }
             }
-            .readableWidth()
-            .navigationTitle("Settings")
-            .contentMargins(.horizontal, 6, for: .scrollContent)
-            .task {
+        }
+    }
+
+    var body: some View {
+        settingsForm
+        .readableWidth()
+        .navigationTitle("Settings")
+        .contentMargins(.horizontal, 6, for: .scrollContent)
+        .task {
+            reloadBackgroundRefreshStatus()
+            await refreshNotificationPermissionState()
+        }
+        // Keyed to the open database so the pages re-load when the budget
+        // finishes opening and when it's switched — Settings is a resident
+        // tab, so a plain .task only ever runs once.
+        .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) {
+            await reloadDashboardPages()
+        }
+        // Sync mutates dashboard_pages in the already-open database, whose
+        // identity doesn't change — so the task above can't see it. Matters
+        // most on a fresh budget, where the database opens before the first
+        // sync lands any pages at all.
+        .onChange(of: budgetStore.lastSyncTime) {
+            Task { await reloadDashboardPages() }
+        }
+        // The background refresh task fires while the app is suspended —
+        // same process, so the @State snapshot taken at launch never
+        // re-reads on its own and would show "Never" indefinitely.
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase == .active {
                 reloadBackgroundRefreshStatus()
-                await refreshNotificationPermissionState()
             }
-            // Keyed to the open database so the pages re-load when the budget
-            // finishes opening and when it's switched — Settings is a resident
-            // tab, so a plain .task only ever runs once.
-            .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) {
-                await reloadDashboardPages()
+        }
+        .sheet(item: $budgetToUnlock) { budget in
+            EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+        }
+        .sheet(isPresented: $showingWalletImport) {
+            WalletImportView()
+                .environmentObject(budgetStore)
+        }
+        .overlay {
+            if budgetStore.isLoading {
+                ProgressView()
             }
-            // Sync mutates dashboard_pages in the already-open database, whose
-            // identity doesn't change — so the task above can't see it. Matters
-            // most on a fresh budget, where the database opens before the first
-            // sync lands any pages at all.
-            .onChange(of: budgetStore.lastSyncTime) {
-                Task { await reloadDashboardPages() }
+        }
+        .confirmationDialog(
+            "Disconnect and remove data?",
+            isPresented: $showingDisconnectConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Disconnect & Remove Data", role: .destructive) {
+                budgetStore.logout()
+                password = ""
             }
-            // The background refresh task fires while the app is suspended —
-            // same process, so the @State snapshot taken at launch never
-            // re-reads on its own and would show "Never" indefinitely.
-            .onChange(of: scenePhase) { _, newPhase in
-                if newPhase == .active {
-                    reloadBackgroundRefreshStatus()
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
+        }
+        .confirmationDialog(
+            "Reset sync state?",
+            isPresented: $showingResetSyncConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Reset & Resync", role: .destructive) {
+                Task {
+                    await budgetStore.resetSyncState()
                 }
             }
-            .sheet(item: $budgetToUnlock) { budget in
-                EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
-            }
-            .sheet(isPresented: $showingWalletImport) {
-                WalletImportView()
-                    .environmentObject(budgetStore)
-            }
-            .overlay {
-                if budgetStore.isLoading {
-                    ProgressView()
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Discards the local sync marker and re-checks your budget against the server, pulling down anything missing. Local edits are re-sent rather than discarded, but a large budget can take a moment to reconcile.")
+        }
+        .confirmationDialog(
+            "Select a Budget",
+            isPresented: $showingBudgetSelectPrompt,
+            titleVisibility: .visible
+        ) {
+            ForEach(budgetStore.remoteBudgets) { budget in
+                Button(budget.name) {
+                    openBudget(budget)
                 }
             }
-            .confirmationDialog(
-                "Disconnect and remove data?",
-                isPresented: $showingDisconnectConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Disconnect & Remove Data", role: .destructive) {
-                    budgetStore.logout()
-                    password = ""
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
+            Button("Not Now", role: .cancel) {}
+        } message: {
+            Text("You're connected! Choose which budget to load onto this device.")
+        }
+        .task {
+            if budgetStore.isConnected {
+                await budgetStore.fetchRemoteBudgets()
+                promptBudgetSelectionIfNeeded()
             }
-            .confirmationDialog(
-                "Reset sync state?",
-                isPresented: $showingResetSyncConfirm,
-                titleVisibility: .visible
-            ) {
-                Button("Reset & Resync", role: .destructive) {
-                    Task {
-                        await budgetStore.resetSyncState()
-                    }
-                }
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text("Discards the local sync marker and re-checks your budget against the server, pulling down anything missing. Local edits are re-sent rather than discarded, but a large budget can take a moment to reconcile.")
-            }
-            .confirmationDialog(
-                "Select a Budget",
-                isPresented: $showingBudgetSelectPrompt,
-                titleVisibility: .visible
-            ) {
-                ForEach(budgetStore.remoteBudgets) { budget in
-                    Button(budget.name) {
-                        openBudget(budget)
-                    }
-                }
-                Button("Not Now", role: .cancel) {}
-            } message: {
-                Text("You're connected! Choose which budget to load onto this device.")
-            }
-            .task {
-                if budgetStore.isConnected {
+        }
+        .onChange(of: budgetStore.isConnected) { _, isConnected in
+            if isConnected {
+                Task {
                     await budgetStore.fetchRemoteBudgets()
                     promptBudgetSelectionIfNeeded()
-                }
-            }
-            .onChange(of: budgetStore.isConnected) { _, isConnected in
-                if isConnected {
-                    Task {
-                        await budgetStore.fetchRemoteBudgets()
-                        promptBudgetSelectionIfNeeded()
-                    }
                 }
             }
         }
@@ -838,7 +885,7 @@ struct SettingsView: View {
 struct CustomHeadersEditor: View {
     @Binding var headers: [CustomHeader]
     @State private var draft: [CustomHeader] = []
-
+    
     var body: some View {
         Form {
             Section {
@@ -855,7 +902,7 @@ struct CustomHeadersEditor: View {
                     }
                 }
                 .onDelete { draft.remove(atOffsets: $0) }
-
+                
                 Button {
                     draft.append(CustomHeader())
                 } label: {

@@ -130,7 +130,7 @@ struct SimpleFINAccountSet: Decodable, Sendable, Equatable {
         // the protocol's array of strings; an unreadable `errors` must not
         // cost us the account data alongside it.
         if let decoded = try? container.decodeIfPresent([String].self, forKey: .errors) {
-            errors = decoded ?? []
+            errors = decoded
         } else {
             errors = []
         }

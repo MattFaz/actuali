@@ -2376,7 +2376,7 @@ final class BudgetStore: ObservableObject {
         into target: BankSyncAccount,
         startDay: Int,
         isFirstSync: Bool,
-        prepared: PreparedRules
+        prepared: SyncClient.PreparedRules
     ) async throws -> (added: Int, updated: Int) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
 
