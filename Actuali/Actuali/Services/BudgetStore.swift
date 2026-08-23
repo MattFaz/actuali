@@ -513,14 +513,10 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether due scheduled transactions are posted automatically after a
-    /// successful sync on launch/foreground. Opt-in (defaults off) because
-    /// every post writes to the user's real Actual server.
-    @Published var postScheduledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
-        }
-    }
+   /// Due scheduled transactions are always posted automatically after a successful sync on launch/foreground. 
+    ///This was previously a user-facing, opt-in toggle (defaulting off); it's now always on and
+    /// no longer configurable or persisted.
+ let postScheduledTransactions: Bool = true
 
     /// Transient toast text ("Posted N scheduled transaction(s)"), cleared
     /// automatically a few seconds after being set. Nil = no toast.
