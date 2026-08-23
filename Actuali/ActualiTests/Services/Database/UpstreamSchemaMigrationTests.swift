@@ -45,8 +45,8 @@ struct UpstreamSchemaMigrationTests {
 
         #expect(try columnNames(path, table: "tags").contains("hidden"))
         #expect(try columnNames(path, table: "accounts").contains("bank_sync_status"))
-        #expect(try columnNames(path, table: "accounts").contains("account_sync_source"))   // ← add
-        #expect(try columnNames(path, table: "accounts").contains("last_sync"))             // ← add
+        #expect(try columnNames(path, table: "accounts").contains("account_sync_source"))
+        #expect(try columnNames(path, table: "accounts").contains("last_sync"))
         #expect(try columnNames(path, table: "categories").contains("cleanup_def"))
         #expect(try columnNames(path, table: "custom_reports").contains("show_trend_lines"))
         #expect(try columnNames(path, table: "schedules").contains("custom_upcoming_length"))

@@ -117,7 +117,7 @@ struct ActualServerBankSyncProvider: BankSyncProvider {
 
         let downloaded = try await client.simpleFINTransactions(
             accountIds: targets.map(\.externalId),
-            startDates: targets.map { BankSyncReconciler.isoString(from: $0.startDay) }
+            startDates: targets.map { DayDate(yyyymmdd: $0.startDay)?.iso ?? "" }
         )
 
         var set = BankSyncDownloadSet()

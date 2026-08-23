@@ -463,9 +463,7 @@ struct BudgetStoreBankSyncTests {
     /// A `YYYY-MM-DD` string the sync window will accept, however long this
     /// test lives.
     private static func isoDaysAgo(_ days: Int) -> String {
-        BankSyncReconciler.isoString(
-            from: BankSyncReconciler.day(Transaction.yyyymmdd(from: Date()), offsetBy: -days)
-        )
+        DayDate.today().adding(days: -days).iso
     }
 
     private func makeServerStore(

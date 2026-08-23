@@ -95,14 +95,14 @@ enum BankSyncReconciler {
                 continue
             }
             let window = existing
-                .filter {
-                    $0.amount == candidate.amount
-                        && abs(dayNumber($0.date) - dayNumber(candidate.date)) <= fuzzyMatchDayRadius
+                .compactMap { row -> (row: BankSyncExistingTransaction, distance: Int)? in
+                    guard row.amount == candidate.amount,
+                          let distance = dayDistance(row.date, candidate.date),
+                          distance <= fuzzyMatchDayRadius else { return nil }
+                    return (row, distance)
                 }
-                .sorted {
-                    abs(dayNumber($0.date) - dayNumber(candidate.date))
-                        < abs(dayNumber($1.date) - dayNumber(candidate.date))
-                }
+                .sorted { $0.distance < $1.distance }
+                .map(\.row)
             pending.append((candidate, nil, window))
         }
 
@@ -172,52 +172,12 @@ enum BankSyncReconciler {
             || update.cleared != existing.cleared
     }
 
-    /// Days since an arbitrary epoch for a `YYYYMMDD` date, via the standard
-    /// Julian day number formula. Calendar-free so the match window is the
-    /// same width in every time zone.
-    static func dayNumber(_ yyyymmdd: Int) -> Int {
-        let year = yyyymmdd / 10000
-        let month = (yyyymmdd % 10000) / 100
-        let day = yyyymmdd % 100
-        let priorMonths = (14 - month) / 12
-        let years = year + 4800 - priorMonths
-        let months = month + 12 * priorMonths - 3
-        return day + (153 * months + 2) / 5 + 365 * years
-            + years / 4 - years / 100 + years / 400 - 32045
-    }
-
-    /// A `YYYYMMDD` date moved by whole days, month and year rollovers
-    /// included. The inverse of `dayNumber`, so the match window's edges are
-    /// computed the same way its width is.
-    static func day(_ yyyymmdd: Int, offsetBy days: Int) -> Int {
-        let shifted = dayNumber(yyyymmdd) + days + 32044
-        let centuries = (4 * shifted + 3) / 146097
-        let withinCentury = shifted - 146097 * centuries / 4
-        let years = (4 * withinCentury + 3) / 1461
-        let withinYear = withinCentury - 1461 * years / 4
-        let months = (5 * withinYear + 2) / 153
-        let day = withinYear - (153 * months + 2) / 5 + 1
-        let month = months + 3 - 12 * (months / 10)
-        let year = 100 * centuries + years - 4800 + months / 10
-        return year * 10000 + month * 100 + day
-    }
-    
-    /// `YYYYMMDD` for the `YYYY-MM-DD` strings the Actual server's bank-sync
-    /// routes speak, or nil if it isn't one.
-    static func day(fromISO iso: String) -> Int? {
-        let parts = iso.split(separator: "-")
-        guard parts.count == 3,
-              let year = Int(parts[0]), let month = Int(parts[1]), let day = Int(parts[2]),
-              (1...12).contains(month), (1...31).contains(day) else { return nil }
-        return year * 10000 + month * 100 + day
-    }
-
-    /// The inverse, for the `startDate` those routes take.
-    static func isoString(from yyyymmdd: Int) -> String {
-        String(
-            format: "%04d-%02d-%02d",
-            yyyymmdd / 10000, (yyyymmdd % 10000) / 100, yyyymmdd % 100
-        )
+    /// Whole days between two `YYYYMMDD` dates, or nil if either isn't a real
+    /// calendar date. `DayDate` is timezone-free, so the match window is the
+    /// same width wherever the phone is.
+    static func dayDistance(_ a: Int, _ b: Int) -> Int? {
+        guard let from = DayDate(yyyymmdd: a), let to = DayDate(yyyymmdd: b) else { return nil }
+        return abs(from.days(until: to))
     }
 }
 
@@ -252,7 +212,7 @@ extension BankSyncCandidate {
     init?(serverBankSync transaction: ServerBankSyncTransaction) {
         guard let importedId = transaction.transactionId,
               let iso = transaction.date,
-              let date = BankSyncReconciler.day(fromISO: iso),
+              let date = DayDate(iso: iso)?.yyyymmdd,
               let raw = transaction.transactionAmount?.amount,
               let amount = SimpleFINAmount.cents(from: raw) else { return nil }
         self.init(

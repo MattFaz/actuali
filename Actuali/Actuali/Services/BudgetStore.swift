@@ -36,7 +36,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleInvalidPattern(pattern: String)
     case ruleOwnedBySchedule
     case ruleNotSerializable
-    case bankSyncNotConfigured        // ← add
+    case bankSyncNotConfigured
     
     var errorDescription: String? {
         switch self {
@@ -98,8 +98,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "This rule belongs to a schedule. Delete the schedule instead."
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
-        case .bankSyncNotConfigured:                                              // ← add
-            return "SimpleFIN isn't set up yet. Connect it in Settings first."     // ← add
+        case .bankSyncNotConfigured:
+            return "SimpleFIN isn't set up yet. Connect it in Settings first."
         }
     }
 }
@@ -1338,6 +1338,13 @@ final class BudgetStore: ObservableObject {
                 try? fileManager.deleteBudget(local.id)
                 forgetCachedCurrencyCode(for: local.id)
             }
+            
+            // The SimpleFIN access key goes too, for the same reason the
+            // encryption keys above do: it's a bearer credential for live bank
+            // data, and disconnecting should leave nothing behind that still
+            // reaches the previous person's accounts.
+            try? SimpleFINCredentials.clear()
+            isSimpleFINConfigured = false
         }
 
         isConnected = false
@@ -1756,7 +1763,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
 
             await loadSchedules()
-            await loadBankSyncAccounts()       // ← add
+            await loadBankSyncAccounts()
             publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
@@ -2404,9 +2411,8 @@ final class BudgetStore: ObservableObject {
 
         // An account that already has history only needs the window since its
         // earliest transaction; one that has none takes the full lookback.
-        let lookbackFloor = BankSyncReconciler.day(
-            Transaction.yyyymmdd(from: Date()), offsetBy: -Self.bankSyncMaxLookbackDays
-        )
+        let lookbackFloor = DayDate.today()
+            .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
         for target in targets {
             // Both "the read failed" and "the account has no transactions"
@@ -2502,21 +2508,23 @@ final class BudgetStore: ObservableObject {
         // ids, and a name the budget doesn't have yet can't match anything.
         // The payees the inserts need are created below, once it's settled
         // which downloads are actually new.
-        var payeeIdsByName: [String: String] = [:]
+        //
+        // One async read for the whole account rather than a synchronous
+        // `payee(named:)` per candidate — this runs on the main actor, and a
+        // 90-day first sync is hundreds of rows.
+        let payeeIdsByName = Dictionary(
+            (try? await database.fetchPayees())?.map { ($0.name, $0.id) } ?? [],
+            uniquingKeysWith: { first, _ in first }
+        )
         for index in candidates.indices {
-            let name = candidates[index].payeeName
-            if let cached = payeeIdsByName[name] {
-                candidates[index].payeeId = cached
-            } else if let payee = (try? database.payee(named: name)) ?? nil {
-                payeeIdsByName[name] = payee.id
-                candidates[index].payeeId = payee.id
-            }
+            candidates[index].payeeId = payeeIdsByName[candidates[index].payeeName]
         }
 
+        let radius = BankSyncReconciler.fuzzyMatchDayRadius
         let window = try await database.bankSyncWindow(
             accountId: target.id,
-            from: BankSyncReconciler.day(earliest, offsetBy: -BankSyncReconciler.fuzzyMatchDayRadius),
-            to: BankSyncReconciler.day(latest, offsetBy: BankSyncReconciler.fuzzyMatchDayRadius)
+            from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
+            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
         )
 
         let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)

@@ -219,7 +219,7 @@ final class BudgetDatabase: Sendable {
         (1780606215001, "transactions", nil, ["acct", "tombstone"],
          "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
         (1780606215002, "transactions", nil, ["schedule"],
-         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)"),   // ← add comma
+         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)"),
         // Locally minted ids for the bank-sync columns, which upstream added
         // long before any migration in this list: a snapshot old enough to
         // lack them would otherwise have nowhere for a link to land, and
@@ -305,6 +305,18 @@ final class BudgetDatabase: Sendable {
                 name TEXT NOT NULL,
                 tombstone INTEGER DEFAULT 0
             )
+        """),
+        // Defensive, like the two above: `banks` is upstream base schema, but
+        // the bank-sync link writes both the row and the accounts.bank pointer
+        // to it, and a runtime check on one without the other would only half
+        // protect the write.
+        (1770000000003, """
+            CREATE TABLE IF NOT EXISTS banks (
+                id TEXT PRIMARY KEY,
+                bank_id TEXT,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
         """)
     ]
     
@@ -323,8 +335,9 @@ final class BudgetDatabase: Sendable {
         1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
         1780606214999, // locally minted transactions.schedule backfill
         1780606215002, // second half of upstream index migration 1780606215001
-        1780606215003, // locally minted accounts.account_sync_source backfill   // ← add
-        1780606215004, // locally minted accounts.last_sync backfill             // ← add
+        1780606215003, // locally minted accounts.account_sync_source backfill
+        1780606215004, // locally minted accounts.last_sync backfill
+        1770000000003, // defensive CREATE banks
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -2560,12 +2573,10 @@ final class BudgetDatabase: Sendable {
         messages: [CRDTMessage]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
-            if try db.tableExists("banks") {
-                try db.execute(sql: """
-                    INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
-                    VALUES (?, ?, ?, ?)
-                    """, arguments: [bank.id, bank.bankId, bank.name, bank.tombstone ? 1 : 0])
-            }
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [bank.id, bank.bankId, bank.name, bank.tombstone ? 1 : 0])
             try db.execute(sql: """
                 UPDATE accounts
                 SET account_id = ?, account_sync_source = ?, bank = ?
@@ -2626,7 +2637,6 @@ final class BudgetDatabase: Sendable {
     /// bank share one row.
     func bank(withBankId bankId: String) async throws -> Bank? {
         try await dbQueue.read { db in
-            guard try db.tableExists("banks") else { return nil }
             guard let row = try Row.fetchOne(db, sql: """
                 SELECT id, bank_id, name FROM banks
                 WHERE bank_id = ? AND (tombstone = 0 OR tombstone IS NULL)

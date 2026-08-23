@@ -202,24 +202,14 @@ struct BankSyncReconcilerTests {
     // MARK: - Day arithmetic
 
     @Test(arguments: [
-        (20240301, -1, 20240229),  // leap day
-        (20230301, -1, 20230228),
-        (20240101, -1, 20231231),
-        (20241231, 1, 20250101),
-        (20240310, 7, 20240317),
-        (20240310, -89, 20231212)
+        (20240301, 20240229, 1),
+        (20250101, 20240101, 366),
+        (20240310, 20231212, 89)
     ])
-    func daysShiftAcrossMonthAndYearBoundaries(_ from: Int, _ offset: Int, _ expected: Int) {
-        #expect(BankSyncReconciler.day(from, offsetBy: offset) == expected)
-    }
-
-    @Test func dayNumbersMeasureTheGapBetweenDates() {
-        #expect(
-            BankSyncReconciler.dayNumber(20240301) - BankSyncReconciler.dayNumber(20240229) == 1
-        )
-        #expect(
-            BankSyncReconciler.dayNumber(20250101) - BankSyncReconciler.dayNumber(20240101) == 366
-        )
+    func dayDistanceMeasuresAcrossMonthAndYearBoundaries(
+        _ from: Int, _ to: Int, _ expected: Int
+    ) {
+        #expect(BankSyncReconciler.dayDistance(from, to) == expected)
     }
 }
 

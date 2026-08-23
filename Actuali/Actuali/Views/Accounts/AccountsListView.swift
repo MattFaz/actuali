@@ -320,7 +320,7 @@ struct AccountsListView: View {
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
-                        if !budgetStore.bankSyncAccounts.isEmpty {          // ← add block
+                        if !budgetStore.bankSyncAccounts.isEmpty {
                             Button {
                                 Task { await budgetStore.runBankSync() }
                             } label: {

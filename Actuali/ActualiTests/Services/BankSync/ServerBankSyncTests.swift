@@ -128,11 +128,4 @@ struct ServerBankSyncNormalizationTests {
         #expect(try BankSyncCandidate(serverBankSync: transaction(json)) == nil)
     }
 
-    @Test func isoDatesRoundTrip() {
-        #expect(BankSyncReconciler.day(fromISO: "2024-03-01") == 20240301)
-        #expect(BankSyncReconciler.isoString(from: 20240301) == "2024-03-01")
-        #expect(BankSyncReconciler.day(fromISO: "2024-3-1") == 20240301)
-        #expect(BankSyncReconciler.day(fromISO: "2024-03") == nil)
-        #expect(BankSyncReconciler.day(fromISO: "2024-13-01") == nil)
-    }
 }
