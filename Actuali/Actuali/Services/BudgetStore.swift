@@ -1131,8 +1131,7 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClosedAccounts"))
-        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "postScheduledTransactions"))
+
 
         let token = loadAndMigrateAuthToken()
 
@@ -4233,9 +4232,8 @@ final class BudgetStore: ObservableObject {
     }
 
     @discardableResult
-    private func postDueSchedulesIfNeeded() async -> Int {
-        guard postScheduledTransactions,
-              let client = syncClient,
+    private func postDueSchedulesIfNeeded() async -> Int {     
+           guard let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
