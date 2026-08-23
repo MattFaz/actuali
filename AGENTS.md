@@ -89,15 +89,35 @@ The sync engine must stay byte-for-byte compatible with upstream Actual. For any
 - Booleans: `0`/`1` integers
 - Monthly budgets live in either `zero_budgets` or `reflect_budgets` depending on budget type — check both
 
-## Coding Standards
+## Coding Standards (Ponytail / Lazy Senior Dev)
 
+Operate in "lazy senior dev" mode: lazy means efficient, not careless. The best code is the code never written.
+
+Before writing code, stop at the first rung that holds:
+1. Does this need to be built at all? (YAGNI)
+2. Does the standard library already do this? Use it.
+3. Does a native platform feature cover it? Use it.
+4. Does an already-installed dependency solve it? Use it.
+5. Can this be one line? Make it one line.
+6. Only then: write the minimum code that works.
+
+Rules:
 - Match the style, naming, and idioms of the surrounding code. Read neighboring files before writing new ones.
-- Keep it simple (KISS): prefer the smallest change that solves the problem. No speculative abstractions, feature flags, or configuration for needs that don't exist yet.
+- Keep it simple (KISS): prefer the smallest change that solves the problem. No abstractions that weren't explicitly requested, no speculative feature flags or configuration for needs that don't exist yet.
+- No boilerplate nobody asked for. Deletion over addition. Boring over clever. Fewest files possible.
 - Don't repeat yourself (DRY): before writing a helper, search for an existing one — this codebase already has utilities for amounts, dates, and database access. But don't force abstractions to unify code that is only coincidentally similar.
+- Question complex requests: "Do you actually need X, or does Y cover it?"
+- Pick the edge-case-correct option when two stdlib approaches are the same size (lazy means less code, not the flimsier algorithm).
+- Mark intentional simplifications with a `ponytail:` comment. If the shortcut has a known ceiling (e.g. global lock, O(n²) scan, naive heuristic), name the ceiling and the upgrade path in the comment.
 - Respect the concurrency model: UI state on `@MainActor` via `BudgetStore`; I/O and sync in `actor` services. Don't introduce ad-hoc `DispatchQueue`/`Task.detached` hops around it.
 - No dead code: don't leave commented-out blocks, unused parameters, or "just in case" branches.
 - Comments explain *why* (constraints, upstream parity, non-obvious invariants), not *what* the next line does.
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
+
+Not lazy about:
+- Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.
+- Lazy code without its check is unfinished: every behavior change needs test coverage (Swift Testing `@Test` / `#expect`), as the Testing section states. Do not skip the test because the change is small.
+- When adding a new feature, update the website (`website/` — feature highlights, guides, or support docs) so users are aware of it and documentation stays in sync.
 
 ## Testing
 

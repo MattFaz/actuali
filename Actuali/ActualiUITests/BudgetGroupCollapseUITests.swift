@@ -74,4 +74,57 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "expand all should restore the category rows")
     }
+
+    @MainActor
+    func testIncomeGroupMatchesCollapseBehaviorInCleanStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "clean")
+    }
+
+    @MainActor
+    func testIncomeGroupMatchesCollapseBehaviorInDetailedStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "detailed")
+    }
+
+    @MainActor
+    private func assertIncomeGroupCollapses(displayStyle: String) throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", displayStyle, "-initialTab", "1",
+        ]
+        app.launch()
+
+        let groceries = app.buttons["Details for Groceries"].firstMatch
+        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+                      "demo data should load before scrolling to the income group")
+
+        let incomeGroupName = "Income"
+        let anyHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), ")
+        ).firstMatch
+        let expandedHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), expanded")
+        ).firstMatch
+        let collapsedHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(incomeGroupName), collapsed")
+        ).firstMatch
+        let salary = app.buttons["All transactions for Salary"]
+
+        var scrollsLeft = 20
+        while !anyHeader.waitForExistence(timeout: 2) && scrollsLeft > 0 {
+            app.swipeUp(velocity: .slow)
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(anyHeader.waitForExistence(timeout: 10),
+                      "the income group header should be reachable")
+        if collapsedHeader.isHittable {
+            collapsedHeader.tap()
+        }
+
+        XCTAssertTrue(expandedHeader.waitForExistence(timeout: 10))
+        XCTAssertTrue(salary.waitForExistence(timeout: 10))
+        expandedHeader.tap()
+
+        XCTAssertTrue(collapsedHeader.waitForExistence(timeout: 10))
+        XCTAssertFalse(salary.exists, "collapsing Income should hide its categories")
+    }
 }

@@ -125,6 +125,8 @@ struct PendingImportApproverTests {
 
         #expect(result.transaction.accountId == "acct_checking")
         #expect(result.transaction.amount == -1850)
+        // Parsed imports aren't bank-confirmed, so they land uncleared.
+        #expect(result.transaction.cleared == false)
     }
 
     @Test func logsIncomeAsPositiveViaDefaultAccount() async throws {
@@ -140,5 +142,6 @@ struct PendingImportApproverTests {
 
         #expect(result.transaction.accountId == "acct_checking")
         #expect(result.transaction.amount == 2500)
+        #expect(result.transaction.cleared == false)
     }
 }

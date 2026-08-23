@@ -646,10 +646,26 @@ final class BudgetStore: ObservableObject {
     /// to the default account or an error the user can act on, while a wrong match logs
     /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
+        Self.resolveAccountId(
+            hint: hint,
+            accounts: await accountsForIntent(),
+            cardMappings: cardAccountMappings
+        )
+    }
+
+    /// Pure-function account resolution shared by both the async path
+    /// (`PendingImportApprover`) and the synchronous `@ViewBuilder` path
+    /// (`PendingImportsView`). `nonisolated static` so unit tests can call
+    /// it without a full store setup.
+    nonisolated static func resolveAccountId(
+        hint: String,
+        accounts: [Account],
+        cardMappings: [String: String]
+    ) -> String? {
         let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
 
-        let activeAccounts = await accountsForIntent().filter { !$0.closed }
+        let activeAccounts = accounts.filter { !$0.closed }
         guard !activeAccounts.isEmpty else { return nil }
         let activeIds = Set(activeAccounts.map(\.id))
 
@@ -657,7 +673,7 @@ final class BudgetStore: ObservableObject {
         //    and multi-match resolution is deterministic (Dictionary order isn't). Only
         //    hint-contains-key: the reverse direction would let a one-character hint
         //    match any keyword.
-        let mappingsByLongestKey = cardAccountMappings
+        let mappingsByLongestKey = cardMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
             .filter { !$0.key.isEmpty }
@@ -1320,6 +1336,7 @@ final class BudgetStore: ObservableObject {
         // the old budget lingers in the UI post-disconnect. The dataVersion
         // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
+        requestedBudgetMonth = nil
         currentBudgetMonth = nil
         widgetBudgetMonth = nil
         accounts = []
@@ -1478,6 +1495,7 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
+        let requestedMonthBeforeLoad = requestedBudgetMonth
 
         var db: BudgetDatabase?
         do {
@@ -1527,7 +1545,13 @@ final class BudgetStore: ObservableObject {
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            currentBudgetMonth = fetchedBudgetMonth
+            // A month selected while the database reads were in flight is
+            // newer than this initial current-month snapshot. Leave that
+            // request and its fetch result intact instead of replacing it.
+            if requestedBudgetMonth == requestedMonthBeforeLoad {
+                requestedBudgetMonth = currentMonth
+                currentBudgetMonth = fetchedBudgetMonth
+            }
             widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
             publishWidgetSnapshot()
@@ -1664,7 +1688,18 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+            // `currentBudgetMonth` follows the month BudgetView is browsing.
+            // Foreground sync must not silently replace a historical month
+            // with the current calendar month while the toolbar still shows
+            // the user's selection (GH #328).
+            let displayedMonth = requestedBudgetMonth ?? currentMonth
+            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
+            let fetchedWidgetBudgetMonth: BudgetMonth
+            if displayedMonth == currentMonth {
+                fetchedWidgetBudgetMonth = fetchedBudgetMonth
+            } else {
+                fetchedWidgetBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+            }
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
@@ -1681,8 +1716,13 @@ final class BudgetStore: ObservableObject {
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            currentBudgetMonth = fetchedBudgetMonth
-            widgetBudgetMonth = fetchedBudgetMonth
+            // A month selected while these reads were in flight owns the
+            // Budget tab now. Its fetch publishes separately, while the rest
+            // of this valid refresh snapshot must still reach the app.
+            if requestedBudgetMonth == displayedMonth {
+                currentBudgetMonth = fetchedBudgetMonth
+            }
+            widgetBudgetMonth = fetchedWidgetBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             // Last in the batch: assigning this publishes a widget snapshot,
             // which must see the balances above rather than the previous

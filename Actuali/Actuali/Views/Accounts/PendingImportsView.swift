@@ -155,7 +155,7 @@ struct PendingImportsView: View {
                 notes: item.rawText,
                 categoryId: nil,
                 isIncome: item.isIncome,
-                cleared: true,
+                cleared: false,
                 onSaved: { store.remove(id: item.id) }
             )
             .environmentObject(budgetStore)
@@ -169,18 +169,36 @@ struct PendingImportsView: View {
     }
 
     private func resolveAccountId(for item: PendingImport) -> String? {
-        if let hint = item.cardHint, !hint.isEmpty {
-            for account in budgetStore.accounts where !account.closed {
-                if account.name.localizedCaseInsensitiveContains(hint) {
-                    return account.id
-                }
-            }
+        Self.seedAccountId(
+            cardHint: item.cardHint,
+            accounts: budgetStore.accounts,
+            cardMappings: budgetStore.cardAccountMappings,
+            defaultAccountId: budgetStore.defaultAccountId
+        )
+    }
+
+    /// Seed account for the edit form: strict hint resolution, then the default
+    /// account, then any open account. The form has an account picker, so the
+    /// fallbacks are a starting point the user can change — nothing is written
+    /// silently, and nil only when there is truly no open account. This chain
+    /// must be at least as permissive as `PendingImportApprover.approve`, whose
+    /// `noAccountAvailable` recovery path sends the user here to pick one.
+    nonisolated static func seedAccountId(
+        cardHint: String?,
+        accounts: [Account],
+        cardMappings: [String: String],
+        defaultAccountId: String?
+    ) -> String? {
+        if let hint = cardHint, !hint.isEmpty,
+           let resolved = BudgetStore.resolveAccountId(
+               hint: hint, accounts: accounts, cardMappings: cardMappings) {
+            return resolved
         }
-        if let defaultId = budgetStore.defaultAccountId,
-           budgetStore.accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
+        if let defaultId = defaultAccountId,
+           accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
             return defaultId
         }
-        return budgetStore.accounts.first(where: { !$0.closed })?.id
+        return accounts.first(where: { !$0.closed })?.id
     }
 }
 
