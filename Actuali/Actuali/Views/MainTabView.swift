@@ -101,7 +101,7 @@ struct MainTabView: View {
             Tab(value: 4) {
                 SettingsView()
             } label: {
-                Label("Settings", systemImage: "gear")
+                Label("More", systemImage: "ellipsis")
             }
         }
     }
