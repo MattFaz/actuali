@@ -29,7 +29,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
     @MainActor
     private func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["Settings"].tap()
+        app.tabBars.buttons["More"].tap()
         if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
             return
         }
