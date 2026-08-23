@@ -275,7 +275,7 @@ struct BankSyncCandidateNormalizationTests {
     }
 
     @Test func transactionsWithAnUnreadableAmountAreSkipped() throws {
-        #expect(BankSyncCandidate(simpleFIN: transaction("""
+        #expect(try BankSyncCandidate(simpleFIN: transaction("""
         {"id": "sf-1", "posted": 1709253000, "amount": "not-a-number", "description": "Coffee"}
         """)) == nil)
     }

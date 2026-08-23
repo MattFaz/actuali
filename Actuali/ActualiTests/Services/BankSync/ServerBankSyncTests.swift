@@ -125,7 +125,7 @@ struct ServerBankSyncNormalizationTests {
         #"{"transactionId": "t1", "date": "2024-03-01"}"#                          // no amount
     ])
     func skipsTransactionsMissingWhatAnImportNeeds(_ json: String) throws {
-        #expect(BankSyncCandidate(serverBankSync: transaction(json)) == nil)
+        #expect(try BankSyncCandidate(serverBankSync: transaction(json)) == nil)
     }
 
     @Test func isoDatesRoundTrip() {

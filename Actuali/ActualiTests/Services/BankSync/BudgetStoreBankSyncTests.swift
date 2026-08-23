@@ -200,6 +200,15 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
+    /// Fetches a single row synchronously so the non-Sendable `Row` never
+    /// crosses an async boundary (see AGENTS.md on GRDB `Row` isolation).
+    private func row(path: URL, sql: String, arguments: StatementArguments = StatementArguments()) throws -> Row? {
+        let queue = try DatabaseQueue(path: path.path)
+        return try queue.read { db in
+            try Row.fetchOne(db, sql: sql, arguments: arguments)
+        }
+    }
+
     private func withStoredAccessKey<T>(_ body: () async throws -> T) async throws -> T {
         try SimpleFINCredentials.save(
             SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
@@ -373,10 +382,9 @@ struct BudgetStoreBankSyncTests {
         #expect(result.problems == ["Checking: Connection to My Bank may need attention"])
         #expect(result.summary.contains("Connection to My Bank may need attention"))
 
-        let queue = try DatabaseQueue(path: url.path)
-        let account = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        })
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
         #expect(account["bank_sync_status"] == "attention-required")
     }
 
@@ -393,18 +401,17 @@ struct BudgetStoreBankSyncTests {
 
         try await store.linkBankAccount(accountId: Self.accountId, to: remote)
 
-        let queue = try DatabaseQueue(path: url.path)
-        let account = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        })
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
         #expect(account["account_id"] == "sf-acct-9")
         #expect(account["account_sync_source"] == "simpleFin")
         let bankRowId: String? = account["bank"]
         #expect(bankRowId != nil)
 
-        let bank = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM banks WHERE id = ?", arguments: [bankRowId])
-        })
+        let bank = try #require(
+            try row(path: url, sql: "SELECT * FROM banks WHERE id = ?", arguments: [bankRowId])
+        )
         #expect(bank["bank_id"] == "mybank.com")
         #expect(bank["name"] == "My Bank")
     }
@@ -416,10 +423,9 @@ struct BudgetStoreBankSyncTests {
 
         try await store.unlinkBankAccount(accountId: Self.accountId)
 
-        let queue = try DatabaseQueue(path: url.path)
-        let account = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        })
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
         let externalId: String? = account["account_id"]
         let source: String? = account["account_sync_source"]
         let bank: String? = account["bank"]
@@ -444,10 +450,9 @@ struct BudgetStoreBankSyncTests {
 
         _ = try await withStoredAccessKey { try await store.syncBankAccounts() }
 
-        let queue = try DatabaseQueue(path: url.path)
-        let account = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        })
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
         #expect(account["bank_sync_status"] == "ok")
         let lastSync: String? = account["last_sync"]
         // Milliseconds since the epoch as a string, the way every other client
@@ -511,10 +516,7 @@ struct BudgetStoreBankSyncTests {
         #expect(store.serverProvidesBankSync)
         #expect(ServerTransport.requestedPaths.contains("/simplefin/transactions"))
 
-        let queue = try DatabaseQueue(path: url.path)
-        let imported = try queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM transactions WHERE financial_id = 'sf-1'")
-        }
+        let imported = try rows(path: url, where: "financial_id = 'sf-1'")
         #expect(imported.count == 1)
         #expect(imported[0]["amount"] == -3345)
         #expect(imported[0]["cleared"] == 1)
@@ -568,10 +570,9 @@ struct BudgetStoreBankSyncTests {
         #expect(result.problems[0].contains("needs your attention"))
 
         // The status the web UI reads comes across too.
-        let queue = try DatabaseQueue(path: url.path)
-        let account = try #require(try queue.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
-        })
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
         #expect(account["bank_sync_status"] == "attention-required")
     }
 
