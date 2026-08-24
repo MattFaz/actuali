@@ -144,6 +144,11 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
+    func testIncomeGroupMatchesCollapseBehaviorInListStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "list")
+    }
+
+    @MainActor
     private func assertIncomeGroupCollapses(displayStyle: String) throws {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -151,8 +156,10 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         ]
         app.launch()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
-        XCTAssertTrue(groceries.waitForExistence(timeout: 10),
+        let firstGroup = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Essentials, '")
+        ).firstMatch
+        XCTAssertTrue(firstGroup.waitForExistence(timeout: 10),
                       "demo data should load before scrolling to the income group")
 
         let incomeGroupName = "Income"

@@ -192,6 +192,7 @@ final class ListBudgetParityUITests: XCTestCase {
                       "Received opens transactions for the displayed month")
     }
 
+    @MainActor
     private func scrollUntilHittable(
         _ element: XCUIElement,
         in app: XCUIApplication,
@@ -204,6 +205,7 @@ final class ListBudgetParityUITests: XCTestCase {
         }
     }
 
+    @MainActor
     private func ensureGroupExpanded(
         _ name: String,
         revealing element: XCUIElement,

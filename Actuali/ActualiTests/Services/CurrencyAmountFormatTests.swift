@@ -47,6 +47,7 @@ struct CurrencyAmountFormatTests {
         #expect(formatted == "1,052")
     }
 
+    @MainActor
     @Test func budgetTableWholeUnitsUseTheSameRounding() {
         for cents in [105_150, -105_150] {
             #expect(CurrencyAmountFormat.symbolLessString(
