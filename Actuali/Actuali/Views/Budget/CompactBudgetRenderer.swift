@@ -1,13 +1,13 @@
 import SwiftUI
 
-struct ListBudgetSummary: View {
+struct CompactBudgetSummary: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let budget: BudgetMonth
     let showsSpent: Bool
 
-    private var overview: ListBudgetOverview {
-        ListBudgetOverview(
+    private var overview: CompactBudgetOverview {
+        CompactBudgetOverview(
             budget: budget,
             showsSpent: showsSpent,
             currentMonth: BudgetView.currentMonthString()
@@ -18,7 +18,7 @@ struct ListBudgetSummary: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
-                    ListOverviewStat(
+                    CompactOverviewStat(
                         stat: overview.leading,
                         isResult: overview.leading.label == "To Budget",
                         alignment: .leading
@@ -28,25 +28,25 @@ struct ListBudgetSummary: View {
                             Text(stat.label)
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            ListOverviewAmount(stat: stat, isResult: isResult(stat))
+                            CompactOverviewAmount(stat: stat, isResult: isResult(stat))
                         }
                     }
                 }
             } else {
                 HStack(spacing: 0) {
-                    ListOverviewStat(
+                    CompactOverviewStat(
                         stat: overview.leading,
                         isResult: overview.leading.label == "To Budget",
                         alignment: .leading
                     )
                         .frame(
-                            width: ListBudgetTableLayout.titleColumnWidth,
+                            width: CompactBudgetTableLayout.titleColumnWidth,
                             alignment: .leading
                         )
 
-                    HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
+                    HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                         ForEach(Array(overview.columns.enumerated()), id: \.offset) { _, stat in
-                            ListOverviewStat(stat: stat, isResult: isResult(stat))
+                            CompactOverviewStat(stat: stat, isResult: isResult(stat))
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                     }
@@ -64,20 +64,20 @@ struct ListBudgetSummary: View {
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier(
             dynamicTypeSize.isAccessibilitySize
-                ? "listBudgetOverview.stacked"
-                : "listBudgetOverview"
+                ? "compactBudgetOverview.stacked"
+                : "compactBudgetOverview"
         )
     }
 
-    private func isResult(_ stat: ListBudgetOverview.Stat) -> Bool {
+    private func isResult(_ stat: CompactBudgetOverview.Stat) -> Bool {
         stat.label == "Balance" || stat.label == "Projected" || stat.label == "Saved"
     }
 }
 
-private struct ListOverviewStat: View {
+private struct CompactOverviewStat: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let stat: ListBudgetOverview.Stat
+    let stat: CompactBudgetOverview.Stat
     let isResult: Bool
     var alignment: HorizontalAlignment = .trailing
 
@@ -90,16 +90,16 @@ private struct ListOverviewStat: View {
                 .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 1 : 0.65)
                 .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
                 .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
-            ListOverviewAmount(stat: stat, isResult: isResult)
+            CompactOverviewAmount(stat: stat, isResult: isResult)
         }
     }
 }
 
-private struct ListOverviewAmount: View {
+private struct CompactOverviewAmount: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
-    let stat: ListBudgetOverview.Stat
+    let stat: CompactBudgetOverview.Stat
     let isResult: Bool
 
     var body: some View {
@@ -116,7 +116,7 @@ private struct ListOverviewAmount: View {
 
     private var resultColor: Color {
         guard isResult else { return .primary }
-        switch ListBalanceTone(amount: stat.amount, isMasked: budgetStore.hideBalances) {
+        switch CompactBalanceTone(amount: stat.amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary
         case .positive: return .green
@@ -125,7 +125,7 @@ private struct ListOverviewAmount: View {
     }
 }
 
-struct ListBudgetGroupHeader: View {
+struct CompactBudgetGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -135,15 +135,15 @@ struct ListBudgetGroupHeader: View {
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
 
-    private var presentation: ListBudgetGroupHeaderPresentation {
-        ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent)
+    private var presentation: CompactBudgetGroupHeaderPresentation {
+        CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: showsSpent)
     }
 
     /// Keep the same column geometry when totals are hidden so toggling the
     /// preference only changes the content, not the header's dimensions.
-    private var columnsForLayout: [ListBudgetGroupHeaderPresentation.Column] {
+    private var columnsForLayout: [CompactBudgetGroupHeaderPresentation.Column] {
         guard totals == nil else { return presentation.columns }
-        return ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+        return CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
             .expenseColumns
             .map { .init(type: $0, amount: 0) }
     }
@@ -159,7 +159,7 @@ struct ListBudgetGroupHeader: View {
                                 Text(column.type.rawValue)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                ListAmountText(
+                                CompactAmountText(
                                     amount: column.amount,
                                     isBalance: column.type == .balance
                                 )
@@ -172,17 +172,17 @@ struct ListBudgetGroupHeader: View {
                     HStack(spacing: 0) {
                         title
                             .frame(
-                                width: ListBudgetTableLayout.titleColumnWidth,
+                                width: CompactBudgetTableLayout.titleColumnWidth,
                                 alignment: .leading
                             )
-                        HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
+                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                             ForEach(columnsForLayout, id: \.type) { column in
                                 VStack(alignment: .trailing, spacing: 2) {
                                     Text(column.type.rawValue)
                                         .font(.caption2)
                                         .lineLimit(1)
                                         .minimumScaleFactor(0.65)
-                                    ListAmountText(
+                                    CompactAmountText(
                                         amount: column.amount,
                                         isBalance: column.type == .balance
                                     )
@@ -205,7 +205,7 @@ struct ListBudgetGroupHeader: View {
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("listBudgetGroup.\(name)")
+        .accessibilityIdentifier("compactBudgetGroup.\(name)")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Toggles the group's categories")
     }
@@ -232,7 +232,7 @@ struct ListBudgetGroupHeader: View {
     }
 }
 
-struct ListCategoryBudgetRow: View {
+struct CompactCategoryBudgetRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -244,8 +244,8 @@ struct ListCategoryBudgetRow: View {
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
-    private var layout: ListBudgetTableLayout {
-        ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+    private var layout: CompactBudgetTableLayout {
+        CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
     }
 
     private var includesSpentColumn: Bool {
@@ -266,26 +266,26 @@ struct ListCategoryBudgetRow: View {
                 )
             }
         }
-        .padding(.vertical, ListBudgetTableLayout.categoryRowVerticalPadding)
-        .frame(minHeight: ListBudgetTableLayout.categoryRowMinimumHeight)
+        .padding(.vertical, CompactBudgetTableLayout.categoryRowVerticalPadding)
+        .frame(minHeight: CompactBudgetTableLayout.categoryRowMinimumHeight)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
-        .accessibilityIdentifier("listBudgetCategory.\(category.categoryId)")
+        .accessibilityIdentifier("compactBudgetCategory.\(category.categoryId)")
     }
 
     private var compactContent: some View {
         HStack(spacing: 0) {
             detailButton
                 .frame(
-                    width: ListBudgetTableLayout.titleColumnWidth,
+                    width: CompactBudgetTableLayout.titleColumnWidth,
                     alignment: .leading
                 )
 
-            HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
+            HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                 Button {
                     onEditBudget(category)
                 } label: {
-                    ListAmountText(amount: category.budgeted)
+                    CompactAmountText(amount: category.budgeted)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -295,7 +295,7 @@ struct ListCategoryBudgetRow: View {
                     Button {
                         onShowTransactions(category, category.month)
                     } label: {
-                        ListAmountText(amount: category.spent)
+                        CompactAmountText(amount: category.spent)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }
                     .buttonStyle(.borderless)
@@ -305,7 +305,7 @@ struct ListCategoryBudgetRow: View {
                 Button {
                     onMoveMoney(category)
                 } label: {
-                    ListAmountText(amount: category.available, isBalance: true)
+                    CompactAmountText(amount: category.available, isBalance: true)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -371,7 +371,7 @@ struct ListCategoryBudgetRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
-            ListAmountText(amount: amount, isBalance: isBalance)
+            CompactAmountText(amount: amount, isBalance: isBalance)
         }
         .contentShape(Rectangle())
     }
@@ -395,7 +395,7 @@ struct ListCategoryBudgetRow: View {
         let action = category.isOverspent
             ? "Cover overspending for \(category.categoryName)"
             : "Move money from \(category.categoryName)"
-        let tone = ListBalanceTone(
+        let tone = CompactBalanceTone(
             amount: category.available,
             isMasked: budgetStore.hideBalances
         )
@@ -403,7 +403,7 @@ struct ListCategoryBudgetRow: View {
     }
 }
 
-struct ListIncomeGroupHeader: View {
+struct CompactIncomeGroupHeader: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -414,11 +414,11 @@ struct ListIncomeGroupHeader: View {
     let showsBudgeted: Bool
     var onToggleCollapse: () -> Void = {}
 
-    private var layout: ListBudgetTableLayout {
-        ListBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
+    private var layout: CompactBudgetTableLayout {
+        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
     }
 
-    private var columns: [(ListBudgetColumn, Int)] {
+    private var columns: [(CompactBudgetColumn, Int)] {
         layout.incomeColumns.compactMap { column in
             switch column {
             case .budgeted: (column, totalBudgeted)
@@ -439,7 +439,7 @@ struct ListIncomeGroupHeader: View {
                                 Text(column.rawValue)
                                     .foregroundStyle(.secondary)
                                 Spacer()
-                                ListAmountText(amount: amount)
+                                CompactAmountText(amount: amount)
                             }
                         }
                     }
@@ -447,15 +447,15 @@ struct ListIncomeGroupHeader: View {
                     HStack(spacing: 0) {
                         title
                             .frame(
-                                width: ListBudgetTableLayout.titleColumnWidth,
+                                width: CompactBudgetTableLayout.titleColumnWidth,
                                 alignment: .leading
                             )
-                        HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
+                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                             ForEach(columns, id: \.0) { column, amount in
                                 VStack(alignment: .trailing, spacing: 2) {
                                     Text(column.rawValue)
                                         .font(.caption2)
-                                    ListAmountText(amount: amount)
+                                    CompactAmountText(amount: amount)
                                 }
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                             }
@@ -473,7 +473,7 @@ struct ListIncomeGroupHeader: View {
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("listIncomeSection")
+        .accessibilityIdentifier("compactIncomeSection")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint("Toggles the income categories")
     }
@@ -499,7 +499,7 @@ struct ListIncomeGroupHeader: View {
     }
 }
 
-struct ListIncomeCategoryRow: View {
+struct CompactIncomeCategoryRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -507,8 +507,8 @@ struct ListIncomeCategoryRow: View {
     let showsBudgeted: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
-    private var layout: ListBudgetTableLayout {
-        ListBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
+    private var layout: CompactBudgetTableLayout {
+        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
     }
 
     private var includesBudgetedColumn: Bool {
@@ -530,7 +530,7 @@ struct ListIncomeCategoryRow: View {
                             Text("Received")
                                 .foregroundStyle(.secondary)
                             Spacer()
-                            ListAmountText(amount: income.received)
+                            CompactAmountText(amount: income.received)
                         }
                         .contentShape(Rectangle())
                     }
@@ -541,20 +541,20 @@ struct ListIncomeCategoryRow: View {
                 HStack(spacing: 0) {
                     nameButton
                         .frame(
-                            width: ListBudgetTableLayout.titleColumnWidth,
+                            width: CompactBudgetTableLayout.titleColumnWidth,
                             alignment: .leading
                         )
-                    HStack(spacing: ListBudgetTableLayout.amountColumnSpacing) {
+                    HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                         if includesBudgetedColumn {
-                            ListAmountText(amount: income.budgeted)
+                            CompactAmountText(amount: income.budgeted)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                                 .accessibilityLabel(budgetedAccessibilityLabel)
-                                .accessibilityIdentifier("listIncomeBudgeted.\(income.categoryId)")
+                                .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
                         }
                         Button {
                             onShowTransactions(income, income.month)
                         } label: {
-                            ListAmountText(amount: income.received)
+                            CompactAmountText(amount: income.received)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
                         .buttonStyle(.borderless)
@@ -565,11 +565,11 @@ struct ListIncomeCategoryRow: View {
                 }
             }
         }
-        .padding(.vertical, ListBudgetTableLayout.categoryRowVerticalPadding)
-        .frame(minHeight: ListBudgetTableLayout.categoryRowMinimumHeight)
+        .padding(.vertical, CompactBudgetTableLayout.categoryRowVerticalPadding)
+        .frame(minHeight: CompactBudgetTableLayout.categoryRowMinimumHeight)
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
-        .accessibilityIdentifier("listIncomeCategory.\(income.categoryId)")
+        .accessibilityIdentifier("compactIncomeCategory.\(income.categoryId)")
     }
 
     private var nameButton: some View {
@@ -591,11 +591,11 @@ struct ListIncomeCategoryRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
-            ListAmountText(amount: amount)
+            CompactAmountText(amount: amount)
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(budgetedAccessibilityLabel)
-        .accessibilityIdentifier("listIncomeBudgeted.\(income.categoryId)")
+        .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
     }
 
     private var budgetedAccessibilityLabel: String {
@@ -607,7 +607,7 @@ struct ListIncomeCategoryRow: View {
     }
 }
 
-private struct ListAmountText: View {
+private struct CompactAmountText: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -638,7 +638,7 @@ private struct ListAmountText: View {
         guard isBalance else {
             return amount == 0 ? .secondary : .primary
         }
-        switch ListBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
+        switch CompactBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary
         case .positive: return .green
@@ -651,7 +651,7 @@ extension View {
     @ViewBuilder
     func budgetListStyle(for style: BudgetDisplayStyle) -> some View {
         switch style {
-        case .list:
+        case .compact:
             listStyle(.plain)
         case .clean, .detailed:
             self

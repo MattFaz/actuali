@@ -3,7 +3,7 @@ import SwiftUI
 import UIKit
 @testable import Actuali
 
-struct ListBudgetPresentationTests {
+struct CompactBudgetPresentationTests {
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
@@ -11,7 +11,7 @@ struct ListBudgetPresentationTests {
         ])
 
         for showsSpent in [false, true] {
-            let visibleHeader = ListBudgetGroupHeader(
+            let visibleHeader = CompactBudgetGroupHeader(
                 name: "Emergency Savings",
                 isCollapsed: false,
                 totals: totals,
@@ -20,7 +20,7 @@ struct ListBudgetPresentationTests {
             )
             .environmentObject(store)
             .frame(width: 390)
-            let hiddenHeader = ListBudgetGroupHeader(
+            let hiddenHeader = CompactBudgetGroupHeader(
                 name: "Emergency Savings",
                 isCollapsed: false,
                 totals: nil,
@@ -43,7 +43,7 @@ struct ListBudgetPresentationTests {
             toBudget: 12_500
         )
 
-        let overview = ListBudgetOverview(
+        let overview = CompactBudgetOverview(
             budget: budget,
             showsSpent: false,
             currentMonth: "2026-08"
@@ -54,7 +54,7 @@ struct ListBudgetPresentationTests {
             .init(label: "Budgeted", amount: 50_000),
             .init(label: "Balance", amount: 18_500),
         ])
-        #expect(ListBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
+        #expect(CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
             .budgeted,
             .balance,
         ])
@@ -65,12 +65,12 @@ struct ListBudgetPresentationTests {
             category(budgeted: 50_000, spent: -31_500, available: 18_500),
         ])
 
-        #expect(ListBudgetGroupHeaderPresentation(totals: nil, showsSpent: true).columns.isEmpty)
-        #expect(ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: false).columns == [
+        #expect(CompactBudgetGroupHeaderPresentation(totals: nil, showsSpent: true).columns.isEmpty)
+        #expect(CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: false).columns == [
             .init(type: .budgeted, amount: 50_000),
             .init(type: .balance, amount: 18_500),
         ])
-        #expect(ListBudgetGroupHeaderPresentation(totals: totals, showsSpent: true).columns == [
+        #expect(CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: true).columns == [
             .init(type: .budgeted, amount: 50_000),
             .init(type: .spent, amount: -31_500),
             .init(type: .balance, amount: 18_500),
@@ -89,7 +89,7 @@ struct ListBudgetPresentationTests {
             toBudget: nil
         )
 
-        let overview = ListBudgetOverview(
+        let overview = CompactBudgetOverview(
             budget: budget,
             showsSpent: true,
             currentMonth: "2026-08"
@@ -101,7 +101,7 @@ struct ListBudgetPresentationTests {
             .init(label: "Spent", amount: -60_000),
             .init(label: "Projected", amount: 45_000),
         ])
-        #expect(ListBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
+        #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
             .budgeted,
             .received,
         ])
@@ -119,7 +119,7 @@ struct ListBudgetPresentationTests {
             toBudget: nil
         )
 
-        let overview = ListBudgetOverview(
+        let overview = CompactBudgetOverview(
             budget: budget,
             showsSpent: false,
             currentMonth: "2026-08"
@@ -129,13 +129,13 @@ struct ListBudgetPresentationTests {
     }
 
     @Test func balanceToneDistinguishesEverySemanticStateAndPrivacyMasking() {
-        #expect(ListBalanceTone(amount: -1, isMasked: false) == .negative)
-        #expect(ListBalanceTone(amount: 0, isMasked: false) == .zero)
-        #expect(ListBalanceTone(amount: 1, isMasked: false) == .positive)
-        #expect(ListBalanceTone(amount: -1, isMasked: true) == .masked)
-        #expect(ListBalanceTone(amount: 0, isMasked: true) == .masked)
-        #expect(ListBalanceTone(amount: 1, isMasked: true) == .masked)
-        #expect(ListBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
+        #expect(CompactBalanceTone(amount: -1, isMasked: false) == .negative)
+        #expect(CompactBalanceTone(amount: 0, isMasked: false) == .zero)
+        #expect(CompactBalanceTone(amount: 1, isMasked: false) == .positive)
+        #expect(CompactBalanceTone(amount: -1, isMasked: true) == .masked)
+        #expect(CompactBalanceTone(amount: 0, isMasked: true) == .masked)
+        #expect(CompactBalanceTone(amount: 1, isMasked: true) == .masked)
+        #expect(CompactBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
     }
 
     private func category(budgeted: Int, spent: Int, available: Int) -> CategoryBudget {

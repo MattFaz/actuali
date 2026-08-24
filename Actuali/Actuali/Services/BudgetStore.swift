@@ -320,24 +320,24 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the List Budget view style shows its pinned monthly overview.
+    /// Whether the Compact Budget view style shows its pinned monthly overview.
     /// This is independent of the Clean and Detailed summaries and defaults on.
-    @Published var showListBudgetOverview: Bool = true {
+    @Published var showCompactBudgetOverview: Bool = true {
         didSet {
             UserDefaults.standard.set(
-                showListBudgetOverview,
-                forKey: ListBudgetViewPreferences.showOverviewKey
+                showCompactBudgetOverview,
+                forKey: CompactBudgetViewPreferences.showOverviewKey
             )
         }
     }
 
-    /// Whether the List Budget view style includes the Spent column.
+    /// Whether the Compact Budget view style includes the Spent column.
     /// The narrower two-amount layout is the default.
-    @Published var showListSpentColumn: Bool = false {
+    @Published var showCompactSpentColumn: Bool = false {
         didSet {
             UserDefaults.standard.set(
-                showListSpentColumn,
-                forKey: ListBudgetViewPreferences.showSpentColumnKey
+                showCompactSpentColumn,
+                forKey: CompactBudgetViewPreferences.showSpentColumnKey
             )
         }
     }
@@ -384,7 +384,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the Detailed and List styles' group headers total their columns.
+    /// Whether the Detailed and Compact styles' group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -1152,9 +1152,9 @@ final class BudgetStore: ObservableObject {
         }
         _startTab = Published(initialValue: StartTab.persisted)
         _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.persisted())
-        let listPreferences = ListBudgetViewPreferences.persisted()
-        _showListBudgetOverview = Published(initialValue: listPreferences.showOverview)
-        _showListSpentColumn = Published(initialValue: listPreferences.showSpentColumn)
+        let compactPreferences = CompactBudgetViewPreferences.persisted()
+        _showCompactBudgetOverview = Published(initialValue: compactPreferences.showOverview)
+        _showCompactSpentColumn = Published(initialValue: compactPreferences.showSpentColumn)
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard

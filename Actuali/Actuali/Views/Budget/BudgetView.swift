@@ -59,7 +59,7 @@ private struct BudgetListMetrics {
             horizontalContentMargin = 4
             topContentMargin = 16
             showsTopFade = true
-        case .list:
+        case .compact:
             sectionSpacing = .custom(0)
             horizontalContentMargin = 0
             topContentMargin = 0
@@ -162,8 +162,8 @@ struct BudgetView: View {
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
-    private var isList: Bool {
-        budgetStore.budgetDisplayStyle == .list
+    private var isCompact: Bool {
+        budgetStore.budgetDisplayStyle == .compact
     }
 
     var body: some View {
@@ -196,7 +196,7 @@ struct BudgetView: View {
             // below already occupies the centre, and the tab bar says
             // "Budget" anyway.
             .navigationBarTitleDisplayMode(.inline)
-            .budgetNavigationBarBackground(isList: isList)
+            .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
             .onChange(of: selectedMonth) { _, newMonth in
                 Task {
@@ -354,13 +354,13 @@ struct BudgetView: View {
                     }
                 }
             }
-        case .list:
+        case .compact:
             Section {
                 if !isCollapsed {
                     ForEach(group.categories) { category in
-                        ListCategoryBudgetRow(
+                        CompactCategoryBudgetRow(
                             category: category,
-                            showsSpent: budgetStore.showListSpentColumn,
+                            showsSpent: budgetStore.showCompactSpentColumn,
                             showsProgressBars: budgetStore.showBudgetProgressBars,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
@@ -370,11 +370,11 @@ struct BudgetView: View {
                     }
                 }
             } header: {
-                ListBudgetGroupHeader(
+                CompactBudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
-                    showsSpent: budgetStore.showListSpentColumn,
+                    showsSpent: budgetStore.showCompactSpentColumn,
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )
                 .textCase(nil)
@@ -462,11 +462,11 @@ struct BudgetView: View {
                     }
                 }
             }
-        case .list:
+        case .compact:
             Section {
                 if !isCollapsed {
                     ForEach(budget.incomeCategories) { income in
-                        ListIncomeCategoryRow(
+                        CompactIncomeCategoryRow(
                             income: income,
                             showsBudgeted: budget.isTrackingBudget,
                             onShowTransactions: showTransactions
@@ -474,7 +474,7 @@ struct BudgetView: View {
                     }
                 }
             } header: {
-                ListIncomeGroupHeader(
+                CompactIncomeGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     totalBudgeted: budget.totalBudgetedIncome,
@@ -617,7 +617,7 @@ struct BudgetView: View {
     @ViewBuilder
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
-            if isList, budgetStore.showBudgetCheckInStrip {
+            if isCompact, budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
                     selection: $categoryFilter
@@ -629,8 +629,8 @@ struct BudgetView: View {
             // amounts; the detailed style's captioned columns double as the
             // column headers for the table below. It sits above the List (not
             // inside it) so it stays pinned while the table scrolls (GH #155).
-            if !isList
-                || budgetStore.showListBudgetOverview {
+            if !isCompact
+                || budgetStore.showCompactBudgetOverview {
                 Group {
                     switch budgetStore.budgetDisplayStyle {
                     case .clean:
@@ -653,15 +653,15 @@ struct BudgetView: View {
                                 Capsule()
                                     .fill(Color(.secondarySystemGroupedBackground))
                             )
-                    case .list:
-                        ListBudgetSummary(
+                    case .compact:
+                        CompactBudgetSummary(
                             budget: budget,
-                            showsSpent: budgetStore.showListSpentColumn
+                            showsSpent: budgetStore.showCompactSpentColumn
                         )
                     }
                 }
-                .padding(.horizontal, isList ? 0 : 4)
-                .padding(.vertical, isList ? 0 : 8)
+                .padding(.horizontal, isCompact ? 0 : 4)
+                .padding(.vertical, isCompact ? 0 : 8)
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
@@ -699,7 +699,7 @@ struct BudgetView: View {
                 .padding(.bottom, 8)
             }
 
-            if !isList, budgetStore.showBudgetCheckInStrip {
+            if !isCompact, budgetStore.showBudgetCheckInStrip {
                 BudgetCheckInStrip(
                     budget: budget,
                     selection: $categoryFilter
@@ -954,9 +954,9 @@ struct BudgetView: View {
 private extension View {
     @ViewBuilder
     func budgetNavigationBarBackground(
-        isList: Bool
+        isCompact: Bool
     ) -> some View {
-        if isList {
+        if isCompact {
             self
                 .toolbarBackground(Color(.secondarySystemBackground), for: .navigationBar)
                 .toolbarBackground(.visible, for: .navigationBar)

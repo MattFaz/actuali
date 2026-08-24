@@ -144,8 +144,8 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeGroupMatchesCollapseBehaviorInListStyle() throws {
-        try assertIncomeGroupCollapses(displayStyle: "list")
+    func testIncomeGroupMatchesCollapseBehaviorInCompactStyle() throws {
+        try assertIncomeGroupCollapses(displayStyle: "compact")
     }
 
     @MainActor

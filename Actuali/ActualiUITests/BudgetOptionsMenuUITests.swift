@@ -13,8 +13,8 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
             "-hideZeroBudgetCategories", "NO",
-            "-showListBudgetOverview", "YES",
-            "-showListSpentColumn", "NO",
+            "-showCompactBudgetOverview", "YES",
+            "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-showGroupTotals", "YES",
         ]
@@ -31,29 +31,29 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "List", "Expand All Groups",
+        for option in ["Clean", "Detailed", "Compact", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
                        "Hide Spent Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
-        for listOption in ["Show Overview", "Show Spent Column"] {
-            XCTAssertFalse(app.buttons[listOption].exists,
-                           "Clean should not offer the List-only '\(listOption)' control")
+        for compactOption in ["Show Overview", "Show Spent Column"] {
+            XCTAssertFalse(app.buttons[compactOption].exists,
+                           "Clean should not offer the Compact-only '\(compactOption)' control")
         }
         XCTAssertFalse(app.buttons["Group Totals"].exists,
                        "Group Totals remains exclusive to Detailed")
     }
 
     @MainActor
-    func testListControlsAreConditionalAndCorrectlyDefaulted() throws {
+    func testCompactControlsAreConditionalAndCorrectlyDefaulted() throws {
         let app = XCUIApplication()
         launchBudgetTab(app)
 
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
-        app.buttons["List"].tap()
+        app.buttons["Compact"].tap()
 
         optionsMenu.tap()
         let overview = app.buttons["Show Overview"]
@@ -64,7 +64,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Group Totals"].exists)
         XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
-                       "List uses the shared Budget Progress Bars setting")
+                       "Compact uses the shared Budget Progress Bars setting")
 
         app.buttons["Detailed"].tap()
         optionsMenu.tap()

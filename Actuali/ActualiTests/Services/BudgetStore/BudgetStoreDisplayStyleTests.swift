@@ -2,15 +2,15 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// The Budget tab's layout preference must default to Clean, restore List,
-/// and keep List-only options independent from shared Budget preferences.
+/// The Budget tab's layout preference must default to Clean, restore Compact,
+/// and keep Compact-only options independent from shared Budget preferences.
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreDisplayStyleTests {
     private let styleKey = "budgetDisplayStyle"
-    private let listOptionKeys = [
-        "showListBudgetOverview",
-        "showListSpentColumn",
+    private let compactOptionKeys = [
+        "showCompactBudgetOverview",
+        "showCompactSpentColumn",
     ]
 
     private func withSavedDefaults(for keys: [String], _ body: () -> Void) {
@@ -30,15 +30,15 @@ struct BudgetStoreDisplayStyleTests {
         body()
     }
 
-    @Test func persistedStyleRestoresListAndFallsBackToClean() throws {
+    @Test func persistedStyleRestoresCompactAndFallsBackToClean() throws {
         let suiteName = "BudgetStoreDisplayStyleTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
 
-        defaults.set("list", forKey: styleKey)
-        #expect(BudgetDisplayStyle.persisted(in: defaults) == .list)
+        defaults.set("compact", forKey: styleKey)
+        #expect(BudgetDisplayStyle.persisted(in: defaults) == .compact)
 
         defaults.set("table-3000", forKey: styleKey)
         #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
@@ -49,73 +49,73 @@ struct BudgetStoreDisplayStyleTests {
             let store = BudgetStore.previewInstance()
             store.budgetDisplayStyle = .detailed
             #expect(UserDefaults.standard.string(forKey: styleKey) == "detailed")
-            store.budgetDisplayStyle = .list
-            #expect(UserDefaults.standard.string(forKey: styleKey) == "list")
+            store.budgetDisplayStyle = .compact
+            #expect(UserDefaults.standard.string(forKey: styleKey) == "compact")
             store.budgetDisplayStyle = .clean
             #expect(UserDefaults.standard.string(forKey: styleKey) == "clean")
         }
     }
 
-    @Test func listOptionsAndSharedProgressPreferencePersist() {
+    @Test func compactOptionsAndSharedProgressPreferencePersist() {
         let existingStyleKeys = [
             "showBudgetProgressBars",
             "showGroupTotals",
             "hideZeroBudgetCategories",
         ]
-        withSavedDefaults(for: listOptionKeys + existingStyleKeys) {
+        withSavedDefaults(for: compactOptionKeys + existingStyleKeys) {
             UserDefaults.standard.set(true, forKey: "showGroupTotals")
             UserDefaults.standard.set(true, forKey: "hideZeroBudgetCategories")
 
             let store = BudgetStore.previewInstance()
-            #expect(store.showListBudgetOverview)
-            #expect(!store.showListSpentColumn)
+            #expect(store.showCompactBudgetOverview)
+            #expect(!store.showCompactSpentColumn)
             #expect(store.showBudgetProgressBars)
 
-            store.showListBudgetOverview = false
-            store.showListSpentColumn = true
+            store.showCompactBudgetOverview = false
+            store.showCompactSpentColumn = true
             store.showBudgetProgressBars = false
 
-            #expect(UserDefaults.standard.object(forKey: listOptionKeys[0]) as? Bool == false)
-            #expect(UserDefaults.standard.object(forKey: listOptionKeys[1]) as? Bool == true)
+            #expect(UserDefaults.standard.object(forKey: compactOptionKeys[0]) as? Bool == false)
+            #expect(UserDefaults.standard.object(forKey: compactOptionKeys[1]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[1]) as? Bool == true)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[2]) as? Bool == true)
 
-            store.showListBudgetOverview = true
-            store.showListSpentColumn = false
+            store.showCompactBudgetOverview = true
+            store.showCompactSpentColumn = false
             store.showBudgetProgressBars = true
 
-            #expect(UserDefaults.standard.object(forKey: listOptionKeys[0]) as? Bool == true)
-            #expect(UserDefaults.standard.object(forKey: listOptionKeys[1]) as? Bool == false)
+            #expect(UserDefaults.standard.object(forKey: compactOptionKeys[0]) as? Bool == true)
+            #expect(UserDefaults.standard.object(forKey: compactOptionKeys[1]) as? Bool == false)
             #expect(UserDefaults.standard.object(forKey: existingStyleKeys[0]) as? Bool == true)
         }
     }
 
-    @Test func listOptionsRestoreDefaultAndPersistedValues() throws {
-        let suiteName = "BudgetStoreListPreferencesTests.\(UUID().uuidString)"
+    @Test func compactOptionsRestoreDefaultAndPersistedValues() throws {
+        let suiteName = "BudgetStoreCompactPreferencesTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        #expect(ListBudgetViewPreferences.persisted(in: defaults) == .defaults)
+        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == .defaults)
 
-        defaults.set(false, forKey: listOptionKeys[0])
-        defaults.set(true, forKey: listOptionKeys[1])
+        defaults.set(false, forKey: compactOptionKeys[0])
+        defaults.set(true, forKey: compactOptionKeys[1])
 
-        #expect(ListBudgetViewPreferences.persisted(in: defaults) == ListBudgetViewPreferences(
+        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == CompactBudgetViewPreferences(
             showOverview: false,
             showSpentColumn: true
         ))
     }
 
-    @Test func listOptionsAcceptStringBooleansFromLaunchArguments() throws {
-        let suiteName = "BudgetStoreListArgumentPreferencesTests.\(UUID().uuidString)"
+    @Test func compactOptionsAcceptStringBooleansFromLaunchArguments() throws {
+        let suiteName = "BudgetStoreCompactArgumentPreferencesTests.\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        defaults.set("NO", forKey: listOptionKeys[0])
-        defaults.set("YES", forKey: listOptionKeys[1])
+        defaults.set("NO", forKey: compactOptionKeys[0])
+        defaults.set("YES", forKey: compactOptionKeys[1])
 
-        #expect(ListBudgetViewPreferences.persisted(in: defaults) == ListBudgetViewPreferences(
+        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == CompactBudgetViewPreferences(
             showOverview: false,
             showSpentColumn: true
         ))
@@ -124,16 +124,16 @@ struct BudgetStoreDisplayStyleTests {
     /// Raw values round-trip, and unknown raw values (from a future build)
     /// decode to nil so init falls back to the default rather than crashing.
     @Test func rawValueRoundTrip() {
-        #expect(BudgetDisplayStyle.list.rawValue == "list")
+        #expect(BudgetDisplayStyle.compact.rawValue == "compact")
         for style in BudgetDisplayStyle.allCases {
             #expect(BudgetDisplayStyle(rawValue: style.rawValue) == style)
         }
         #expect(BudgetDisplayStyle(rawValue: "table-3000") == nil)
     }
 
-    @Test func detailedAndListStylesSupportGroupTotals() {
+    @Test func detailedAndCompactStylesSupportGroupTotals() {
         #expect(!BudgetDisplayStyle.clean.supportsGroupTotals)
         #expect(BudgetDisplayStyle.detailed.supportsGroupTotals)
-        #expect(BudgetDisplayStyle.list.supportsGroupTotals)
+        #expect(BudgetDisplayStyle.compact.supportsGroupTotals)
     }
 }

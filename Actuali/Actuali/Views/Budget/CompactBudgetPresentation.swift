@@ -1,13 +1,13 @@
 import Foundation
 
-enum ListBudgetColumn: String, Equatable {
+enum CompactBudgetColumn: String, Equatable {
     case budgeted = "Budgeted"
     case spent = "Spent"
     case balance = "Balance"
     case received = "Received"
 }
 
-enum ListBalanceTone: Equatable {
+enum CompactBalanceTone: Equatable {
     case negative
     case zero
     case positive
@@ -35,14 +35,14 @@ enum ListBalanceTone: Equatable {
     }
 }
 
-struct ListBudgetTableLayout: Equatable {
+struct CompactBudgetTableLayout: Equatable {
     static let titleColumnWidth: CGFloat = 145
     static let amountColumnSpacing: CGFloat = 4
     static let categoryRowVerticalPadding: CGFloat = 12
     static let categoryRowMinimumHeight: CGFloat = 44
 
-    let expenseColumns: [ListBudgetColumn]
-    let incomeColumns: [ListBudgetColumn]
+    let expenseColumns: [CompactBudgetColumn]
+    let incomeColumns: [CompactBudgetColumn]
 
     init(isTrackingBudget: Bool, showsSpent: Bool) {
         expenseColumns = showsSpent
@@ -54,9 +54,9 @@ struct ListBudgetTableLayout: Equatable {
     }
 }
 
-struct ListBudgetGroupHeaderPresentation: Equatable {
+struct CompactBudgetGroupHeaderPresentation: Equatable {
     struct Column: Equatable {
-        let type: ListBudgetColumn
+        let type: CompactBudgetColumn
         let amount: Int
     }
 
@@ -68,7 +68,7 @@ struct ListBudgetGroupHeaderPresentation: Equatable {
             return
         }
 
-        let layout = ListBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
+        let layout = CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
         columns = layout.expenseColumns.compactMap { column in
             switch column {
             case .budgeted: Column(type: column, amount: totals.budgeted)
@@ -80,7 +80,7 @@ struct ListBudgetGroupHeaderPresentation: Equatable {
     }
 }
 
-struct ListBudgetOverview: Equatable {
+struct CompactBudgetOverview: Equatable {
     struct Stat: Equatable {
         let label: String
         let amount: Int

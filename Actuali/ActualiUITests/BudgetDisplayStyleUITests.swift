@@ -51,7 +51,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "clean",
-            "-showListBudgetOverview", "YES",
+            "-showCompactBudgetOverview", "YES",
         ]
         app.launch()
 
@@ -63,11 +63,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
                       "the budget toolbar should offer the options menu")
         optionsMenu.tap()
-        app.buttons["List"].tap()
+        app.buttons["Compact"].tap()
         XCTAssertTrue(
-            app.descendants(matching: .any)["listBudgetOverview"]
+            app.descendants(matching: .any)["compactBudgetOverview"]
                 .waitForExistence(timeout: 5),
-            "switching to List replaces the Clean presentation live"
+            "switching to Compact replaces the Clean presentation live"
         )
 
         optionsMenu.tap()
@@ -98,38 +98,38 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testListStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
+    func testCompactStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "list",
-            "-showListBudgetOverview", "YES",
-            "-showListSpentColumn", "NO",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
+            "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let overview = app.descendants(matching: .any)["listBudgetOverview"]
+        let overview = app.descendants(matching: .any)["compactBudgetOverview"]
         XCTAssertTrue(overview.waitForExistence(timeout: 10),
-                      "List should render its source-style pinned overview")
+                      "Compact should render its source-style pinned overview")
         let checkInStrip = app.buttons["budgetFilter-all"]
         XCTAssertTrue(checkInStrip.waitForExistence(timeout: 5))
         XCTAssertLessThan(
             checkInStrip.frame.maxY,
             overview.frame.minY,
-            "the check-in strip should sit above the List overview"
+            "the check-in strip should sit above the Compact overview"
         )
-        let essentials = app.buttons["listBudgetGroup.Essentials"]
+        let essentials = app.buttons["compactBudgetGroup.Essentials"]
         XCTAssertTrue(essentials.exists,
-                      "List should render a dedicated group header with totals")
+                      "Compact should render a dedicated group header with totals")
         let groceriesDetails = app.buttons["Details for Groceries"].firstMatch
         if essentials.label.contains("collapsed") {
             essentials.tap()
         }
         XCTAssertTrue(groceriesDetails.waitForExistence(timeout: 5))
         XCTAssertFalse(budgetedCaption(in: app).exists,
-                       "List rows should not fall through to Clean")
+                       "Compact rows should not fall through to Clean")
 
         XCTAssertTrue(essentials.label.contains("budgeted"))
         XCTAssertTrue(essentials.label.contains("balance"))
@@ -158,27 +158,27 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testListTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
+    func testCompactTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-loadTrackingDemoData",
-            "-budgetDisplayStyle", "list",
-            "-showListBudgetOverview", "YES",
-            "-showListSpentColumn", "NO",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
+            "-showCompactSpentColumn", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let overview = app.descendants(matching: .any)["listBudgetOverview"]
+        let overview = app.descendants(matching: .any)["compactBudgetOverview"]
         XCTAssertTrue(overview.waitForExistence(timeout: 10))
         XCTAssertTrue(overview.staticTexts["Income"].exists)
         XCTAssertTrue(overview.staticTexts["Projected"].exists)
         XCTAssertFalse(overview.staticTexts["To Budget"].exists,
                        "tracking budgets have no To Budget value")
 
-        let incomeSection = app.descendants(matching: .any)["listIncomeSection"]
+        let incomeSection = app.descendants(matching: .any)["compactIncomeSection"]
         var scrollsLeft = 12
         while !incomeSection.exists && scrollsLeft > 0 {
             app.swipeUp()
@@ -205,26 +205,26 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(salaryBudget.label.contains("$"))
         XCTAssertFalse(
             salaryBudget.elementType == .button,
-            "tracking Income budget remains read-only in List"
+            "tracking Income budget remains read-only in Compact"
         )
     }
 
     @MainActor
-    func testListOptionalOverviewAndSharedProgressBarsAffectPresentation() throws {
+    func testCompactOptionalOverviewAndSharedProgressBarsAffectPresentation() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "list",
-            "-showListBudgetOverview", "NO",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "NO",
             "-showBudgetProgressBars", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
         app.launch()
 
-        let essentials = app.buttons["listBudgetGroup.Essentials"]
+        let essentials = app.buttons["compactBudgetGroup.Essentials"]
         XCTAssertTrue(essentials.waitForExistence(timeout: 10))
-        XCTAssertFalse(app.descendants(matching: .any)["listBudgetOverview"].exists,
+        XCTAssertFalse(app.descendants(matching: .any)["compactBudgetOverview"].exists,
                        "the optional overview must leave no placeholder")
         let groceries = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Details for Groceries'")
@@ -268,12 +268,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testListAccessibilityDynamicTypeUsesStackedPresentation() throws {
+    func testCompactAccessibilityDynamicTypeUsesStackedPresentation() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "list",
-            "-showListBudgetOverview", "YES",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
             "-UIPreferredContentSizeCategoryName",
@@ -282,7 +282,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         app.launch()
 
         XCTAssertTrue(
-            app.descendants(matching: .any)["listBudgetOverview.stacked"]
+            app.descendants(matching: .any)["compactBudgetOverview.stacked"]
                 .waitForExistence(timeout: 10),
             "accessibility text sizes select the stacked overview"
         )
@@ -301,11 +301,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testListLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
+    func testCompactLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
-            "-budgetDisplayStyle", "list",
+            "-budgetDisplayStyle", "compact",
             "-hideBalances", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
@@ -319,7 +319,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         XCTAssertTrue(groceriesBudget.label.contains("••••"),
                       "privacy masking also covers action accessibility values")
 
-        let longGroup = app.buttons["listBudgetGroup.Health & Wellness"]
+        let longGroup = app.buttons["compactBudgetGroup.Health & Wellness"]
         var scrollsLeft = 10
         while !longGroup.exists && scrollsLeft > 0 {
             app.swipeUp()
