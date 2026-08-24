@@ -388,6 +388,11 @@ struct AccountsListView: View {
                 NavigationStack {
                     CreditCardsSettingsView()
                         .environmentObject(budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingCreditCards = false }
+                            }
+                        }
                 }
             }
             .onAppear {
@@ -466,8 +471,8 @@ struct AccountsListView: View {
 }
 
 /// Green over positive, red over negative, primary at exactly zero — shared
-/// by every balance-displaying view in this file so the three don't drift.
-private func balanceColor(for balance: Int) -> Color {
+/// by every balance-displaying view so the copies don't drift.
+func balanceColor(for balance: Int) -> Color {
     if balance > 0 { return .green }
     if balance < 0 { return .red }
     return .primary
