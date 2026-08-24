@@ -27,17 +27,22 @@ struct CreditCardConfig: Codable, Equatable, Hashable, Sendable {
         self.updatedAt = updatedAt
     }
 
-    private static let iso8601Formatter: ISO8601DateFormatter = {
+    private static func formatISO8601(_ date: Date) -> String {
         let formatter = ISO8601DateFormatter()
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return formatter
-    }()
+        return formatter.string(from: date)
+    }
 
-    private static let fallbackISO8601Formatter: ISO8601DateFormatter = {
+    private static func parseISO8601(_ string: String) -> Date? {
         let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime]
-        return formatter
-    }()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        if let date = formatter.date(from: string) {
+            return date
+        }
+        let fallback = ISO8601DateFormatter()
+        fallback.formatOptions = [.withInternetDateTime]
+        return fallback.date(from: string)
+    }
 
     enum CodingKeys: String, CodingKey {
         case statementDay
@@ -46,29 +51,25 @@ struct CreditCardConfig: Codable, Equatable, Hashable, Sendable {
         case updatedAt
     }
 
-    init(from decoder: Decoder) throws {
+    init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         statementDay = try container.decode(Int.self, forKey: .statementDay)
         dueOffsetDays = try container.decodeIfPresent(Int.self, forKey: .dueOffsetDays) ?? CreditCardCycle.defaultDueOffsetDays
         limit = try container.decodeIfPresent(Int.self, forKey: .limit)
 
         if let dateString = try container.decodeIfPresent(String.self, forKey: .updatedAt) {
-            if let date = Self.iso8601Formatter.date(from: dateString) ?? Self.fallbackISO8601Formatter.date(from: dateString) {
-                updatedAt = date
-            } else {
-                updatedAt = Date()
-            }
+            updatedAt = Self.parseISO8601(dateString) ?? Date()
         } else {
             updatedAt = Date()
         }
     }
 
-    func encode(to encoder: Encoder) throws {
+    func encode(to encoder: any Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encode(statementDay, forKey: .statementDay)
         try container.encode(dueOffsetDays, forKey: .dueOffsetDays)
         try container.encodeIfPresent(limit, forKey: .limit)
-        try container.encode(Self.iso8601Formatter.string(from: updatedAt), forKey: .updatedAt)
+        try container.encode(Self.formatISO8601(updatedAt), forKey: .updatedAt)
     }
 
     /// Serializes this config to a JSON string.
