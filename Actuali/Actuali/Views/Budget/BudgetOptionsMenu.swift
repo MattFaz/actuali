@@ -52,9 +52,9 @@ struct BudgetOptionsMenu: View {
             Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
                 Label("Clean", systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
-                Label("Detailed", systemImage: "tablecells")
+                Label("Detailed", systemImage: "rectangle.grid.1x2")
                     .tag(BudgetDisplayStyle.detailed)
-                Label("Compact", systemImage: "rectangle.grid.1x2")
+                Label("Compact", systemImage: "rectangle.grid.1x3")
                     .tag(BudgetDisplayStyle.compact)
             }
             .pickerStyle(.inline)
