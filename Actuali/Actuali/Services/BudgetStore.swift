@@ -180,7 +180,7 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
-                loadCachedCreditCardConfigs()
+                creditCardConfigs = [:]
             }
         }
     }
@@ -550,36 +550,23 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Mappings from accountId -> statement closing day (1...31).
-    /// Persisted per budget in the preferences table (and mirrored to UserDefaults).
-    /// An account with a statement day configured is treated as a credit card with
-    /// that billing cycle in Actuali.
+    /// Persisted per budget in the preferences table. An account with a statement day
+    /// configured is treated as a credit card with that billing cycle in Actuali.
     var creditCardStatementDays: [String: Int] {
-        guard let budgetId = currentBudgetId else { return [:] }
-        if !creditCardConfigs.isEmpty {
-            return creditCardConfigs.mapValues(\.statementDay)
-        }
-        return UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
+        creditCardConfigs.mapValues(\.statementDay)
     }
 
     /// Mappings from accountId -> days between statement closing and payment due.
     /// A card missing an entry predates the setting and falls back to
     /// `CreditCardCycle.defaultDueOffsetDays`.
     var creditCardDueOffsets: [String: Int] {
-        guard let budgetId = currentBudgetId else { return [:] }
-        if !creditCardConfigs.isEmpty {
-            return creditCardConfigs.mapValues(\.dueOffsetDays)
-        }
-        return UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
+        creditCardConfigs.mapValues(\.dueOffsetDays)
     }
 
     /// Mappings from accountId -> credit limit in cents (positive). Optional per
     /// card: without one there is no available-credit figure to show.
     var creditCardLimits: [String: Int] {
-        guard let budgetId = currentBudgetId else { return [:] }
-        if !creditCardConfigs.isEmpty {
-            return creditCardConfigs.compactMapValues(\.limit)
-        }
-        return UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
+        creditCardConfigs.compactMapValues(\.limit)
     }
 
     /// Statement days whose account still exists and is open — what the Credit
@@ -594,35 +581,21 @@ final class BudgetStore: ObservableObject {
     /// Writes a card's cycle config. A nil `statementDay` stops tracking the
     /// account and clears everything stored for it, the limit included.
     func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
-        guard let budgetId = currentBudgetId else { return }
-        var days = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
-        var offsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
-        var limits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-
+        guard currentBudgetId != nil else { return }
         let config: CreditCardConfig?
         if let statementDay {
-            days[accountId] = statementDay
-            offsets[accountId] = dueOffsetDays
-            let limit = limits[accountId] ?? creditCardConfigs[accountId]?.limit
+            let limit = creditCardConfigs[accountId]?.limit
             let newConfig = CreditCardConfig(
                 statementDay: statementDay,
                 dueOffsetDays: dueOffsetDays,
-                limit: limit,
-                updatedAt: Date()
+                limit: limit
             )
             creditCardConfigs[accountId] = newConfig
             config = newConfig
         } else {
-            days.removeValue(forKey: accountId)
-            offsets.removeValue(forKey: accountId)
-            limits.removeValue(forKey: accountId)
             creditCardConfigs.removeValue(forKey: accountId)
             config = nil
         }
-
-        UserDefaults.standard.set(days, forKey: "creditCardStatementDays_\(budgetId)")
-        UserDefaults.standard.set(offsets, forKey: "creditCardDueOffsets_\(budgetId)")
-        UserDefaults.standard.set(limits, forKey: "creditCardLimits_\(budgetId)")
         objectWillChange.send()
 
         if let syncClient {
@@ -635,37 +608,14 @@ final class BudgetStore: ObservableObject {
     /// The limit is written on its own so no caller can erase it by leaving an
     /// argument off a cycle update. A nil `cents` clears it.
     func setCreditLimit(accountId: String, cents: Int?) {
-        guard let budgetId = currentBudgetId else { return }
-        var limits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-        if let cents {
-            limits[accountId] = cents
-        } else {
-            limits.removeValue(forKey: accountId)
-        }
-        UserDefaults.standard.set(limits, forKey: "creditCardLimits_\(budgetId)")
-
-        var configToSync: CreditCardConfig?
-        if var config = creditCardConfigs[accountId] {
-            config.limit = cents
-            config.updatedAt = Date()
-            creditCardConfigs[accountId] = config
-            configToSync = config
-        } else if let statementDay = (UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int])?[accountId] {
-            let offset = (UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int])?[accountId] ?? CreditCardCycle.defaultDueOffsetDays
-            let config = CreditCardConfig(
-                statementDay: statementDay,
-                dueOffsetDays: offset,
-                limit: cents,
-                updatedAt: Date()
-            )
-            creditCardConfigs[accountId] = config
-            configToSync = config
-        }
+        guard currentBudgetId != nil, var config = creditCardConfigs[accountId] else { return }
+        config.limit = cents
+        creditCardConfigs[accountId] = config
         objectWillChange.send()
 
-        if let syncClient, let configToSync {
+        if let syncClient {
             Task { [syncClient] in
-                try? await syncClient.setCreditCardConfig(accountId: accountId, config: configToSync)
+                try? await syncClient.setCreditCardConfig(accountId: accountId, config: config)
             }
         }
     }
@@ -676,24 +626,6 @@ final class BudgetStore: ObservableObject {
             statementDay: day,
             dueOffsetDays: creditCardDueOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
         )
-    }
-
-    /// Loads cached credit card configurations from local UserDefaults for the current budget.
-    private func loadCachedCreditCardConfigs() {
-        guard let budgetId = currentBudgetId else {
-            creditCardConfigs = [:]
-            return
-        }
-        var configs: [String: CreditCardConfig] = [:]
-        let days = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
-        let offsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
-        let limits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-        for (accountId, statementDay) in days {
-            let offset = offsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
-            let limit = limits[accountId]
-            configs[accountId] = CreditCardConfig(statementDay: statementDay, dueOffsetDays: offset, limit: limit)
-        }
-        creditCardConfigs = configs
     }
 
     /// The cycle to *display* for an account: nil unless it is a tracked card
@@ -1704,21 +1636,18 @@ final class BudgetStore: ObservableObject {
                     legacyConfigs[accountId] = CreditCardConfig(statementDay: statementDay, dueOffsetDays: offset, limit: limit)
                 }
                 creditCardConfigs = legacyConfigs
-            } else {
-                creditCardConfigs = fetchedCreditCards
-                var days: [String: Int] = [:]
-                var offsets: [String: Int] = [:]
-                var limits: [String: Int] = [:]
-                for (accountId, config) in fetchedCreditCards {
-                    days[accountId] = config.statementDay
-                    offsets[accountId] = config.dueOffsetDays
-                    if let limit = config.limit {
-                        limits[accountId] = limit
+                // Migrate legacy UserDefaults cards into the synced preferences table once
+                if let syncClient, !legacyConfigs.isEmpty {
+                    for (accountId, config) in legacyConfigs {
+                        do {
+                            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
+                        } catch {
+                            logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
+                        }
                     }
                 }
-                UserDefaults.standard.set(days, forKey: "creditCardStatementDays_\(budgetId)")
-                UserDefaults.standard.set(offsets, forKey: "creditCardDueOffsets_\(budgetId)")
-                UserDefaults.standard.set(limits, forKey: "creditCardLimits_\(budgetId)")
+            } else {
+                creditCardConfigs = fetchedCreditCards
             }
             
             accounts = fetchedAccounts
@@ -1894,21 +1823,6 @@ final class BudgetStore: ObservableObject {
             guard self.database === database, self.currentBudgetId == budgetId else { return }
 
             creditCardConfigs = fetchedCreditCards
-            if let budgetId {
-                var days: [String: Int] = [:]
-                var offsets: [String: Int] = [:]
-                var limits: [String: Int] = [:]
-                for (accountId, config) in fetchedCreditCards {
-                    days[accountId] = config.statementDay
-                    offsets[accountId] = config.dueOffsetDays
-                    if let limit = config.limit {
-                        limits[accountId] = limit
-                    }
-                }
-                UserDefaults.standard.set(days, forKey: "creditCardStatementDays_\(budgetId)")
-                UserDefaults.standard.set(offsets, forKey: "creditCardDueOffsets_\(budgetId)")
-                UserDefaults.standard.set(limits, forKey: "creditCardLimits_\(budgetId)")
-            }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions

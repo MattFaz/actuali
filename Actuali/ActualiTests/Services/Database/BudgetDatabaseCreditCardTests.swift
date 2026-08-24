@@ -5,31 +5,34 @@ import GRDB
 
 struct BudgetDatabaseCreditCardTests {
 
-    private func makeDatabase() throws -> (BudgetDatabase, URL) {
+    private func makeDatabase() throws -> (BudgetDatabase, DatabaseQueue, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return (try BudgetDatabase(path: tempURL), queue, tempURL)
     }
 
     @Test func fetchCreditCardConfigsReturnsDecodedConfigs() async throws {
-        let (db, fileURL) = try makeDatabase()
+        let (db, queue, fileURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
         let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500000)
         let appleConfig = CreditCardConfig(statementDay: 31, dueOffsetDays: 15, limit: nil)
 
-        try db.queue.write { sqlite in
+        let chaseData = try JSONEncoder().encode(chaseConfig)
+        let appleData = try JSONEncoder().encode(appleConfig)
+
+        try queue.write { sqlite in
             try sqlite.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: ["actuali:credit_card:acct_chase", chaseConfig.toJSONString()]
+                arguments: ["actuali:credit_card:acct_chase", String(data: chaseData, encoding: .utf8)]
             )
             try sqlite.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: ["actuali:credit_card:acct_apple", appleConfig.toJSONString()]
+                arguments: ["actuali:credit_card:acct_apple", String(data: appleData, encoding: .utf8)]
             )
             // Unrelated preference row
             try sqlite.execute(
@@ -50,10 +53,10 @@ struct BudgetDatabaseCreditCardTests {
     }
 
     @Test func fetchCreditCardConfigsIgnoresNullOrEmptyRows() async throws {
-        let (db, fileURL) = try makeDatabase()
+        let (db, queue, fileURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        try db.queue.write { sqlite in
+        try queue.write { sqlite in
             try sqlite.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
                 arguments: ["actuali:credit_card:acct_deleted", ""]
@@ -69,10 +72,10 @@ struct BudgetDatabaseCreditCardTests {
     }
 
     @Test func genericFetchPreferencesByPrefix() async throws {
-        let (db, fileURL) = try makeDatabase()
+        let (db, queue, fileURL) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: fileURL) }
 
-        try db.queue.write { sqlite in
+        try queue.write { sqlite in
             try sqlite.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES ('actuali:custom:item1', 'value1')"
             )
@@ -83,12 +86,6 @@ struct BudgetDatabaseCreditCardTests {
                 sql: "INSERT INTO preferences (id, value) VALUES ('other:item', 'value3')"
             )
         }
-
-        let single = try await db.fetchPreference(key: "actuali:custom:item1")
-        #expect(single == "value1")
-
-        let nonExistent = try await db.fetchPreference(key: "nonExistentKey")
-        #expect(nonExistent == nil)
 
         let prefixed = try await db.fetchPreferences(prefix: "actuali:custom:")
         #expect(prefixed.count == 2)

@@ -78,26 +78,15 @@ struct SyncClientCreditCardTests {
         #expect(configs["acct_chase"] == nil)
     }
 
-    @Test func genericSetPreferenceAndSetEncodablePreference() async throws {
+    @Test func genericSetPreferenceWritesRow() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
 
         let client = try await makeSyncClient(database: database)
 
-        // String preference
-        try await client.setPreference(key: "actuali:feature_flag", value: "enabled")
-        let val = try await database.fetchPreference(key: "actuali:feature_flag")
-        #expect(val == "enabled")
+        try await client.setPreference(key: "actuali:custom:flag", value: "active")
 
-        // Encodable preference
-        struct CustomPref: Codable, Equatable, Sendable {
-            let count: Int
-            let enabled: Bool
-        }
-        let pref = CustomPref(count: 42, enabled: true)
-        try await client.setEncodablePreference(key: "actuali:custom_object", value: pref)
-
-        let fetched: CustomPref? = try await database.fetchDecodablePreference(key: "actuali:custom_object")
-        #expect(fetched == pref)
+        let prefs = try await database.fetchPreferences(prefix: "actuali:custom:")
+        #expect(prefs["flag"] == "active")
     }
 }

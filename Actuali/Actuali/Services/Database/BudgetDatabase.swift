@@ -3070,22 +3070,6 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Preferences (Synced Budget-level Key-Value Store)
 
-    /// Fetches a single raw string value from the budget's `preferences` table.
-    func fetchPreference(key: String) async throws -> String? {
-        try await dbQueue.read { db in
-            guard try db.tableExists("preferences") else { return nil }
-            let row = try Row.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: [key])
-            return row?["value"]
-        }
-    }
-
-    /// Fetches and decodes a JSON Codable value from the `preferences` table.
-    func fetchDecodablePreference<T: Decodable>(key: String) async throws -> T? {
-        guard let value = try await fetchPreference(key: key),
-              let data = value.data(using: .utf8) else { return nil }
-        return try? JSONDecoder().decode(T.self, data: data)
-    }
-
     /// Fetches all key-value pairs from the `preferences` table whose keys begin with a given prefix.
     /// Returns a dictionary mapping suffix (key with prefix stripped) -> raw string value.
     func fetchPreferences(prefix: String) async throws -> [String: String] {
@@ -3115,7 +3099,7 @@ final class BudgetDatabase: Sendable {
         var results: [String: T] = [:]
         for (suffix, jsonString) in rawDict {
             if let data = jsonString.data(using: .utf8),
-               let item = try? JSONDecoder().decode(T.self, data: data) {
+               let item = try? JSONDecoder().decode(T.self, from: data) {
                 results[suffix] = item
             }
         }

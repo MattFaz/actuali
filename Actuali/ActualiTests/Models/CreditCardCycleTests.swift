@@ -208,10 +208,7 @@ struct CreditCardCycleTests {
     /// no offset; they must keep working on the previous fixed 15 days.
     @Test func cardWithNoStoredOffsetFallsBackToTheDefault() async {
         await withStore { store in
-            UserDefaults.standard.set(
-                ["acct_legacy": 10],
-                forKey: "creditCardStatementDays_test-budget"
-            )
+            store.creditCardConfigs["acct_legacy"] = CreditCardConfig(statementDay: 10)
 
             let cycle = store.creditCardCycle(for: "acct_legacy")
             #expect(cycle?.statementDay == 10)
