@@ -341,6 +341,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget rows show their compact category-status dot.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showCategoryStatusDots: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
+        }
+    }
+
     /// Whether Budget shows the status filter strip above the category list.
     /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
     /// space on a phone, so a budget that never needs the filters can reclaim
@@ -1082,6 +1090,8 @@ final class BudgetStore: ObservableObject {
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showCategoryStatusDots = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showCategoryStatusDots") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard

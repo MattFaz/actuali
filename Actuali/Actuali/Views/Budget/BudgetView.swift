@@ -791,7 +791,9 @@ struct CategoryBudgetRow: View {
                     onShowDetails(category)
                 } label: {
                     HStack(spacing: 5) {
-                        CompactCategoryStatusDot(state: category.progressState)
+                        if budgetStore.showCategoryStatusDots {
+                            CompactCategoryStatusDot(state: category.progressState)
+                        }
                         TwoLineName(
                             text: category.categoryName,
                             font: .subheadline,
@@ -876,7 +878,9 @@ struct CleanCategoryBudgetRow: View {
                     onShowDetails(category)
                 } label: {
                     HStack(spacing: 6) {
-                        CompactCategoryStatusDot(state: category.progressState)
+                        if budgetStore.showCategoryStatusDots {
+                            CompactCategoryStatusDot(state: category.progressState)
+                        }
                         Text(category.categoryName)
                             .font(.body)
                     }
@@ -1545,6 +1549,7 @@ struct CompactCategoryStatusDot: View {
             .fill(state.tint)
             .frame(width: 7, height: 7)
             .accessibilityLabel(state.statusText)
+            .accessibilityIdentifier("categoryStatusDot")
     }
 }
 
