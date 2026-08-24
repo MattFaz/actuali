@@ -401,6 +401,19 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether shaking the device toggles `hideBalances`.
+    /// Persisted to UserDefaults, defaults to off (opt-in to avoid
+    /// conflicting with Shake to Undo).
+    @Published var shakeToHideBalances: Bool = false {
+        didSet {
+            UserDefaults.standard.set(shakeToHideBalances, forKey: "shakeToHideBalances")
+        }
+    }
+
+    /// Changes only for enabled shake gestures, so view feedback is not
+    /// coupled to every other way `hideBalances` can change.
+    @Published private(set) var shakeFeedbackTrigger = false
+
     /// Whether displayed currency amounts omit their fractional digits.
     /// The underlying cent values remain unchanged; this is presentation only.
     @Published var hideDecimalPlaces: Bool = false {
@@ -482,6 +495,13 @@ final class BudgetStore: ObservableObject {
         return spentCents > 0
             ? "+\(text)"
             : text
+    }
+
+    /// Toggles `hideBalances` in response to a device shake gesture if enabled.
+    func handleDeviceShake() {
+        guard shakeToHideBalances else { return }
+        hideBalances.toggle()
+        shakeFeedbackTrigger.toggle()
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -1102,6 +1122,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _shakeToHideBalances = Published(initialValue: UserDefaults.standard
+            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
         _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
