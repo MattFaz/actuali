@@ -1625,6 +1625,7 @@ final class BudgetStore: ObservableObject {
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
 
+            var legacyCardsToMigrate: [String: CreditCardConfig]?
             if fetchedCreditCards.isEmpty {
                 var legacyConfigs: [String: CreditCardConfig] = [:]
                 let legacyDays = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
@@ -1636,15 +1637,8 @@ final class BudgetStore: ObservableObject {
                     legacyConfigs[accountId] = CreditCardConfig(statementDay: statementDay, dueOffsetDays: offset, limit: limit)
                 }
                 creditCardConfigs = legacyConfigs
-                // Migrate legacy UserDefaults cards into the synced preferences table once
-                if let syncClient, !legacyConfigs.isEmpty {
-                    for (accountId, config) in legacyConfigs {
-                        do {
-                            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
-                        } catch {
-                            logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
-                        }
-                    }
+                if !legacyConfigs.isEmpty {
+                    legacyCardsToMigrate = legacyConfigs
                 }
             } else {
                 creditCardConfigs = fetchedCreditCards
@@ -1718,6 +1712,16 @@ final class BudgetStore: ObservableObject {
                 }
 
                 subscribeToSyncState()
+
+                if let legacyCardsToMigrate, let syncClient {
+                    for (accountId, config) in legacyCardsToMigrate {
+                        do {
+                            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
+                        } catch {
+                            logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
+                        }
+                    }
+                }
             }
 
             refreshPayeeLocationSupport()

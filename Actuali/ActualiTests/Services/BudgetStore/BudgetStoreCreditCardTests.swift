@@ -15,11 +15,11 @@ struct BudgetStoreCreditCardTests {
         return (store, manager, "budget-\(UUID().uuidString)", root)
     }
 
-    private func seedBudget(id: String, in manager: BudgetFileManager) throws {
+    private func seedBudget(id: String, in manager: BudgetFileManager) async throws {
         let dir = manager.budgetDirectory(for: id)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
         }
         try JSONEncoder().encode(BudgetMetadata(
@@ -37,7 +37,7 @@ struct BudgetStoreCreditCardTests {
             UserDefaults.standard.removeObject(forKey: "creditCardLimits_\(budgetId)")
         }
 
-        try seedBudget(id: budgetId, in: manager)
+        try await seedBudget(id: budgetId, in: manager)
 
         // Seed legacy UserDefaults keys
         UserDefaults.standard.set(["acct_chase": 18], forKey: "creditCardStatementDays_\(budgetId)")
@@ -55,7 +55,7 @@ struct BudgetStoreCreditCardTests {
         let (store, manager, budgetId, root) = try makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
 
-        try seedBudget(id: budgetId, in: manager)
+        try await seedBudget(id: budgetId, in: manager)
 
         // Insert directly into preferences table
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
