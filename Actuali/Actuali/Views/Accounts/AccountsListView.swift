@@ -29,6 +29,7 @@ struct AccountsListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
+    @State private var showingCreditCards = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
     /// Split layout only. Starts on All Accounts so the detail column has
@@ -328,6 +329,12 @@ struct AccountsListView: View {
                             }
                             .disabled(budgetStore.isBankSyncing)
                         }
+                        Button {
+                            showingCreditCards = true
+                        } label: {
+                            Label("Credit Cards", systemImage: "creditcard")
+                        }
+                        Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label("Hide Closed", systemImage: "archivebox")
                         }
@@ -376,6 +383,12 @@ struct AccountsListView: View {
             .sheet(isPresented: $showingPendingImports) {
                 PendingImportsView()
                     .environmentObject(budgetStore)
+            }
+            .sheet(isPresented: $showingCreditCards) {
+                NavigationStack {
+                    CreditCardsSettingsView()
+                        .environmentObject(budgetStore)
+                }
             }
             .onAppear {
                 consumePendingAllAccountsNavigation()
