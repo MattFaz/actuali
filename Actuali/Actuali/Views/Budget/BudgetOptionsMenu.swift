@@ -66,6 +66,8 @@ struct BudgetOptionsMenu: View {
                 }
             }
 
+            // Amount masking isn't here: it's app-wide, so it lives in
+            // Settings (GH #158) rather than in any one tab's menu.
             Section {
                 // Only the detailed style has columns for a group header to
                 // total, so the clean style doesn't offer the switch.
@@ -81,9 +83,6 @@ struct BudgetOptionsMenu: View {
                     Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
                 }
                 .accessibilityLabel("Hide Spent Categories")
-                Toggle(isOn: $budgetStore.hideBalances) {
-                    Label("Hide Balances", systemImage: budgetStore.hideBalances ? "eye.slash" : "eye")
-                }
             }
         } label: {
             Image(systemName: "ellipsis.circle")

@@ -2,7 +2,6 @@ import Foundation
 import SwiftUI
 import Combine
 import os
-import UIKit
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
@@ -403,8 +402,9 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Whether shaking the device toggles `hideBalances`.
-    /// Persisted to UserDefaults, defaults to on.
-    @Published var shakeToHideBalances: Bool = true {
+    /// Persisted to UserDefaults, defaults to off (opt-in to avoid
+    /// conflicting with Shake to Undo).
+    @Published var shakeToHideBalances: Bool = false {
         didSet {
             UserDefaults.standard.set(shakeToHideBalances, forKey: "shakeToHideBalances")
         }
@@ -493,12 +493,10 @@ final class BudgetStore: ObservableObject {
             : text
     }
 
-    /// Toggles `hideBalances` in response to a device shake gesture if enabled,
-    /// triggering haptic feedback.
+    /// Toggles `hideBalances` in response to a device shake gesture if enabled.
     func handleDeviceShake() {
         guard shakeToHideBalances else { return }
         hideBalances.toggle()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -1120,7 +1118,7 @@ final class BudgetStore: ObservableObject {
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
         _shakeToHideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "shakeToHideBalances") as? Bool ?? true)
+            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
         _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
