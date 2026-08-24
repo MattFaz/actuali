@@ -122,7 +122,7 @@ struct WalletImportView: View {
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    Text(budgetStore.formatCurrency(candidate.amountCents))
+                    Text(budgetStore.displayBalance(candidate.amountCents))
                         .foregroundStyle(candidate.amountCents < 0 ? .primary : Color.green)
                 }
             }

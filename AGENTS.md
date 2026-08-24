@@ -117,7 +117,6 @@ Rules:
 Not lazy about:
 - Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.
 - Lazy code without its check is unfinished: every behavior change needs test coverage (Swift Testing `@Test` / `#expect`), as the Testing section states. Do not skip the test because the change is small.
-- When adding a new feature, update the website (`website/` — feature highlights, guides, or support docs) so users are aware of it and documentation stays in sync.
 
 ## Testing
 

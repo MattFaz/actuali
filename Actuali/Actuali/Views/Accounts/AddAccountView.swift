@@ -1,9 +1,9 @@
 import SwiftUI
 
 /// Entry point for the Accounts tab's + button. A simple menu of account
-/// creation methods, matching the PWA's own "Add account" popup — currently
-/// just the local (manual) account, since bank-linked import (Plaid/
-/// SimpleFin) isn't implemented here.
+/// creation methods, matching the PWA's own "Add account" popup: a local
+/// (manual) account, or one fed by a bank through SimpleFIN. GoCardless and
+/// the other providers the PWA offers aren't implemented here.
 struct AddAccountView: View {
     @Environment(\.dismiss) private var dismiss
 
@@ -14,6 +14,11 @@ struct AddAccountView: View {
                     CreateLocalAccountView(onCreated: { dismiss() })
                 } label: {
                     Text("Create a local account")
+                }
+                NavigationLink {
+                    BankSyncSetupView()
+                } label: {
+                    Text("Link a bank account")
                 }
             }
             .navigationTitle("Add Account")

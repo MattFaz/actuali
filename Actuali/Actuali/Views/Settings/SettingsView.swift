@@ -30,7 +30,7 @@ struct SettingsView: View {
                     NavigationLink {
                         DisplaySettingsView()
                     } label: {
-                        Label("Display", systemImage: "paintbrush")
+                        Label("Display", systemImage: "iphone")
                     }
 
                     NavigationLink {
