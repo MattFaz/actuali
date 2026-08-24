@@ -40,6 +40,22 @@ struct CurrencyAmountFormatTests {
         #expect(formatted == "$1,052")
     }
 
+    @Test func wholeUnitsRoundPlainNumbersWithoutCurrency() {
+        let formatted = CurrencyAmountFormat.string(
+            cents: 105_150, currencyCode: "", narrowSymbol: false, wholeUnits: true,
+            locale: enUS)
+        #expect(formatted == "1,052")
+    }
+
+    @Test func budgetTableWholeUnitsUseTheSameRounding() {
+        for cents in [105_150, -105_150] {
+            #expect(BudgetColumn.text(cents, wholeUnits: true) ==
+                    CurrencyAmountFormat.string(
+                        cents: cents, currencyCode: "", narrowSymbol: false,
+                        wholeUnits: true))
+        }
+    }
+
     /// Empty code means no currency (Actual's defaultCurrencyCode convention);
     /// narrowSymbol has nothing to narrow and must not disturb plain numbers.
     @Test func emptyCodeRendersPlainNumber() {

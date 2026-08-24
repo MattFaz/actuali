@@ -393,6 +393,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether displayed currency amounts omit their fractional digits.
+    /// The underlying cent values remain unchanged; this is presentation only.
+    @Published var hideDecimalPlaces: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideDecimalPlaces, forKey: "hideDecimalPlaces")
+            publishWidgetSnapshot()
+        }
+    }
+
     /// Whether Budget hides categories with no budget left this month.
     /// Persisted to UserDefaults, defaults to off.
     @Published var hideZeroBudgetCategories: Bool = false {
@@ -442,7 +451,8 @@ final class BudgetStore: ObservableObject {
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
+        guard !hideBalances else { return Self.hiddenBalanceText }
+        return hideDecimalPlaces ? formatCurrencyWholeUnits(cents) : formatCurrency(cents)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
@@ -457,9 +467,13 @@ final class BudgetStore: ObservableObject {
     /// deposits can't masquerade as spending (GH #102).
     func displaySpentCaption(_ spentCents: Int) -> String {
         guard !hideBalances else { return Self.hiddenBalanceText }
+        let magnitude = spentCents > 0 ? spentCents : -spentCents
+        let text = hideDecimalPlaces
+            ? formatCurrencyWholeUnits(magnitude)
+            : formatCurrency(magnitude)
         return spentCents > 0
-            ? "+\(formatCurrency(spentCents))"
-            : formatCurrency(-spentCents)
+            ? "+\(text)"
+            : text
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -1078,6 +1092,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
@@ -1206,6 +1222,70 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// Reconfigures an authenticated session without logging out or touching
+    /// its downloaded budget. Publish the new addresses only after both URLs
+    /// validate and the live client accepts them.
+    func updateServerConnection(
+        serverURL newServerURL: String,
+        fallbackServerURL newFallbackServerURL: String
+    ) async -> Bool {
+        let normalized = Self.normalizedServerURL(newServerURL)
+        let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
+        guard !normalized.isEmpty else {
+            error = "Please enter a server URL"
+            return false
+        }
+        guard Self.isValidServerURL(normalized) else {
+            error = ActualServerError.invalidURL.localizedDescription
+            return false
+        }
+        guard normalizedFallback.isEmpty || Self.isValidServerURL(normalizedFallback) else {
+            error = ActualServerError.invalidFallbackURL.localizedDescription
+            return false
+        }
+
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        let previousServerURL = serverURL
+        let previousFallbackServerURL = fallbackServerURL
+        do {
+            if normalized != previousServerURL {
+                // Probe the primary without fallback so an unreachable edit
+                // cannot be accepted merely because its alternate responds.
+                try await serverClient.configure(serverURL: normalized)
+                do {
+                    _ = try await serverClient.fetchLoginMethods()
+                } catch let probeError as ActualServerError where probeError.isConnectionFailure {
+                    // A transport failure means the replacement address cannot
+                    // be used. Restore the live client before leaving the saved
+                    // connection untouched.
+                    try? await serverClient.configure(
+                        serverURL: previousServerURL,
+                        fallbackServerURL: previousFallbackServerURL
+                    )
+                    self.error = probeError.localizedDescription
+                    return false
+                } catch {
+                    // A server that answers but lacks this endpoint is reachable;
+                    // older Actual versions and route-stripping proxies are valid.
+                }
+            }
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
+            serverURL = normalized
+            fallbackServerURL = normalizedFallback
+            refreshPayeeLocationSupport()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     /// Trims whitespace and prepends `https://` if the user omitted a scheme.
     /// Empty input stays empty so callers can still detect "missing URL".
     static func normalizedServerURL(_ raw: String) -> String {
@@ -1215,6 +1295,11 @@ final class BudgetStore: ObservableObject {
             return trimmed
         }
         return "https://" + trimmed
+    }
+
+    private nonisolated static func isValidServerURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw) else { return false }
+        return url.scheme != nil && url.host != nil
     }
 
     func login(password: String) async {
@@ -1393,6 +1478,12 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
+        #if DEBUG
+        // This UI test seeds a connected session without a server behind it.
+        // Keep the production view lifecycle intact while avoiding a request
+        // that can only time out and raise an unrelated alert.
+        if CommandLine.arguments.contains("-connectedServerSettings") { return }
+        #endif
         isLoading = true
         error = nil
 
@@ -4584,7 +4675,7 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Currency Formatting
 
-    /// Format an amount in cents to a currency string using the budget's currency
+    /// Format an amount in cents to a currency string using the budget's currency.
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
