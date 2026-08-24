@@ -58,9 +58,11 @@ struct BudgetOptionsMenu: View {
                     Button(action: expandAllGroups) {
                         Label("Expand Groups", systemImage: "chevron.down")
                     }
+                    .accessibilityLabel("Expand All Groups")
                     Button(action: collapseAllGroups) {
                         Label("Collapse Groups", systemImage: "chevron.right")
                     }
+                    .accessibilityLabel("Collapse All Groups")
                 }
             }
 

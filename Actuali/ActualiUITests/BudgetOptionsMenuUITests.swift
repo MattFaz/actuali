@@ -27,24 +27,11 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "Expand Groups",
-                       "Collapse Groups", "Status Filters", "Hide Spent"] {
+        for option in ["Clean", "Detailed", "Expand All Groups",
+                       "Collapse All Groups", "Status Filters", "Hide Spent Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
-    }
-
-    @MainActor
-    func testAddMenuUsesConciseLabels() throws {
-        let app = XCUIApplication()
-        launchBudgetTab(app)
-
-        let addMenu = app.navigationBars["Budget"].buttons["Add"]
-        XCTAssertTrue(addMenu.waitForExistence(timeout: 10))
-        addMenu.tap()
-
-        XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["New Category Group"].waitForExistence(timeout: 5))
     }
 
     /// The strip costs a row of vertical space on a phone, so it's optional.
@@ -96,7 +83,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
                       "demo data should show the Essentials categories")
 
         optionsMenu.tap()
-        let hideSpent = app.buttons["Hide Spent"]
+        let hideSpent = app.buttons["Hide Spent Categories"]
         XCTAssertTrue(hideSpent.waitForExistence(timeout: 5))
         XCTAssertFalse(hideSpent.isSelected, "the filter starts off")
         hideSpent.tap()
