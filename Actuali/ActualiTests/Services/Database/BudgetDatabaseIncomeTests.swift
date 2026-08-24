@@ -160,6 +160,22 @@ struct BudgetDatabaseIncomeTests {
         #expect(june.incomeCategories.map(\.categoryId) == ["cat-salary"])
     }
 
+    @Test func hiddenCategoriesAndGroupsCanBeIncluded() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try execSQL(db, "UPDATE categories SET hidden = 1 WHERE id = 'cat-bonus'")
+        try execSQL(db, "UPDATE category_groups SET hidden = 1 WHERE id = 'grp-1'")
+
+        let june = try await db.fetchBudgetMonth(
+            month: "2026-06",
+            includeHiddenCategories: true
+        )
+
+        #expect(june.incomeCategories.contains { $0.categoryId == "cat-bonus" })
+        #expect(june.categoryBudgets.contains { $0.categoryId == "cat-groceries" })
+    }
+
     @Test func transactionsOnADeletedAccountAreExcluded() async throws {
         // Deleting an account takes its transactions with it; one left alive on
         // a tombstoned account is a sync-race orphan, and counting it would put

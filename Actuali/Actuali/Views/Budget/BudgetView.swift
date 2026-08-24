@@ -155,6 +155,9 @@ struct BudgetView: View {
             .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
                 if !isShown { categoryFilter = .all }
             }
+            .onChange(of: budgetStore.showHiddenCategories) {
+                _, _ in Task { await budgetStore.fetchBudgetMonth(selectedMonth) }
+            }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
@@ -200,6 +203,12 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CleanCategoryBudgetRow(
                             category: category,
+                            isHidden: categoryMetadata(category.categoryId)?.hidden == true,
+                            isDimmed: group.isHidden
+                                || categoryMetadata(category.categoryId)?.hidden == true,
+                            onSetHidden: {
+                                setCategoryHidden(category.categoryId, hidden: $0)
+                            },
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
                             // Name shows all time, Spent shows
@@ -213,6 +222,10 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )
                 .textCase(nil)
@@ -225,6 +238,10 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     onToggleCollapse: { toggleCollapsed(group.id) },
                     reservesTwoLines: true
@@ -235,6 +252,12 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CategoryBudgetRow(
                             category: category,
+                            isHidden: categoryMetadata(category.categoryId)?.hidden == true,
+                            isDimmed: group.isHidden
+                                || categoryMetadata(category.categoryId)?.hidden == true,
+                            onSetHidden: {
+                                setCategoryHidden(category.categoryId, hidden: $0)
+                            },
                             addsGroupBottomPadding:
                                 category.id == group.categories.last?.id,
                             onShowDetails: { selectedCategory = $0 },
@@ -255,13 +278,20 @@ struct BudgetView: View {
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
-        let name = budget.incomeCategories.first?.groupName ?? "Income"
+        let group = budgetStore.categoryGroups.first(where: \.isIncome)
+        let name = group?.name ?? budget.incomeCategories.first?.groupName ?? "Income"
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
                     ForEach(budget.incomeCategories) { income in
                         IncomeCategoryRow(
                             income: income,
+                            isHidden: categoryMetadata(income.categoryId)?.hidden == true,
+                            isDimmed: group?.hidden == true
+                                || categoryMetadata(income.categoryId)?.hidden == true,
+                            onSetHidden: {
+                                setCategoryHidden(income.categoryId, hidden: $0)
+                            },
                             showsBudgeted: budget.toBudget == nil,
                             isDetailed: false,
                             onShowTransactions: showTransactions
@@ -272,6 +302,10 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: group.map { group in
+                        { setCategoryGroupHidden(group.id, hidden: $0) }
+                    },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -284,6 +318,10 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: group.map { group in
+                        { setCategoryGroupHidden(group.id, hidden: $0) }
+                    },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -297,6 +335,12 @@ struct BudgetView: View {
                     ForEach(budget.incomeCategories) { income in
                         IncomeCategoryRow(
                             income: income,
+                            isHidden: categoryMetadata(income.categoryId)?.hidden == true,
+                            isDimmed: group?.hidden == true
+                                || categoryMetadata(income.categoryId)?.hidden == true,
+                            onSetHidden: {
+                                setCategoryHidden(income.categoryId, hidden: $0)
+                            },
                             showsBudgeted: budget.toBudget == nil,
                             isDetailed: true,
                             onShowTransactions: showTransactions
@@ -591,6 +635,38 @@ struct BudgetView: View {
         return visible.min { $0.sortOrder < $1.sortOrder }?.id
     }
 
+    private func categoryMetadata(_ id: String) -> Category? {
+        budgetStore.categoryGroups.lazy.flatMap(\.categories).first { $0.id == id }
+    }
+
+    private func setCategoryHidden(_ id: String, hidden: Bool) {
+        Task {
+            do {
+                try await budgetStore.setCategoryHidden(
+                    id: id,
+                    hidden: hidden,
+                    month: selectedMonth
+                )
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
+    }
+
+    private func setCategoryGroupHidden(_ id: String, hidden: Bool) {
+        Task {
+            do {
+                try await budgetStore.setCategoryGroupHidden(
+                    id: id,
+                    hidden: hidden,
+                    month: selectedMonth
+                )
+            } catch {
+                budgetStore.error = error.localizedDescription
+            }
+        }
+    }
+
     /// Push the category's transactions: month narrows to one "yyyy-MM",
     /// nil means all time (GH #56).
     private func showTransactions(_ category: CategoryBudget, month: String?) {
@@ -612,6 +688,7 @@ struct BudgetView: View {
     struct CategoryGroupSection {
         let id: String
         let name: String
+        let isHidden: Bool
         /// The rows to draw, after "Hide Spent Categories" filtering.
         let categories: [CategoryBudget]
         /// Totals over the group's whole category list, hidden rows included.
@@ -627,8 +704,15 @@ struct BudgetView: View {
                 // An explicit filter is its own visibility rule: "Not Funded"
                 // must still match zero-available categories even when the
                 // Hide Spent Categories setting would drop them from "All".
+                let groupHidden = budgetStore.categoryGroups
+                    .first { $0.id == groupId }?.hidden == true
                 let base = categoryFilter == .all
-                    ? budgetStore.visibleCategoryBudgets(items)
+                    ? items.filter {
+                        !budgetStore.hideZeroBudgetCategories || $0.available != 0
+                            || (budgetStore.showHiddenCategories
+                                && (groupHidden
+                                    || categoryMetadata($0.categoryId)?.hidden == true))
+                    }
                     : items.filter(categoryFilter.includes)
                 let visible = base
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
@@ -640,6 +724,8 @@ struct BudgetView: View {
                     CategoryGroupSection(
                         id: groupId,
                         name: first.groupName,
+                        isHidden: budgetStore.categoryGroups
+                            .first { $0.id == groupId }?.hidden == true,
                         categories: visible,
                         totals: CategoryGroupTotals(categoryFilter == .all ? items : visible)
                     )
@@ -653,13 +739,18 @@ struct BudgetView: View {
         // Empty placeholders only belong in the unfiltered table: a filter
         // that matches nothing should show the empty state, not bare headers.
         sections += budgetStore.categoryGroups
-            .filter { categoryFilter == .all && !$0.isIncome && !$0.hidden && $0.categories.isEmpty }
+            .filter {
+                categoryFilter == .all && !$0.isIncome
+                    && (budgetStore.showHiddenCategories || !$0.hidden)
+                    && $0.categories.isEmpty
+            }
             .map { group -> (Double, CategoryGroupSection) in
                 (
                     group.sortOrder,
                     CategoryGroupSection(
                         id: group.id,
                         name: group.name,
+                        isHidden: group.hidden,
                         categories: [],
                         totals: CategoryGroupTotals([])
                     )
@@ -772,6 +863,9 @@ struct BudgetCheckInStrip: View {
 struct CategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var isHidden = false
+    var isDimmed = false
+    var onSetHidden: ((Bool) -> Void)?
     var addsGroupBottomPadding = false
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
@@ -854,6 +948,17 @@ struct CategoryBudgetRow: View {
                 && category.showsProgressBar ? 10 : 4,
             trailing: 16
         ))
+        .opacity(isDimmed ? 0.5 : 1)
+        .swipeActions {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 }
 
@@ -863,6 +968,9 @@ struct CategoryBudgetRow: View {
 struct CleanCategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
+    var isHidden = false
+    var isDimmed = false
+    var onSetHidden: ((Bool) -> Void)?
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     /// Push the category's transactions: month narrows to one "yyyy-MM",
@@ -942,6 +1050,17 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+            }
+        }
+        .opacity(isDimmed ? 0.5 : 1)
+        .swipeActions {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
             }
         }
         .padding(.vertical, 2)
@@ -1153,6 +1272,8 @@ struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
     let isCollapsed: Bool
+    var isHidden = false
+    var onSetHidden: ((Bool) -> Void)?
     /// The detailed style totals its columns here; the clean style's header
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
@@ -1170,52 +1291,74 @@ struct BudgetGroupHeader: View {
     var reservesTwoLines = false
 
     var body: some View {
-        Button(action: onToggleCollapse) {
-            HStack(spacing: BudgetColumn.spacing) {
-                DisclosureChevron(
-                    isExpanded: !isCollapsed,
-                    font: .caption2.weight(.semibold)
-                )
-                .foregroundStyle(.secondary)
-                if reservesTwoLines {
-                    TwoLineName(
-                        text: name,
-                        font: .subheadline.weight(.semibold),
-                        minimumScaleFactor: 0.85
+        HStack(spacing: 8) {
+            Button(action: onToggleCollapse) {
+                HStack(spacing: BudgetColumn.spacing) {
+                    DisclosureChevron(
+                        isExpanded: !isCollapsed,
+                        font: .caption2.weight(.semibold)
                     )
-                    .foregroundStyle(.primary)
-                } else {
-                    Text(name)
-                        .font(.subheadline.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    if reservesTwoLines {
+                        TwoLineName(
+                            text: name,
+                            font: .subheadline.weight(.semibold),
+                            minimumScaleFactor: 0.85
+                        )
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.85)
+                    } else {
+                        Text(name)
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
+                    }
+                    Spacer(minLength: 4)
+                    if let totals {
+                        BudgetAmountPill(
+                            text: budgetStore.displayBudgetCell(totals.spent),
+                            dimmed: totals.spent == 0
+                        )
+                        BudgetAmountPill(
+                            text: budgetStore.displayBudgetCell(totals.balance),
+                            // Same three-way treatment as the category rows, so a
+                            // group that lands on zero doesn't read as healthy.
+                            color: totals.balance < 0
+                                ? .red
+                                : (totals.balance == 0 ? .secondary : .green)
+                        )
+                    } else if let receivedTotal {
+                        Text("Received \(receivedText(receivedTotal))")
+                            .font(.subheadline.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.75)
+                    }
                 }
-                Spacer(minLength: 4)
-                if let totals {
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(totals.spent),
-                        dimmed: totals.spent == 0
-                    )
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(totals.balance),
-                        // Same three-way treatment as the category rows, so a
-                        // group that lands on zero doesn't read as healthy.
-                        color: totals.balance < 0 ? .red : (totals.balance == 0 ? .secondary : .green)
-                    )
-                } else if let receivedTotal {
-                    Text("Received \(receivedText(receivedTotal))")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Toggles the group's categories")
+
+            if let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show Group" : "Hide Group",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityLabel("Options for \(name)")
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
+        .opacity(isHidden ? 0.5 : 1)
     }
 
     /// The pills are decoration to VoiceOver once the button carries its own
@@ -1246,6 +1389,9 @@ struct BudgetGroupHeader: View {
 struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
+    var isHidden = false
+    var isDimmed = false
+    var onSetHidden: ((Bool) -> Void)?
     var showsBudgeted = false
     var isDetailed = false
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
@@ -1293,6 +1439,17 @@ struct IncomeCategoryRow: View {
             bottom: 4,
             trailing: 16
         ))
+        .opacity(isDimmed ? 0.5 : 1)
+        .swipeActions {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 }
 

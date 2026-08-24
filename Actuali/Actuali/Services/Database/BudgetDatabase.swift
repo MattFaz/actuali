@@ -1395,7 +1395,10 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Budget Data
 
-    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
+    func fetchBudgetMonth(
+        month: String,
+        includeHiddenCategories: Bool = false
+    ) async throws -> BudgetMonth {
         try await dbQueue.read { db in
             let targetMonthInt = Self.monthStringToInt(month)
 
@@ -1605,12 +1608,14 @@ final class BudgetDatabase: Sendable {
             let groups = try CategoryGroupRecord
                 .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
                 .fetchAll(db)
-            let visibleGroupIds = Set(groups.filter { $0.hidden != 1 }.map { $0.id })
+            let visibleGroupIds = Set(groups
+                .filter { includeHiddenCategories || $0.hidden != 1 }
+                .map { $0.id })
             let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
 
             let categoryBudgets = categories.compactMap { cat -> CategoryBudget? in
                 guard cat.isIncome != 1 else { return nil }
-                guard cat.hidden != 1 else { return nil }
+                guard includeHiddenCategories || cat.hidden != 1 else { return nil }
                 guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
                 let budgeted = targetBudgets[cat.id]?.amount ?? 0
                 let spent = targetSpent[cat.id] ?? 0
@@ -1638,7 +1643,7 @@ final class BudgetDatabase: Sendable {
             // the category (income transactions are positive amounts).
             let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
                 guard cat.isIncome == 1 else { return nil }
-                guard cat.hidden != 1 else { return nil }
+                guard includeHiddenCategories || cat.hidden != 1 else { return nil }
                 guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
                 let group = groupsById[cat.catGroup ?? ""]
 

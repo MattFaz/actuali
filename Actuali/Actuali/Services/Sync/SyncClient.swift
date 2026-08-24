@@ -746,6 +746,33 @@ actor SyncClient {
         await automaticSync()
     }
 
+    func setCategoryHidden(id: String, hidden: Bool) async throws {
+        try await setHidden(dataset: Category.datasetName, id: id, hidden: hidden)
+    }
+
+    func setCategoryGroupHidden(id: String, hidden: Bool) async throws {
+        try await setHidden(dataset: CategoryGroup.datasetName, id: id, hidden: hidden)
+    }
+
+    private func setHidden(dataset: String, id: String, hidden: Bool) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        let messages = try await messageGenerator.messages(
+            dataset: dataset,
+            row: id,
+            fields: [("hidden", hidden ? 1 : 0)]
+        )
+        try database.applyMessages(messages)
+
+        for message in try database.insertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        await automaticSync()
+    }
+
     /// Record a location for a payee (optimistic local-first). Callers are
     /// responsible for the server-version guard and 500 m dedupe — this
     /// method just writes.

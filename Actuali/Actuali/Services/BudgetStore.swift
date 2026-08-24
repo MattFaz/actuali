@@ -431,6 +431,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether hidden categories and groups are included on the Budget tab.
+    /// Persisted locally so an item stays reachable until the user turns the
+    /// view option off again.
+    @Published var showHiddenCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
+        }
+    }
+
     /// Whether transaction lists show only uncleared transactions, so long
     /// histories don't bury the items that still need attention (GH #133).
     /// Persisted to UserDefaults, defaults to off.
@@ -1131,6 +1140,8 @@ final class BudgetStore: ObservableObject {
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
+        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
@@ -1664,7 +1675,13 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(
+                month: currentMonth,
+                includeHiddenCategories: showHiddenCategories
+            )
+            let fetchedWidgetBudgetMonth = showHiddenCategories
+                ? try await openedDb.fetchBudgetMonth(month: currentMonth)
+                : fetchedBudgetMonth
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1699,7 +1716,7 @@ final class BudgetStore: ObservableObject {
                 requestedBudgetMonth = currentMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedWidgetBudgetMonth
             dataVersion += 1
             publishWidgetSnapshot()
 
@@ -1840,9 +1857,12 @@ final class BudgetStore: ObservableObject {
             // with the current calendar month while the toolbar still shows
             // the user's selection (GH #328).
             let displayedMonth = requestedBudgetMonth ?? currentMonth
-            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
+            let fetchedBudgetMonth = try await database.fetchBudgetMonth(
+                month: displayedMonth,
+                includeHiddenCategories: showHiddenCategories
+            )
             let fetchedWidgetBudgetMonth: BudgetMonth
-            if displayedMonth == currentMonth {
+            if displayedMonth == currentMonth, !showHiddenCategories {
                 fetchedWidgetBudgetMonth = fetchedBudgetMonth
             } else {
                 fetchedWidgetBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
@@ -2194,6 +2214,36 @@ final class BudgetStore: ObservableObject {
             try await syncClient.renameCategory(id: id, name: trimmedName)
         } catch let error as BudgetDatabase.CategoryWriteError {
             throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryHidden(id: id, hidden: hidden)
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryGroupHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryGroupHidden(id: id, hidden: hidden)
         } catch {
             throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
         }
@@ -4437,7 +4487,10 @@ final class BudgetStore: ObservableObject {
     func fetchBudgetMonth(_ month: String) async {
         requestedBudgetMonth = month
         do {
-            let fetched = try await database?.fetchBudgetMonth(month: month)
+            let fetched = try await database?.fetchBudgetMonth(
+                month: month,
+                includeHiddenCategories: showHiddenCategories
+            )
             // If a newer month was requested while we were fetching (rapid
             // month flips), this result is stale — drop it.
             guard requestedBudgetMonth == month else { return }
