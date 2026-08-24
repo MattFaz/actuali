@@ -134,7 +134,6 @@ struct TransactionAutomationSettingsView: View {
                 } label: {
                     Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                 }
-
             } header: {
                 Text("Scheduled Transactions")
             } footer: {
