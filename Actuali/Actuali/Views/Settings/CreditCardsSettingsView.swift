@@ -18,7 +18,9 @@ struct CreditCardsSettingsView: View {
             guard let account = accountsById[accountId],
                   let cycle = budgetStore.creditCardCycle(for: accountId) else { return nil }
             return (account: account, cycle: cycle)
-        }.sorted { $0.cycle.daysUntilDue() < $1.cycle.daysUntilDue() }
+        }.sorted {
+            ($0.cycle.daysUntilDue(), $0.account.name) < ($1.cycle.daysUntilDue(), $1.account.name)
+        }
     }
 
     private var unconfiguredAccounts: [Account] {
@@ -214,7 +216,7 @@ private struct CreditCardCycleRow: View {
     }
 
     /// Urgency color: red ≤3d, orange ≤7d, yellow otherwise.
-    private static func urgencyColor(days: Int) -> Color {
+    nonisolated private static func urgencyColor(days: Int) -> Color {
         if days <= 3 { return .red }
         if days <= 7 { return .orange }
         return .yellow
@@ -224,22 +226,8 @@ private struct CreditCardCycleRow: View {
         Self.urgencyColor(days: cycle.daysUntilDue())
     }
 
-    private var balanceColor: Color {
-        if account.balance > 0 { return .green }
-        if account.balance < 0 { return .red }
-        return .primary
-    }
-
-    /// Short due text for the pill badge.
-    private var duePillText: String {
-        let days = cycle.daysUntilDue()
-        if days == 0 { return "Due today" }
-        if days == 1 { return "Tomorrow" }
-        return "Due in \(days)d"
-    }
-
     /// Card background with a colored left urgency border strip.
-    @MainActor static func cardBackground(daysUntilDue days: Int) -> some View {
+    nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
         RoundedRectangle(cornerRadius: 10)
             .fill(Color(.secondarySystemGroupedBackground))
             .overlay(alignment: .leading) {
@@ -262,16 +250,16 @@ private struct CreditCardCycleRow: View {
                 Spacer()
                 Text(budgetStore.displayBalance(account.balance))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(balanceColor)
+                    .foregroundStyle(balanceColor(for: account.balance))
             }
 
-            // Row 2: cycle spend + due pill
+            // Row 2: cycle spend + days left + due pill
             HStack {
-                Text("Spend \(budgetStore.displayBalance(cycleSpend))")
+                Text("Spend \(budgetStore.displayBalance(cycleSpend)) · \(cycle.daysRemainingInCycle())d left")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(duePillText)
+                Text(cycle.dueShortSummary())
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
