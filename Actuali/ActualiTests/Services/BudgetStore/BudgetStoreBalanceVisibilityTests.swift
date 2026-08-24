@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import Actuali
 
 /// The hide-balances privacy mask must replace every formatted amount with
@@ -87,9 +88,11 @@ struct BudgetStoreBalanceVisibilityTests {
 
         store.handleDeviceShake()
         #expect(store.hideBalances)
+        #expect(store.shakeFeedbackTrigger)
 
         store.handleDeviceShake()
         #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
     }
 
     @Test func handleDeviceShakeNoOpsWhenDisabled() {
@@ -99,6 +102,18 @@ struct BudgetStoreBalanceVisibilityTests {
 
         store.handleDeviceShake()
         #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
+    }
+
+    @Test func shakeResponderRoutesOnlyWhileEnabled() {
+        var shakeCount = 0
+        let responder = ShakeResponderView(isEnabled: true) { shakeCount += 1 }
+
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
+
+        responder.update(isEnabled: false) { shakeCount += 1 }
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
     }
 }
-

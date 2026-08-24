@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -32,7 +33,11 @@ struct ContentView: View {
         MainTabView()
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
             .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
-            .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.hideBalances)
+            .background(ShakeResponder(
+                isEnabled: budgetStore.shakeToHideBalances,
+                onShake: budgetStore.handleDeviceShake
+            ))
+            .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.shakeFeedbackTrigger)
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}
             } message: {
@@ -79,6 +84,82 @@ struct ContentView: View {
         if let id = prefill.accountId, openAccounts.contains(where: { $0.id == id }) { return id }
         if let id = budgetStore.defaultAccountId, openAccounts.contains(where: { $0.id == id }) { return id }
         return openAccounts.first?.id
+    }
+}
+
+private struct ShakeResponder: UIViewRepresentable {
+    let isEnabled: Bool
+    let onShake: @MainActor () -> Void
+
+    func makeUIView(context: Context) -> ShakeResponderView {
+        ShakeResponderView(isEnabled: isEnabled, onShake: onShake)
+    }
+
+    func updateUIView(_ view: ShakeResponderView, context: Context) {
+        view.update(isEnabled: isEnabled, onShake: onShake)
+    }
+}
+
+@MainActor
+final class ShakeResponderView: UIView {
+    private var isEnabled: Bool
+    private var onShake: @MainActor () -> Void
+
+    init(isEnabled: Bool, onShake: @escaping @MainActor () -> Void) {
+        self.isEnabled = isEnabled
+        self.onShake = onShake
+        super.init(frame: .zero)
+
+        for name in [
+            UIResponder.keyboardDidHideNotification,
+            UITextField.textDidEndEditingNotification,
+            UITextView.textDidEndEditingNotification,
+            UIWindow.didBecomeKeyNotification,
+        ] {
+            NotificationCenter.default.addObserver(
+                self,
+                selector: #selector(reclaimFirstResponder),
+                name: name,
+                object: nil
+            )
+        }
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { nil }
+
+    override var canBecomeFirstResponder: Bool { isEnabled }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        updateFirstResponder()
+    }
+
+    func update(isEnabled: Bool, onShake: @escaping @MainActor () -> Void) {
+        self.onShake = onShake
+        guard self.isEnabled != isEnabled else { return }
+        self.isEnabled = isEnabled
+        updateFirstResponder()
+    }
+
+    override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        guard isEnabled, motion == .motionShake else {
+            super.motionEnded(motion, with: event)
+            return
+        }
+        onShake()
+    }
+
+    @objc private func reclaimFirstResponder() {
+        updateFirstResponder()
+    }
+
+    private func updateFirstResponder() {
+        if isEnabled, window != nil {
+            becomeFirstResponder()
+        } else if isFirstResponder {
+            resignFirstResponder()
+        }
     }
 }
 

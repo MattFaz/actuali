@@ -410,6 +410,10 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Changes only for enabled shake gestures, so view feedback is not
+    /// coupled to every other way `hideBalances` can change.
+    @Published private(set) var shakeFeedbackTrigger = false
+
     /// Whether displayed currency amounts omit their fractional digits.
     /// The underlying cent values remain unchanged; this is presentation only.
     @Published var hideDecimalPlaces: Bool = false {
@@ -497,6 +501,7 @@ final class BudgetStore: ObservableObject {
     func handleDeviceShake() {
         guard shakeToHideBalances else { return }
         hideBalances.toggle()
+        shakeFeedbackTrigger.toggle()
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
