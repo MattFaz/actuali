@@ -20,6 +20,7 @@ struct BudgetViewSettingsView: View {
 
                 Toggle("Status Filters", isOn: $budgetStore.showBudgetCheckInStrip)
                 Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
+                Toggle("Category Status Dots", isOn: $budgetStore.showCategoryStatusDots)
                 Toggle("Budget Progress Bars", isOn: $budgetStore.showBudgetProgressBars)
                 Toggle("Overspent Badge", isOn: $budgetStore.showOverspentBadge)
             } header: {
