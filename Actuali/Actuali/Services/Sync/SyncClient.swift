@@ -500,6 +500,157 @@ actor SyncClient {
         await automaticSync()
     }
     
+    // MARK: - Bank Sync
+
+    /// Point an account at a provider's account, so later syncs know where to
+    /// download its transactions from (optimistic local-first).
+    ///
+    /// Writes the same three columns the web UI's own link writes —
+    /// `account_id`, `account_sync_source`, `bank` — plus the institution row
+    /// `bank` points at, reusing an existing row for the institution when
+    /// there is one (upstream `findOrCreateBank`). Both clients therefore see
+    /// the same link, and either can sync or unlink the account.
+    func linkAccount(
+        accountId: String,
+        externalAccountId: String,
+        source: BankSyncSource,
+        institutionId: String,
+        institutionName: String
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("linkAccount() - id: \(accountId, privacy: .private)")
+
+        let existingBank = try await database.bank(withBankId: institutionId)
+        let bank = existingBank ?? Bank(
+            id: UUID().uuidString, bankId: institutionId, name: institutionName
+        )
+
+        var messages = try await messageGenerator.messages(
+            dataset: "accounts",
+            row: accountId,
+            fields: [
+                ("account_id", externalAccountId),
+                ("account_sync_source", source.rawValue),
+                ("bank", bank.id)
+            ]
+        )
+        if existingBank == nil {
+            messages += try await messageGenerator.messagesForInsert(bank)
+        }
+
+        for msg in try database.applyBankSyncLink(
+            accountId: accountId,
+            externalAccountId: externalAccountId,
+            syncSource: source.rawValue,
+            bank: bank,
+            messages: messages
+        ) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        await automaticSync()
+    }
+
+    /// Cut an account loose from its bank feed. The transactions it already
+    /// imported stay — only the link goes, matching the web UI's unlink, which
+    /// clears the cached balances and the status badge along with the pointer.
+    func unlinkAccount(accountId: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("unlinkAccount() - id: \(accountId, privacy: .private)")
+
+        let messages = try await messageGenerator.messages(
+            dataset: "accounts",
+            row: accountId,
+            fields: [
+                ("account_id", nil),
+                ("account_sync_source", nil),
+                ("bank", nil),
+                ("balance_current", nil),
+                ("balance_available", nil),
+                ("balance_limit", nil),
+                ("bank_sync_status", nil)
+            ]
+        )
+
+        for msg in try database.applyBankSyncUnlink(accountId: accountId, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        await automaticSync()
+    }
+
+    /// Record what a bank sync did on each account it touched — `last_sync`
+    /// and `bank_sync_status`, the two columns every Actual client stamps, so
+    /// a sync run here reads the same in the web UI.
+    func recordBankSyncStatus(
+        _ statuses: [(accountId: String, lastSync: String?, status: String)]
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !statuses.isEmpty else { return }
+
+        var messages: [CRDTMessage] = []
+        for entry in statuses {
+            var fields: [(column: String, value: (any Sendable)?)] = [
+                ("bank_sync_status", entry.status)
+            ]
+            // Only stamp last_sync when there was a sync to stamp — see
+            // BudgetDatabase.applyBankSyncStatus.
+            if let lastSync = entry.lastSync {
+                fields.append(("last_sync", lastSync))
+            }
+            messages += try await messageGenerator.messages(
+                dataset: "accounts", row: entry.accountId, fields: fields
+            )
+        }
+
+        for msg in try database.applyBankSyncStatus(statuses, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    /// Fold a bank download into the transactions it matched (optimistic
+    /// local-first). One merkle/clock save and one sync for the whole batch,
+    /// like `updateTransactions`.
+    func applyBankSyncUpdates(_ updates: [BankSyncUpdate]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !updates.isEmpty else { return }
+
+        logger.debug("applyBankSyncUpdates() - \(updates.count, privacy: .public) rows")
+
+        var messages: [CRDTMessage] = []
+        for update in updates {
+            messages += try await messageGenerator.messages(
+                dataset: "transactions",
+                row: update.existingId,
+                fields: [
+                    ("financial_id", update.importedId),
+                    ("description", update.payeeId),
+                    ("imported_description", update.importedPayee),
+                    ("notes", update.notes),
+                    ("cleared", update.cleared ? 1 : 0)
+                ]
+            )
+        }
+
+        for msg in try database.applyBankSyncUpdates(updates, messages: messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
     /// Create a category group (optimistic local-first). Placement, the
     /// duplicate-name check and the row itself are the database's job — this
     /// turns what it wrote into CRDT messages.
