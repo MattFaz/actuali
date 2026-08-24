@@ -676,6 +676,42 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    // MARK: - Synced Preferences
+
+    /// Generic writer for any preference key in Actual's `preferences` table.
+    /// Emits CRDT messages, applies locally, updates the Merkle tree, and pushes to server in background.
+    /// Passing `value: nil` sets the preference value to null / clears it.
+    func setPreference(key: String, value: String?) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("setPreference() - key: \(key, privacy: .public)")
+
+        let fields: [(column: String, value: (any Sendable)?)] = [("value", value)]
+        let messages = try await messageGenerator.messages(dataset: "preferences", row: key, fields: fields)
+
+        try database.applyMessages(messages)
+
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    /// Generic writer for any Encodable value as JSON in the `preferences` table.
+    func setEncodablePreference<T: Encodable & Sendable>(key: String, value: T?) async throws {
+        let jsonString: String?
+        if let value {
+            let data = try JSONEncoder().encode(value)
+            jsonString = String(data: data, encoding: .utf8)
+        } else {
+            jsonString = nil
+        }
+        try await setPreference(key: key, value: jsonString)
+    }
+
     /// Persist the currency code to the budget's `preferences` table (Actual's
     /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
     /// other clients. Without this, the picker only ever wrote to
@@ -706,6 +742,13 @@ actor SyncClient {
 
         // 4. Push to the server in the background
         scheduleAutomaticSync()
+    }
+
+    /// Persists or clears a credit card account configuration in the budget's `preferences` table
+    /// under `actuali:credit_card:<accountId>`, so it syncs across all devices.
+    func setCreditCardConfig(accountId: String, config: CreditCardConfig?) async throws {
+        let key = BudgetDatabase.creditCardPreferenceKey(for: accountId)
+        try await setEncodablePreference(key: key, value: config)
     }
 
     /// Set the budgeted amount for a category in a month (optimistic
