@@ -32,6 +32,9 @@ struct ContentView: View {
         MainTabView()
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
             .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
+            .onShake {
+                budgetStore.handleDeviceShake()
+            }
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}
             } message: {

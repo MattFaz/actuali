@@ -66,4 +66,39 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideDecimalPlaces = false
         #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == false)
     }
+
+    @Test func shakeToHideBalancesDefaultsToTrue() {
+        let store = BudgetStore.previewInstance()
+        #expect(store.shakeToHideBalances)
+    }
+
+    @Test func shakeToHideBalancesPersistsToUserDefaults() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = false
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == false)
+        store.shakeToHideBalances = true
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == true)
+    }
+
+    @Test func handleDeviceShakeTogglesHideBalancesWhenEnabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = true
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(store.hideBalances)
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+    }
+
+    @Test func handleDeviceShakeNoOpsWhenDisabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = false
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+    }
 }
+
