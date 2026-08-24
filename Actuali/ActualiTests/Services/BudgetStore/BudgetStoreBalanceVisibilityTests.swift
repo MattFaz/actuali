@@ -39,4 +39,31 @@ struct BudgetStoreBalanceVisibilityTests {
         store.hideBalances = false
         #expect(UserDefaults.standard.object(forKey: "hideBalances") as? Bool == false)
     }
+
+    @Test func decimalPlacePreferenceFormatsDisplayOnlyAsWholeUnits() {
+        let store = BudgetStore.previewInstance()
+        store.currencyCode = "USD"
+        store.useNarrowCurrencySymbol = true
+        store.hideDecimalPlaces = true
+
+        #expect(store.displayBalance(123_456) == store.formatCurrencyWholeUnits(123_456))
+        // Exact-value workflows such as reconciliation and split remainders
+        // deliberately bypass the display preference.
+        #expect(store.formatCurrency(123_456) != store.formatCurrencyWholeUnits(123_456))
+        #expect(store.displaySpentCaption(-123_456) == store.formatCurrencyWholeUnits(123_456))
+
+        store.hideDecimalPlaces = false
+        let standard = CurrencyAmountFormat.string(
+            cents: 123_456, currencyCode: store.currencyCode,
+            narrowSymbol: store.useNarrowCurrencySymbol)
+        #expect(store.displayBalance(123_456) == standard)
+    }
+
+    @Test func decimalPlacePreferencePersistsToUserDefaults() {
+        let store = BudgetStore.previewInstance()
+        store.hideDecimalPlaces = true
+        #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == true)
+        store.hideDecimalPlaces = false
+        #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == false)
+    }
 }
