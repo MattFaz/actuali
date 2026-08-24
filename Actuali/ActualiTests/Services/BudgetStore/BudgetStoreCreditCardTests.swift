@@ -61,7 +61,7 @@ struct BudgetStoreCreditCardTests {
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
         let config = CreditCardConfig(statementDay: 20, dueOffsetDays: 30, limit: 1000000)
         let data = try JSONEncoder().encode(config)
-        try dbQueue.write { db in
+        try await dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
                 arguments: ["actuali:credit_card:acct_apple", String(data: data, encoding: .utf8)]
