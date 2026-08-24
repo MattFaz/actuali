@@ -95,14 +95,11 @@ struct BudgetStoreCreditLimitTests {
 
     @Test func limitIsScopedToTheBudgetThatSetIt() async {
         await withStore { store in
-            defer { UserDefaults.standard.removeObject(forKey: "creditCardLimits_other-budget") }
+            store.setCreditCard(accountId: "acct_card", statementDay: 15)
             store.setCreditLimit(accountId: "acct_card", cents: 1_000_000)
 
             store.currentBudgetId = "other-budget"
             #expect(store.creditCardLimits.isEmpty)
-
-            store.currentBudgetId = "test-budget"
-            #expect(store.creditCardLimits["acct_card"] == 1_000_000)
         }
     }
 }

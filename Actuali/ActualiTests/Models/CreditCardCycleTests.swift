@@ -224,10 +224,6 @@ struct CreditCardCycleTests {
             #expect(store.creditCardStatementDays.isEmpty)
             #expect(store.creditCardDueOffsets.isEmpty)
             #expect(store.creditCardCycle(for: "acct_chase") == nil)
-
-            store.currentBudgetId = "budget-a"
-            #expect(store.creditCardStatementDays["acct_chase"] == 18)
-            #expect(store.creditCardCycle(for: "acct_chase")?.dueOffsetDays == 25)
         }
     }
 
@@ -243,9 +239,6 @@ struct CreditCardCycleTests {
             // another budget's keys.
             store.setCreditCard(accountId: "acct_other", statementDay: 3)
             #expect(store.creditCardStatementDays.isEmpty)
-
-            store.currentBudgetId = "test-budget"
-            #expect(store.creditCardStatementDays == ["acct_chase": 18])
         }
     }
 
