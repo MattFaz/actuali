@@ -122,7 +122,7 @@ struct BudgetStoreFallbackServerTests {
 
         let saved = await store.updateServerConnection(
             serverURL: "https://unreachable.example.com",
-            fallbackServerURL: ""
+            fallbackServerURL: "https://replacement-fallback.example.com"
         )
 
         #expect(!saved)

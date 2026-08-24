@@ -1192,7 +1192,6 @@ final class BudgetStore: ObservableObject {
     /// Reconfigures an authenticated session without logging out or touching
     /// its downloaded budget. Publish the new addresses only after both URLs
     /// validate and the live client accepts them.
-    @discardableResult
     func updateServerConnection(
         serverURL newServerURL: String,
         fallbackServerURL newFallbackServerURL: String
@@ -1219,11 +1218,10 @@ final class BudgetStore: ObservableObject {
         let previousServerURL = serverURL
         let previousFallbackServerURL = fallbackServerURL
         do {
-            try await serverClient.configure(
-                serverURL: normalized,
-                fallbackServerURL: normalizedFallback
-            )
             if normalized != previousServerURL {
+                // Probe the primary without fallback so an unreachable edit
+                // cannot be accepted merely because its alternate responds.
+                try await serverClient.configure(serverURL: normalized)
                 do {
                     _ = try await serverClient.fetchLoginMethods()
                 } catch let probeError as ActualServerError where probeError.isConnectionFailure {
@@ -1241,6 +1239,10 @@ final class BudgetStore: ObservableObject {
                     // older Actual versions and route-stripping proxies are valid.
                 }
             }
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
             serverURL = normalized
             fallbackServerURL = normalizedFallback
             refreshPayeeLocationSupport()

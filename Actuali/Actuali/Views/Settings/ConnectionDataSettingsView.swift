@@ -33,6 +33,7 @@ private struct ServerConnectionSettingsSection: View {
     @State private var isPasswordVisible = false
     @State private var showingDisconnectConfirm = false
     @State private var editingServerConnection = false
+    @State private var savingServerConnection = false
     @State private var editedServerURL = ""
     @State private var editedFallbackServerURL = ""
     @FocusState private var passwordFocused: Bool
@@ -44,11 +45,13 @@ private struct ServerConnectionSettingsSection: View {
     }
 
     private func saveServerConnection() {
+        savingServerConnection = true
         Task {
             let saved = await budgetStore.updateServerConnection(
                 serverURL: editedServerURL,
                 fallbackServerURL: editedFallbackServerURL
             )
+            savingServerConnection = false
             if saved { editingServerConnection = false }
         }
     }
@@ -62,12 +65,14 @@ private struct ServerConnectionSettingsSection: View {
                     Button("Cancel", role: .cancel) {
                         editingServerConnection = false
                     }
+                    .disabled(savingServerConnection)
                     Divider()
                         .frame(height: 16)
                     Button("Save") { saveServerConnection() }
                         .disabled(
                             editedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 || budgetStore.isLoading
+                                || savingServerConnection
                         )
                 } else {
                     Button("Edit") { beginEditingServerConnection() }
