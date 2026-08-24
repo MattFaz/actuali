@@ -13,6 +13,7 @@ struct BudgetViewSettingsView: View {
                 Picker("View Style", selection: $budgetStore.budgetDisplayStyle) {
                     Text("Clean").tag(BudgetDisplayStyle.clean)
                     Text("Detailed").tag(BudgetDisplayStyle.detailed)
+                    Text("List").tag(BudgetDisplayStyle.list)
                 }
 
                 Toggle("Group Totals", isOn: $budgetStore.showGroupTotals)
