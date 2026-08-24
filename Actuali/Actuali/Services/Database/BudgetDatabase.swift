@@ -2455,7 +2455,7 @@ final class BudgetDatabase: Sendable {
             return Set(ids)
         }
     }
-    
+
     // MARK: - Bank Sync
 
     /// Every account wired up to a bank feed, in the order the accounts tab

@@ -37,7 +37,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleOwnedBySchedule
     case ruleNotSerializable
     case bankSyncNotConfigured
-    
+
     var errorDescription: String? {
         switch self {
         case .syncNotConfigured:
@@ -1014,7 +1014,7 @@ final class BudgetStore: ObservableObject {
     func setServerClientForTesting(_ client: ActualServerClient) {
         serverClient = client
     }
-    
+
     /// Test-only: swap in a SimpleFIN client wired to a stub transport so the
     /// bank sync path can be exercised without a reachable bridge.
     func setSimpleFINClientForTesting(_ client: SimpleFINClient) {
@@ -1338,7 +1338,7 @@ final class BudgetStore: ObservableObject {
                 try? fileManager.deleteBudget(local.id)
                 forgetCachedCurrencyCode(for: local.id)
             }
-            
+
             // The SimpleFIN access key goes too, for the same reason the
             // encryption keys above do: it's a bearer credential for live bank
             // data, and disconnecting should leave nothing behind that still
@@ -2222,7 +2222,7 @@ final class BudgetStore: ObservableObject {
     func walletFinancialIds(accountId: String) -> Set<String> {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
     }
-    
+
     // MARK: - Bank Sync (SimpleFIN)
 
     /// Talks to a SimpleFIN bridge directly, with a key claimed on this
@@ -2328,6 +2328,10 @@ final class BudgetStore: ObservableObject {
     /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
     /// entry point — `syncBankAccounts` is the one that throws.
     func runBankSync(accountIds: [String] = []) async {
+        // A tap that lands while a sync is already running does nothing — the
+        // running sync posts its own summary, which would otherwise be
+        // clobbered by this call's empty one.
+        guard !isBankSyncing else { return }
         do {
             bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
         } catch {
@@ -2494,15 +2498,18 @@ final class BudgetStore: ObservableObject {
         // far as the hungriest of them.
         var candidates = download.candidates
 
+        // The opening balance counts as an import too (upstream folds its id
+        // into `added`), so a first sync never reports one fewer than it wrote.
+        var added = 0
         if isFirstSync {
-            try await insertStartingBalance(
+            added += try await insertStartingBalance(
                 for: target,
                 currentBalanceCents: download.currentBalanceCents,
                 candidates: candidates
-            )
+            ) ? 1 : 0
         }
         guard let earliest = candidates.map(\.date).min(),
-              let latest = candidates.map(\.date).max() else { return (0, 0) }
+              let latest = candidates.map(\.date).max() else { return (added, 0) }
 
         // Resolve payees by name without creating any: the payee pass compares
         // ids, and a name the budget doesn't have yet can't match anything.
@@ -2511,13 +2518,15 @@ final class BudgetStore: ObservableObject {
         //
         // One async read for the whole account rather than a synchronous
         // `payee(named:)` per candidate — this runs on the main actor, and a
-        // 90-day first sync is hundreds of rows.
+        // 90-day first sync is hundreds of rows. Keyed case-insensitively, the
+        // same way `findOrCreatePayee` and upstream's `getPayeeByName` match,
+        // so a bank that shouts "AMAZON" still resolves the budget's "Amazon".
         let payeeIdsByName = Dictionary(
-            (try? await database.fetchPayees())?.map { ($0.name, $0.id) } ?? [],
+            (try? await database.fetchPayees())?.map { ($0.name.lowercased(), $0.id) } ?? [],
             uniquingKeysWith: { first, _ in first }
         )
         for index in candidates.indices {
-            candidates[index].payeeId = payeeIdsByName[candidates[index].payeeName]
+            candidates[index].payeeId = payeeIdsByName[candidates[index].payeeName.lowercased()]
         }
 
         let radius = BankSyncReconciler.fuzzyMatchDayRadius
@@ -2558,23 +2567,25 @@ final class BudgetStore: ObservableObject {
             try await syncClient.createTransaction(transaction, prepared: prepared)
         }
 
-        return (plan.inserts.count, plan.updates.count)
+        return (added + plan.inserts.count, plan.updates.count)
     }
 
     /// Give a freshly linked account the opening balance its imported history
     /// starts from. Actual has no stored balance field, so without this the
     /// account would be short everything that happened before the sync window
     /// (upstream `processBankSyncDownload`, initial sync).
+    /// Returns whether a transaction was written (a zero opening writes none).
+    @discardableResult
     private func insertStartingBalance(
         for target: BankSyncAccount,
         currentBalanceCents: Int?,
         candidates: [BankSyncCandidate]
-    ) async throws {
-        guard let syncClient, let balance = currentBalanceCents else { return }
+    ) async throws -> Bool {
+        guard let syncClient, let balance = currentBalanceCents else { return false }
         // The balance is as of now, so what the account opened with is what's
         // left once everything about to be imported is taken back off it.
         let opening = balance - candidates.reduce(0) { $0 + $1.amount }
-        guard opening != 0 else { return }
+        guard opening != 0 else { return false }
 
         let payee = try await findOrCreatePayee(name: "Starting Balance")
         let category = target.offBudget ? nil : startingBalanceCategory()
@@ -2601,6 +2612,7 @@ final class BudgetStore: ObservableObject {
         )
         // Rules never see an opening balance, same as account creation's.
         try await syncClient.createTransaction(transaction, applyRules: false)
+        return true
     }
 
     /// Create a paired transfer between two accounts. Writes both legs with linked

@@ -650,7 +650,7 @@ actor SyncClient {
 
         scheduleAutomaticSync()
     }
-    
+
     /// Create a category group (optimistic local-first). Placement, the
     /// duplicate-name check and the row itself are the database's job — this
     /// turns what it wrote into CRDT messages.

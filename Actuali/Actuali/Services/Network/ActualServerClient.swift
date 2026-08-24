@@ -841,7 +841,7 @@ actor ActualServerClient {
         }
         return ServerKeyInfo(id: key.id, salt: key.salt, test: key.test)
     }
-    
+
     // MARK: - Bank sync (server-hosted SimpleFIN)
 
     /// Whether the server has its own SimpleFIN credentials, or nil when it

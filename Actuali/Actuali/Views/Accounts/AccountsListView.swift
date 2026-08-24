@@ -413,7 +413,7 @@ struct AccountsListView: View {
             set: { if !$0 { budgetStore.bankSyncSummary = nil } }
         )
     }
-    
+
     private func loadMonthSummary() async {
         let month = BudgetView.currentMonthString()
         guard let totals = await budgetStore.fetchAccountsMonthSummary(month: month) else { return }
