@@ -243,6 +243,7 @@ struct BudgetView: View {
                         setCategoryGroupHidden(group.id, hidden: $0)
                     },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    budgetedTotal: budgetStore.showGroupTotals ? group.budgetedTotal : nil,
                     onToggleCollapse: { toggleCollapsed(group.id) },
                     reservesTwoLines: true
                 )
@@ -691,6 +692,10 @@ struct BudgetView: View {
         let categories: [CategoryBudget]
         /// Totals over the group's non-hidden category list.
         let totals: CategoryGroupTotals
+        /// Sum of `budgeted` across the same category set `totals` was built
+        /// from. Kept alongside rather than folded into `CategoryGroupTotals`
+        /// since the detailed header is the only place that needs it.
+        let budgetedTotal: Int
     }
 
     var groupedCategories: [CategoryGroupSection] {
@@ -713,6 +718,8 @@ struct BudgetView: View {
                 // A group whose rows are all hidden drops out entirely rather
                 // than leaving a header stranded over an empty card.
                 guard !visible.isEmpty else { return nil }
+                let totalsSource = (categoryFilter == .all ? items : visible)
+                    .filter { !$0.isEffectivelyHidden }
                 return (
                     first.groupSortOrder,
                     CategoryGroupSection(
@@ -720,10 +727,8 @@ struct BudgetView: View {
                         name: first.groupName,
                         isHidden: first.groupHidden,
                         categories: visible,
-                        totals: CategoryGroupTotals(
-                            (categoryFilter == .all ? items : visible)
-                                .filter { !$0.isEffectivelyHidden }
-                        )
+                        totals: CategoryGroupTotals(totalsSource),
+                        budgetedTotal: totalsSource.reduce(0) { $0 + $1.budgeted }
                     )
                 )
             }
@@ -748,7 +753,8 @@ struct BudgetView: View {
                         name: group.name,
                         isHidden: group.hidden,
                         categories: [],
-                        totals: CategoryGroupTotals([])
+                        totals: CategoryGroupTotals([]),
+                        budgetedTotal: 0
                     )
                 )
             }
@@ -1246,7 +1252,6 @@ struct BudgetAmountPill: View {
             .minimumScaleFactor(0.6)
             .foregroundStyle(dimmed ? Color.secondary : color)
             .animatedAmount(text)
-            .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .frame(width: BudgetColumn.width, alignment: .trailing)
             .background(
@@ -1256,14 +1261,41 @@ struct BudgetAmountPill: View {
     }
 }
 
-/// Group header row: collapse control and group name; optionally shows the
-/// group's Spent and Balance totals in the table's rightmost two columns.
-///
-/// Budgeted is deliberately absent. Pills are laid out from the trailing
-/// edge, so omitting it hands its ~76 pt back to the group name — which
-/// needs the room, since group names run longer than category names — while
-/// Spent and Balance stay in their columns. The per-category Budgeted cells
-/// are still there in the rows below for anyone who wants them.
+/// A `BudgetAmountPill` with a small caption above it, naming the column
+/// ("Budgeted" / "Spent" / "Balance") the same way the pinned summary bar's
+/// columns are captioned. Used by the detailed group header's totals so a
+/// group row reads the same as the summary above it, rather than leaving the
+/// person to cross-reference bare numbers against the summary's labels.
+private struct CaptionedAmountPill: View {
+    let label: String
+    let text: String
+    var color: Color = .primary
+    var dimmed = false
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            BudgetAmountPill(text: text, color: color, dimmed: dimmed)
+                // BudgetAmountPill insets its own number text by 6pt on each
+                // side (for the pill's tap-target padding), but the caption
+                // label above has no matching inset — so without this nudge
+                // the number sits visibly left of where the label's text
+                // actually ends. offset() shifts the rendered pill directly,
+                // rather than relying on the layout system to react to
+                // padding tricks.
+                .offset(x: 6)
+        }
+        .frame(width: BudgetColumn.width, alignment: .trailing)
+    }
+}
+
+/// Group header row: collapse control and group name, plus the group's
+/// Budgeted, Spent and Balance totals in the table's three rightmost
+/// columns, each captioned the same way the pinned summary bar is.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
@@ -1273,6 +1305,10 @@ struct BudgetGroupHeader: View {
     /// The detailed style totals its columns here; the clean style's header
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
+    /// Sum of the group's budgeted amounts, shown as the totals' leading
+    /// column. Nil whenever `totals` is (clean style, or group totals turned
+    /// off in Settings).
+    var budgetedTotal: Int? = nil
     /// Income groups use the same header shell but have one meaningful total:
     /// money received. It occupies the trailing column where expense groups
     /// show their balance.
@@ -1289,33 +1325,45 @@ struct BudgetGroupHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleCollapse) {
-                HStack(spacing: BudgetColumn.spacing) {
-                    DisclosureChevron(
-                        isExpanded: !isCollapsed,
-                        font: .caption2.weight(.semibold)
-                    )
-                    .foregroundStyle(.secondary)
-                    if reservesTwoLines {
-                        TwoLineName(
-                            text: name,
-                            font: .subheadline.weight(.semibold),
-                            minimumScaleFactor: 0.85
+                HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+                    // Nested so the chevron centers against the name (which can
+                    // run one or two lines) rather than pinning to the top of
+                    // the row alongside the totals' captions.
+                    HStack(spacing: BudgetColumn.spacing) {
+                        DisclosureChevron(
+                            isExpanded: !isCollapsed,
+                            font: .caption2.weight(.semibold)
                         )
-                        .foregroundStyle(.primary)
-                    } else {
-                        Text(name)
-                            .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        if reservesTwoLines {
+                            TwoLineName(
+                                text: name,
+                                font: .subheadline.weight(.semibold),
+                                minimumScaleFactor: 0.85
+                            )
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
+                        } else {
+                            Text(name)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                        }
                     }
                     Spacer(minLength: 4)
                     if let totals {
-                        BudgetAmountPill(
+                        CaptionedAmountPill(
+                            label: "Budgeted",
+                            text: budgetStore.displayBudgetCell(budgetedTotal ?? 0),
+                            dimmed: (budgetedTotal ?? 0) == 0
+                        )
+                        CaptionedAmountPill(
+                            label: "Spent",
                             text: budgetStore.displayBudgetCell(totals.spent),
                             dimmed: totals.spent == 0
                         )
-                        BudgetAmountPill(
+                        CaptionedAmountPill(
+                            label: "Balance",
                             text: budgetStore.displayBudgetCell(totals.balance),
                             // Same three-way treatment as the category rows, so a
                             // group that lands on zero doesn't read as healthy.
@@ -1368,6 +1416,7 @@ struct BudgetGroupHeader: View {
         guard let totals else { return "\(name), \(state)" }
         return """
             \(name), \(state), \
+            budgeted \(budgetStore.displayBalance(budgetedTotal ?? 0)), \
             spent \(budgetStore.displayBalance(totals.spent)), \
             balance \(budgetStore.displayBalance(totals.balance))
             """
