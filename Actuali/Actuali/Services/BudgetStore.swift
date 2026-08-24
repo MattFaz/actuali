@@ -513,15 +513,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether due scheduled transactions are posted automatically after a
-    /// successful sync on launch/foreground. Opt-in (defaults off) because
-    /// every post writes to the user's real Actual server.
-    @Published var postScheduledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
-        }
-    }
-
     /// Transient toast text ("Posted N scheduled transaction(s)"), cleared
     /// automatically a few seconds after being set. Nil = no toast.
     @Published var schedulePostNotice: String?
@@ -1135,8 +1126,6 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClosedAccounts"))
-        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "postScheduledTransactions"))
 
         let token = loadAndMigrateAuthToken()
 
@@ -4238,8 +4227,7 @@ final class BudgetStore: ObservableObject {
 
     @discardableResult
     private func postDueSchedulesIfNeeded() async -> Int {
-        guard postScheduledTransactions,
-              let client = syncClient,
+        guard let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
