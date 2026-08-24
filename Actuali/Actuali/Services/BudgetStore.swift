@@ -1205,6 +1205,70 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// Reconfigures an authenticated session without logging out or touching
+    /// its downloaded budget. Publish the new addresses only after both URLs
+    /// validate and the live client accepts them.
+    func updateServerConnection(
+        serverURL newServerURL: String,
+        fallbackServerURL newFallbackServerURL: String
+    ) async -> Bool {
+        let normalized = Self.normalizedServerURL(newServerURL)
+        let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
+        guard !normalized.isEmpty else {
+            error = "Please enter a server URL"
+            return false
+        }
+        guard Self.isValidServerURL(normalized) else {
+            error = ActualServerError.invalidURL.localizedDescription
+            return false
+        }
+        guard normalizedFallback.isEmpty || Self.isValidServerURL(normalizedFallback) else {
+            error = ActualServerError.invalidFallbackURL.localizedDescription
+            return false
+        }
+
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        let previousServerURL = serverURL
+        let previousFallbackServerURL = fallbackServerURL
+        do {
+            if normalized != previousServerURL {
+                // Probe the primary without fallback so an unreachable edit
+                // cannot be accepted merely because its alternate responds.
+                try await serverClient.configure(serverURL: normalized)
+                do {
+                    _ = try await serverClient.fetchLoginMethods()
+                } catch let probeError as ActualServerError where probeError.isConnectionFailure {
+                    // A transport failure means the replacement address cannot
+                    // be used. Restore the live client before leaving the saved
+                    // connection untouched.
+                    try? await serverClient.configure(
+                        serverURL: previousServerURL,
+                        fallbackServerURL: previousFallbackServerURL
+                    )
+                    self.error = probeError.localizedDescription
+                    return false
+                } catch {
+                    // A server that answers but lacks this endpoint is reachable;
+                    // older Actual versions and route-stripping proxies are valid.
+                }
+            }
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
+            serverURL = normalized
+            fallbackServerURL = normalizedFallback
+            refreshPayeeLocationSupport()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     /// Trims whitespace and prepends `https://` if the user omitted a scheme.
     /// Empty input stays empty so callers can still detect "missing URL".
     static func normalizedServerURL(_ raw: String) -> String {
@@ -1214,6 +1278,11 @@ final class BudgetStore: ObservableObject {
             return trimmed
         }
         return "https://" + trimmed
+    }
+
+    private nonisolated static func isValidServerURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw) else { return false }
+        return url.scheme != nil && url.host != nil
     }
 
     func login(password: String) async {
@@ -1385,6 +1454,12 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
+        #if DEBUG
+        // This UI test seeds a connected session without a server behind it.
+        // Keep the production view lifecycle intact while avoiding a request
+        // that can only time out and raise an unrelated alert.
+        if CommandLine.arguments.contains("-connectedServerSettings") { return }
+        #endif
         isLoading = true
         error = nil
 

@@ -40,6 +40,13 @@ struct ActualiApp: App {
                     if CommandLine.arguments.contains("-loadDemoData") {
                         await budgetStore.loadDemoData()
                     }
+                    if CommandLine.arguments.contains("-connectedServerSettings") {
+                        // Seed the view state directly: fetchRemoteBudgets owns
+                        // the single test seam that suppresses network work.
+                        budgetStore.serverURL = "https://primary.example.com"
+                        budgetStore.fallbackServerURL = ""
+                        budgetStore.isConnected = true
+                    }
                     // Stands in for coordinates the Add Transaction form would
                     // have recorded, so PayeeLocationsUITests can clear them.
                     if CommandLine.arguments.contains("-seedPayeeLocations") {
