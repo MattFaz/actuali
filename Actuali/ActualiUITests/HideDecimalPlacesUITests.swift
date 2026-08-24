@@ -15,21 +15,16 @@ final class HideDecimalPlacesUITests: XCTestCase {
     @MainActor
     func testPreferenceRemovesFractionalDigitsFromBudgetAmounts() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
-        let settingsTab = app.tabBars.buttons["Settings"]
-        XCTAssertTrue(settingsTab.waitForExistence(timeout: 15))
-        settingsTab.tap()
+        let privacy = app.buttons["Privacy"]
+        XCTAssertTrue(privacy.waitForExistence(timeout: 15))
+        privacy.tap()
 
         let toggle = app.switches["Hide Decimal Places"]
-        var swipesLeft = 8
-        while !toggle.exists && swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
         XCTAssertTrue(toggle.waitForExistence(timeout: 5),
-                      "Hide Decimal Places toggle not found in Preferences")
+                      "Hide Decimal Places toggle not found in Privacy")
         let decimalPlacesWasHidden = toggle.value as? String == "1"
 
         let hideBalances = app.switches["Hide Balances"]
@@ -38,11 +33,7 @@ final class HideDecimalPlacesUITests: XCTestCase {
 
         defer {
             app.tabBars.buttons["Settings"].tap()
-            var swipesLeft = 8
-            while !toggle.exists && swipesLeft > 0 {
-                app.swipeUp()
-                swipesLeft -= 1
-            }
+            XCTAssertTrue(toggle.waitForExistence(timeout: 5))
             if (toggle.value as? String == "1") != decimalPlacesWasHidden {
                 tapSwitch(toggle)
             }

@@ -297,11 +297,11 @@ struct ScheduleRow: View {
         switch (schedule.amountOp, schedule.amount) {
         case (.isBetween, .range(let low, let high)):
             let ordered = low <= high ? (low, high) : (high, low)
-            return "\(budgetStore.formatCurrency(ordered.0)) – \(budgetStore.formatCurrency(ordered.1))"
+            return "\(budgetStore.displayBalance(ordered.0)) – \(budgetStore.displayBalance(ordered.1))"
         case (.isApprox, _):
-            return "~" + budgetStore.formatCurrency(schedule.postAmount)
+            return "~" + budgetStore.displayBalance(schedule.postAmount)
         default:
-            return budgetStore.formatCurrency(schedule.postAmount)
+            return budgetStore.displayBalance(schedule.postAmount)
         }
     }
 }
