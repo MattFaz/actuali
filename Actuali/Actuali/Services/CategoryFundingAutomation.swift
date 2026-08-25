@@ -7,34 +7,22 @@ enum CategoryFundingSource: Hashable, Codable {
     case toBudget
     case category(String)
 
-    private enum CodingKeys: String, CodingKey {
-        case kind
-        case categoryId
-    }
-
-    private enum Kind: String, Codable {
-        case toBudget
-        case category
-    }
-
     init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        switch try container.decode(Kind.self, forKey: .kind) {
-        case .toBudget:
+        let value = try decoder.singleValueContainer().decode(String.self)
+        if value == "toBudget" {
             self = .toBudget
-        case .category:
-            self = .category(try container.decode(String.self, forKey: .categoryId))
+        } else {
+            self = .category(value)
         }
     }
 
     func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
+        var container = encoder.singleValueContainer()
         switch self {
         case .toBudget:
-            try container.encode(Kind.toBudget, forKey: .kind)
+            try container.encode("toBudget")
         case .category(let categoryId):
-            try container.encode(Kind.category, forKey: .kind)
-            try container.encode(categoryId, forKey: .categoryId)
+            try container.encode(categoryId)
         }
     }
 }
