@@ -9,7 +9,7 @@ struct CategoryFundingAutomationTests {
     @Test("Partial category funds fund only the shortfall")
     func partialFunds() {
         // $20 was available before the $50 expense, so the post-transaction
-        // available balance is -$30.
+        // available balance is -$30. Only $30 is funded.
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -30) == 30)
     }
 
@@ -21,6 +21,25 @@ struct CategoryFundingAutomationTests {
     @Test("Exact category balance requires no funding")
     func exactBalance() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: 0) == 0)
+    }
+
+    @Test("Existing overspending is preserved")
+    func existingOverspending() {
+        // The category was already -$500 before a new $50 expense. The new
+        // transaction is funded by $50, leaving the category at -$500 rather
+        // than funding the existing $500 deficit.
+        #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -550) == 50)
+    }
+
+    @Test("Existing overspending of any size only funds the new transaction")
+    func largerExistingOverspending() {
+        #expect(CategoryFundingAutomation.shortfall(transactionAmount: -125, availableAfterTransaction: -1000) == 125)
+    }
+
+    @Test("Positive available balance funds only the amount needed for the new transaction")
+    func positiveBalanceShortfall() {
+        // $20 available before a $50 expense means only $30 is needed.
+        #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -30) == 30)
     }
 
     @Test("Uncategorized transactions are ignored")
