@@ -57,7 +57,7 @@ private extension BudgetStore {
 }
 
 struct BudgetView: View {
-    static let incomeGroupCollapseID = "__income_group__"
+    nonisolated static let incomeGroupCollapseID = "__income_group__"
 
     /// IDs controlled by Expand/Collapse All for the budget currently shown.
     /// Kept pure so the income-group participation has non-UI test coverage.

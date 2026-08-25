@@ -227,6 +227,7 @@ struct BudgetStoreBankSyncTests {
     }
 
     /// The inverse: run with no key stored, putting back whatever was there.
+    @discardableResult
     private func withoutStoredAccessKey<T>(_ body: () async throws -> T) async throws -> T {
         let previous = SimpleFINCredentials.accessKey
         try? SimpleFINCredentials.clear()

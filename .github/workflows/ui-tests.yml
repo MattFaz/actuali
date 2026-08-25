@@ -70,7 +70,7 @@ jobs:
       # full activity log) when a run fails on the runner but not locally.
       - name: Upload result bundle
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ui-test-results
           path: TestResults
