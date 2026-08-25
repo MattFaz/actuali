@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import Actuali
 
 /// The hide-balances privacy mask must replace every formatted amount with
@@ -38,5 +39,81 @@ struct BudgetStoreBalanceVisibilityTests {
         #expect(UserDefaults.standard.object(forKey: "hideBalances") as? Bool == true)
         store.hideBalances = false
         #expect(UserDefaults.standard.object(forKey: "hideBalances") as? Bool == false)
+    }
+
+    @Test func decimalPlacePreferenceFormatsDisplayOnlyAsWholeUnits() {
+        let store = BudgetStore.previewInstance()
+        store.currencyCode = "USD"
+        store.useNarrowCurrencySymbol = true
+        store.hideDecimalPlaces = true
+
+        #expect(store.displayBalance(123_456) == store.formatCurrencyWholeUnits(123_456))
+        // Exact-value workflows such as reconciliation and split remainders
+        // deliberately bypass the display preference.
+        #expect(store.formatCurrency(123_456) != store.formatCurrencyWholeUnits(123_456))
+        #expect(store.displaySpentCaption(-123_456) == store.formatCurrencyWholeUnits(123_456))
+
+        store.hideDecimalPlaces = false
+        let standard = CurrencyAmountFormat.string(
+            cents: 123_456, currencyCode: store.currencyCode,
+            narrowSymbol: store.useNarrowCurrencySymbol)
+        #expect(store.displayBalance(123_456) == standard)
+    }
+
+    @Test func decimalPlacePreferencePersistsToUserDefaults() {
+        let store = BudgetStore.previewInstance()
+        store.hideDecimalPlaces = true
+        #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == true)
+        store.hideDecimalPlaces = false
+        #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == false)
+    }
+
+    @Test func shakeToHideBalancesDefaultsToFalse() {
+        let store = BudgetStore.previewInstance()
+        #expect(!store.shakeToHideBalances)
+    }
+
+    @Test func shakeToHideBalancesPersistsToUserDefaults() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = true
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == true)
+        store.shakeToHideBalances = false
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == false)
+    }
+
+    @Test func handleDeviceShakeTogglesHideBalancesWhenEnabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = true
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(store.hideBalances)
+        #expect(store.shakeFeedbackTrigger)
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
+    }
+
+    @Test func handleDeviceShakeNoOpsWhenDisabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = false
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
+    }
+
+    @Test func shakeResponderRoutesOnlyWhileEnabled() {
+        var shakeCount = 0
+        let responder = ShakeResponderView(isEnabled: true) { shakeCount += 1 }
+
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
+
+        responder.update(isEnabled: false) { shakeCount += 1 }
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
     }
 }

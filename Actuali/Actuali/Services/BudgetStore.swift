@@ -36,6 +36,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleInvalidPattern(pattern: String)
     case ruleOwnedBySchedule
     case ruleNotSerializable
+    case bankSyncNotConfigured
 
     var errorDescription: String? {
         switch self {
@@ -97,6 +98,8 @@ enum BudgetStoreError: LocalizedError, Equatable {
             return "This rule belongs to a schedule. Delete the schedule instead."
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
+        case .bankSyncNotConfigured:
+            return "SimpleFIN isn't set up yet. Connect it in Settings first."
         }
     }
 }
@@ -194,6 +197,14 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
+    /// Accounts wired up to a bank feed, refreshed alongside the rest of the
+    /// budget so the accounts tab knows which rows can be synced.
+    @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
+    /// Whether this device has claimed a SimpleFIN access key.
+    @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
+    /// True for the length of a bank sync, so the UI can show progress and
+    /// keep a second sync from starting on top of the first.
+    @Published private(set) var isBankSyncing = false
 
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
@@ -330,6 +341,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget rows show their compact category-status dot.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showCategoryStatusDots: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
+        }
+    }
+
     /// Whether Budget shows the status filter strip above the category list.
     /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
     /// space on a phone, so a budget that never needs the filters can reclaim
@@ -382,11 +401,42 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether shaking the device toggles `hideBalances`.
+    /// Persisted to UserDefaults, defaults to off (opt-in to avoid
+    /// conflicting with Shake to Undo).
+    @Published var shakeToHideBalances: Bool = false {
+        didSet {
+            UserDefaults.standard.set(shakeToHideBalances, forKey: "shakeToHideBalances")
+        }
+    }
+
+    /// Changes only for enabled shake gestures, so view feedback is not
+    /// coupled to every other way `hideBalances` can change.
+    @Published private(set) var shakeFeedbackTrigger = false
+
+    /// Whether displayed currency amounts omit their fractional digits.
+    /// The underlying cent values remain unchanged; this is presentation only.
+    @Published var hideDecimalPlaces: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideDecimalPlaces, forKey: "hideDecimalPlaces")
+            publishWidgetSnapshot()
+        }
+    }
+
     /// Whether Budget hides categories with no budget left this month.
     /// Persisted to UserDefaults, defaults to off.
     @Published var hideZeroBudgetCategories: Bool = false {
         didSet {
             UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
+        }
+    }
+
+    /// Whether hidden categories and groups are included on the Budget tab.
+    /// Persisted locally so an item stays reachable until the user turns the
+    /// view option off again.
+    @Published var showHiddenCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
         }
     }
 
@@ -412,7 +462,13 @@ final class BudgetStore: ObservableObject {
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+        let visible = categories.filter { !$0.isEffectivelyHidden }
+        let filtered = hideZeroBudgetCategories
+            ? visible.filter { $0.available != 0 }
+            : visible
+        return showHiddenCategories
+            ? filtered + categories.filter(\.isEffectivelyHidden)
+            : filtered
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -431,7 +487,8 @@ final class BudgetStore: ObservableObject {
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
+        guard !hideBalances else { return Self.hiddenBalanceText }
+        return hideDecimalPlaces ? formatCurrencyWholeUnits(cents) : formatCurrency(cents)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
@@ -446,9 +503,20 @@ final class BudgetStore: ObservableObject {
     /// deposits can't masquerade as spending (GH #102).
     func displaySpentCaption(_ spentCents: Int) -> String {
         guard !hideBalances else { return Self.hiddenBalanceText }
+        let magnitude = spentCents > 0 ? spentCents : -spentCents
+        let text = hideDecimalPlaces
+            ? formatCurrencyWholeUnits(magnitude)
+            : formatCurrency(magnitude)
         return spentCents > 0
-            ? "+\(formatCurrency(spentCents))"
-            : formatCurrency(-spentCents)
+            ? "+\(text)"
+            : text
+    }
+
+    /// Toggles `hideBalances` in response to a device shake gesture if enabled.
+    func handleDeviceShake() {
+        guard shakeToHideBalances else { return }
+        hideBalances.toggle()
+        shakeFeedbackTrigger.toggle()
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -457,15 +525,6 @@ final class BudgetStore: ObservableObject {
     @Published var recordPayeeLocations: Bool = true {
         didSet {
             UserDefaults.standard.set(recordPayeeLocations, forKey: "recordPayeeLocations")
-        }
-    }
-
-    /// Whether due scheduled transactions are posted automatically after a
-    /// successful sync on launch/foreground. Opt-in (defaults off) because
-    /// every post writes to the user's real Actual server.
-    @Published var postScheduledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
         }
     }
 
@@ -1004,6 +1063,12 @@ final class BudgetStore: ObservableObject {
         serverClient = client
     }
 
+    /// Test-only: swap in a SimpleFIN client wired to a stub transport so the
+    /// bank sync path can be exercised without a reachable bridge.
+    func setSimpleFINClientForTesting(_ client: SimpleFINClient) {
+        simpleFINClient = client
+    }
+
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -1051,6 +1116,8 @@ final class BudgetStore: ObservableObject {
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showCategoryStatusDots = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showCategoryStatusDots") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
@@ -1061,17 +1128,21 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _shakeToHideBalances = Published(initialValue: UserDefaults.standard
+            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
+        _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
             .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
+        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClosedAccounts"))
-        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "postScheduledTransactions"))
 
         let token = loadAndMigrateAuthToken()
 
@@ -1189,6 +1260,70 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
+    /// Reconfigures an authenticated session without logging out or touching
+    /// its downloaded budget. Publish the new addresses only after both URLs
+    /// validate and the live client accepts them.
+    func updateServerConnection(
+        serverURL newServerURL: String,
+        fallbackServerURL newFallbackServerURL: String
+    ) async -> Bool {
+        let normalized = Self.normalizedServerURL(newServerURL)
+        let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
+        guard !normalized.isEmpty else {
+            error = "Please enter a server URL"
+            return false
+        }
+        guard Self.isValidServerURL(normalized) else {
+            error = ActualServerError.invalidURL.localizedDescription
+            return false
+        }
+        guard normalizedFallback.isEmpty || Self.isValidServerURL(normalizedFallback) else {
+            error = ActualServerError.invalidFallbackURL.localizedDescription
+            return false
+        }
+
+        isLoading = true
+        error = nil
+        defer { isLoading = false }
+
+        let previousServerURL = serverURL
+        let previousFallbackServerURL = fallbackServerURL
+        do {
+            if normalized != previousServerURL {
+                // Probe the primary without fallback so an unreachable edit
+                // cannot be accepted merely because its alternate responds.
+                try await serverClient.configure(serverURL: normalized)
+                do {
+                    _ = try await serverClient.fetchLoginMethods()
+                } catch let probeError as ActualServerError where probeError.isConnectionFailure {
+                    // A transport failure means the replacement address cannot
+                    // be used. Restore the live client before leaving the saved
+                    // connection untouched.
+                    try? await serverClient.configure(
+                        serverURL: previousServerURL,
+                        fallbackServerURL: previousFallbackServerURL
+                    )
+                    self.error = probeError.localizedDescription
+                    return false
+                } catch {
+                    // A server that answers but lacks this endpoint is reachable;
+                    // older Actual versions and route-stripping proxies are valid.
+                }
+            }
+            try await serverClient.configure(
+                serverURL: normalized,
+                fallbackServerURL: normalizedFallback
+            )
+            serverURL = normalized
+            fallbackServerURL = normalizedFallback
+            refreshPayeeLocationSupport()
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+
     /// Trims whitespace and prepends `https://` if the user omitted a scheme.
     /// Empty input stays empty so callers can still detect "missing URL".
     static func normalizedServerURL(_ raw: String) -> String {
@@ -1198,6 +1333,11 @@ final class BudgetStore: ObservableObject {
             return trimmed
         }
         return "https://" + trimmed
+    }
+
+    private nonisolated static func isValidServerURL(_ raw: String) -> Bool {
+        guard let url = URL(string: raw) else { return false }
+        return url.scheme != nil && url.host != nil
     }
 
     func login(password: String) async {
@@ -1321,6 +1461,13 @@ final class BudgetStore: ObservableObject {
                 try? fileManager.deleteBudget(local.id)
                 forgetCachedCurrencyCode(for: local.id)
             }
+
+            // The SimpleFIN access key goes too, for the same reason the
+            // encryption keys above do: it's a bearer credential for live bank
+            // data, and disconnecting should leave nothing behind that still
+            // reaches the previous person's accounts.
+            try? SimpleFINCredentials.clear()
+            isSimpleFINConfigured = false
         }
 
         isConnected = false
@@ -1369,6 +1516,12 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
+        #if DEBUG
+        // This UI test seeds a connected session without a server behind it.
+        // Keep the production view lifecycle intact while avoiding a request
+        // that can only time out and raise an unrelated alert.
+        if CommandLine.arguments.contains("-connectedServerSettings") { return }
+        #endif
         isLoading = true
         error = nil
 
@@ -1739,6 +1892,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
 
             await loadSchedules()
+            await loadBankSyncAccounts()
             publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
@@ -2053,6 +2207,36 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
         await fetchBudgetMonth(month)
     }
+
+    func setCategoryHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryHidden(id: id, hidden: hidden)
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryGroupHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryGroupHidden(id: id, hidden: hidden)
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
     
     /// Money in and out across every account for one "yyyy-MM" month, for the
     /// accounts tab's summary group (GH #256). Nil when there's no budget open
@@ -2196,6 +2380,398 @@ final class BudgetStore: ObservableObject {
     /// were imported before. Read-only convenience for `WalletImportView`.
     func walletFinancialIds(accountId: String) -> Set<String> {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
+    }
+
+    // MARK: - Bank Sync (SimpleFIN)
+
+    /// Talks to a SimpleFIN bridge directly, with a key claimed on this
+    /// device. Only used when the server has no SimpleFIN of its own — see
+    /// `makeBankSyncProvider`.
+    private var simpleFINClient = SimpleFINClient()
+
+    /// How far back a sync reaches when an account has nothing to anchor to.
+    /// 89 days ago through today inclusive is 90 days, the window upstream
+    /// settled on because several bank integrations won't serve more.
+    private static let bankSyncMaxLookbackDays = 89
+
+    /// What one run of `syncBankAccounts` did.
+    struct BankSyncResult: Equatable {
+        var accountsSynced = 0
+        var added = 0
+        var updated = 0
+        /// Anything worth telling the person about: a bank connection that
+        /// needs re-authenticating, an account SimpleFIN no longer knows.
+        /// A run can succeed for some accounts and report problems for others.
+        var problems: [String] = []
+
+        /// What to show when the run finishes. Problems come last so the
+        /// counts above them still read as what did work.
+        var summary: String {
+            var lines: [String] = []
+            if added > 0 {
+                lines.append("Imported \(added) new transaction\(added == 1 ? "" : "s").")
+            }
+            if updated > 0 {
+                lines.append("Matched \(updated) transaction\(updated == 1 ? "" : "s") you already had.")
+            }
+            // Only claim there was nothing to do when nothing went wrong
+            // either — otherwise the problems below say what happened.
+            if lines.isEmpty, problems.isEmpty {
+                lines.append(accountsSynced == 0
+                    ? "No linked accounts to sync."
+                    : "Everything is already up to date.")
+            }
+            return (lines + problems).joined(separator: "\n\n")
+        }
+    }
+
+    /// The last bank sync's outcome, waiting to be shown. Held here rather
+    /// than in a view because the sync is kicked off from a toolbar menu that
+    /// is gone by the time it finishes.
+    @Published var bankSyncSummary: String?
+
+    /// Whether the Actual server has a SimpleFIN connection of its own, as of
+    /// the last check. Refreshed by `refreshBankSyncSource()` and by every
+    /// sync.
+    @Published private(set) var serverProvidesBankSync = false
+
+    /// Whether a bank sync can run at all — through the server's connection or
+    /// one claimed on this device.
+    var canSyncBanks: Bool { serverProvidesBankSync || isSimpleFINConfigured }
+
+    /// Ask the server whether it does SimpleFIN, so the setup screen knows
+    /// which half of itself to show. Failures leave the flag alone: an
+    /// unreachable server isn't evidence either way.
+    func refreshBankSyncSource() async {
+        if let configured = try? await serverClient.simpleFINStatus() {
+            serverProvidesBankSync = configured == true
+        }
+    }
+
+    /// Where this sync's data comes from.
+    ///
+    /// The server's own connection wins whenever it has one. The two
+    /// credentials can't be shared — Actual keeps the server's access key in
+    /// its secrets store, deliberately out of the budget file — so preferring
+    /// the server is what keeps the web UI and this app in agreement: nobody
+    /// needs a second setup token, and a link made here is one the server can
+    /// actually service.
+    private func makeBankSyncProvider() async throws -> any BankSyncProvider {
+        let deviceKey = SimpleFINCredentials.accessKey
+        do {
+            // nil means the route isn't served here — an older server, or a
+            // proxy that strips it. Not a failure, just not an option.
+            if try await serverClient.simpleFINStatus() == true {
+                serverProvidesBankSync = true
+                return ActualServerBankSyncProvider(client: serverClient)
+            }
+            serverProvidesBankSync = false
+        } catch {
+            // The server couldn't be answered for. A key claimed on this
+            // device still reaches the bridge, so use it rather than failing.
+            guard let deviceKey else {
+                // With no key either: a server we genuinely couldn't reach is
+                // worth saying so, but anything else (no server configured, no
+                // session) just means bank sync isn't set up here.
+                if let serverError = error as? ActualServerError, serverError.isConnectionFailure {
+                    throw error
+                }
+                throw BudgetStoreError.bankSyncNotConfigured
+            }
+            return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
+        }
+        guard let deviceKey else { throw BudgetStoreError.bankSyncNotConfigured }
+        return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
+    }
+
+    /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
+    /// entry point — `syncBankAccounts` is the one that throws.
+    func runBankSync(accountIds: [String] = []) async {
+        // A tap that lands while a sync is already running does nothing — the
+        // running sync posts its own summary, which would otherwise be
+        // clobbered by this call's empty one.
+        guard !isBankSyncing else { return }
+        do {
+            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
+        } catch {
+            bankSyncSummary = error.localizedDescription
+        }
+    }
+
+    /// Exchange a SimpleFIN setup token for an access key this device keeps.
+    /// Only needed when the server has no SimpleFIN connection of its own.
+    /// Setup tokens are single-use, so this runs once per token.
+    func connectSimpleFIN(setupToken: String) async throws {
+        let accessKey = try await simpleFINClient.claimAccessKey(setupToken: setupToken)
+        try SimpleFINCredentials.save(accessKey)
+        isSimpleFINConfigured = true
+    }
+
+    /// Forget this device's access key. Accounts stay linked — the link lives
+    /// in the budget file, so the web UI (and this device, once a new token is
+    /// claimed) can still sync them.
+    func disconnectSimpleFIN() throws {
+        try SimpleFINCredentials.clear()
+        isSimpleFINConfigured = false
+    }
+
+    /// Every account the active connection covers, for the linking screen.
+    func fetchBankAccounts() async throws -> [SimpleFINAccount] {
+        try await makeBankSyncProvider().accounts()
+    }
+
+    func loadBankSyncAccounts() async {
+        guard let database else {
+            bankSyncAccounts = []
+            return
+        }
+        bankSyncAccounts = (try? await database.fetchBankSyncAccounts()) ?? []
+    }
+
+    /// The bank feed an account is wired up to, if any.
+    func bankSyncAccount(forAccountId accountId: String) -> BankSyncAccount? {
+        bankSyncAccounts.first { $0.id == accountId }
+    }
+
+    func linkBankAccount(accountId: String, to remote: SimpleFINAccount) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.linkAccount(
+            accountId: accountId,
+            externalAccountId: remote.id,
+            source: .simpleFin,
+            institutionId: remote.org.bankId ?? remote.org.displayName,
+            institutionName: remote.org.displayName
+        )
+        await refreshDataOnly()
+    }
+
+    func unlinkBankAccount(accountId: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.unlinkAccount(accountId: accountId)
+        await refreshDataOnly()
+    }
+
+    /// Download and import transactions for the linked accounts.
+    /// - Parameter accountIds: which accounts to sync; empty syncs every
+    ///   linked one, which is what the accounts tab's sync button does.
+    @discardableResult
+    func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        // A second run on top of the first would re-download the same window
+        // and race the first one's writes.
+        guard !isBankSyncing else { return BankSyncResult() }
+
+        let targets = bankSyncAccounts.filter {
+            $0.source == .simpleFin && !$0.closed
+                && (accountIds.isEmpty || accountIds.contains($0.id))
+        }
+        guard !targets.isEmpty else { return BankSyncResult() }
+
+        isBankSyncing = true
+        defer { isBankSyncing = false }
+
+        let provider = try await makeBankSyncProvider()
+
+        // An account that already has history only needs the window since its
+        // earliest transaction; one that has none takes the full lookback.
+        let lookbackFloor = DayDate.today()
+            .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
+        var oldestDates: [String: Int] = [:]
+        for target in targets {
+            // Both "the read failed" and "the account has no transactions"
+            // mean the same thing here: take the full lookback.
+            oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
+        }
+
+        let downloaded = try await provider.download(targets.map {
+            BankSyncTarget(
+                externalId: $0.externalAccountId,
+                startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
+            )
+        })
+
+        var result = BankSyncResult()
+        result.problems = downloaded.problems
+        // One rules/context fetch for the whole run, not one per row.
+        let prepared = await syncClient.prepareRules()
+        let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
+        var statuses: [(accountId: String, lastSync: String?, status: String)] = []
+
+        for target in targets {
+            guard let download = downloaded.byAccount[target.externalAccountId] else {
+                // A connection-level problem already explains why nothing came
+                // back; don't also tell them to relink an account that's fine.
+                if downloaded.problems.isEmpty {
+                    result.problems.append(
+                        "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
+                    )
+                    statuses.append((target.id, nil, "account-missing"))
+                } else {
+                    statuses.append((target.id, nil, "failed"))
+                }
+                continue
+            }
+            // A problem doesn't mean nothing came through — import whatever
+            // did, and say what went wrong alongside it.
+            if let problem = download.problem {
+                result.problems.append("\(target.name): \(problem)")
+            }
+            do {
+                let outcome = try await importBankSync(
+                    download,
+                    into: target,
+                    isFirstSync: oldestDates[target.id] == nil,
+                    prepared: prepared
+                )
+                result.added += outcome.added
+                result.updated += outcome.updated
+                result.accountsSynced += 1
+                statuses.append((target.id, syncedAt, download.status))
+            } catch {
+                result.problems.append("\(target.name): \(error.localizedDescription)")
+                statuses.append((target.id, nil, "failed"))
+            }
+        }
+
+        // The same two columns every other Actual client stamps, so the web
+        // UI's "last synced" and status badge reflect this run. Never worth
+        // failing the sync over — the transactions are already in.
+        try? await syncClient.recordBankSyncStatus(statuses)
+
+        await refreshDataOnly()
+        return result
+    }
+
+    /// Fold one account's download into the budget: match what we already
+    /// have, insert what we don't.
+    private func importBankSync(
+        _ download: BankSyncDownload,
+        into target: BankSyncAccount,
+        isFirstSync: Bool,
+        prepared: SyncClient.PreparedRules
+    ) async throws -> (added: Int, updated: Int) {
+        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
+
+        // The provider already dropped anything older than this account's own
+        // start day — one request covers every account, so it reaches back as
+        // far as the hungriest of them.
+        var candidates = download.candidates
+
+        // The opening balance counts as an import too (upstream folds its id
+        // into `added`), so a first sync never reports one fewer than it wrote.
+        var added = 0
+        if isFirstSync {
+            added += try await insertStartingBalance(
+                for: target,
+                currentBalanceCents: download.currentBalanceCents,
+                candidates: candidates
+            ) ? 1 : 0
+        }
+        guard let earliest = candidates.map(\.date).min(),
+              let latest = candidates.map(\.date).max() else { return (added, 0) }
+
+        // Resolve payees by name without creating any: the payee pass compares
+        // ids, and a name the budget doesn't have yet can't match anything.
+        // The payees the inserts need are created below, once it's settled
+        // which downloads are actually new.
+        //
+        // One async read for the whole account rather than a synchronous
+        // `payee(named:)` per candidate — this runs on the main actor, and a
+        // 90-day first sync is hundreds of rows. Keyed case-insensitively, the
+        // same way `findOrCreatePayee` and upstream's `getPayeeByName` match,
+        // so a bank that shouts "AMAZON" still resolves the budget's "Amazon".
+        let payeeIdsByName = Dictionary(
+            (try? await database.fetchPayees())?.map { ($0.name.lowercased(), $0.id) } ?? [],
+            uniquingKeysWith: { first, _ in first }
+        )
+        for index in candidates.indices {
+            candidates[index].payeeId = payeeIdsByName[candidates[index].payeeName.lowercased()]
+        }
+
+        let radius = BankSyncReconciler.fuzzyMatchDayRadius
+        let window = try await database.bankSyncWindow(
+            accountId: target.id,
+            from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
+            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
+        )
+
+        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
+
+        try await syncClient.applyBankSyncUpdates(plan.updates)
+
+        // Oldest first: sort_order is stamped at insert, so inserting in date
+        // order leaves the newest transaction at the top of the account.
+        for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
+            let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
+            let transaction = Transaction(
+                id: UUID().uuidString,
+                accountId: target.id,
+                date: candidate.date,
+                amount: candidate.amount,
+                payeeId: payeeId,
+                payeeName: candidate.payeeName,
+                categoryId: nil,
+                categoryName: nil,
+                notes: candidate.notes,
+                cleared: candidate.cleared,
+                reconciled: false,
+                transferId: nil,
+                isParent: false,
+                parentId: nil,
+                tombstone: false,
+                sortOrder: nil,  // Set to Date.now() during insert
+                importedPayee: candidate.payeeName,
+                financialId: candidate.importedId
+            )
+            try await syncClient.createTransaction(transaction, prepared: prepared)
+        }
+
+        return (added + plan.inserts.count, plan.updates.count)
+    }
+
+    /// Give a freshly linked account the opening balance its imported history
+    /// starts from. Actual has no stored balance field, so without this the
+    /// account would be short everything that happened before the sync window
+    /// (upstream `processBankSyncDownload`, initial sync).
+    /// Returns whether a transaction was written (a zero opening writes none).
+    @discardableResult
+    private func insertStartingBalance(
+        for target: BankSyncAccount,
+        currentBalanceCents: Int?,
+        candidates: [BankSyncCandidate]
+    ) async throws -> Bool {
+        guard let syncClient, let balance = currentBalanceCents else { return false }
+        // The balance is as of now, so what the account opened with is what's
+        // left once everything about to be imported is taken back off it.
+        let opening = balance - candidates.reduce(0) { $0 + $1.amount }
+        guard opening != 0 else { return false }
+
+        let payee = try await findOrCreatePayee(name: "Starting Balance")
+        let category = target.offBudget ? nil : startingBalanceCategory()
+
+        let transaction = Transaction(
+            id: UUID().uuidString,
+            accountId: target.id,
+            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
+            amount: opening,
+            payeeId: payee.id,
+            payeeName: payee.name,
+            categoryId: category?.id,
+            categoryName: category?.name,
+            notes: nil,
+            cleared: true,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil,
+            startingBalanceFlag: true
+        )
+        // Rules never see an opening balance, same as account creation's.
+        try await syncClient.createTransaction(transaction, applyRules: false)
+        return true
     }
 
     /// Create a paired transfer between two accounts. Writes both legs with linked
@@ -3698,8 +4274,7 @@ final class BudgetStore: ObservableObject {
 
     @discardableResult
     private func postDueSchedulesIfNeeded() async -> Int {
-        guard postScheduledTransactions,
-              let client = syncClient,
+        guard let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
@@ -3922,7 +4497,7 @@ final class BudgetStore: ObservableObject {
             guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
             month = previous
             guard let budget = try? await database.fetchBudgetMonth(month: previous),
-                  let priorCategory = budget.categoryBudgets.first(where: {
+                  let priorCategory = budget.allCategoryBudgets.first(where: {
                       $0.categoryId == category.categoryId
                   }) else { continue }
             result.append(priorCategory)
@@ -4167,7 +4742,7 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Currency Formatting
 
-    /// Format an amount in cents to a currency string using the budget's currency
+    /// Format an amount in cents to a currency string using the budget's currency.
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {

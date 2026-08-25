@@ -134,12 +134,10 @@ struct TransactionAutomationSettingsView: View {
                 } label: {
                     Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                 }
-
-                Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
             } header: {
                 Text("Scheduled Transactions")
             } footer: {
-                Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
             }
 
             Section {
@@ -164,6 +162,12 @@ struct TransactionAutomationSettingsView: View {
 
             Section {
                 NavigationLink {
+                    BankSyncSetupView()
+                } label: {
+                    Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
+                }
+
+                NavigationLink {
                     WalletAutomationView()
                 } label: {
                     Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
@@ -177,12 +181,12 @@ struct TransactionAutomationSettingsView: View {
                     }
                 }
             } header: {
-                Text("Wallet Automation")
+                Text("Automations")
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text("Connect SimpleFIN to import transactions straight from your bank, set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
                 } else {
-                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
                 }
             }
         }

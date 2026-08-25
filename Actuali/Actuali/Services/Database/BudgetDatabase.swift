@@ -219,7 +219,15 @@ final class BudgetDatabase: Sendable {
         (1780606215001, "transactions", nil, ["acct", "tombstone"],
          "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
         (1780606215002, "transactions", nil, ["schedule"],
-         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)")
+         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)"),
+        // Locally minted ids for the bank-sync columns, which upstream added
+        // long before any migration in this list: a snapshot old enough to
+        // lack them would otherwise have nowhere for a link to land, and
+        // nowhere for the web UI's own link messages to apply.
+        (1780606215003, "accounts", "account_sync_source", [],
+         "ALTER TABLE accounts ADD COLUMN account_sync_source TEXT"),
+        (1780606215004, "accounts", "last_sync", [],
+         "ALTER TABLE accounts ADD COLUMN last_sync TEXT")
     ]
 
     // Tables added upstream after the original budget file was created. These run
@@ -297,6 +305,18 @@ final class BudgetDatabase: Sendable {
                 name TEXT NOT NULL,
                 tombstone INTEGER DEFAULT 0
             )
+        """),
+        // Defensive, like the two above: `banks` is upstream base schema, but
+        // the bank-sync link writes both the row and the accounts.bank pointer
+        // to it, and a runtime check on one without the other would only half
+        // protect the write.
+        (1770000000003, """
+            CREATE TABLE IF NOT EXISTS banks (
+                id TEXT PRIMARY KEY,
+                bank_id TEXT,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
         """)
     ]
     
@@ -315,6 +335,9 @@ final class BudgetDatabase: Sendable {
         1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
         1780606214999, // locally minted transactions.schedule backfill
         1780606215002, // second half of upstream index migration 1780606215001
+        1780606215003, // locally minted accounts.account_sync_source backfill
+        1780606215004, // locally minted accounts.last_sync backfill
+        1770000000003, // defensive CREATE banks
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -1582,60 +1605,61 @@ final class BudgetDatabase: Sendable {
             let groups = try CategoryGroupRecord
                 .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
                 .fetchAll(db)
-            let visibleGroupIds = Set(groups.filter { $0.hidden != 1 }.map { $0.id })
             let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
 
-            let categoryBudgets = categories.compactMap { cat -> CategoryBudget? in
+            let allCategoryBudgets = categories.compactMap { cat -> CategoryBudget? in
                 guard cat.isIncome != 1 else { return nil }
-                guard cat.hidden != 1 else { return nil }
-                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
+                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
                 let budgeted = targetBudgets[cat.id]?.amount ?? 0
                 let spent = targetSpent[cat.id] ?? 0
                 let available = runningLeftover[cat.id] ?? (budgeted + spent)
                 let priorContribution = available - budgeted - spent
-                let group = groupsById[cat.catGroup ?? ""]
 
                 return CategoryBudget(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
                     groupId: cat.catGroup ?? "",
-                    groupName: group?.name ?? "Unknown",
-                    groupSortOrder: group?.sortOrder ?? .greatestFiniteMagnitude,
+                    groupName: group.name ?? "Unknown",
+                    groupSortOrder: group.sortOrder ?? .greatestFiniteMagnitude,
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
                     available: available,
-                    carryover: priorContribution
+                    carryover: priorContribution,
+                    hidden: cat.hidden == 1,
+                    groupHidden: group.hidden == 1
                 )
             }
 
             // Income categories, shown as their own section like the web
             // UI's Income group. "Received" is the month's net activity on
             // the category (income transactions are positive amounts).
-            let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
+            let allIncomeCategories = categories.compactMap { cat -> IncomeCategory? in
                 guard cat.isIncome == 1 else { return nil }
-                guard cat.hidden != 1 else { return nil }
-                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
-                let group = groupsById[cat.catGroup ?? ""]
+                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
 
                 return IncomeCategory(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
-                    groupName: group?.name ?? "Income",
+                    groupName: group.name ?? "Income",
                     sortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: targetBudgets[cat.id]?.amount ?? 0,
-                    received: targetSpent[cat.id] ?? 0
+                    received: targetSpent[cat.id] ?? 0,
+                    hidden: cat.hidden == 1,
+                    groupHidden: group.hidden == 1
                 )
             }
             .sorted { $0.sortOrder < $1.sortOrder }
 
             return BudgetMonth(
                 month: month,
-                categoryBudgets: categoryBudgets,
-                incomeCategories: incomeCategories,
-                toBudget: isEnvelope ? runningToBudget : nil
+                categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
+                incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
+                toBudget: isEnvelope ? runningToBudget : nil,
+                hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
+                hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )
         }
     }
@@ -2430,6 +2454,195 @@ final class BudgetDatabase: Sendable {
                 WHERE acct = ? AND financial_id IS NOT NULL
                 """, arguments: [accountId])
             return Set(ids)
+        }
+    }
+
+    // MARK: - Bank Sync
+
+    /// Every account wired up to a bank feed, in the order the accounts tab
+    /// lists them. Empty (rather than an error) on a budget file old enough
+    /// to predate the columns — nothing can be linked in that case anyway.
+    func fetchBankSyncAccounts() async throws -> [BankSyncAccount] {
+        try await dbQueue.read { db in
+            guard try db.columns(in: "accounts").contains(where: { $0.name == "account_sync_source" }) else {
+                return []
+            }
+            return try Row.fetchAll(db, sql: """
+                SELECT id, name, account_id, account_sync_source, offbudget, closed
+                FROM accounts
+                WHERE (tombstone = 0 OR tombstone IS NULL)
+                  AND account_id IS NOT NULL AND account_id <> ''
+                  AND account_sync_source IS NOT NULL AND account_sync_source <> ''
+                ORDER BY offbudget, sort_order
+                """).map { row in
+                BankSyncAccount(
+                    id: row["id"],
+                    name: row["name"] ?? "Unknown",
+                    externalAccountId: row["account_id"],
+                    syncSource: row["account_sync_source"],
+                    offBudget: row["offbudget"] == 1,
+                    closed: row["closed"] == 1
+                )
+            }
+        }
+    }
+
+    /// The transactions a download could be matching, projected down to the
+    /// columns `BankSyncReconciler` reads. Bounded by date because matching
+    /// only ever looks a week either side of a downloaded transaction.
+    ///
+    /// Split children are excluded: a download matches the parent (which
+    /// carries the full amount), never one of its portions. Tombstoned rows
+    /// are excluded too, so a transaction the person deleted isn't quietly
+    /// resurrected by the next sync — it re-imports as new instead, which is
+    /// the outcome they'd get on the web UI.
+    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
+        try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT id, date, amount, description, financial_id, imported_description,
+                       notes, cleared, reconciled
+                FROM transactions
+                WHERE acct = ?
+                  AND date IS NOT NULL AND date >= ? AND date <= ?
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND (isChild = 0 OR isChild IS NULL)
+                """, arguments: [accountId, from, to]).map { row in
+                BankSyncExistingTransaction(
+                    id: row["id"],
+                    date: row["date"] ?? 0,
+                    amount: row["amount"] ?? 0,
+                    payeeId: row["description"],
+                    importedId: row["financial_id"],
+                    importedPayee: row["imported_description"],
+                    notes: row["notes"],
+                    cleared: row["cleared"] == 1,
+                    reconciled: row["reconciled"] == 1
+                )
+            }
+        }
+    }
+
+    /// The date of an account's earliest transaction, or nil when it has none.
+    /// Decides how far back the first sync of an account reaches.
+    func oldestTransactionDate(accountId: String) async throws -> Int? {
+        try await dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT MIN(date) FROM transactions
+                WHERE acct = ? AND date IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [accountId])
+        }
+    }
+
+    /// Apply the reconciler's updates to transactions the download matched,
+    /// with their CRDT messages, in one SQLite transaction.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncUpdates(
+        _ updates: [BankSyncUpdate],
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            for update in updates {
+                try db.execute(sql: """
+                    UPDATE transactions
+                    SET financial_id = ?, description = ?, imported_description = ?,
+                        notes = ?, cleared = ?
+                    WHERE id = ?
+                    """, arguments: [
+                        update.importedId,
+                        update.payeeId,
+                        update.importedPayee,
+                        update.notes,
+                        update.cleared ? 1 : 0,
+                        update.existingId
+                    ])
+            }
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Point an account at a provider's account, writing the institution row
+    /// it points at alongside it, with all of their CRDT messages, in one
+    /// SQLite transaction. The institution row is rewritten whether or not it
+    /// already existed — the caller reads the existing one first, so a rewrite
+    /// restates what's already there.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncLink(
+        accountId: String,
+        externalAccountId: String,
+        syncSource: String,
+        bank: Bank,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
+                VALUES (?, ?, ?, ?)
+                """, arguments: [bank.id, bank.bankId, bank.name, bank.tombstone ? 1 : 0])
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = ?, account_sync_source = ?, bank = ?
+                WHERE id = ?
+                """, arguments: [externalAccountId, syncSource, bank.id, accountId])
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Cut an account loose from its bank feed. Clears every column upstream's
+    /// own unlink clears, not just the three that point at the provider: a
+    /// left-behind `bank_sync_status` would keep showing an error badge in the
+    /// web UI for an account that no longer syncs at all.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncUnlink(accountId: String, messages: [CRDTMessage]) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = NULL, account_sync_source = NULL, bank = NULL,
+                    balance_current = NULL, balance_available = NULL, balance_limit = NULL,
+                    bank_sync_status = NULL
+                WHERE id = ?
+                """, arguments: [accountId])
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Stamp what a sync did on the account, the way every other Actual client
+    /// does, so the web UI's "last synced" and status badge reflect a sync
+    /// this device ran.
+    /// Returns the subset of messages that was actually new (see `insertMessages`).
+    func applyBankSyncStatus(
+        _ statuses: [(accountId: String, lastSync: String?, status: String)],
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            for entry in statuses {
+                // A failed sync leaves last_sync alone rather than nulling it:
+                // "we last had good data at X" stays true, and upstream does
+                // the same (it only writes bank_sync_status on failure).
+                guard let lastSync = entry.lastSync else {
+                    try db.execute(
+                        sql: "UPDATE accounts SET bank_sync_status = ? WHERE id = ?",
+                        arguments: [entry.status, entry.accountId]
+                    )
+                    continue
+                }
+                try db.execute(sql: """
+                    UPDATE accounts SET last_sync = ?, bank_sync_status = ? WHERE id = ?
+                    """, arguments: [lastSync, entry.status, entry.accountId])
+            }
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// The institution row a provider's institution id already has, if any —
+    /// upstream's `findOrCreateBank` lookup half, so two accounts at the same
+    /// bank share one row.
+    func bank(withBankId bankId: String) async throws -> Bank? {
+        try await dbQueue.read { db in
+            guard let row = try Row.fetchOne(db, sql: """
+                SELECT id, bank_id, name FROM banks
+                WHERE bank_id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [bankId]) else { return nil }
+            return Bank(id: row["id"], bankId: bankId, name: row["name"] ?? "")
         }
     }
 
