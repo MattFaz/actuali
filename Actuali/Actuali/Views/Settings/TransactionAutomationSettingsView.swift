@@ -144,12 +144,6 @@ struct TransactionAutomationSettingsView: View {
                 }
 
                 NavigationLink {
-                    BankSyncSetupView()
-                } label: {
-                    Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
-                }
-
-                NavigationLink {
                     WalletAutomationView()
                 } label: {
                     Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
@@ -166,9 +160,9 @@ struct TransactionAutomationSettingsView: View {
                 Text("Automations")
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN, log tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
                 } else {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN or log tap-to-pay purchases from Apple Wallet.")
+                    Text("Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
                 }
             }
         }
