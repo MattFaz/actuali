@@ -44,10 +44,19 @@ struct CategoryFundingAutomationConfiguration: Codable, Equatable {
 }
 
 enum CategoryFundingAutomation {
+    /// Returns only the amount needed to cover the new expense. Existing
+    /// overspending is intentionally preserved.
+    ///
+    /// Example: if a category is already at -$500 and a new $50 expense is
+    /// posted, the category should receive $50, resulting in -$500 again.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
+
+        let expense = abs(transactionAmount)
         let availableBeforeTransaction = availableAfterTransaction - transactionAmount
-        return max(0, abs(transactionAmount) - availableBeforeTransaction)
+        let usableFundsBeforeTransaction = max(0, availableBeforeTransaction)
+
+        return max(0, expense - usableFundsBeforeTransaction)
     }
 
     static func shouldProcess(
