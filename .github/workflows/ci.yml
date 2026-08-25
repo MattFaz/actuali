@@ -8,10 +8,14 @@ name: CI
 on:
   pull_request:
     branches: [main]
+    # The whole workflows directory rather than this file and its noop twin:
+    # naming files individually means ci-noop.yml's paths-ignore has to be kept
+    # in lockstep, and any file missed from both fires *both* workflows, which
+    # reports each required check twice — a 5-second ubuntu noop can then
+    # satisfy a check the real macOS job is still running.
     paths:
       - "Actuali/**"
-      - ".github/workflows/ci.yml"
-      - ".github/workflows/ci-noop.yml"
+      - ".github/workflows/**"
   workflow_dispatch:
 
 permissions:
