@@ -462,7 +462,13 @@ final class BudgetStore: ObservableObject {
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+        let visible = categories.filter { !$0.isEffectivelyHidden }
+        let filtered = hideZeroBudgetCategories
+            ? visible.filter { $0.available != 0 }
+            : visible
+        return showHiddenCategories
+            ? filtered + categories.filter(\.isEffectivelyHidden)
+            : filtered
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -1675,13 +1681,7 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(
-                month: currentMonth,
-                includeHiddenCategories: showHiddenCategories
-            )
-            let fetchedWidgetBudgetMonth = showHiddenCategories
-                ? try await openedDb.fetchBudgetMonth(month: currentMonth)
-                : fetchedBudgetMonth
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1716,7 +1716,7 @@ final class BudgetStore: ObservableObject {
                 requestedBudgetMonth = currentMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetBudgetMonth = fetchedWidgetBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
             publishWidgetSnapshot()
 
@@ -1857,12 +1857,9 @@ final class BudgetStore: ObservableObject {
             // with the current calendar month while the toolbar still shows
             // the user's selection (GH #328).
             let displayedMonth = requestedBudgetMonth ?? currentMonth
-            let fetchedBudgetMonth = try await database.fetchBudgetMonth(
-                month: displayedMonth,
-                includeHiddenCategories: showHiddenCategories
-            )
+            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
             let fetchedWidgetBudgetMonth: BudgetMonth
-            if displayedMonth == currentMonth, !showHiddenCategories {
+            if displayedMonth == currentMonth {
                 fetchedWidgetBudgetMonth = fetchedBudgetMonth
             } else {
                 fetchedWidgetBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
@@ -4487,10 +4484,7 @@ final class BudgetStore: ObservableObject {
     func fetchBudgetMonth(_ month: String) async {
         requestedBudgetMonth = month
         do {
-            let fetched = try await database?.fetchBudgetMonth(
-                month: month,
-                includeHiddenCategories: showHiddenCategories
-            )
+            let fetched = try await database?.fetchBudgetMonth(month: month)
             // If a newer month was requested while we were fetching (rapid
             // month flips), this result is stale — drop it.
             guard requestedBudgetMonth == month else { return }
@@ -4515,7 +4509,7 @@ final class BudgetStore: ObservableObject {
             guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
             month = previous
             guard let budget = try? await database.fetchBudgetMonth(month: previous),
-                  let priorCategory = budget.categoryBudgets.first(where: {
+                  let priorCategory = budget.allCategoryBudgets.first(where: {
                       $0.categoryId == category.categoryId
                   }) else { continue }
             result.append(priorCategory)

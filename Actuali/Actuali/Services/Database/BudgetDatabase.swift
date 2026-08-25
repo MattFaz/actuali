@@ -1395,10 +1395,7 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Budget Data
 
-    func fetchBudgetMonth(
-        month: String,
-        includeHiddenCategories: Bool = false
-    ) async throws -> BudgetMonth {
+    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
         try await dbQueue.read { db in
             let targetMonthInt = Self.monthStringToInt(month)
 
@@ -1608,62 +1605,61 @@ final class BudgetDatabase: Sendable {
             let groups = try CategoryGroupRecord
                 .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
                 .fetchAll(db)
-            let visibleGroupIds = Set(groups
-                .filter { includeHiddenCategories || $0.hidden != 1 }
-                .map { $0.id })
             let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
 
-            let categoryBudgets = categories.compactMap { cat -> CategoryBudget? in
+            let allCategoryBudgets = categories.compactMap { cat -> CategoryBudget? in
                 guard cat.isIncome != 1 else { return nil }
-                guard includeHiddenCategories || cat.hidden != 1 else { return nil }
-                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
+                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
                 let budgeted = targetBudgets[cat.id]?.amount ?? 0
                 let spent = targetSpent[cat.id] ?? 0
                 let available = runningLeftover[cat.id] ?? (budgeted + spent)
                 let priorContribution = available - budgeted - spent
-                let group = groupsById[cat.catGroup ?? ""]
 
                 return CategoryBudget(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
                     groupId: cat.catGroup ?? "",
-                    groupName: group?.name ?? "Unknown",
-                    groupSortOrder: group?.sortOrder ?? .greatestFiniteMagnitude,
+                    groupName: group.name ?? "Unknown",
+                    groupSortOrder: group.sortOrder ?? .greatestFiniteMagnitude,
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
                     available: available,
-                    carryover: priorContribution
+                    carryover: priorContribution,
+                    hidden: cat.hidden == 1,
+                    groupHidden: group.hidden == 1
                 )
             }
 
             // Income categories, shown as their own section like the web
             // UI's Income group. "Received" is the month's net activity on
             // the category (income transactions are positive amounts).
-            let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
+            let allIncomeCategories = categories.compactMap { cat -> IncomeCategory? in
                 guard cat.isIncome == 1 else { return nil }
-                guard includeHiddenCategories || cat.hidden != 1 else { return nil }
-                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
-                let group = groupsById[cat.catGroup ?? ""]
+                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
 
                 return IncomeCategory(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
-                    groupName: group?.name ?? "Income",
+                    groupName: group.name ?? "Income",
                     sortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: targetBudgets[cat.id]?.amount ?? 0,
-                    received: targetSpent[cat.id] ?? 0
+                    received: targetSpent[cat.id] ?? 0,
+                    hidden: cat.hidden == 1,
+                    groupHidden: group.hidden == 1
                 )
             }
             .sorted { $0.sortOrder < $1.sortOrder }
 
             return BudgetMonth(
                 month: month,
-                categoryBudgets: categoryBudgets,
-                incomeCategories: incomeCategories,
-                toBudget: isEnvelope ? runningToBudget : nil
+                categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
+                incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
+                toBudget: isEnvelope ? runningToBudget : nil,
+                hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
+                hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )
         }
     }

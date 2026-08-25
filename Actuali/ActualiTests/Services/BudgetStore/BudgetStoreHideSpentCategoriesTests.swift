@@ -58,4 +58,20 @@ struct BudgetStoreHideSpentCategoriesTests {
         let visible = store.visibleCategoryBudgets(makeCategories(availables: [-100, 0, 500]))
         #expect(visible.count == 3)
     }
+
+    @Test func showHiddenKeepsHiddenRowsReachableWhenSpentRowsAreHidden() {
+        let store = BudgetStore.previewInstance()
+        store.hideZeroBudgetCategories = true
+        store.showHiddenCategories = true
+        defer {
+            UserDefaults.standard.removeObject(forKey: "hideZeroBudgetCategories")
+            UserDefaults.standard.removeObject(forKey: "showHiddenCategories")
+        }
+        var categories = makeCategories(availables: [0, 0])
+        categories[1].hidden = true
+
+        let visible = store.visibleCategoryBudgets(categories)
+
+        #expect(visible.map(\.categoryId) == ["cat1"])
+    }
 }

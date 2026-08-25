@@ -99,7 +99,9 @@ struct BudgetView: View {
     private func collapseAllGroups() {
         let displayedGroupIDs = Self.displayedGroupIDs(
             groupIDs: groupedCategories.map(\.id),
-            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+            hasIncome: budgetStore.currentBudgetMonth.map {
+                !displayedIncomeCategories(in: $0).isEmpty
+            } ?? false
         )
         let groups = collapsedGroups.union(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
@@ -108,7 +110,9 @@ struct BudgetView: View {
     private func expandAllGroups() {
         let displayedGroupIDs = Self.displayedGroupIDs(
             groupIDs: groupedCategories.map(\.id),
-            hasIncome: budgetStore.currentBudgetMonth?.incomeCategories.isEmpty == false
+            hasIncome: budgetStore.currentBudgetMonth.map {
+                !displayedIncomeCategories(in: $0).isEmpty
+            } ?? false
         )
         let groups = collapsedGroups.subtracting(displayedGroupIDs)
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
@@ -155,9 +159,6 @@ struct BudgetView: View {
             .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
                 if !isShown { categoryFilter = .all }
             }
-            .onChange(of: budgetStore.showHiddenCategories) {
-                _, _ in Task { await budgetStore.fetchBudgetMonth(selectedMonth) }
-            }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
@@ -203,9 +204,8 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CleanCategoryBudgetRow(
                             category: category,
-                            isHidden: categoryMetadata(category.categoryId)?.hidden == true,
-                            isDimmed: group.isHidden
-                                || categoryMetadata(category.categoryId)?.hidden == true,
+                            isHidden: category.hidden,
+                            isDimmed: category.isEffectivelyHidden,
                             onSetHidden: {
                                 setCategoryHidden(category.categoryId, hidden: $0)
                             },
@@ -252,9 +252,8 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CategoryBudgetRow(
                             category: category,
-                            isHidden: categoryMetadata(category.categoryId)?.hidden == true,
-                            isDimmed: group.isHidden
-                                || categoryMetadata(category.categoryId)?.hidden == true,
+                            isHidden: category.hidden,
+                            isDimmed: category.isEffectivelyHidden,
                             onSetHidden: {
                                 setCategoryHidden(category.categoryId, hidden: $0)
                             },
@@ -279,16 +278,16 @@ struct BudgetView: View {
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
         let group = budgetStore.categoryGroups.first(where: \.isIncome)
-        let name = group?.name ?? budget.incomeCategories.first?.groupName ?? "Income"
+        let categories = displayedIncomeCategories(in: budget)
+        let name = group?.name ?? categories.first?.groupName ?? "Income"
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
-                    ForEach(budget.incomeCategories) { income in
+                    ForEach(categories) { income in
                         IncomeCategoryRow(
                             income: income,
-                            isHidden: categoryMetadata(income.categoryId)?.hidden == true,
-                            isDimmed: group?.hidden == true
-                                || categoryMetadata(income.categoryId)?.hidden == true,
+                            isHidden: income.hidden,
+                            isDimmed: income.isEffectivelyHidden,
                             onSetHidden: {
                                 setCategoryHidden(income.categoryId, hidden: $0)
                             },
@@ -332,12 +331,11 @@ struct BudgetView: View {
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
                 if !isCollapsed {
-                    ForEach(budget.incomeCategories) { income in
+                    ForEach(categories) { income in
                         IncomeCategoryRow(
                             income: income,
-                            isHidden: categoryMetadata(income.categoryId)?.hidden == true,
-                            isDimmed: group?.hidden == true
-                                || categoryMetadata(income.categoryId)?.hidden == true,
+                            isHidden: income.hidden,
+                            isDimmed: income.isEffectivelyHidden,
                             onSetHidden: {
                                 setCategoryHidden(income.categoryId, hidden: $0)
                             },
@@ -545,7 +543,7 @@ struct BudgetView: View {
 
                 // Income group last, matching the bottom of the web UI's
                 // budget table.
-                if categoryFilter == .all, !budget.incomeCategories.isEmpty {
+                if categoryFilter == .all, !displayedIncomeCategories(in: budget).isEmpty {
                     incomeSection(budget)
                 }
             }
@@ -635,8 +633,8 @@ struct BudgetView: View {
         return visible.min { $0.sortOrder < $1.sortOrder }?.id
     }
 
-    private func categoryMetadata(_ id: String) -> Category? {
-        budgetStore.categoryGroups.lazy.flatMap(\.categories).first { $0.id == id }
+    private func displayedIncomeCategories(in budget: BudgetMonth) -> [IncomeCategory] {
+        budgetStore.showHiddenCategories ? budget.allIncomeCategories : budget.incomeCategories
     }
 
     private func setCategoryHidden(_ id: String, hidden: Bool) {
@@ -691,28 +689,24 @@ struct BudgetView: View {
         let isHidden: Bool
         /// The rows to draw, after "Hide Spent Categories" filtering.
         let categories: [CategoryBudget]
-        /// Totals over the group's whole category list, hidden rows included.
+        /// Totals over the group's non-hidden category list.
         let totals: CategoryGroupTotals
     }
 
     var groupedCategories: [CategoryGroupSection] {
         guard let budget = budgetStore.currentBudgetMonth else { return [] }
-        let byGroup = Dictionary(grouping: budget.categoryBudgets, by: { $0.groupId })
+        let categories = budgetStore.showHiddenCategories
+            ? budget.allCategoryBudgets
+            : budget.categoryBudgets
+        let byGroup = Dictionary(grouping: categories, by: { $0.groupId })
         var sections = byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
                 // An explicit filter is its own visibility rule: "Not Funded"
                 // must still match zero-available categories even when the
                 // Hide Spent Categories setting would drop them from "All".
-                let groupHidden = budgetStore.categoryGroups
-                    .first { $0.id == groupId }?.hidden == true
                 let base = categoryFilter == .all
-                    ? items.filter {
-                        !budgetStore.hideZeroBudgetCategories || $0.available != 0
-                            || (budgetStore.showHiddenCategories
-                                && (groupHidden
-                                    || categoryMetadata($0.categoryId)?.hidden == true))
-                    }
+                    ? budgetStore.visibleCategoryBudgets(items)
                     : items.filter(categoryFilter.includes)
                 let visible = base
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
@@ -724,10 +718,12 @@ struct BudgetView: View {
                     CategoryGroupSection(
                         id: groupId,
                         name: first.groupName,
-                        isHidden: budgetStore.categoryGroups
-                            .first { $0.id == groupId }?.hidden == true,
+                        isHidden: first.groupHidden,
                         categories: visible,
-                        totals: CategoryGroupTotals(categoryFilter == .all ? items : visible)
+                        totals: CategoryGroupTotals(
+                            (categoryFilter == .all ? items : visible)
+                                .filter { !$0.isEffectivelyHidden }
+                        )
                     )
                 )
             }
@@ -949,7 +945,7 @@ struct CategoryBudgetRow: View {
             trailing: 16
         ))
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
@@ -1053,7 +1049,7 @@ struct CleanCategoryBudgetRow: View {
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
@@ -1440,7 +1436,7 @@ struct IncomeCategoryRow: View {
             trailing: 16
         ))
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions {
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
