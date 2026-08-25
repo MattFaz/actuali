@@ -83,6 +83,9 @@ struct BudgetOptionsMenu: View {
                     Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
                 }
                 .accessibilityLabel("Hide Spent Categories")
+                Toggle(isOn: $budgetStore.showHiddenCategories) {
+                    Label("Show Hidden Categories", systemImage: "eye")
+                }
             }
         } label: {
             Image(systemName: "ellipsis.circle")

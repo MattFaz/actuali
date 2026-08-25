@@ -160,6 +160,43 @@ struct BudgetDatabaseIncomeTests {
         #expect(june.incomeCategories.map(\.categoryId) == ["cat-salary"])
     }
 
+    @Test func hiddenCategoriesAndGroupsAreKeptSeparate() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try execSQL(db, "UPDATE categories SET hidden = 1 WHERE id = 'cat-bonus'")
+        try execSQL(db, "UPDATE category_groups SET hidden = 1 WHERE id = 'grp-1'")
+
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+
+        #expect(june.hiddenIncomeCategories.contains { $0.categoryId == "cat-bonus" })
+        #expect(june.hiddenCategoryBudgets.contains { $0.categoryId == "cat-groceries" })
+        #expect(june.incomeCategories.allSatisfy { $0.categoryId != "cat-bonus" })
+        #expect(june.categoryBudgets.allSatisfy { $0.categoryId != "cat-groceries" })
+    }
+
+    @Test func quickAssignHistoryIncludesHiddenCategories() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try execSQL(db, "UPDATE categories SET hidden = 1 WHERE id = 'cat-groceries'")
+        try insertTransaction(db, date: 20260501, category: "cat-groceries", amount: -25_000)
+        let june = try await db.fetchBudgetMonth(month: "2026-06")
+        let category = try #require(june.hiddenCategoryBudgets.first {
+            $0.categoryId == "cat-groceries"
+        })
+        let store = BudgetStore.previewInstance()
+        store.configureForTesting(
+            database: db,
+            syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        )
+
+        let history = await store.budgetHistory(for: category, monthCount: 1)
+
+        #expect(history.count == 1)
+        #expect(history[0].spent == -25_000)
+    }
+
     @Test func transactionsOnADeletedAccountAreExcluded() async throws {
         // Deleting an account takes its transactions with it; one left alive on
         // a tombstoned account is a sync-race orphan, and counting it would put

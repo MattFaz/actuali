@@ -431,6 +431,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether hidden categories and groups are included on the Budget tab.
+    /// Persisted locally so an item stays reachable until the user turns the
+    /// view option off again.
+    @Published var showHiddenCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
+        }
+    }
+
     /// Whether transaction lists show only uncleared transactions, so long
     /// histories don't bury the items that still need attention (GH #133).
     /// Persisted to UserDefaults, defaults to off.
@@ -453,7 +462,13 @@ final class BudgetStore: ObservableObject {
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+        let visible = categories.filter { !$0.isEffectivelyHidden }
+        let filtered = hideZeroBudgetCategories
+            ? visible.filter { $0.available != 0 }
+            : visible
+        return showHiddenCategories
+            ? filtered + categories.filter(\.isEffectivelyHidden)
+            : filtered
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -1122,6 +1137,8 @@ final class BudgetStore: ObservableObject {
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
+        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
@@ -2183,6 +2200,36 @@ final class BudgetStore: ObservableObject {
             try await syncClient.renameCategory(id: id, name: trimmedName)
         } catch let error as BudgetDatabase.CategoryWriteError {
             throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryHidden(id: id, hidden: hidden)
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryGroupHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryGroupHidden(id: id, hidden: hidden)
         } catch {
             throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
         }
@@ -4450,7 +4497,7 @@ final class BudgetStore: ObservableObject {
             guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
             month = previous
             guard let budget = try? await database.fetchBudgetMonth(month: previous),
-                  let priorCategory = budget.categoryBudgets.first(where: {
+                  let priorCategory = budget.allCategoryBudgets.first(where: {
                       $0.categoryId == category.categoryId
                   }) else { continue }
             result.append(priorCategory)

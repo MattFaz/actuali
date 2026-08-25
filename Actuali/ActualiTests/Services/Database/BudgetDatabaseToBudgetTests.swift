@@ -258,6 +258,8 @@ struct BudgetDatabaseToBudgetTests {
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         #expect(june.categoryBudgets.first { $0.categoryId == "cat-hidden" } == nil)
+        #expect(june.hiddenCategoryBudgets.contains { $0.categoryId == "cat-hidden" })
+        #expect(june.totalBudgeted == 0)
         #expect(june.toBudget == 40_000)
     }
 
