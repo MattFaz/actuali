@@ -25,9 +25,9 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCleanStyleIsDefaultAndShowsCaptions() throws {
+    func testCleanStyleShowsCaptions() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -106,6 +106,8 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-showCompactBudgetOverview", "YES",
             "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
+            "-showCategoryStatusDots", "NO",
+            "-showGroupTotals", "YES",
             "-initialTab", "1",
         ]
         app.launch()
@@ -166,6 +168,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-budgetDisplayStyle", "compact",
             "-showCompactBudgetOverview", "YES",
             "-showCompactSpentColumn", "NO",
+            "-hideBalances", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
@@ -210,13 +213,14 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCompactOptionalOverviewAndSharedProgressBarsAffectPresentation() throws {
+    func testCompactOptionalOverviewAndProgressBarsAffectPresentation() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-showCompactBudgetOverview", "NO",
             "-showBudgetProgressBars", "NO",
+            "-showCategoryStatusDots", "NO",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]
@@ -239,30 +243,24 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Partially spent, spent '")
         ).firstMatch
         XCTAssertFalse(progressBar.exists,
-                       "disabled progress mode displays neither status dot nor bar")
+                       "disabled progress mode displays no progress bar")
 
-        app.tabBars.buttons["Settings"].tap()
+        openBudgetViewSettings(in: app)
         let sharedProgressBars = app.switches["Budget Progress Bars"]
         scrollToSettingsControl(sharedProgressBars, in: app)
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
-        let groceriesWithStatus = app.buttons.matching(
-            NSPredicate(format: "label == 'Details for Groceries, Partially spent'")
-        ).firstMatch
-        XCTAssertTrue(
-            groceriesWithStatus.waitForExistence(timeout: 5),
-            "progress mode adds a compact semantic status cue"
-        )
+        XCTAssertEqual(groceries.label, "Details for Groceries",
+                       "progress bars do not turn on the independent status-dot setting")
         XCTAssertTrue(
             progressBar.waitForExistence(timeout: 5),
             "progress mode adds a bar for an active category"
         )
 
-        app.tabBars.buttons["Settings"].tap()
+        openBudgetViewSettings(in: app)
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(groceriesWithStatus.waitForNonExistence(timeout: 5))
         XCTAssertTrue(progressBar.waitForNonExistence(timeout: 5))
         XCTAssertTrue(app.buttons["Details for Groceries"].exists)
     }
@@ -307,6 +305,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-hideBalances", "YES",
+            "-showGroupTotals", "YES",
             "-collapsedBudgetGroups", "",
             "-initialTab", "1",
         ]

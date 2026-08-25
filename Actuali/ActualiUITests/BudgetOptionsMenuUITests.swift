@@ -17,6 +17,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
             "-showCompactSpentColumn", "NO",
             "-showBudgetProgressBars", "NO",
             "-showGroupTotals", "YES",
+            "-showBudgetCheckInStrip", "YES",
         ]
         app.launch()
         app.tabBars.buttons["Budget"].tap()
@@ -76,9 +77,8 @@ final class BudgetOptionsMenuUITests: XCTestCase {
     }
 
     /// The strip costs a row of vertical space on a phone, so it's optional.
-    /// Starting state isn't asserted: the setting persists live in the
-    /// simulator and a default-true preference can't be seeded from a launch
-    /// argument, so this flips whatever it finds and puts it back.
+    /// Flip the launch-seeded state and put it back so the persisted setting
+    /// still cannot leak into another test.
     @MainActor
     func testStatusFilterStripTogglesFromTheMenu() throws {
         let app = XCUIApplication()

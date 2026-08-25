@@ -239,6 +239,7 @@ struct CompactCategoryBudgetRow: View {
     let category: CategoryBudget
     let showsSpent: Bool
     let showsProgressBars: Bool
+    let showsStatusDots: Bool
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
@@ -354,7 +355,9 @@ struct CompactCategoryBudgetRow: View {
             onShowDetails(category)
         } label: {
             HStack(spacing: 6) {
-                CompactCategoryStatusDot(state: category.progressState)
+                if showsStatusDots {
+                    CompactCategoryStatusDot(state: category.progressState)
+                }
                 Text(category.categoryName)
                     .font(.subheadline)
                     .foregroundStyle(.primary)
@@ -386,7 +389,7 @@ struct CompactCategoryBudgetRow: View {
 
     private var detailAccessibilityLabel: String {
         let action = "Details for \(category.categoryName)"
-        return showsProgressBars
+        return showsStatusDots
             ? "\(action), \(category.progressState.statusText)"
             : action
     }

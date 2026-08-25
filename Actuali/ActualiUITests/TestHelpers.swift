@@ -1,6 +1,21 @@
 import XCTest
 
 extension XCTestCase {
+    /// Open Settings > Budget View whether Settings last showed its hub or
+    /// retained the destination from an earlier tab visit.
+    @MainActor
+    func openBudgetViewSettings(in app: XCUIApplication) {
+        app.tabBars.buttons["Settings"].tap()
+        if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
+            return
+        }
+
+        let row = app.buttons["Budget View"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5), "Budget View settings row not found")
+        row.tap()
+        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
+    }
+
     /// Tap a status chip in the Budget tab's check-in strip.
     ///
     /// The strip scrolls horizontally and holds more chips than fit on a

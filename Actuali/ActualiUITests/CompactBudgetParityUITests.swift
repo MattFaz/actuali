@@ -9,6 +9,7 @@ final class CompactBudgetParityUITests: XCTestCase {
             "-budgetDisplayStyle", "compact",
             "-showCompactSpentColumn", "YES",
             "-showBudgetProgressBars", "NO",
+            "-showCategoryStatusDots", "NO",
             "-initialTab", "1",
         ]
         app.launch()
@@ -16,7 +17,7 @@ final class CompactBudgetParityUITests: XCTestCase {
         let details = app.buttons["Details for Groceries"]
         ensureGroupExpanded("Essentials", revealing: details, in: app)
         XCTAssertTrue(details.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Budget Check-In"].exists)
+        XCTAssertTrue(app.buttons["budgetFilter-all"].exists)
         XCTAssertTrue(app.buttons["Previous month"].exists)
         XCTAssertTrue(app.buttons["Next month"].exists)
 
@@ -30,9 +31,9 @@ final class CompactBudgetParityUITests: XCTestCase {
         app.buttons["Cancel"].tap()
 
         details.tap()
-        XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 5),
-                      "the category name opens the existing detail sheet")
-        app.buttons["Done"].tap()
+        XCTAssertTrue(app.navigationBars["Edit Category"].waitForExistence(timeout: 5),
+                      "the category name opens the existing category editor")
+        app.buttons["Cancel"].tap()
 
         let editBudget = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
@@ -102,11 +103,12 @@ final class CompactBudgetParityUITests: XCTestCase {
         ]
         app.launch()
 
-        let groceries = app.buttons["Details for Groceries"]
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Details for Groceries'")
+        ).firstMatch
         ensureGroupExpanded("Essentials", revealing: groceries, in: app)
         XCTAssertTrue(groceries.waitForExistence(timeout: 10))
-        app.buttons["Budget options"].tap()
-        app.buttons["Overspent"].tap()
+        tapBudgetFilter(app, "overspent")
 
         XCTAssertTrue(app.staticTexts["No Matching Categories"].waitForExistence(timeout: 5))
         XCTAssertFalse(groceries.exists)
@@ -115,12 +117,13 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testSharedProgressBarsKeepDotAndBarCombinedForEmptyCategory() throws {
+    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-showBudgetProgressBars", "YES",
+            "-showCategoryStatusDots", "YES",
             "-initialTab", "1",
         ]
         app.launch()
@@ -142,23 +145,34 @@ final class CompactBudgetParityUITests: XCTestCase {
 
         let emptyStatus = app.buttons["Details for Parking, No money assigned"]
         XCTAssertTrue(emptyStatus.waitForExistence(timeout: 5),
-                      "enabled progress mode keeps the status dot for an empty category")
+                      "the status-dot setting describes an empty category")
         let emptyBar = app.descendants(matching: .any)["No money assigned, spent 0 percent"]
-        XCTAssertTrue(emptyBar.waitForExistence(timeout: 5),
-                      "enabled progress mode pairs every expense status dot with a bar")
+        XCTAssertFalse(emptyBar.exists,
+                       "a category with no budget or activity has no progress to visualize")
 
-        app.tabBars.buttons["Settings"].tap()
+        openBudgetViewSettings(in: app)
         let sharedProgressBars = app.switches["Budget Progress Bars"]
         scrollUntilHittable(sharedProgressBars, in: app)
         XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
         tapSwitch(sharedProgressBars)
         app.tabBars.buttons["Budget"].tap()
-        XCTAssertTrue(emptyStatus.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(emptyBar.waitForNonExistence(timeout: 5))
-        XCTAssertTrue(app.buttons["Details for Parking"].exists)
+        XCTAssertTrue(emptyStatus.waitForExistence(timeout: 5),
+                      "turning off progress bars leaves status dots alone")
+        XCTAssertFalse(emptyBar.exists)
 
-        app.tabBars.buttons["Settings"].tap()
+        openBudgetViewSettings(in: app)
         tapSwitch(sharedProgressBars)
+        let statusDots = app.switches["Category Status Dots"]
+        scrollUntilHittable(statusDots, in: app)
+        XCTAssertTrue(statusDots.waitForExistence(timeout: 5))
+        tapSwitch(statusDots)
+        app.tabBars.buttons["Budget"].tap()
+        XCTAssertTrue(emptyStatus.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Details for Parking"].exists)
+        XCTAssertFalse(emptyBar.exists)
+
+        openBudgetViewSettings(in: app)
+        tapSwitch(statusDots)
     }
 
     @MainActor

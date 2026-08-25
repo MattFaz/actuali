@@ -315,7 +315,7 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(
                 budgetDisplayStyle.rawValue,
-                forKey: BudgetDisplayStyle.defaultsKey
+                forKey: "budgetDisplayStyle"
             )
         }
     }
@@ -326,7 +326,7 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(
                 showCompactBudgetOverview,
-                forKey: CompactBudgetViewPreferences.showOverviewKey
+                forKey: "showCompactBudgetOverview"
             )
         }
     }
@@ -337,7 +337,7 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(
                 showCompactSpentColumn,
-                forKey: CompactBudgetViewPreferences.showSpentColumnKey
+                forKey: "showCompactSpentColumn"
             )
         }
     }
@@ -1126,6 +1126,14 @@ final class BudgetStore: ObservableObject {
     #endif
 
     private init() {
+        let defaults = UserDefaults.standard
+        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        // overrides as strings; checking for existence first preserves non-false defaults.
+        func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
+            defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+        }
+
         // Restore saved state. Preferences restore through the Published
         // backing storage (`_x = Published(initialValue:)`) rather than the
         // properties themselves: didSet DOES fire for wrapper-backed
@@ -1134,57 +1142,60 @@ final class BudgetStore: ObservableObject {
         // launch-argument (NSArgumentDomain) overrides like
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
-            initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
+            initialValue: defaults.string(forKey: "serverURL") ?? "")
         _fallbackServerURL = Published(
-            initialValue: UserDefaults.standard.string(forKey: "fallbackServerURL") ?? "")
+            initialValue: defaults.string(forKey: "fallbackServerURL") ?? "")
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
         _currentBudgetId = Published(
-            initialValue: UserDefaults.standard.string(forKey: "currentBudgetId"))
+            initialValue: defaults.string(forKey: "currentBudgetId"))
         _currencyCode = Published(
-            initialValue: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD")
-        _useNarrowCurrencySymbol = Published(initialValue: UserDefaults.standard
-            .object(forKey: "useNarrowCurrencySymbol") as? Bool ?? false)
-        if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
+            initialValue: defaults.string(forKey: "currencyCode") ?? "USD")
+        _useNarrowCurrencySymbol = Published(
+            initialValue: persistedBool("useNarrowCurrencySymbol", default: false))
+        if let raw = defaults.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.persisted())
-        let compactPreferences = CompactBudgetViewPreferences.persisted()
-        _showCompactBudgetOverview = Published(initialValue: compactPreferences.showOverview)
-        _showCompactSpentColumn = Published(initialValue: compactPreferences.showSpentColumn)
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle(
+            rawValue: defaults.string(forKey: "budgetDisplayStyle") ?? ""
+        ) ?? .clean)
+        _showCompactBudgetOverview = Published(
+            initialValue: persistedBool("showCompactBudgetOverview", default: true))
+        _showCompactSpentColumn = Published(
+            initialValue: persistedBool("showCompactSpentColumn", default: false))
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
-        _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
-        _showCategoryStatusDots = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showCategoryStatusDots") as? Bool ?? true)
-        _showGroupTotals = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showGroupTotals") as? Bool ?? true)
-        _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showBudgetCheckInStrip") as? Bool ?? true)
-        _showOverspentBadge = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showOverspentBadge") as? Bool ?? true)
-        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
-            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
-        _hideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "hideBalances") as? Bool ?? false)
-        _shakeToHideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
-        _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
-            .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
-        _recordPayeeLocations = Published(initialValue: UserDefaults.standard
-            .object(forKey: "recordPayeeLocations") as? Bool ?? true)
+        _showBudgetProgressBars = Published(
+            initialValue: persistedBool("showBudgetProgressBars", default: true))
+        _showCategoryStatusDots = Published(
+            initialValue: persistedBool("showCategoryStatusDots", default: true))
+        _showGroupTotals = Published(
+            initialValue: persistedBool("showGroupTotals", default: true))
+        _showBudgetCheckInStrip = Published(
+            initialValue: persistedBool("showBudgetCheckInStrip", default: true))
+        _showOverspentBadge = Published(
+            initialValue: persistedBool("showOverspentBadge", default: true))
+        _conventionalAmountEntry = Published(
+            initialValue: persistedBool("conventionalAmountEntry", default: false))
+        _hideBalances = Published(
+            initialValue: persistedBool("hideBalances", default: false))
+        _shakeToHideBalances = Published(
+            initialValue: persistedBool("shakeToHideBalances", default: false))
+        _hideDecimalPlaces = Published(
+            initialValue: persistedBool("hideDecimalPlaces", default: false))
+        _recordPayeeLocations = Published(
+            initialValue: persistedBool("recordPayeeLocations", default: true))
         // bool(forKey:) defaults to false — the correct opt-in default.
-        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
+        _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
-        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+        _showHiddenCategories = Published(initialValue: defaults
             .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: UserDefaults.standard
+        _hideClearedTransactions = Published(initialValue: defaults
             .bool(forKey: "hideClearedTransactions"))
-        _hideClosedAccounts = Published(initialValue: UserDefaults.standard
+        _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
         let token = loadAndMigrateAuthToken()

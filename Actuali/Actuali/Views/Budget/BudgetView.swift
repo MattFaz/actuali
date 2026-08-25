@@ -362,6 +362,7 @@ struct BudgetView: View {
                             category: category,
                             showsSpent: budgetStore.showCompactSpentColumn,
                             showsProgressBars: budgetStore.showBudgetProgressBars,
+                            showsStatusDots: budgetStore.showCategoryStatusDots,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
                             onShowTransactions: showTransactions,

@@ -30,20 +30,6 @@ struct BudgetStoreDisplayStyleTests {
         body()
     }
 
-    @Test func persistedStyleRestoresCompactAndFallsBackToClean() throws {
-        let suiteName = "BudgetStoreDisplayStyleTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
-
-        defaults.set("compact", forKey: styleKey)
-        #expect(BudgetDisplayStyle.persisted(in: defaults) == .compact)
-
-        defaults.set("table-3000", forKey: styleKey)
-        #expect(BudgetDisplayStyle.persisted(in: defaults) == .clean)
-    }
-
     @Test func selectionPersistsToUserDefaults() {
         withSavedDefaults(for: [styleKey]) {
             let store = BudgetStore.previewInstance()
@@ -91,36 +77,6 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
-    @Test func compactOptionsRestoreDefaultAndPersistedValues() throws {
-        let suiteName = "BudgetStoreCompactPreferencesTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == .defaults)
-
-        defaults.set(false, forKey: compactOptionKeys[0])
-        defaults.set(true, forKey: compactOptionKeys[1])
-
-        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == CompactBudgetViewPreferences(
-            showOverview: false,
-            showSpentColumn: true
-        ))
-    }
-
-    @Test func compactOptionsAcceptStringBooleansFromLaunchArguments() throws {
-        let suiteName = "BudgetStoreCompactArgumentPreferencesTests.\(UUID().uuidString)"
-        let defaults = try #require(UserDefaults(suiteName: suiteName))
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        defaults.set("NO", forKey: compactOptionKeys[0])
-        defaults.set("YES", forKey: compactOptionKeys[1])
-
-        #expect(CompactBudgetViewPreferences.persisted(in: defaults) == CompactBudgetViewPreferences(
-            showOverview: false,
-            showSpentColumn: true
-        ))
-    }
-
     /// Raw values round-trip, and unknown raw values (from a future build)
     /// decode to nil so init falls back to the default rather than crashing.
     @Test func rawValueRoundTrip() {
@@ -129,11 +85,5 @@ struct BudgetStoreDisplayStyleTests {
             #expect(BudgetDisplayStyle(rawValue: style.rawValue) == style)
         }
         #expect(BudgetDisplayStyle(rawValue: "table-3000") == nil)
-    }
-
-    @Test func detailedAndCompactStylesSupportGroupTotals() {
-        #expect(!BudgetDisplayStyle.clean.supportsGroupTotals)
-        #expect(BudgetDisplayStyle.detailed.supportsGroupTotals)
-        #expect(BudgetDisplayStyle.compact.supportsGroupTotals)
     }
 }

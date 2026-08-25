@@ -107,7 +107,7 @@ struct BudgetOptionsMenu: View {
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
-                if budgetStore.budgetDisplayStyle.supportsGroupTotals {
+                if budgetStore.budgetDisplayStyle != .clean {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
                         Label("Group Totals", systemImage: "sum")
                     }
