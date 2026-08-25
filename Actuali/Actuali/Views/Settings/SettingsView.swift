@@ -52,6 +52,12 @@ struct SettingsView: View {
                     } label: {
                         Label("Rules", systemImage: "list.bullet.rectangle")
                     }
+
+                    NavigationLink {
+                        BankSyncSetupView()
+                    } label: {
+                        Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
+                    }
                 }
 
                 Section("Information") {
