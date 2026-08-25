@@ -8,6 +8,9 @@ struct TransactionAutomationSettingsView: View {
     @State private var notificationPermissionDenied = false
     @State private var showingWalletImport = false
 
+    /// Persists the opt-in and requests permission on enable. Background
+    /// refresh runs regardless of this toggle (it keeps data fresh for
+    /// everyone); only notification posting is gated on it.
     private var transactionNotificationsBinding: Binding<Bool> {
         Binding(
             get: { transactionNotificationsEnabled },
@@ -26,6 +29,9 @@ struct TransactionAutomationSettingsView: View {
     var body: some View {
         Form {
             Section {
+                // Default Account remains reachable for loaded demo and
+                // offline budgets. Shortcuts and Wallet automation can't post
+                // without it (GH #122).
                 if budgetStore.currentBudgetId != nil {
                     Picker("Default Account", selection: $budgetStore.defaultAccountId) {
                         Text("None").tag(nil as String?)
@@ -60,8 +66,13 @@ struct TransactionAutomationSettingsView: View {
             }
 
             Section {
+                // Meaningless against servers that predate payee
+                // locations (< 26.4.0), so hidden there.
                 if budgetStore.payeeLocationWritesEnabled {
                     Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+
+                    // Clearing needs the same >= 26.4.0 server, so this
+                    // lives inside the gate too (GH #147).
                     NavigationLink("Payee Locations") {
                         PayeeLocationsView()
                     }
@@ -87,6 +98,8 @@ struct TransactionAutomationSettingsView: View {
                         HStack {
                             Text("Credit Cards & Billing Cycles")
                             Spacer()
+                            // Same predicate the screen itself lists, so the
+                            // badge can't promise cards the list won't show.
                             let cardCount = budgetStore.activeCreditCardStatementDays.count
                             if cardCount > 0 {
                                 Text("\(cardCount)")
@@ -183,6 +196,8 @@ struct TransactionAutomationSettingsView: View {
         notificationPermissionDenied = !granted
     }
 
+    /// Permission can change in the Settings app while we're backgrounded;
+    /// re-check whenever the screen appears.
     private func refreshNotificationPermissionState() async {
         guard transactionNotificationsEnabled else { return }
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
