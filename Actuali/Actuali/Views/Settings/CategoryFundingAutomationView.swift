@@ -34,13 +34,15 @@ struct CategoryFundingAutomationView: View {
         )
     }
 
-    /// Only categories with money available can be used as a funding source.
-    /// The current budget month is used for the setup screen; the automation
-    /// re-checks the source balance in the transaction's month before funding.
-    private var availableFundingCategories: [BudgetCategory] {
+    /// Only categories with money available can be selected as a funding
+    /// source. The automation re-checks the balance in the transaction's
+    /// month before performing the transfer.
+    private var availableFundingCategories {
         (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
             .filter { $0.available > 0 }
-            .sorted { $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending }
+            .sorted {
+                $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending
+            }
     }
 
     var body: some View {
@@ -91,8 +93,6 @@ struct CategoryFundingAutomationView: View {
                 ?? CategoryFundingAutomationConfiguration()
         }
         .onChange(of: configuration.fundingSource) { _, newSource in
-            // If a previously selected source no longer has a positive balance,
-            // fall back to To Budget rather than persisting an unusable source.
             if case .category(let categoryId) = newSource,
                !availableFundingCategories.contains(where: { $0.categoryId == categoryId }) {
                 configuration.fundingSource = .toBudget
