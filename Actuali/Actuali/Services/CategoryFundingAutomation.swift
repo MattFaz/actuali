@@ -4,7 +4,7 @@ import Combine
 /// The pool used to cover a category shortfall. `toBudget` means money already
 /// available in the budget pool; `category` moves money from another budget
 /// category that has available funds.
-enum CategoryFundingSource: Equatable, Codable, Identifiable {
+enum CategoryFundingSource: Hashable, Codable, Identifiable {
     case toBudget
     case category(String)
 
@@ -158,19 +158,14 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
                 )
 
             case .category(let sourceCategoryId):
-                // Never fund a category from itself. The source must also have
-                // positive available funds at the time of the transfer.
                 guard sourceCategoryId != category.categoryId,
                       let sourceCategory = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
                           $0.categoryId == sourceCategoryId
                       }),
-                      sourceCategory.available > 0 else {
+                      sourceCategory.available >= amountToFund else {
                     return
                 }
 
-                // transferBudget validates that the source has enough money;
-                // the explicit guard above keeps the automation from attempting
-                // a transfer from an empty/negative source category.
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: sourceCategoryId,
