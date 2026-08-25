@@ -1,6 +1,7 @@
 # Builds the app and runs unit tests and UI tests on every PR that touches
-# app code. Branch protection requires the "Build and Test" check; ci-noop.yml
-# provides the same check names for PRs that don't touch app code.
+# app code. Branch protection requires the "Build and Test" and "UI Tests"
+# checks; ci-noop.yml provides the same check names for PRs that don't touch
+# app code.
 name: CI
 
 on:
@@ -114,9 +115,12 @@ jobs:
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
-      # A connected hardware keyboard makes XCUITest typeText silently drop
-      # keystrokes (or throw focus errors) on headless runners; the tests
-      # drive budget amounts by typing, so force the software keyboard.
+      # A connected hardware keyboard makes the simulator minimize the
+      # software keyboard, so keypad taps land on off-screen keys; the tests
+      # drive budget amounts through the keypad. This host-side pref only
+      # protects a device that has never seen a hardware keyboard (true for
+      # fresh runner sims) — a device that already remembers one needs its
+      # device-side com.apple.keyboard.preferences reset instead.
       - name: Disable simulator hardware keyboard
         run: |
           defaults write com.apple.iphonesimulator DevicePreferences \
@@ -124,7 +128,8 @@ jobs:
             "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
 
       # UI tests are slower and flakier on shared runners, so failed tests
-      # retry up to 3 runs before the job fails.
+      # retry up to 3 runs before the job fails. Two parallel workers (sim
+      # clones) roughly halve the test-execution phase.
       - name: Build and run UI tests
         run: |
           set -o pipefail
@@ -135,6 +140,8 @@ jobs:
             -only-testing:ActualiUITests \
             -retry-tests-on-failure \
             -test-iterations 3 \
+            -parallel-testing-enabled YES \
+            -parallel-testing-worker-count 2 \
             -resultBundlePath TestResults/ActualiUITests.xcresult \
             | xcbeautify --quiet
 

@@ -12,7 +12,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 
@@ -39,7 +39,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 

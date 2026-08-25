@@ -73,7 +73,7 @@ final class AddTransactionKeyboardUITests: XCTestCase {
         XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
         accountRow.tap()
 
-        let addButton = app.navigationBars.buttons["Add"]
+        let addButton = app.navigationBars.buttons["Add Transaction"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 

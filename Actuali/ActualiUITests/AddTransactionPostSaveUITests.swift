@@ -27,7 +27,9 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
                       "keyboard did not dismiss")
 
-        let save = app.buttons["Add Transaction"].firstMatch
+        // Scoped to the form: the account detail's "+" toolbar button behind
+        // the sheet carries the same "Add Transaction" label since #181.
+        let save = app.collectionViews.buttons["Add Transaction"].firstMatch
         XCTAssertTrue(save.waitForExistence(timeout: 5), "save button not found")
         save.tap()
     }
@@ -44,7 +46,7 @@ final class AddTransactionPostSaveUITests: XCTestCase {
         XCTAssertTrue(accountRow.waitForExistence(timeout: 10), "Chase Checking row not found")
         accountRow.tap()
 
-        let addButton = app.navigationBars.buttons["Add"]
+        let addButton = app.navigationBars.buttons["Add Transaction"]
         XCTAssertTrue(addButton.waitForExistence(timeout: 5), "'+' toolbar button not found")
         addButton.tap()
 
