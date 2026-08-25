@@ -1,19 +1,36 @@
 import Foundation
 import Combine
 
-/// The pool used to cover a category shortfall.
-///
-/// `toBudget` is intentionally the only source for this first version. Keeping
-/// the source as an enum makes the persisted setting explicit and leaves room
-/// for category-to-category funding later without changing the trigger model.
-enum CategoryFundingSource: String, Codable, CaseIterable, Identifiable {
+/// The pool used to cover a category shortfall. `toBudget` means money already
+/// available in the budget pool; `category` moves money from another budget
+/// category that has available funds.
+enum CategoryFundingSource: Equatable, Codable, Identifiable {
     case toBudget
+    case category(String)
 
-    var id: Self { self }
-
-    var label: String {
+    var id: String {
         switch self {
-        case .toBudget: return "To Budget"
+        case .toBudget: return "toBudget"
+        case .category(let categoryId): return "category:\(categoryId)"
+        }
+    }
+
+    init(from decoder: Decoder) throws {
+        let value = try decoder.singleValueContainer().decode(String.self)
+        if value == "toBudget" {
+            self = .toBudget
+        } else {
+            self = .category(value)
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .toBudget:
+            try container.encode("toBudget")
+        case .category(let categoryId):
+            try container.encode(categoryId)
         }
     }
 }
@@ -21,16 +38,12 @@ enum CategoryFundingSource: String, Codable, CaseIterable, Identifiable {
 struct CategoryFundingAutomationConfiguration: Codable, Equatable {
     var isEnabled = false
     var accountId: String?
+    /// Defaults to To Budget. When a category is selected, that category must
+    /// have positive available funds at the time the automation runs.
     var fundingSource: CategoryFundingSource = .toBudget
 }
 
-/// Pure rules for deciding whether a newly-created transaction is eligible for
-/// category funding. The monitor performs the database/budget work separately.
 enum CategoryFundingAutomation {
-    /// The category's available amount after the transaction has been inserted
-    /// can be used to reconstruct the amount that was available immediately
-    /// before it. This keeps the trigger correct even though Actuali refreshes
-    /// its budget after a transaction write.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
         let availableBeforeTransaction = availableAfterTransaction - transactionAmount
@@ -53,10 +66,6 @@ enum CategoryFundingAutomation {
     }
 }
 
-/// Watches the store's published transaction snapshot for newly-created rows.
-/// This deliberately sits above the transaction write paths so manual entry,
-/// bank sync, Wallet imports, Shortcuts, and scheduled postings all use the
-/// same automation without creating a second transaction pipeline.
 @MainActor
 final class CategoryFundingAutomationMonitor: ObservableObject {
     private var budgetId: String?
@@ -91,9 +100,6 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             return
         }
 
-        // The first snapshot after a budget load is history, not automation
-        // input. Opening a budget must never retroactively fund old
-        // transactions. This also correctly baselines an empty budget.
         seenTransactionIds = Set(budgetStore.transactions.map(\.id))
         hasBaseline = true
     }
@@ -102,7 +108,6 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
         guard let configuration = Self.loadConfiguration(for: budgetStore.currentBudgetId),
               configuration.isEnabled,
               let accountId = configuration.accountId,
-              configuration.fundingSource == .toBudget,
               !processingTransactionIds.contains(transaction.id) else { return }
 
         let isIncomeCategory = budgetStore.categoryGroups
@@ -135,25 +140,48 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             transactionAmount: transaction.amount,
             availableAfterTransaction: category.available
         )
+        guard amountToFund > 0 else {
+            if let displayedMonth, displayedMonth != month {
+                await budgetStore.fetchBudgetMonth(displayedMonth)
+            }
+            return
+        }
 
-        if amountToFund > 0 {
-            do {
+        do {
+            switch configuration.fundingSource {
+            case .toBudget:
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: nil,
                     toCategoryId: category.categoryId,
                     amountCents: amountToFund
                 )
-            } catch {
-                // The transaction itself is already saved. Funding is a
-                // follow-up automation, so a failed budget write must not undo
-                // or duplicate the transaction.
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
+
+            case .category(let sourceCategoryId):
+                // Never fund a category from itself. The source must also have
+                // positive available funds at the time of the transfer.
+                guard sourceCategoryId != category.categoryId,
+                      let sourceCategory = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
+                          $0.categoryId == sourceCategoryId
+                      }),
+                      sourceCategory.available > 0 else {
+                    return
+                }
+
+                // transferBudget validates that the source has enough money;
+                // the explicit guard above keeps the automation from attempting
+                // a transfer from an empty/negative source category.
+                try await budgetStore.transferBudget(
+                    month: month,
+                    fromCategoryId: sourceCategoryId,
+                    toCategoryId: category.categoryId,
+                    amountCents: amountToFund
+                )
             }
+        } catch {
+            budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
         }
 
-        // `fetchBudgetMonth` temporarily changed the displayed month when the
-        // transaction belongs to a historical month. Restore the user's view.
         if let displayedMonth, displayedMonth != month {
             await budgetStore.fetchBudgetMonth(displayedMonth)
         }
