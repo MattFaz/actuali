@@ -1,7 +1,7 @@
 # Builds the app and runs unit tests and UI tests on every PR that touches
-# app code. Branch protection requires the "Build and Test" and "UI Tests"
-# checks; ci-noop.yml provides the same check names for PRs that don't touch
-# app code.
+# app code. Branch protection requires the "Build and Test", "Unit Tests
+# (iOS 18)" and "UI Tests" checks; ci-noop.yml provides the same check names
+# for PRs that don't touch app code.
 name: CI
 
 on:
@@ -39,10 +39,37 @@ jobs:
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
-      # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
-      # own: the compiler rejects an unavailable API, but a missing SF Symbol or
-      # a behaviour difference only shows up when the tests actually run there.
-      # The runner image ships iOS 26 only, so this usually downloads (~8 GB).
+      # UI tests run in the separate ui-test job so the unit-test signal stays
+      # fast. Simulator builds are ad-hoc signed, so no certificate is needed —
+      # but don't pass CODE_SIGNING_ALLOWED=NO: an unsigned test host can't
+      # reach the simulator keychain (errSecMissingEntitlement in
+      # EncryptionKeyManager tests).
+      # xcbeautify (preinstalled on macOS runners) keeps the log readable;
+      # --quiet drops passing-task noise but keeps warnings and errors;
+      # pipefail preserves xcodebuild's exit code through the pipe.
+      - name: Build and run unit tests
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Actuali/Actuali.xcodeproj \
+            -scheme Actuali \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -skip-testing:ActualiUITests \
+            | xcbeautify --quiet
+
+  # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
+  # own: the compiler rejects an unavailable API, but a missing SF Symbol or
+  # a behaviour difference only shows up when the tests actually run there.
+  # A separate job so the ~4-minute runtime download (the runner image ships
+  # iOS 26 only) and this leg's test run overlap the iOS 26 leg instead of
+  # serializing behind it.
+  test-ios18:
+    name: Unit Tests (iOS 18)
+    runs-on: macos-26
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
       - name: Select iOS 18 simulator
         id: sim18
         run: |
@@ -68,26 +95,7 @@ jobs:
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
-      # UI tests run in the separate ui-test job so the unit-test signal stays
-      # fast. Simulator builds are ad-hoc signed, so no certificate is needed —
-      # but don't pass CODE_SIGNING_ALLOWED=NO: an unsigned test host can't
-      # reach the simulator keychain (errSecMissingEntitlement in
-      # EncryptionKeyManager tests).
-      # xcbeautify (preinstalled on macOS runners) keeps the log readable;
-      # --quiet drops passing-task noise but keeps warnings and errors;
-      # pipefail preserves xcodebuild's exit code through the pipe.
-      - name: Build and run unit tests
-        run: |
-          set -o pipefail
-          xcodebuild test \
-            -project Actuali/Actuali.xcodeproj \
-            -scheme Actuali \
-            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
-            -skip-testing:ActualiUITests \
-            | xcbeautify --quiet
-
-      # Same build products, so this leg is mostly just test execution.
-      - name: Run unit tests on iOS 18 (minimum supported)
+      - name: Build and run unit tests on iOS 18 (minimum supported)
         run: |
           set -o pipefail
           xcodebuild test \

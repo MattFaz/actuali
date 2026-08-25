@@ -1,7 +1,7 @@
 # Companion to ci.yml: PRs that don't touch app code (website, docs) still get
-# passing "Build and Test" and "UI Tests" checks, so branch protection can
-# require them unconditionally. The paths-ignore list must mirror ci.yml's
-# paths list.
+# passing "Build and Test", "Unit Tests (iOS 18)" and "UI Tests" checks, so
+# branch protection can require them unconditionally. The paths-ignore list
+# must mirror ci.yml's paths list.
 name: CI (no app changes)
 
 on:
@@ -20,6 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo "No app code changed — skipping build and tests."
+
+  test-ios18:
+    name: Unit Tests (iOS 18)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No app code changed — skipping iOS 18 tests."
 
   ui-test:
     name: UI Tests
