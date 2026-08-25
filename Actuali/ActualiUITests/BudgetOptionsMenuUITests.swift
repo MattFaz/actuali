@@ -78,7 +78,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
 
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.buttons["All transactions for Groceries"].firstMatch
+        XCTAssertTrue(app.buttons["Details for Groceries"].firstMatch
             .waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 

@@ -118,7 +118,7 @@ final class IPadSplitLayoutUITests: XCTestCase {
         try XCTSkipUnless(app.windows.firstMatch.frame.width > 760,
                           "nothing to cap; this window is narrower than the cap")
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 15), "budget rows should load")
 
         let windowWidth = app.windows.firstMatch.frame.width

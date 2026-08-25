@@ -56,34 +56,6 @@ final class BudgetTabBadgeUITests: XCTestCase {
         attachScreenshot(app, name: "4-badge-cleared")
     }
 
-    /// Opens the category's edit-budget sheet and types a new amount.
-    /// The amount field interprets bare digits as cents ("100" → 1.00).
-    @MainActor
-    private func setBudget(_ app: XCUIApplication, category: String, centsKeystrokes: String) {
-        let editButton = app.buttons["Edit budgeted amount for \(category)"]
-        var scrollsLeft = 8
-        while !editButton.isHittable && scrollsLeft > 0 {
-            app.swipeUp()
-            scrollsLeft -= 1
-        }
-        XCTAssertTrue(editButton.isHittable, "edit button for \(category) not reachable")
-        editButton.tap()
-
-        let field = app.textFields.firstMatch
-        XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
-        field.tap()
-        // Focus select-alls the current value asynchronously; don't rely on
-        // that racing in our favor — backspace the old value away instead.
-        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
-        field.typeText(centsKeystrokes)
-
-        let saveButton = app.buttons["Save"]
-        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")
-        saveButton.tap()
-        // Sheet dismissal returns us to the budget list.
-        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "edit sheet did not dismiss")
-    }
-
     /// A SwiftUI Toggle row exposes itself as a switch, but taps on the row
     /// don't flip it — the actual control is a nested switch element.
     @MainActor
