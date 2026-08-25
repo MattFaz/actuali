@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ManageSettingsView: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+
     var body: some View {
         Form {
             Section {
@@ -10,12 +12,18 @@ struct ManageSettingsView: View {
                 } label: {
                     Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                 }
+            } footer: {
+                Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+            }
 
-                NavigationLink {
-                    RulesListView()
-                        .navigationTitle("Rules")
-                } label: {
-                    Label("Rules", systemImage: "list.bullet.rectangle")
+            Section {
+                if budgetStore.currentBudgetId != nil {
+                    NavigationLink {
+                        RulesListView()
+                            .navigationTitle("Rules")
+                    } label: {
+                        Label("Rules", systemImage: "list.bullet.rectangle")
+                    }
                 }
 
                 NavigationLink {
@@ -23,6 +31,8 @@ struct ManageSettingsView: View {
                 } label: {
                     Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
                 }
+            } footer: {
+                Text("Connect SimpleFIN to import transactions straight from your bank.")
             }
         }
         .readableWidth()
@@ -35,5 +45,6 @@ struct ManageSettingsView: View {
 #Preview {
     NavigationStack {
         ManageSettingsView()
+            .environmentObject(BudgetStore.previewInstance())
     }
 }
