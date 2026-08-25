@@ -10,6 +10,7 @@ on:
     paths:
       - "Actuali/**"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/ci-noop.yml"
   workflow_dispatch:
 
 permissions:
