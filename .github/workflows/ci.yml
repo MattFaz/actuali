@@ -1,7 +1,7 @@
 # Builds the app and runs unit tests and UI tests on every PR that touches
-# app code. Branch protection requires the "Build and Test", "Unit Tests
-# (iOS 18)" and "UI Tests" checks; ci-noop.yml provides the same check names
-# for PRs that don't touch app code.
+# app code. Branch protection requires the "Unit Tests (iOS 26)", "Unit Tests
+# (iOS 18)" and "UI Tests (iOS 26)" checks; ci-noop.yml provides the same check
+# names for PRs that don't touch app code.
 name: CI
 
 on:
@@ -21,20 +21,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Build and Test
+  test-ios26:
+    name: Unit Tests (iOS 26)
     runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
-      - name: Select simulator
+      # Pinned to iOS 26 rather than "first available iPhone": paired with the
+      # test-ios18 job, that names which runtime each leg actually covers. The
+      # runner image ships iOS 26, so this never needs a runtime download.
+      - name: Select iOS 26 simulator
         id: sim
         run: |
           SIM_ID=$(xcrun simctl list devices available --json \
-            | jq -r '[.devices[] | .[] | select(.name | startswith("iPhone"))][0].udid')
+            | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
           if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
-            echo "No available iPhone simulator on this runner" >&2
+            echo "No available iOS 26 iPhone simulator on this runner" >&2
             exit 1
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
@@ -47,7 +50,7 @@ jobs:
       # xcbeautify (preinstalled on macOS runners) keeps the log readable;
       # --quiet drops passing-task noise but keeps warnings and errors;
       # pipefail preserves xcodebuild's exit code through the pipe.
-      - name: Build and run unit tests
+      - name: Build and run unit tests on iOS 26
         run: |
           set -o pipefail
           xcodebuild test \
@@ -71,7 +74,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select iOS 18 simulator
-        id: sim18
+        id: sim
         run: |
           runtime() {
             xcrun simctl list runtimes --json \
@@ -95,30 +98,31 @@ jobs:
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
-      - name: Build and run unit tests on iOS 18 (minimum supported)
+      - name: Build and run unit tests on iOS 18
         run: |
           set -o pipefail
           xcodebuild test \
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
-            -destination "platform=iOS Simulator,id=${{ steps.sim18.outputs.id }}" \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet
 
   ui-test:
-    name: UI Tests
+    name: UI Tests (iOS 26)
     runs-on: macos-26
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
-      - name: Select simulator
+      # Same iOS 26 pin as the unit-test job.
+      - name: Select iOS 26 simulator
         id: sim
         run: |
           SIM_ID=$(xcrun simctl list devices available --json \
-            | jq -r '[.devices[] | .[] | select(.name | startswith("iPhone"))][0].udid')
+            | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
           if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
-            echo "No available iPhone simulator on this runner" >&2
+            echo "No available iOS 26 iPhone simulator on this runner" >&2
             exit 1
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
@@ -138,7 +142,7 @@ jobs:
       # UI tests are slower and flakier on shared runners, so failed tests
       # retry up to 3 runs before the job fails. Two parallel workers (sim
       # clones) roughly halve the test-execution phase.
-      - name: Build and run UI tests
+      - name: Build and run UI tests on iOS 26
         run: |
           set -o pipefail
           xcodebuild test \
