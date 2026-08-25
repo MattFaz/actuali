@@ -145,7 +145,7 @@ struct ScheduleEditView: View {
                     Text("Rest of Month").tag("currentMonth")
                 }
             } footer: {
-                Text("Automatically added transactions are created on your server when the app opens, if “Post Scheduled Transactions” is on in Settings.")
+                Text("Automatically added transactions are created on your server when the app opens.")
             }
             if let editing {
                 Section("Linked Transactions") {

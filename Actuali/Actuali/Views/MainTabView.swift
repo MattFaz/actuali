@@ -129,7 +129,7 @@ struct AddTransactionTabView: View {
                 .alert("Default Account Unavailable", isPresented: $showingDefaultAccountAlert) {
                     Button("OK") {}
                 } message: {
-                    Text("Your default account is no longer available. Please configure a new default in Settings.")
+                    Text("Your default account is no longer available. Please configure a new default in More → Transactions & Automation.")
                 }
         } else {
             ContentUnavailableView(

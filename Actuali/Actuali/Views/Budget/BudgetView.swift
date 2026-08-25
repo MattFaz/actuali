@@ -128,13 +128,13 @@ struct BudgetView: View {
                         ContentUnavailableView(
                             "Select a Budget",
                             systemImage: "chart.pie",
-                            description: Text("You're connected. Choose a budget in Settings to load it here.")
+                            description: Text("You're connected. Choose a budget in More → Connection & Data to load it here.")
                         )
                     } else {
                         ContentUnavailableView(
                             "No Budget Loaded",
                             systemImage: "chart.pie",
-                            description: Text("Go to Settings to connect to your Actual Budget server")
+                            description: Text("Go to More → Connection & Data to connect to your Actual Budget server")
                         )
                     }
                 }
