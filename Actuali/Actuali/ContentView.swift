@@ -11,6 +11,7 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
+    @StateObject private var categoryFundingAutomation = CategoryFundingAutomationMonitor()
 
     /// Window width, measured here rather than deeper in the hierarchy so it
     /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
@@ -38,6 +39,16 @@ struct ContentView: View {
                 onShake: budgetStore.handleDeviceShake
             ))
             .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.shakeFeedbackTrigger)
+            .onAppear {
+                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
+            }
+            .onChange(of: budgetStore.dataVersion) { _, _ in
+                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
+            }
+            .onChange(of: budgetStore.currentBudgetId) { _, newBudgetId in
+                categoryFundingAutomation.reset(for: newBudgetId)
+                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
+            }
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}
             } message: {

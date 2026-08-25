@@ -162,6 +162,12 @@ struct TransactionAutomationSettingsView: View {
 
             Section {
                 NavigationLink {
+                    CategoryFundingAutomationView()
+                } label: {
+                    Label("Category Funding", systemImage: "arrow.up.circle")
+                }
+
+                NavigationLink {
                     BankSyncSetupView()
                 } label: {
                     Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
@@ -184,9 +190,9 @@ struct TransactionAutomationSettingsView: View {
                 Text("Automations")
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Connect SimpleFIN to import transactions straight from your bank, set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text("Automatically fund a transaction's category when an expense would overdraw it. You can also connect SimpleFIN, log tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions.")
                 } else {
-                    Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    Text("Automatically fund a transaction's category when an expense would overdraw it. You can also connect SimpleFIN or log tap-to-pay purchases from Apple Wallet.")
                 }
             }
         }
