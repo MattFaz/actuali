@@ -40,6 +40,20 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Manage") {
+                    NavigationLink {
+                        ScheduledTransactionsSettingsView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
+                    NavigationLink {
+                        RulesSettingsView()
+                    } label: {
+                        Label("Rules", systemImage: "list.bullet.rectangle")
+                    }
+                }
+
                 Section("Information") {
                     NavigationLink {
                         AboutSettingsView()
@@ -52,9 +66,6 @@ struct SettingsView: View {
             .navigationTitle("More")
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
-        // Keep the store-wide loading indicator above the navigation stack so
-        // operations started from any destination remain covered, not only
-        // work launched from the hub form.
         .overlay {
             if budgetStore.isLoading {
                 ProgressView()
