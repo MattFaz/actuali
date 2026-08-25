@@ -34,6 +34,15 @@ struct CategoryFundingAutomationView: View {
         )
     }
 
+    /// Only categories with money available can be used as a funding source.
+    /// The current budget month is used for the setup screen; the automation
+    /// re-checks the source balance in the transaction's month before funding.
+    private var availableFundingCategories: [BudgetCategory] {
+        (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
+            .filter { $0.available > 0 }
+            .sorted { $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending }
+    }
+
     var body: some View {
         Form {
             Section {
@@ -55,14 +64,17 @@ struct CategoryFundingAutomationView: View {
 
             Section {
                 Picker("Funding Source", selection: fundingSourceBinding) {
-                    ForEach(CategoryFundingSource.allCases, id: \.id) { source in
-                        Text(source.label).tag(source)
+                    Text("To Budget").tag(CategoryFundingSource.toBudget)
+
+                    ForEach(availableFundingCategories, id: \.categoryId) { category in
+                        Text(category.categoryName)
+                            .tag(CategoryFundingSource.category(category.categoryId))
                     }
                 }
             } header: {
                 Text("Funding")
             } footer: {
-                Text("To Budget is used as the source. Only the shortfall is moved into the transaction's category.")
+                Text("To Budget is the default. You can also fund the category from another budget category that currently has a positive available balance.")
             }
 
             if configuration.isEnabled && configuration.accountId == nil {
@@ -77,6 +89,15 @@ struct CategoryFundingAutomationView: View {
         .task {
             configuration = CategoryFundingAutomationMonitor.loadConfiguration(for: budgetStore.currentBudgetId)
                 ?? CategoryFundingAutomationConfiguration()
+        }
+        .onChange(of: configuration.fundingSource) { _, newSource in
+            // If a previously selected source no longer has a positive balance,
+            // fall back to To Budget rather than persisting an unusable source.
+            if case .category(let categoryId) = newSource,
+               !availableFundingCategories.contains(where: { $0.categoryId == categoryId }) {
+                configuration.fundingSource = .toBudget
+            }
+            save()
         }
     }
 
