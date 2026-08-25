@@ -35,9 +35,8 @@ struct CategoryFundingAutomationView: View {
     }
 
     /// Only categories with money available can be selected as a funding
-    /// source. The automation re-checks the balance in the transaction's
-    /// month before performing the transfer.
-    private var availableFundingCategories {
+    /// source. The automation re-checks the balance before transferring.
+    private var availableFundingCategories: [CategoryBudget] {
         (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
             .filter { $0.available > 0 }
             .sorted {
@@ -76,7 +75,7 @@ struct CategoryFundingAutomationView: View {
             } header: {
                 Text("Funding")
             } footer: {
-                Text("To Budget is the default. You can also fund the category from another budget category that currently has a positive available balance.")
+                Text("To Budget is the default. You can also fund the category from another budget category that has enough available money.")
             }
 
             if configuration.isEnabled && configuration.accountId == nil {
