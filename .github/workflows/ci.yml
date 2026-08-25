@@ -23,7 +23,7 @@ jobs:
   test:
     name: Build and Test
     runs-on: macos-26
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v7
 
@@ -35,6 +35,35 @@ jobs:
           if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
             echo "No available iPhone simulator on this runner" >&2
             exit 1
+          fi
+          echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
+
+      # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
+      # own: the compiler rejects an unavailable API, but a missing SF Symbol or
+      # a behaviour difference only shows up when the tests actually run there.
+      # The runner image ships iOS 26 only, so this usually downloads (~8 GB).
+      - name: Select iOS 18 simulator
+        id: sim18
+        run: |
+          runtime() {
+            xcrun simctl list runtimes --json \
+              | jq -r '[.runtimes[] | select(.isAvailable) | select(.identifier | contains("iOS-18"))][0].identifier'
+          }
+          RT=$(runtime)
+          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+            xcodebuild -downloadPlatform iOS -buildVersion 18.5
+            RT=$(runtime)
+          fi
+          if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+            echo "No iOS 18 runtime available and the download did not provide one" >&2
+            exit 1
+          fi
+          SIM_ID=$(xcrun simctl list devices available --json \
+            | jq -r --arg rt "$RT" '[.devices[$rt][]? | select(.name | startswith("iPhone"))][0].udid')
+          if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+            DEVICE_TYPE=$(xcrun simctl list devicetypes --json \
+              | jq -r '[.devicetypes[] | select(.productFamily == "iPhone")][-1].identifier')
+            SIM_ID=$(xcrun simctl create ci-ios18 "$DEVICE_TYPE" "$RT")
           fi
           echo "id=$SIM_ID" >> "$GITHUB_OUTPUT"
 
@@ -53,5 +82,16 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -skip-testing:ActualiUITests \
+            | xcbeautify --quiet
+
+      # Same build products, so this leg is mostly just test execution.
+      - name: Run unit tests on iOS 18 (minimum supported)
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Actuali/Actuali.xcodeproj \
+            -scheme Actuali \
+            -destination "platform=iOS Simulator,id=${{ steps.sim18.outputs.id }}" \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet
