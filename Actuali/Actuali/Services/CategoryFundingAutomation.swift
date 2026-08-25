@@ -1,36 +1,40 @@
 import Foundation
 import Combine
 
-/// The pool used to cover a category shortfall. `toBudget` means money already
-/// available in the budget pool; `category` moves money from another budget
-/// category that has available funds.
-enum CategoryFundingSource: Hashable, Codable, Identifiable {
+/// The pool used to cover a category shortfall. `toBudget` means money in the
+/// budget pool; `category` moves money from another budget category.
+enum CategoryFundingSource: Hashable, Codable {
     case toBudget
     case category(String)
 
-    var id: String {
-        switch self {
-        case .toBudget: return "toBudget"
-        case .category(let categoryId): return "category:\(categoryId)"
-        }
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case categoryId
+    }
+
+    private enum Kind: String, Codable {
+        case toBudget
+        case category
     }
 
     init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        if value == "toBudget" {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        switch try container.decode(Kind.self, forKey: .kind) {
+        case .toBudget:
             self = .toBudget
-        } else {
-            self = .category(value)
+        case .category:
+            self = .category(try container.decode(String.self, forKey: .categoryId))
         }
     }
 
     func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
+        var container = encoder.container(keyedBy: CodingKeys.self)
         switch self {
         case .toBudget:
-            try container.encode("toBudget")
+            try container.encode(Kind.toBudget, forKey: .kind)
         case .category(let categoryId):
-            try container.encode(categoryId)
+            try container.encode(Kind.category, forKey: .kind)
+            try container.encode(categoryId, forKey: .categoryId)
         }
     }
 }
@@ -38,17 +42,14 @@ enum CategoryFundingSource: Hashable, Codable, Identifiable {
 struct CategoryFundingAutomationConfiguration: Codable, Equatable {
     var isEnabled = false
     var accountId: String?
-    /// Defaults to To Budget. When a category is selected, that category must
-    /// have positive available funds at the time the automation runs.
+    /// Defaults to To Budget. A category source is re-validated when the
+    /// automation runs and must have enough available money for the shortfall.
     var fundingSource: CategoryFundingSource = .toBudget
 }
 
 enum CategoryFundingAutomation {
     /// Returns only the amount needed to cover the new expense. Existing
     /// overspending is intentionally preserved.
-    ///
-    /// Example: if a category is already at -$500 and a new $50 expense is
-    /// posted, the category should receive $50, resulting in -$500 again.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
 
@@ -78,27 +79,34 @@ enum CategoryFundingAutomation {
 @MainActor
 final class CategoryFundingAutomationMonitor: ObservableObject {
     private var budgetId: String?
+    private var versionAtReset = 0
     private var hasBaseline = false
     private var seenTransactionIds = Set<String>()
-    private var processingTransactionIds = Set<String>()
 
-    func reset(for budgetId: String?) {
+    func reset(for budgetId: String?, dataVersion: Int) {
         guard self.budgetId != budgetId else { return }
         self.budgetId = budgetId
+        versionAtReset = dataVersion
         hasBaseline = false
         seenTransactionIds.removeAll()
-        processingTransactionIds.removeAll()
     }
 
     func processCurrentSnapshot(using budgetStore: BudgetStore) {
-        reset(for: budgetStore.currentBudgetId)
-        guard budgetStore.dataVersion > 0 else { return }
+        reset(for: budgetStore.currentBudgetId, dataVersion: budgetStore.dataVersion)
+        guard budgetStore.dataVersion > versionAtReset else { return }
 
         guard !hasBaseline else {
-            let newTransactions = budgetStore.transactions.filter { !seenTransactionIds.contains($0.id) }
-            for transaction in newTransactions {
+            let newTransactions = budgetStore.transactions.filter {
+                !seenTransactionIds.contains($0.id)
+            }
+
+            // Keep uncategorized transactions unseen. Bank imports commonly
+            // arrive without a category and should become eligible when the
+            // user categorizes them later.
+            for transaction in newTransactions where transaction.categoryId != nil {
                 seenTransactionIds.insert(transaction.id)
             }
+
             guard !newTransactions.isEmpty else { return }
             Task { [weak self, weak budgetStore] in
                 guard let self, let budgetStore else { return }
@@ -109,15 +117,18 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             return
         }
 
-        seenTransactionIds = Set(budgetStore.transactions.map(\.id))
+        seenTransactionIds = Set(
+            budgetStore.transactions.compactMap { transaction in
+                transaction.categoryId == nil ? nil : transaction.id
+            }
+        )
         hasBaseline = true
     }
 
     private func process(_ transaction: Transaction, using budgetStore: BudgetStore) async {
         guard let configuration = Self.loadConfiguration(for: budgetStore.currentBudgetId),
               configuration.isEnabled,
-              let accountId = configuration.accountId,
-              !processingTransactionIds.contains(transaction.id) else { return }
+              let accountId = configuration.accountId else { return }
 
         let isIncomeCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
@@ -129,9 +140,6 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             selectedAccountId: accountId,
             isIncomeCategory: isIncomeCategory
         ) else { return }
-
-        processingTransactionIds.insert(transaction.id)
-        defer { processingTransactionIds.remove(transaction.id) }
 
         let month = String(format: "%04d-%02d", transaction.date / 10000, (transaction.date / 100) % 100)
         let displayedMonth = budgetStore.currentBudgetMonth?.month
@@ -159,6 +167,8 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
         do {
             switch configuration.fundingSource {
             case .toBudget:
+                // To Budget is allowed to become negative in Actuali, so it
+                // can always provide the requested shortfall.
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: nil,
@@ -170,8 +180,13 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
                 guard sourceCategoryId != category.categoryId,
                       let sourceCategory = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
                           $0.categoryId == sourceCategoryId
-                      }),
-                      sourceCategory.available >= amountToFund else {
+                      }) else {
+                    budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
+                    return
+                }
+
+                guard sourceCategory.available >= amountToFund else {
+                    budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
                     return
                 }
 
@@ -191,9 +206,12 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
         }
     }
 
-    static func loadConfiguration(for budgetId: String?) -> CategoryFundingAutomationConfiguration? {
+    static func loadConfiguration(
+        for budgetId: String?,
+        defaults: UserDefaults = .standard
+    ) -> CategoryFundingAutomationConfiguration? {
         guard let budgetId,
-              let data = UserDefaults.standard.data(forKey: key(for: budgetId)) else {
+              let data = defaults.data(forKey: key(for: budgetId)) else {
             return nil
         }
         return try? JSONDecoder().decode(CategoryFundingAutomationConfiguration.self, from: data)
@@ -201,11 +219,12 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
 
     static func saveConfiguration(
         _ configuration: CategoryFundingAutomationConfiguration,
-        for budgetId: String?
+        for budgetId: String?,
+        defaults: UserDefaults = .standard
     ) {
         guard let budgetId,
               let data = try? JSONEncoder().encode(configuration) else { return }
-        UserDefaults.standard.set(data, forKey: key(for: budgetId))
+        defaults.set(data, forKey: key(for: budgetId))
     }
 
     private static func key(for budgetId: String) -> String {
