@@ -5,7 +5,7 @@ struct CategoryFundingAutomationView: View {
     @State private var configuration = CategoryFundingAutomationConfiguration()
 
     private var selectedAccountBinding: Binding<String?> {
-        Binding(
+        Binding<String?>(
             get: { configuration.accountId },
             set: {
                 configuration.accountId = $0
@@ -15,7 +15,7 @@ struct CategoryFundingAutomationView: View {
     }
 
     private var enabledBinding: Binding<Bool> {
-        Binding(
+        Binding<Bool>(
             get: { configuration.isEnabled },
             set: {
                 configuration.isEnabled = $0
@@ -25,7 +25,7 @@ struct CategoryFundingAutomationView: View {
     }
 
     private var fundingSourceBinding: Binding<CategoryFundingSource> {
-        Binding(
+        Binding<CategoryFundingSource>(
             get: { configuration.fundingSource },
             set: {
                 configuration.fundingSource = $0
@@ -42,21 +42,25 @@ struct CategoryFundingAutomationView: View {
                 Text("When a new expense from the selected account would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
             }
 
-            Section("Trigger") {
+            Section {
                 Picker("Account", selection: selectedAccountBinding) {
-                    Text("None").tag(nil as String?)
-                    ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
-                        Text(account.name).tag(account.id as String?)
+                    Text("None").tag(String?.none)
+                    ForEach(budgetStore.accounts.filter { !$0.closed }, id: \.id) { account in
+                        Text(account.name).tag(Optional(account.id))
                     }
                 }
+            } header: {
+                Text("Trigger")
             }
 
-            Section("Funding") {
+            Section {
                 Picker("Funding Source", selection: fundingSourceBinding) {
-                    ForEach(CategoryFundingSource.allCases) { source in
+                    ForEach(CategoryFundingSource.allCases, id: \.id) { source in
                         Text(source.label).tag(source)
                     }
                 }
+            } header: {
+                Text("Funding")
             } footer: {
                 Text("To Budget is used as the source. Only the shortfall is moved into the transaction's category.")
             }
