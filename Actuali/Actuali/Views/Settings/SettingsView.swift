@@ -42,13 +42,15 @@ struct SettingsView: View {
 
                 Section("Manage") {
                     NavigationLink {
-                        ScheduledTransactionsSettingsView()
+                        SchedulesListView()
+                            .navigationTitle("Scheduled Transactions")
                     } label: {
                         Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                     }
 
                     NavigationLink {
-                        RulesSettingsView()
+                        RulesListView()
+                            .navigationTitle("Rules")
                     } label: {
                         Label("Rules", systemImage: "list.bullet.rectangle")
                     }
