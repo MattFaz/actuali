@@ -40,13 +40,19 @@ struct SettingsView: View {
                     }
                 }
 
-                Section("Manage") {
+                Section {
                     NavigationLink {
                         SchedulesListView()
                     } label: {
                         Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                     }
+                } header: {
+                    Text("Manage")
+                } footer: {
+                    Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                }
 
+                Section {
                     if budgetStore.currentBudgetId != nil {
                         NavigationLink {
                             RulesListView()
@@ -61,7 +67,7 @@ struct SettingsView: View {
                         Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
                     }
                 } footer: {
-                    Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server. Connect SimpleFIN to import transactions straight from your bank.")
+                    Text("Connect SimpleFIN to import transactions straight from your bank.")
                 }
 
                 Section("Information") {
