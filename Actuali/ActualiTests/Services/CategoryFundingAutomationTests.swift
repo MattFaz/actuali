@@ -1,4 +1,6 @@
+import Foundation
 import Testing
+@testable import Actuali
 
 struct CategoryFundingAutomationTests {
     @Test("Sufficient category funds require no funding")
@@ -8,8 +10,6 @@ struct CategoryFundingAutomationTests {
 
     @Test("Partial category funds fund only the shortfall")
     func partialFunds() {
-        // $20 was available before the $50 expense, so the post-transaction
-        // available balance is -$30. Only $30 is funded.
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -30) == 30)
     }
 
@@ -25,9 +25,6 @@ struct CategoryFundingAutomationTests {
 
     @Test("Existing overspending is preserved")
     func existingOverspending() {
-        // The category was already -$500 before a new $50 expense. The new
-        // transaction is funded by $50, leaving the category at -$500 rather
-        // than funding the existing $500 deficit.
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -550) == 50)
     }
 
@@ -36,13 +33,7 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -125, availableAfterTransaction: -1000) == 125)
     }
 
-    @Test("Positive available balance funds only the amount needed for the new transaction")
-    func positiveBalanceShortfall() {
-        // $20 available before a $50 expense means only $30 is needed.
-        #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -30) == 30)
-    }
-
-    @Test("Uncategorized transactions are ignored")
+    @Test("Uncategorized transactions are ignored by processing logic")
     func uncategorized() {
         let transaction = makeTransaction(categoryId: nil)
         #expect(!CategoryFundingAutomation.shouldProcess(
@@ -90,6 +81,51 @@ struct CategoryFundingAutomationTests {
             selectedAccountId: "account-1",
             isIncomeCategory: false
         ))
+    }
+
+    @Test("Category funding source round trips through Codable")
+    func fundingSourceCodable() throws {
+        let configuration = CategoryFundingAutomationConfiguration(
+            isEnabled: true,
+            accountId: "account-1",
+            fundingSource: .category("emergency-fund")
+        )
+
+        let data = try JSONEncoder().encode(configuration)
+        let decoded = try JSONDecoder().decode(CategoryFundingAutomationConfiguration.self, from: data)
+
+        #expect(decoded == configuration)
+    }
+
+    @Test("Configuration can be saved and loaded with injected UserDefaults")
+    func configurationPersistence() {
+        let suiteName = "CategoryFundingAutomationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let configuration = CategoryFundingAutomationConfiguration(
+            isEnabled: true,
+            accountId: "account-1",
+            fundingSource: .category("emergency-fund")
+        )
+
+        CategoryFundingAutomationMonitor.saveConfiguration(
+            configuration,
+            for: "budget-1",
+            defaults: defaults
+        )
+
+        #expect(
+            CategoryFundingAutomationMonitor.loadConfiguration(
+                for: "budget-1",
+                defaults: defaults
+            ) == configuration
+        )
+    }
+
+    @Test("Default funding source is To Budget")
+    func defaultFundingSource() {
+        #expect(CategoryFundingAutomationConfiguration().fundingSource == .toBudget)
     }
 
     private func makeTransaction(
