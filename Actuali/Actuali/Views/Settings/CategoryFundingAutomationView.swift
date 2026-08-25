@@ -4,41 +4,17 @@ struct CategoryFundingAutomationView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var configuration = CategoryFundingAutomationConfiguration()
 
-    private var selectedAccountBinding: Binding<String?> {
-        Binding<String?>(
-            get: { configuration.accountId },
-            set: {
-                configuration.accountId = $0
-                save()
-            }
-        )
-    }
+    /// Categories with money, plus the saved source so a drained source is
+    /// not silently replaced with To Budget. The automation re-checks the
+    /// source balance when it actually runs.
+    private var fundingCategories: [CategoryBudget] {
+        var savedId: String?
+        if case .category(let id) = configuration.fundingSource {
+            savedId = id
+        }
 
-    private var enabledBinding: Binding<Bool> {
-        Binding<Bool>(
-            get: { configuration.isEnabled },
-            set: {
-                configuration.isEnabled = $0
-                save()
-            }
-        )
-    }
-
-    private var fundingSourceBinding: Binding<CategoryFundingSource> {
-        Binding<CategoryFundingSource>(
-            get: { configuration.fundingSource },
-            set: {
-                configuration.fundingSource = $0
-                save()
-            }
-        )
-    }
-
-    /// Only categories with money available can be selected as a funding
-    /// source. The automation re-checks the balance before transferring.
-    private var availableFundingCategories: [CategoryBudget] {
-        (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
-            .filter { $0.available > 0 }
+        return (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
+            .filter { $0.available > 0 || $0.categoryId == savedId }
             .sorted {
                 $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending
             }
@@ -47,13 +23,13 @@ struct CategoryFundingAutomationView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Enable Automation", isOn: enabledBinding)
+                Toggle("Enable Automation", isOn: $configuration.isEnabled)
             } footer: {
                 Text("When a new expense from the selected account would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
             }
 
             Section {
-                Picker("Account", selection: selectedAccountBinding) {
+                Picker("Account", selection: $configuration.accountId) {
                     Text("None").tag(String?.none)
                     ForEach(budgetStore.accounts.filter { !$0.closed }, id: \.id) { account in
                         Text(account.name).tag(Optional(account.id))
@@ -64,10 +40,10 @@ struct CategoryFundingAutomationView: View {
             }
 
             Section {
-                Picker("Funding Source", selection: fundingSourceBinding) {
+                Picker("Funding Source", selection: $configuration.fundingSource) {
                     Text("To Budget").tag(CategoryFundingSource.toBudget)
 
-                    ForEach(availableFundingCategories, id: \.categoryId) { category in
+                    ForEach(fundingCategories, id: \.categoryId) { category in
                         Text(category.categoryName)
                             .tag(CategoryFundingSource.category(category.categoryId))
                     }
@@ -75,7 +51,7 @@ struct CategoryFundingAutomationView: View {
             } header: {
                 Text("Funding")
             } footer: {
-                Text("To Budget is the default. You can also fund the category from another budget category that has enough available money.")
+                Text("To Budget is the default. You can also fund the category from another budget category that has available money.")
             }
 
             if configuration.isEnabled && configuration.accountId == nil {
@@ -91,11 +67,7 @@ struct CategoryFundingAutomationView: View {
             configuration = CategoryFundingAutomationMonitor.loadConfiguration(for: budgetStore.currentBudgetId)
                 ?? CategoryFundingAutomationConfiguration()
         }
-        .onChange(of: configuration.fundingSource) { _, newSource in
-            if case .category(let categoryId) = newSource,
-               !availableFundingCategories.contains(where: { $0.categoryId == categoryId }) {
-                configuration.fundingSource = .toBudget
-            }
+        .onChange(of: configuration) { _, _ in
             save()
         }
     }
