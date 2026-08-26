@@ -50,24 +50,23 @@ enum CategoryFundingAutomation {
     }
 
     /// Called explicitly after a successful manual Add Transaction save.
+    /// This deliberately receives no account from the presenting view: the
+    /// save form can change its account. Instead, read the newest transaction
+    /// from the database-backed transaction query after the save completes.
     /// Imported, synced, scheduled, duplicated, and edited transactions do not
-    /// invoke this automation.
+    /// invoke this method.
     @MainActor
-    static func processManualTransaction(
-        accountId: String,
-        using budgetStore: BudgetStore
-    ) async {
-        guard let configuration = loadConfiguration(for: budgetStore.currentBudgetId),
+    static func processLatestManualTransaction(using budgetStore: BudgetStore) async {
+        guard let budgetId = budgetStore.currentBudgetId,
+              let configuration = loadConfiguration(for: budgetId),
               configuration.isEnabled,
-              configuration.accountId == accountId else { return }
+              configuration.accountId != nil else { return }
 
-        // AddTransactionView refreshes the store after a successful save. The
-        // newly-created row has the newest sort order for this account.
-        guard let transaction = budgetStore.transactions
-            .filter({ $0.accountId == accountId && !$0.tombstone })
-            .max(by: { lhs, rhs in
-                (lhs.sortOrder ?? 0) < (rhs.sortOrder ?? 0)
-            }) else { return }
+        // Query the database-backed first page rather than the store's cached
+        // 500-row snapshot. This guarantees the just-created transaction is
+        // available even when the account has a long history.
+        guard let transaction = await budgetStore.fetchTransactions(limit: 1).first,
+              let selectedAccountId = configuration.accountId else { return }
 
         let isIncomeCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
@@ -76,7 +75,7 @@ enum CategoryFundingAutomation {
 
         guard isManualExpenseEligible(
             transaction,
-            selectedAccountId: accountId,
+            selectedAccountId: selectedAccountId,
             isIncomeCategory: isIncomeCategory
         ) else { return }
 
@@ -103,6 +102,8 @@ enum CategoryFundingAutomation {
         do {
             switch configuration.fundingSource {
             case .toBudget:
+                // To Budget is allowed to go negative in Actual, so it can
+                // always cover the complete shortfall.
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: nil,
