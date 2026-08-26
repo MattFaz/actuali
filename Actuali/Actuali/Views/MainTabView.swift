@@ -105,10 +105,7 @@ struct AddTransactionTabView: View {
                 accountId: account.id,
                 onSaved: {
                     Task { @MainActor in
-                        await CategoryFundingAutomation.processManualTransaction(
-                            accountId: account.id,
-                            using: budgetStore
-                        )
+                        await CategoryFundingAutomation.processLatestManualTransaction(using: budgetStore)
                     }
                 }
             )
