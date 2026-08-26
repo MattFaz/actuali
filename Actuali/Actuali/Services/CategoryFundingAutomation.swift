@@ -1,30 +1,10 @@
 import Foundation
-import Combine
 
 /// The pool used to cover a category shortfall. `toBudget` means money in the
 /// budget pool; `category` moves money from another budget category.
 enum CategoryFundingSource: Hashable, Codable {
     case toBudget
     case category(String)
-
-    init(from decoder: Decoder) throws {
-        let value = try decoder.singleValueContainer().decode(String.self)
-        if value == "toBudget" {
-            self = .toBudget
-        } else {
-            self = .category(value)
-        }
-    }
-
-    func encode(to encoder: Encoder) throws {
-        var container = encoder.singleValueContainer()
-        switch self {
-        case .toBudget:
-            try container.encode("toBudget")
-        case .category(let categoryId):
-            try container.encode(categoryId)
-        }
-    }
 }
 
 struct CategoryFundingAutomationConfiguration: Codable, Equatable {
@@ -62,10 +42,16 @@ enum CategoryFundingAutomation {
             && !isIncomeCategory
             && !transaction.tombstone
     }
+
+    /// Uncategorized transactions are deliberately left out of the seen set.
+    /// They can therefore become eligible when the user assigns a category.
+    static func shouldMarkSeen(_ transaction: Transaction) -> Bool {
+        transaction.categoryId != nil || transaction.isParent
+    }
 }
 
 @MainActor
-final class CategoryFundingAutomationMonitor: ObservableObject {
+final class CategoryFundingAutomationMonitor {
     private var budgetId: String?
     private var versionAtReset = 0
     private var hasBaseline = false
@@ -88,10 +74,7 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
                 !seenTransactionIds.contains($0.id)
             }
 
-            // Keep uncategorized transactions unseen. Bank imports commonly
-            // arrive without a category and should become eligible when the
-            // user categorizes them later.
-            for transaction in newTransactions where transaction.categoryId != nil {
+            for transaction in newTransactions where CategoryFundingAutomation.shouldMarkSeen(transaction) {
                 seenTransactionIds.insert(transaction.id)
             }
 
@@ -107,7 +90,7 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
 
         seenTransactionIds = Set(
             budgetStore.transactions.compactMap { transaction in
-                transaction.categoryId == nil ? nil : transaction.id
+                CategoryFundingAutomation.shouldMarkSeen(transaction) ? transaction.id : nil
             }
         )
         hasBaseline = true
@@ -135,9 +118,7 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
         guard let category = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
             $0.categoryId == transaction.categoryId
         }) else {
-            if let displayedMonth, displayedMonth != month {
-                await budgetStore.fetchBudgetMonth(displayedMonth)
-            }
+            restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
             return
         }
 
@@ -146,9 +127,7 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             availableAfterTransaction: category.available
         )
         guard amountToFund > 0 else {
-            if let displayedMonth, displayedMonth != month {
-                await budgetStore.fetchBudgetMonth(displayedMonth)
-            }
+            restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
             return
         }
 
@@ -170,11 +149,13 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
                           $0.categoryId == sourceCategoryId
                       }) else {
                     budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
+                    restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
                     return
                 }
 
                 guard sourceCategory.available >= amountToFund else {
                     budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
+                    restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
                     return
                 }
 
@@ -189,7 +170,16 @@ final class CategoryFundingAutomationMonitor: ObservableObject {
             budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
         }
 
-        if let displayedMonth, displayedMonth != month {
+        restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
+    }
+
+    private func restoreDisplayedMonth(
+        _ displayedMonth: String?,
+        transactionMonth: String,
+        using budgetStore: BudgetStore
+    ) {
+        guard let displayedMonth, displayedMonth != transactionMonth else { return }
+        Task { @MainActor in
             await budgetStore.fetchBudgetMonth(displayedMonth)
         }
     }
