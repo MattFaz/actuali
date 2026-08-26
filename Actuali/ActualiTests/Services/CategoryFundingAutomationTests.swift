@@ -43,6 +43,24 @@ struct CategoryFundingAutomationTests {
         ))
     }
 
+    @Test("Uncategorized transactions are not marked seen")
+    func uncategorizedIsNotMarkedSeen() {
+        let transaction = makeTransaction(categoryId: nil)
+        #expect(!CategoryFundingAutomation.shouldMarkSeen(transaction))
+    }
+
+    @Test("Categorized transactions are marked seen")
+    func categorizedIsMarkedSeen() {
+        let transaction = makeTransaction(categoryId: "groceries")
+        #expect(CategoryFundingAutomation.shouldMarkSeen(transaction))
+    }
+
+    @Test("Split parents are marked seen so they do not repeatedly wake the monitor")
+    func splitParentIsMarkedSeen() {
+        let transaction = makeTransaction(categoryId: nil, isParent: true)
+        #expect(CategoryFundingAutomation.shouldMarkSeen(transaction))
+    }
+
     @Test("Transactions from another account are ignored")
     func nonSelectedAccount() {
         let transaction = makeTransaction(accountId: "account-2", categoryId: "groceries")
@@ -132,7 +150,8 @@ struct CategoryFundingAutomationTests {
         accountId: String = "account-1",
         amount: Int = -5000,
         categoryId: String?,
-        transferId: String? = nil
+        transferId: String? = nil,
+        isParent: Bool = false
     ) -> Transaction {
         Transaction(
             id: UUID().uuidString,
@@ -147,7 +166,7 @@ struct CategoryFundingAutomationTests {
             cleared: false,
             reconciled: false,
             transferId: transferId,
-            isParent: false,
+            isParent: isParent,
             parentId: nil,
             tombstone: false,
             sortOrder: nil,
