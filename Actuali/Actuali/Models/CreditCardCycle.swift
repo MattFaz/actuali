@@ -108,12 +108,11 @@ struct CreditCardCycle: Equatable, Hashable {
         return "Due \(dueStr) (\(days)d)"
     }
 
-    /// Compact variant of `dueSummary` for pill badges ("Due in 27d").
+    /// Compact variant of `dueSummary` for pill badges ("Due in 27d"). Defers to
+    /// `dueSummary` within a day of the due date, so the two can't drift on the
+    /// wording that matters most.
     func dueShortSummary(for today: DayDate = .today()) -> String {
-        switch daysUntilDue(for: today) {
-        case 0: "Due today"
-        case 1: "Due tomorrow"
-        case let days: "Due in \(days)d"
-        }
+        let days = daysUntilDue(for: today)
+        return days <= 1 ? dueSummary(for: today) : "Due in \(days)d"
     }
 }
