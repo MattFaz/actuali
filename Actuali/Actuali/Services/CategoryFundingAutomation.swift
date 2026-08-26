@@ -16,8 +16,6 @@ struct CategoryFundingAutomationConfiguration: Codable, Equatable {
 }
 
 enum CategoryFundingAutomation {
-    /// Returns only the amount needed to cover the new expense. Existing
-    /// overspending is intentionally preserved.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
 
@@ -43,9 +41,7 @@ enum CategoryFundingAutomation {
             && !transaction.tombstone
     }
 
-    /// Split parents have no category and are intentionally out of scope.
-    /// This helper is kept pure so the manual-entry integration can be tested
-    /// without a live BudgetStore.
+    /// Pure eligibility check used by the manual-entry integration and tests.
     static func isManualExpenseEligible(
         _ transaction: Transaction,
         selectedAccountId: String,
@@ -59,24 +55,20 @@ enum CategoryFundingAutomation {
     }
 
     /// Called explicitly after a successful manual Add Transaction save.
-    /// There is deliberately no transaction monitor: imported, synced,
-    /// scheduled, duplicated, or edited transactions do not trigger this
-    /// automation.
+    /// Imported, synced, scheduled, duplicated, and edited transactions do not
+    /// invoke this method.
     @MainActor
     static func processManualTransaction(
         accountId: String,
         using budgetStore: BudgetStore
     ) async {
-        guard let configuration = CategoryFundingAutomationMonitor.loadConfiguration(
-            for: budgetStore.currentBudgetId
-        ),
-        configuration.isEnabled,
-        configuration.accountId == accountId else { return }
+        guard let configuration = loadConfiguration(for: budgetStore.currentBudgetId),
+              configuration.isEnabled,
+              configuration.accountId == accountId else { return }
 
-        // AddTransactionView refreshes the store after a successful save. The
-        // new transaction receives the newest sort order, so selecting the
-        // highest sort order for this account avoids accidentally processing an
-        // older transaction when several rows share the same date.
+        // AddTransactionView refreshes the store after a successful save. A
+        // newly-created transaction gets the newest sort order, so this picks
+        // the transaction just entered without maintaining a global watermark.
         guard let transaction = budgetStore.transactions
             .filter({ $0.accountId == accountId && !$0.tombstone })
             .max(by: { lhs, rhs in
@@ -179,25 +171,5 @@ enum CategoryFundingAutomation {
 
     private static func key(for budgetId: String) -> String {
         "categoryFundingAutomation_\(budgetId)"
-    }
-}
-
-/// Kept as a small compatibility namespace for configuration persistence used
-/// by the Settings view and existing tests. Transaction monitoring has been
-/// removed: the automation is now explicitly invoked only by manual entry.
-enum CategoryFundingAutomationMonitor {
-    static func loadConfiguration(
-        for budgetId: String?,
-        defaults: UserDefaults = .standard
-    ) -> CategoryFundingAutomationConfiguration? {
-        CategoryFundingAutomation.loadConfiguration(for: budgetId, defaults: defaults)
-    }
-
-    static func saveConfiguration(
-        _ configuration: CategoryFundingAutomationConfiguration,
-        for budgetId: String?,
-        defaults: UserDefaults = .standard
-    ) {
-        CategoryFundingAutomation.saveConfiguration(configuration, for: budgetId, defaults: defaults)
     }
 }
