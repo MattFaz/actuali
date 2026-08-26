@@ -13,11 +13,11 @@ struct ContentView: View {
     @StateObject private var notificationRouter = NotificationRouter.shared
 
     /// Window width, measured here rather than deeper in the hierarchy so it
-    /// doesn't move when a sidebar expands. Feeds `\\.isWideLayout`.
+    /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
     @State private var windowWidth: CGFloat = 0
 
     /// Below this the iPad's split views can't lay out real columns and the
-    /// sidebar becomes an overlay drawer instead; see `\\.isWideLayout`.
+    /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
     private static let wideLayoutThreshold: CGFloat = 1000
 
     /// Presents whenever the store publishes an error; dismissing clears it
@@ -32,7 +32,7 @@ struct ContentView: View {
     var body: some View {
         MainTabView()
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
-            .environment(\\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
+            .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
             .background(ShakeResponder(
                 isEnabled: budgetStore.shakeToHideBalances,
                 onShake: budgetStore.handleDeviceShake
