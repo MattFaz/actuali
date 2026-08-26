@@ -11,7 +11,7 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @StateObject private var categoryFundingAutomation = CategoryFundingAutomationMonitor()
+    @State private var categoryFundingAutomation = CategoryFundingAutomationMonitor()
 
     /// Window width, measured here rather than deeper in the hierarchy so it
     /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
@@ -45,8 +45,7 @@ struct ContentView: View {
             .onChange(of: budgetStore.dataVersion) { _, _ in
                 categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
             }
-            .onChange(of: budgetStore.currentBudgetId) { _, newBudgetId in
-                categoryFundingAutomation.reset(for: newBudgetId)
+            .onChange(of: budgetStore.currentBudgetId) { _, _ in
                 categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
             }
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
