@@ -7,7 +7,6 @@ struct TransactionAutomationSettingsView: View {
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
     @State private var showingWalletImport = false
-    @State private var categoryFundingEnabled = false
 
     private var transactionNotificationsBinding: Binding<Bool> {
         Binding(
@@ -20,23 +19,6 @@ struct TransactionAutomationSettingsView: View {
                 } else {
                     notificationPermissionDenied = false
                 }
-            }
-        )
-    }
-
-    private var categoryFundingBinding: Binding<Bool> {
-        Binding(
-            get: { categoryFundingEnabled },
-            set: { enabled in
-                categoryFundingEnabled = enabled
-                var configuration = CategoryFundingAutomation.loadConfiguration(
-                    for: budgetStore.currentBudgetId
-                ) ?? CategoryFundingAutomationConfiguration()
-                configuration.isEnabled = enabled
-                CategoryFundingAutomation.saveConfiguration(
-                    configuration,
-                    for: budgetStore.currentBudgetId
-                )
             }
         )
     }
@@ -168,8 +150,6 @@ struct TransactionAutomationSettingsView: View {
 
             Section {
                 if budgetStore.currentBudgetId != nil {
-                    Toggle("Category Funding", isOn: categoryFundingBinding)
-
                     NavigationLink {
                         CategoryFundingAutomationView()
                     } label: {
@@ -215,14 +195,6 @@ struct TransactionAutomationSettingsView: View {
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .task {
             await refreshNotificationPermissionState()
-            categoryFundingEnabled = CategoryFundingAutomation.loadConfiguration(
-                for: budgetStore.currentBudgetId
-            )?.isEnabled ?? false
-        }
-        .onChange(of: budgetStore.currentBudgetId) { _, newBudgetId in
-            categoryFundingEnabled = CategoryFundingAutomation.loadConfiguration(
-                for: newBudgetId
-            )?.isEnabled ?? false
         }
         .sheet(isPresented: $showingWalletImport) {
             WalletImportView()
