@@ -17,9 +17,9 @@ jobs:
   ui-test:
     name: UI Tests (iOS 26)
     runs-on: macos-26
-    # A green run is ~50 min; failures spend longer because each failed test
-    # retries up to 3 times. 60 wasn't enough headroom for a bad night.
-    timeout-minutes: 120
+    # Serial execution costs wall-clock (see the test step): budget for a
+    # ~90 min green run plus retries. Nothing waits on this job overnight.
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
 
@@ -41,16 +41,22 @@ jobs:
       # drive budget amounts through the keypad. This host-side pref only
       # protects a device that has never seen a hardware keyboard (true for
       # fresh runner sims) — a device that already remembers one needs its
-      # device-side com.apple.keyboard.preferences reset instead.
+      # device-side com.apple.keyboard.preferences reset instead. It is keyed
+      # by UDID, so it only reaches the device the tests actually run on now
+      # that parallel testing (which clones the device under new UDIDs) is off.
       - name: Disable simulator hardware keyboard
         run: |
           defaults write com.apple.iphonesimulator DevicePreferences \
             -dict-add "${{ steps.sim.outputs.id }}" \
             "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
 
-      # UI tests are slower and flakier on shared runners, so failed tests
-      # retry up to 3 runs before the job fails. Two parallel workers (sim
-      # clones) roughly halve the test-execution phase.
+      # Runs serially on the one simulator. Two parallel workers halved the
+      # test phase but ran two sim clones on a 3-core runner, and the
+      # contention timed out XCTest's own machinery rather than the tests:
+      # kAXErrorIPCTimeout listing apps at `launch()`, background-assertion
+      # timeouts, "Timed out while evaluating UI query", single taps waiting
+      # 35s for the app to idle (run 32860255135). Retries still cover a
+      # genuine one-off, but they can't rescue a host that's out of CPU.
       - name: Build and run UI tests on iOS 26
         run: |
           set -o pipefail
@@ -61,8 +67,7 @@ jobs:
             -only-testing:ActualiUITests \
             -retry-tests-on-failure \
             -test-iterations 3 \
-            -parallel-testing-enabled YES \
-            -parallel-testing-worker-count 2 \
+            -parallel-testing-enabled NO \
             -resultBundlePath TestResults/ActualiUITests.xcresult \
             | xcbeautify --quiet
 
@@ -70,7 +75,7 @@ jobs:
       # full activity log) when a run fails on the runner but not locally.
       - name: Upload result bundle
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: ui-test-results
           path: TestResults

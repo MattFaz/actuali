@@ -21,20 +21,57 @@ extension XCTestCase {
         // typeText's focus-dependent event synthesis flakes on CI runners.
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
                       "keyboard did not appear for the amount field")
-        // Keypad taps cost over a second each, so clear only what's there.
-        // An empty field reports its placeholder as the value; deleting
-        // those few phantom characters is a harmless no-op.
-        let deleteKey = app.keys["Delete"]
-        let existing = (field.value as? String) ?? ""
-        for _ in 0..<min(existing.count, 10) { deleteKey.tap() }
-        for digit in centsKeystrokes {
-            app.keys[String(digit)].tap()
+
+        // A loaded runner can still be settling the sheet when the first keys
+        // land, and the presentation then puts the category's original amount
+        // back over what was typed — Save commits the old value and the test
+        // fails somewhere later (nightly run 32860255135). Read the field back
+        // and retype rather than trusting the taps.
+        var entered = false
+        for _ in 0..<3 where !entered {
+            clearAmount(app, field: field)
+            for digit in centsKeystrokes {
+                app.keys[String(digit)].tap()
+            }
+            entered = waitForDigits(centsKeystrokes, in: field)
         }
+        XCTAssertTrue(entered,
+                      "amount field reads \((field.value as? String) ?? "") after typing \(centsKeystrokes)")
 
         let saveButton = app.buttons["Save"]
         XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")
         saveButton.tap()
         // Sheet dismissal returns us to the budget list.
         XCTAssertTrue(field.waitForNonExistence(timeout: 5), "edit sheet did not dismiss")
+    }
+
+    /// Keypad taps cost over a second each, so delete only what's there — an
+    /// empty field reports its "0.00" placeholder as the value.
+    @MainActor
+    private func clearAmount(_ app: XCUIApplication, field: XCUIElement) {
+        let deleteKey = app.keys["Delete"]
+        var deletesLeft = 12
+        while !digits(of: field).allSatisfy({ $0 == "0" }) && deletesLeft > 0 {
+            deleteKey.tap()
+            deletesLeft -= 1
+        }
+    }
+
+    /// Digits only, so "1.00" and "1,000.00" compare cleanly against the
+    /// keystrokes that produced them whatever the locale's separators are.
+    @MainActor
+    private func digits(of field: XCUIElement) -> String {
+        ((field.value as? String) ?? "").filter(\.isNumber)
+    }
+
+    @MainActor
+    private func waitForDigits(_ expected: String, in field: XCUIElement,
+                               timeout: TimeInterval = 3) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        repeat {
+            if digits(of: field) == expected { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.25))
+        } while Date() < deadline
+        return false
     }
 }

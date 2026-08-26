@@ -14,11 +14,26 @@ struct CreditCardsSettingsView: View {
 
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
-        return budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
+        return Self.sortedCards(budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
             guard let account = accountsById[accountId],
                   let cycle = budgetStore.creditCardCycle(for: accountId) else { return nil }
             return (account: account, cycle: cycle)
-        }.sorted { $0.account.name < $1.account.name }
+        })
+    }
+
+    /// Soonest payment first. The name tie-break is what makes this a total
+    /// order: `daysUntilDue` clamps at 0, so every past-due card ties there, and
+    /// the input arrives from a `Dictionary` whose order is reseeded per launch.
+    /// `today` is sampled once rather than per comparison so the ordering can't
+    /// change underneath `sorted` at midnight.
+    nonisolated static func sortedCards(
+        _ cards: [(account: Account, cycle: CreditCardCycle)],
+        today: DayDate = .today()
+    ) -> [(account: Account, cycle: CreditCardCycle)] {
+        cards.sorted {
+            ($0.cycle.daysUntilDue(for: today), $0.account.name)
+                < ($1.cycle.daysUntilDue(for: today), $1.account.name)
+        }
     }
 
     private var unconfiguredAccounts: [Account] {
@@ -30,18 +45,18 @@ struct CreditCardsSettingsView: View {
 
     var body: some View {
         List {
-            Section {
-                Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates.")
-                    .font(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-
             Section("Configured Credit Cards") {
                 if configuredCards.isEmpty {
-                    Text("No credit cards configured yet.")
+                    Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates.")
+                        .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
-                    ForEach(configuredCards, id: \.account.id) { item in
+                    // Bound once so the delete closure indexes the exact array
+                    // the rows were built from. The sort key is a day count, so
+                    // recomputing it inside the closure could reorder the list
+                    // out from under a swipe that started before midnight.
+                    let cards = configuredCards
+                    ForEach(cards, id: \.account.id) { item in
                         Button {
                             selectedAccountId = item.account.id
                             selectedStatementDay = item.cycle.statementDay
@@ -52,8 +67,19 @@ struct CreditCardsSettingsView: View {
                             CreditCardCycleRow(account: item.account, cycle: item.cycle)
                         }
                         .buttonStyle(.plain)
+                        .listRowBackground(
+                            CreditCardCycleRow.cardBackground(
+                                daysUntilDue: item.cycle.daysUntilDue()
+                            )
+                        )
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                     }
-                    .onDelete(perform: deleteCard)
+                    .onDelete { offsets in
+                        for accountId in offsets.map({ cards[$0].account.id }) {
+                            budgetStore.setCreditCard(accountId: accountId, statementDay: nil)
+                        }
+                    }
                 }
             }
 
@@ -83,13 +109,6 @@ struct CreditCardsSettingsView: View {
             set: { if !$0 { editingAccountId = nil } }
         )) {
             cardSheet(isEditing: true)
-        }
-    }
-
-    private func deleteCard(at offsets: IndexSet) {
-        let cards = configuredCards
-        for accountId in offsets.map({ cards[$0].account.id }) {
-            budgetStore.setCreditCard(accountId: accountId, statementDay: nil)
         }
     }
 
@@ -197,8 +216,10 @@ struct CreditCardsSettingsView: View {
     }
 }
 
-/// Row displaying card balance, current billing cycle dates, cycle spend, and payment due date.
-private struct CreditCardCycleRow: View {
+/// Compact card row: name + balance on top, spend + due pill on bottom.
+/// The colored left border and card background are applied by the parent via
+/// `listRowBackground` using `cardBackground(daysUntilDue:)`.
+struct CreditCardCycleRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
     let cycle: CreditCardCycle
@@ -209,44 +230,72 @@ private struct CreditCardCycleRow: View {
         cycle.cycleRange()
     }
 
-    private var cycleDateText: String {
-        let startStr = Transaction.formattedDate(from: cycleRange.start.yyyymmdd, style: .abbreviated)
-        let endStr = Transaction.formattedDate(from: cycleRange.end.yyyymmdd, style: .abbreviated)
-        return "\(startStr) – \(endStr)"
+    /// Urgency color: red ≤3d, orange ≤7d, yellow otherwise. Used at full
+    /// strength for the border strip and heavily faded behind the pill — the
+    /// pill's own text stays `.primary`, because system yellow on a light
+    /// background is about 1.4:1 and unreadable at caption size.
+    nonisolated static func urgencyColor(days: Int) -> Color {
+        if days <= 3 { return .red }
+        if days <= 7 { return .orange }
+        return .yellow
+    }
+
+    private var dueColor: Color {
+        Self.urgencyColor(days: cycle.daysUntilDue())
+    }
+
+    /// Card background with a colored left urgency border strip.
+    nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
+        RoundedRectangle(cornerRadius: 10)
+            .fill(Color(.secondarySystemGroupedBackground))
+            .overlay(alignment: .leading) {
+                UnevenRoundedRectangle(
+                    topLeadingRadius: 10, bottomLeadingRadius: 10,
+                    bottomTrailingRadius: 0, topTrailingRadius: 0
+                )
+                .fill(urgencyColor(days: days))
+                .frame(width: 3)
+            }
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack {
+        VStack(alignment: .leading, spacing: 3) {
+            // Row 1: name + balance
+            HStack(alignment: .firstTextBaseline) {
                 Text(account.name)
-                    .font(.headline)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
                 Spacer()
                 Text(budgetStore.displayBalance(account.balance))
                     .font(.subheadline.weight(.semibold))
-                    .foregroundStyle(account.balance < 0 ? .red : .primary)
+                    .foregroundStyle(balanceColor(for: account.balance))
             }
 
+            // Row 2: cycle spend + days left + due pill
             HStack {
-                Label(cycleDateText, systemImage: "calendar")
+                Text("Spend \(budgetStore.displayBalance(cycleSpend)) · \(cycle.daysRemainingInCycle())d left")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text("\(cycle.daysRemainingInCycle())d left")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
-
-            HStack {
-                Label("Cycle spend: \(budgetStore.displayBalance(cycleSpend))", systemImage: "cart")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Spacer()
-                Label(cycle.dueSummary(), systemImage: "clock")
-                    .font(.caption.weight(.medium))
-                    .foregroundStyle(.orange)
+                Text(cycle.dueShortSummary())
+                    .font(.caption2.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 2)
+                    .background(dueColor.opacity(0.22), in: .capsule)
+                    // The pill is the actionable half of this line, so the
+                    // spend text takes the squeeze at large Dynamic Type sizes.
+                    .fixedSize()
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
+        // One element per card, worded like AccountDetailView's billing cycle
+        // header — the long `dueSummary` carries the date the pill drops.
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(
+            "\(account.name), balance \(budgetStore.displayBalance(account.balance)), "
+                + "cycle spend \(budgetStore.displayBalance(cycleSpend)), \(cycle.dueSummary())"
+        )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.
         .task(id: [cycle.statementDay, budgetStore.dataVersion]) {
