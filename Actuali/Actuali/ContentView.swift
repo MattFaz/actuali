@@ -11,14 +11,13 @@ import UIKit
 struct ContentView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @StateObject private var notificationRouter = NotificationRouter.shared
-    @State private var categoryFundingAutomation = CategoryFundingAutomationMonitor()
 
     /// Window width, measured here rather than deeper in the hierarchy so it
-    /// doesn't move when a sidebar expands. Feeds `\.isWideLayout`.
+    /// doesn't move when a sidebar expands. Feeds `\\.isWideLayout`.
     @State private var windowWidth: CGFloat = 0
 
     /// Below this the iPad's split views can't lay out real columns and the
-    /// sidebar becomes an overlay drawer instead; see `\.isWideLayout`.
+    /// sidebar becomes an overlay drawer instead; see `\\.isWideLayout`.
     private static let wideLayoutThreshold: CGFloat = 1000
 
     /// Presents whenever the store publishes an error; dismissing clears it
@@ -33,21 +32,12 @@ struct ContentView: View {
     var body: some View {
         MainTabView()
             .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { windowWidth = $0 }
-            .environment(\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
+            .environment(\\.isWideLayout, windowWidth >= Self.wideLayoutThreshold)
             .background(ShakeResponder(
                 isEnabled: budgetStore.shakeToHideBalances,
                 onShake: budgetStore.handleDeviceShake
             ))
             .sensoryFeedback(.impact(weight: .medium), trigger: budgetStore.shakeFeedbackTrigger)
-            .onAppear {
-                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
-            }
-            .onChange(of: budgetStore.dataVersion) { _, _ in
-                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
-            }
-            .onChange(of: budgetStore.currentBudgetId) { _, _ in
-                categoryFundingAutomation.processCurrentSnapshot(using: budgetStore)
-            }
             .alert("Something Went Wrong", isPresented: errorAlertBinding) {
                 Button("OK") {}
             } message: {
