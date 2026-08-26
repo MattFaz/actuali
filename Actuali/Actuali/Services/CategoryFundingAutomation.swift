@@ -1,7 +1,5 @@
 import Foundation
 
-/// The pool used to cover a category shortfall. `toBudget` means money in the
-/// budget pool; `category` moves money from another budget category.
 enum CategoryFundingSource: Hashable, Codable {
     case toBudget
     case category(String)
@@ -10,8 +8,6 @@ enum CategoryFundingSource: Hashable, Codable {
 struct CategoryFundingAutomationConfiguration: Codable, Equatable {
     var isEnabled = false
     var accountId: String?
-    /// Defaults to To Budget. A category source is re-validated when the
-    /// automation runs and must have enough available money for the shortfall.
     var fundingSource: CategoryFundingSource = .toBudget
 }
 
@@ -41,7 +37,6 @@ enum CategoryFundingAutomation {
             && !transaction.tombstone
     }
 
-    /// Pure eligibility check used by the manual-entry integration and tests.
     static func isManualExpenseEligible(
         _ transaction: Transaction,
         selectedAccountId: String,
@@ -56,7 +51,7 @@ enum CategoryFundingAutomation {
 
     /// Called explicitly after a successful manual Add Transaction save.
     /// Imported, synced, scheduled, duplicated, and edited transactions do not
-    /// invoke this method.
+    /// invoke this automation.
     @MainActor
     static func processManualTransaction(
         accountId: String,
@@ -66,14 +61,12 @@ enum CategoryFundingAutomation {
               configuration.isEnabled,
               configuration.accountId == accountId else { return }
 
-        // AddTransactionView refreshes the store after a successful save. A
-        // newly-created transaction gets the newest sort order, so this picks
-        // the transaction just entered without maintaining a global watermark.
+        // AddTransactionView refreshes the store after a successful save. The
+        // newly-created row has the newest sort order for this account.
         guard let transaction = budgetStore.transactions
             .filter({ $0.accountId == accountId && !$0.tombstone })
             .max(by: { lhs, rhs in
-                (lhs.sortOrder ?? -.greatestFiniteMagnitude) <
-                    (rhs.sortOrder ?? -.greatestFiniteMagnitude)
+                (lhs.sortOrder ?? 0) < (rhs.sortOrder ?? 0)
             }) else { return }
 
         let isIncomeCategory = budgetStore.categoryGroups
@@ -93,9 +86,8 @@ enum CategoryFundingAutomation {
             (transaction.date / 100) % 100
         )
 
-        // Read the requested month directly from the database. This does not
-        // modify BudgetStore.currentBudgetMonth or requestedBudgetMonth, so a
-        // manual entry for another month cannot move the Budget tab.
+        // Read the budget month directly from the database so the automation
+        // never changes the month the Budget tab is displaying.
         guard let database = budgetStore.databaseForLogger,
               let budgetMonth = try? await database.fetchBudgetMonth(month: month),
               let category = budgetMonth.allCategoryBudgets.first(where: {
@@ -111,8 +103,6 @@ enum CategoryFundingAutomation {
         do {
             switch configuration.fundingSource {
             case .toBudget:
-                // To Budget is allowed to become negative, so it can always
-                // provide the complete shortfall.
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: nil,
@@ -129,8 +119,9 @@ enum CategoryFundingAutomation {
                     return
                 }
 
-                // Category sources must have enough available money. Do not
-                // partially transfer the source balance.
+                // A category source must cover the complete shortfall. Never
+                // partially drain it and leave the user with an unexplained
+                // remaining shortfall.
                 guard sourceCategory.available >= amountToFund else {
                     budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
                     return
