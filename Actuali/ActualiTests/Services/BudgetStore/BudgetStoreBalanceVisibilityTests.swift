@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UIKit
 @testable import Actuali
 
 /// The hide-balances privacy mask must replace every formatted amount with
@@ -65,5 +66,54 @@ struct BudgetStoreBalanceVisibilityTests {
         #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == true)
         store.hideDecimalPlaces = false
         #expect(UserDefaults.standard.object(forKey: "hideDecimalPlaces") as? Bool == false)
+    }
+
+    @Test func shakeToHideBalancesDefaultsToFalse() {
+        let store = BudgetStore.previewInstance()
+        #expect(!store.shakeToHideBalances)
+    }
+
+    @Test func shakeToHideBalancesPersistsToUserDefaults() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = true
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == true)
+        store.shakeToHideBalances = false
+        #expect(UserDefaults.standard.object(forKey: "shakeToHideBalances") as? Bool == false)
+    }
+
+    @Test func handleDeviceShakeTogglesHideBalancesWhenEnabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = true
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(store.hideBalances)
+        #expect(store.shakeFeedbackTrigger)
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
+    }
+
+    @Test func handleDeviceShakeNoOpsWhenDisabled() {
+        let store = BudgetStore.previewInstance()
+        store.shakeToHideBalances = false
+        store.hideBalances = false
+
+        store.handleDeviceShake()
+        #expect(!store.hideBalances)
+        #expect(!store.shakeFeedbackTrigger)
+    }
+
+    @Test func shakeResponderRoutesOnlyWhileEnabled() {
+        var shakeCount = 0
+        let responder = ShakeResponderView(isEnabled: true) { shakeCount += 1 }
+
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
+
+        responder.update(isEnabled: false) { shakeCount += 1 }
+        responder.motionEnded(.motionShake, with: nil)
+        #expect(shakeCount == 1)
     }
 }

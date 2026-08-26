@@ -48,7 +48,9 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertTrue(amountField.waitForExistence(timeout: 5), "amount field not found")
         let cleared = NSPredicate(format: "value == '0.00' OR value == ''")
         expectation(for: cleared, evaluatedWith: amountField)
-        waitForExpectations(timeout: 5)
+        // Generous: the caller has just switched tabs, and rebuilding the form
+        // takes well over 5s on a loaded CI runner (run 32860255135).
+        waitForExpectations(timeout: 20)
     }
 
     @MainActor

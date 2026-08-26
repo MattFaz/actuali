@@ -99,7 +99,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
         case .bankSyncNotConfigured:
-            return "SimpleFIN isn't set up yet. Connect it in Settings first."
+            return "SimpleFIN isn't set up yet. Connect it in More → Transactions & Automation first."
         }
     }
 }
@@ -341,6 +341,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether Budget rows show their compact category-status dot.
+    /// Persisted to UserDefaults, defaults to on.
+    @Published var showCategoryStatusDots: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
+        }
+    }
+
     /// Whether Budget shows the status filter strip above the category list.
     /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
     /// space on a phone, so a budget that never needs the filters can reclaim
@@ -393,6 +401,19 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether shaking the device toggles `hideBalances`.
+    /// Persisted to UserDefaults, defaults to off (opt-in to avoid
+    /// conflicting with Shake to Undo).
+    @Published var shakeToHideBalances: Bool = false {
+        didSet {
+            UserDefaults.standard.set(shakeToHideBalances, forKey: "shakeToHideBalances")
+        }
+    }
+
+    /// Changes only for enabled shake gestures, so view feedback is not
+    /// coupled to every other way `hideBalances` can change.
+    @Published private(set) var shakeFeedbackTrigger = false
+
     /// Whether displayed currency amounts omit their fractional digits.
     /// The underlying cent values remain unchanged; this is presentation only.
     @Published var hideDecimalPlaces: Bool = false {
@@ -407,6 +428,15 @@ final class BudgetStore: ObservableObject {
     @Published var hideZeroBudgetCategories: Bool = false {
         didSet {
             UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
+        }
+    }
+
+    /// Whether hidden categories and groups are included on the Budget tab.
+    /// Persisted locally so an item stays reachable until the user turns the
+    /// view option off again.
+    @Published var showHiddenCategories: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
         }
     }
 
@@ -432,7 +462,13 @@ final class BudgetStore: ObservableObject {
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
+        let visible = categories.filter { !$0.isEffectivelyHidden }
+        let filtered = hideZeroBudgetCategories
+            ? visible.filter { $0.available != 0 }
+            : visible
+        return showHiddenCategories
+            ? filtered + categories.filter(\.isEffectivelyHidden)
+            : filtered
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -476,21 +512,19 @@ final class BudgetStore: ObservableObject {
             : text
     }
 
+    /// Toggles `hideBalances` in response to a device shake gesture if enabled.
+    func handleDeviceShake() {
+        guard shakeToHideBalances else { return }
+        hideBalances.toggle()
+        shakeFeedbackTrigger.toggle()
+    }
+
     /// Whether transaction saves record the payee's location (GH #24).
     /// Persisted to UserDefaults, defaults to on. Off silences every
     /// recording path, including Shortcuts automations.
     @Published var recordPayeeLocations: Bool = true {
         didSet {
             UserDefaults.standard.set(recordPayeeLocations, forKey: "recordPayeeLocations")
-        }
-    }
-
-    /// Whether due scheduled transactions are posted automatically after a
-    /// successful sync on launch/foreground. Opt-in (defaults off) because
-    /// every post writes to the user's real Actual server.
-    @Published var postScheduledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
         }
     }
 
@@ -1082,6 +1116,8 @@ final class BudgetStore: ObservableObject {
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
             .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showCategoryStatusDots = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showCategoryStatusDots") as? Bool ?? true)
         _showGroupTotals = Published(initialValue: UserDefaults.standard
             .object(forKey: "showGroupTotals") as? Bool ?? true)
         _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
@@ -1092,6 +1128,8 @@ final class BudgetStore: ObservableObject {
             .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
         _hideBalances = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideBalances") as? Bool ?? false)
+        _shakeToHideBalances = Published(initialValue: UserDefaults.standard
+            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
         _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
             .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
         _recordPayeeLocations = Published(initialValue: UserDefaults.standard
@@ -1099,12 +1137,12 @@ final class BudgetStore: ObservableObject {
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
+        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
         _hideClosedAccounts = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClosedAccounts"))
-        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
-            .bool(forKey: "postScheduledTransactions"))
 
         let token = loadAndMigrateAuthToken()
 
@@ -2162,6 +2200,36 @@ final class BudgetStore: ObservableObject {
             try await syncClient.renameCategory(id: id, name: trimmedName)
         } catch let error as BudgetDatabase.CategoryWriteError {
             throw error
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryHidden(id: id, hidden: hidden)
+        } catch {
+            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func setCategoryGroupHidden(id: String, hidden: Bool, month: String) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.setCategoryGroupHidden(id: id, hidden: hidden)
         } catch {
             throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
         }
@@ -4206,8 +4274,7 @@ final class BudgetStore: ObservableObject {
 
     @discardableResult
     private func postDueSchedulesIfNeeded() async -> Int {
-        guard postScheduledTransactions,
-              let client = syncClient,
+        guard let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
@@ -4430,7 +4497,7 @@ final class BudgetStore: ObservableObject {
             guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
             month = previous
             guard let budget = try? await database.fetchBudgetMonth(month: previous),
-                  let priorCategory = budget.categoryBudgets.first(where: {
+                  let priorCategory = budget.allCategoryBudgets.first(where: {
                       $0.categoryId == category.categoryId
                   }) else { continue }
             result.append(priorCategory)

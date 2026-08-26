@@ -33,6 +33,10 @@ protoc --swift_out=Actuali/Actuali/Generated/ Actuali/Actuali/Resources/sync.pro
 
 Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves dependencies (GRDB, SwiftProtobuf, ZIPFoundation) on first build.
 
+`IPHONEOS_DEPLOYMENT_TARGET` is 18.0, so the app ships to iOS 18 while still building against the iOS 26 SDK — the two are independent and both are needed. Code may use an iOS 26 API behind `@available` / `#available` (`.prominent` in `AddTransactionView`, `FoundationModels` in `TransactionTextParser`), which is why the newer SDK stays a hard requirement. Adding an iOS 26 API without a gate is a compile error, so the build itself guards the floor.
+
+What the compiler can't guard is anything the OS resolves at runtime, so CI runs the unit suite twice: once on the newest runtime and once on iOS 18. Two known traps live in that gap — SF Symbols added after SF Symbols 6 render blank rather than failing, and SQLite in iOS 18 predates 3.46.0, so a numeric separator inside a SQL string (`500_000`) throws `unrecognized token` at runtime. Plain Swift numeric literals are fine; only digits inside a SQL string matter.
+
 ### Notes for agents
 
 - **Always pass an explicit timeout** on `xcodebuild` (600000 ms is safe). A full `xcodebuild test` exceeds the default 2-minute shell limit and will be killed mid-run, which looks like a build failure but isn't.

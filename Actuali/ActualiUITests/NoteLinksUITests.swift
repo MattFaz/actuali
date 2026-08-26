@@ -17,7 +17,11 @@ final class NoteLinksUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
-        let dining = app.buttons["All transactions for Dining Out"]
+        // The spent pill opens the transactions view (#243 repurposed the
+        // name button for category details); its label ends with the month.
+        let dining = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Transactions for Dining Out in'")
+        ).firstMatch
         var scrollsLeft = 8
         while !dining.isHittable && scrollsLeft > 0 {
             app.swipeUp()

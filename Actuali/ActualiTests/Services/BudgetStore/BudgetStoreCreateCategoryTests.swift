@@ -237,4 +237,34 @@ struct BudgetStoreCreateCategoryTests {
         }
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
     }
+
+    @Test func hidingACategoryAndGroupWritesOnlyHiddenMessages() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        try await store.setCategoryHidden(id: "cat-groceries", hidden: true, month: "2026-07")
+        try await store.setCategoryGroupHidden(id: "grp-daily", hidden: true, month: "2026-07")
+
+        let categoryHidden: Int = try rows(
+            path: url,
+            sql: "SELECT hidden FROM categories WHERE id = 'cat-groceries'"
+        )[0]["hidden"]
+        let groupHidden: Int = try rows(
+            path: url,
+            sql: "SELECT hidden FROM category_groups WHERE id = 'grp-daily'"
+        )[0]["hidden"]
+        #expect(categoryHidden == 1)
+        #expect(groupHidden == 1)
+        #expect(try messagedColumns(
+            path: url,
+            dataset: "categories",
+            row: "cat-groceries"
+        ) == ["hidden"])
+        #expect(try messagedColumns(
+            path: url,
+            dataset: "category_groups",
+            row: "grp-daily"
+        ) == ["hidden"])
+    }
 }

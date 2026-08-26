@@ -134,12 +134,10 @@ struct TransactionAutomationSettingsView: View {
                 } label: {
                     Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                 }
-
-                Toggle("Post Scheduled Transactions", isOn: $budgetStore.postScheduledTransactions)
             } header: {
                 Text("Scheduled Transactions")
             } footer: {
-                Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
             }
 
             Section {

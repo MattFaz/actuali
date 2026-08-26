@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 /// Coverage for the iPad-only layouts. Skipped on iPhone, which keeps the
@@ -9,8 +10,15 @@ final class IPadSplitLayoutUITests: XCTestCase {
     /// the split-view tests. Run them on a 13-inch, or in landscape.
     private let wideLayoutThreshold: CGFloat = 1000
 
+    /// Skip before launching, not after: on a phone every test here ends in a
+    /// skip anyway, and paying for four app launches to learn that is what
+    /// times them out ("Timed out while launching application via Xcode") on a
+    /// loaded runner. A retry that skips doesn't clear the first run's failure,
+    /// so the suite fails the job.
     @MainActor
-    private func launch(initialTab: Int) -> XCUIApplication {
+    private func launch(initialTab: Int) throws -> XCUIApplication {
+        try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad,
+                          "iPad-only layouts; this device is a phone")
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", String(initialTab)]
         app.launch()
@@ -19,7 +27,7 @@ final class IPadSplitLayoutUITests: XCTestCase {
 
     @MainActor
     private func launchWide(initialTab: Int) throws -> XCUIApplication {
-        let app = launch(initialTab: initialTab)
+        let app = try launch(initialTab: initialTab)
         try XCTSkipUnless(
             app.windows.firstMatch.frame.width >= wideLayoutThreshold,
             "split layouts only; this window is too narrow for side-by-side columns"
@@ -86,7 +94,7 @@ final class IPadSplitLayoutUITests: XCTestCase {
     /// sidebar would otherwise open as a drawer under the floating tab bar).
     @MainActor
     func testRotatingIntoLandscapeBringsUpTheSplitLayout() throws {
-        let app = launch(initialTab: 0)
+        let app = try launch(initialTab: 0)
 
         XCTAssertTrue(app.staticTexts["Chase Checking"].waitForExistence(timeout: 15))
         let portraitWidth = app.windows.firstMatch.frame.width
@@ -112,13 +120,13 @@ final class IPadSplitLayoutUITests: XCTestCase {
     func testBudgetTableIsWidthCapped() throws {
         // Launched straight onto the tab: in the sidebar layout the tab
         // controls aren't the tab-bar buttons the phone tests tap.
-        let app = launch(initialTab: 1)
+        let app = try launch(initialTab: 1)
         // Capping applies at any regular width, not just wide enough for
         // columns — it just needs a window wider than the 700 pt cap.
         try XCTSkipUnless(app.windows.firstMatch.frame.width > 760,
                           "nothing to cap; this window is narrower than the cap")
 
-        let groceries = app.buttons["All transactions for Groceries"].firstMatch
+        let groceries = app.buttons["Details for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 15), "budget rows should load")
 
         let windowWidth = app.windows.firstMatch.frame.width
