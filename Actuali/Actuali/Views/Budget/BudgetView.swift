@@ -1256,14 +1256,33 @@ struct BudgetAmountPill: View {
     }
 }
 
-/// Group header row: collapse control and group name; optionally shows the
-/// group's Spent and Balance totals in the table's rightmost two columns.
-///
-/// Budgeted is deliberately absent. Pills are laid out from the trailing
-/// edge, so omitting it hands its ~76 pt back to the group name — which
-/// needs the room, since group names run longer than category names — while
-/// Spent and Balance stay in their columns. The per-category Budgeted cells
-/// are still there in the rows below for anyone who wants them.
+/// A `BudgetAmountPill` with a small caption above it, naming the column
+/// ("Budgeted" / "Spent" / "Balance") the same way the pinned summary bar's
+/// columns are captioned. Used by the detailed group header's totals so a
+/// group row reads the same as the summary above it, rather than leaving the
+/// person to cross-reference bare numbers against the summary's labels.
+private struct CaptionedAmountPill: View {
+    let label: String
+    let text: String
+    var color: Color = .primary
+    var dimmed = false
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 2) {
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.7)
+            BudgetAmountPill(text: text, color: color, dimmed: dimmed)
+        }
+        .frame(width: BudgetColumn.width, alignment: .trailing)
+    }
+}
+
+/// Group header row: collapse control and group name, plus the group's
+/// Budgeted, Spent and Balance totals in the table's three rightmost
+/// columns, each captioned the same way the pinned summary bar is.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
@@ -1289,33 +1308,45 @@ struct BudgetGroupHeader: View {
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleCollapse) {
-                HStack(spacing: BudgetColumn.spacing) {
-                    DisclosureChevron(
-                        isExpanded: !isCollapsed,
-                        font: .caption2.weight(.semibold)
-                    )
-                    .foregroundStyle(.secondary)
-                    if reservesTwoLines {
-                        TwoLineName(
-                            text: name,
-                            font: .subheadline.weight(.semibold),
-                            minimumScaleFactor: 0.85
+                HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+                    // Nested so the chevron centers against the name (which can
+                    // run one or two lines) rather than pinning to the top of
+                    // the row alongside the totals' captions.
+                    HStack(spacing: BudgetColumn.spacing) {
+                        DisclosureChevron(
+                            isExpanded: !isCollapsed,
+                            font: .caption2.weight(.semibold)
                         )
-                        .foregroundStyle(.primary)
-                    } else {
-                        Text(name)
-                            .font(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        if reservesTwoLines {
+                            TwoLineName(
+                                text: name,
+                                font: .subheadline.weight(.semibold),
+                                minimumScaleFactor: 0.85
+                            )
                             .foregroundStyle(.primary)
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.85)
+                        } else {
+                            Text(name)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
+                        }
                     }
                     Spacer(minLength: 4)
                     if let totals {
-                        BudgetAmountPill(
+                        CaptionedAmountPill(
+                            label: "Budgeted",
+                            text: budgetStore.displayBudgetCell(totals.budgeted),
+                            dimmed: totals.budgeted == 0
+                        )
+                        CaptionedAmountPill(
+                            label: "Spent",
                             text: budgetStore.displayBudgetCell(totals.spent),
                             dimmed: totals.spent == 0
                         )
-                        BudgetAmountPill(
+                        CaptionedAmountPill(
+                            label: "Balance",
                             text: budgetStore.displayBudgetCell(totals.balance),
                             // Same three-way treatment as the category rows, so a
                             // group that lands on zero doesn't read as healthy.
@@ -1366,11 +1397,23 @@ struct BudgetGroupHeader: View {
             return "\(name), \(state), received \(budgetStore.displayBalance(receivedTotal))"
         }
         guard let totals else { return "\(name), \(state)" }
-        return """
-            \(name), \(state), \
-            spent \(budgetStore.displayBalance(totals.spent)), \
-            balance \(budgetStore.displayBalance(totals.balance))
-            """
+        return Self.totalsAccessibilityLabel(
+            name: name,
+            isCollapsed: isCollapsed,
+            budgeted: budgetStore.displayBalance(totals.budgeted),
+            spent: budgetStore.displayBalance(totals.spent),
+            balance: budgetStore.displayBalance(totals.balance)
+        )
+    }
+
+    nonisolated static func totalsAccessibilityLabel(
+        name: String,
+        isCollapsed: Bool,
+        budgeted: String,
+        spent: String,
+        balance: String
+    ) -> String {
+        "\(name), \(isCollapsed ? "collapsed" : "expanded"), budgeted \(budgeted), spent \(spent), balance \(balance)"
     }
 
     private func receivedText(_ amount: Int) -> String {
