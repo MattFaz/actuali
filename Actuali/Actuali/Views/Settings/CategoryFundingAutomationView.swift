@@ -25,7 +25,7 @@ struct CategoryFundingAutomationView: View {
             Section {
                 Toggle("Enable Automation", isOn: $configuration.isEnabled)
             } footer: {
-                Text("When a new expense from the selected account would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
+                Text("When a new expense is manually entered from the selected account and would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
             }
 
             Section {
@@ -64,7 +64,7 @@ struct CategoryFundingAutomationView: View {
         .navigationTitle("Category Funding")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            configuration = CategoryFundingAutomationMonitor.loadConfiguration(for: budgetStore.currentBudgetId)
+            configuration = CategoryFundingAutomation.loadConfiguration(for: budgetStore.currentBudgetId)
                 ?? CategoryFundingAutomationConfiguration()
         }
         .onChange(of: configuration) { _, _ in
@@ -73,7 +73,7 @@ struct CategoryFundingAutomationView: View {
     }
 
     private func save() {
-        CategoryFundingAutomationMonitor.saveConfiguration(
+        CategoryFundingAutomation.saveConfiguration(
             configuration,
             for: budgetStore.currentBudgetId
         )
