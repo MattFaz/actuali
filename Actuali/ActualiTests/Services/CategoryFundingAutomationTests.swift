@@ -33,38 +33,30 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -125, availableAfterTransaction: -1000) == 125)
     }
 
-    @Test("Uncategorized transactions are ignored by processing logic")
-    func uncategorized() {
-        let transaction = makeTransaction(categoryId: nil)
-        #expect(!CategoryFundingAutomation.shouldProcess(
+    @Test("Manual expense from selected account is eligible")
+    func manualExpenseIsEligible() {
+        let transaction = makeTransaction(categoryId: "groceries")
+        #expect(CategoryFundingAutomation.isManualExpenseEligible(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
         ))
     }
 
-    @Test("Uncategorized transactions are not marked seen")
-    func uncategorizedIsNotMarkedSeen() {
+    @Test("Uncategorized transactions are ignored")
+    func uncategorized() {
         let transaction = makeTransaction(categoryId: nil)
-        #expect(!CategoryFundingAutomation.shouldMarkSeen(transaction))
-    }
-
-    @Test("Categorized transactions are marked seen")
-    func categorizedIsMarkedSeen() {
-        let transaction = makeTransaction(categoryId: "groceries")
-        #expect(CategoryFundingAutomation.shouldMarkSeen(transaction))
-    }
-
-    @Test("Split parents are marked seen so they do not repeatedly wake the monitor")
-    func splitParentIsMarkedSeen() {
-        let transaction = makeTransaction(categoryId: nil, isParent: true)
-        #expect(CategoryFundingAutomation.shouldMarkSeen(transaction))
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false
+        ))
     }
 
     @Test("Transactions from another account are ignored")
     func nonSelectedAccount() {
         let transaction = makeTransaction(accountId: "account-2", categoryId: "groceries")
-        #expect(!CategoryFundingAutomation.shouldProcess(
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -74,7 +66,7 @@ struct CategoryFundingAutomationTests {
     @Test("Income transactions are ignored")
     func income() {
         let transaction = makeTransaction(amount: 5000, categoryId: "income")
-        #expect(!CategoryFundingAutomation.shouldProcess(
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: true
@@ -84,7 +76,7 @@ struct CategoryFundingAutomationTests {
     @Test("Transfers are ignored")
     func transfer() {
         let transaction = makeTransaction(categoryId: "groceries", transferId: "other-leg")
-        #expect(!CategoryFundingAutomation.shouldProcess(
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -94,7 +86,17 @@ struct CategoryFundingAutomationTests {
     @Test("Non-expense amounts are ignored")
     func nonExpense() {
         let transaction = makeTransaction(amount: 1000, categoryId: "groceries")
-        #expect(!CategoryFundingAutomation.shouldProcess(
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false
+        ))
+    }
+
+    @Test("Split parents are ignored")
+    func splitParent() {
+        let transaction = makeTransaction(categoryId: nil, isParent: true)
+        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -127,14 +129,14 @@ struct CategoryFundingAutomationTests {
             fundingSource: .category("emergency-fund")
         )
 
-        CategoryFundingAutomationMonitor.saveConfiguration(
+        CategoryFundingAutomation.saveConfiguration(
             configuration,
             for: "budget-1",
             defaults: defaults
         )
 
         #expect(
-            CategoryFundingAutomationMonitor.loadConfiguration(
+            CategoryFundingAutomation.loadConfiguration(
                 for: "budget-1",
                 defaults: defaults
             ) == configuration
