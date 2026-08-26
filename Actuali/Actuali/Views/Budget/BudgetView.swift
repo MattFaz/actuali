@@ -222,13 +222,18 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )
                 .textCase(nil)
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        setCategoryGroupHidden(group.id, hidden: !group.isHidden)
+                    } label: {
+                        Label(group.isHidden ? "Show" : "Hide",
+                              systemImage: group.isHidden ? "eye" : "eye.slash")
+                    }
+                    .tint(group.isHidden ? .accentColor : .secondary)
+                }
             }
         } else {
             // The group row lives inside the card (first row, tinted) like
@@ -238,16 +243,21 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     onToggleCollapse: { toggleCollapsed(group.id) },
                     reservesTwoLines: true
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
+                .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                    Button {
+                        setCategoryGroupHidden(group.id, hidden: !group.isHidden)
+                    } label: {
+                        Label(group.isHidden ? "Show" : "Hide",
+                              systemImage: group.isHidden ? "eye" : "eye.slash")
+                    }
+                    .tint(group.isHidden ? .accentColor : .secondary)
+                }
                 if !isCollapsed {
                     ForEach(group.categories) { category in
                         CategoryBudgetRow(
@@ -301,10 +311,6 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
-                    },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -317,10 +323,6 @@ struct BudgetView: View {
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
-                    },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -1287,8 +1289,6 @@ struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
     let isCollapsed: Bool
-    var isHidden = false
-    var onSetHidden: ((Bool) -> Void)?
     /// The detailed style totals its columns here; the clean style's header
     /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
@@ -1368,25 +1368,7 @@ struct BudgetGroupHeader: View {
             .buttonStyle(.plain)
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Toggles the group's categories")
-
-            if let onSetHidden {
-                Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            isHidden ? "Show Group" : "Hide Group",
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(minWidth: 32, minHeight: 44)
-                }
-                .accessibilityLabel("Options for \(name)")
-            }
         }
-        .opacity(isHidden ? 0.5 : 1)
     }
 
     /// The pills are decoration to VoiceOver once the button carries its own
