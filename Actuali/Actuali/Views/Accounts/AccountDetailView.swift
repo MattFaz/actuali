@@ -74,36 +74,6 @@ struct AccountDetailView: View {
         note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
     }
 
-    private var noteSection: some View {
-        Section("Note") {
-            if note.isEmpty {
-                Button {
-                    editingNote = true
-                } label: {
-                    Label("Add Note", systemImage: "note.text.badge.plus")
-                        .foregroundStyle(Color.accentColor)
-                }
-                .buttonStyle(.plain)
-                .accessibilityIdentifier("accountNoteRow")
-            } else {
-                HStack(alignment: .top, spacing: 12) {
-                    Text(NoteLinkText.attributed(note.text))
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                    Image(systemName: "pencil")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture { editingNote = true }
-                .accessibilityElement(children: .combine)
-                .accessibilityAddTraits(.isButton)
-                .accessibilityIdentifier("accountNoteRow")
-            }
-        }
-    }
-
     private func breakdownRow(_ title: String, amount: Int) -> some View {
         breakdownRow(title, value: budgetStore.displayBalance(amount))
     }
@@ -332,10 +302,7 @@ struct AccountDetailView: View {
                 accountId: account.id,
                 onSaved: {
                     Task { @MainActor in
-                        await CategoryFundingAutomation.processManualTransaction(
-                            accountId: account.id,
-                            using: budgetStore
-                        )
+                        await CategoryFundingAutomation.processLatestManualTransaction(using: budgetStore)
                     }
                 }
             )
