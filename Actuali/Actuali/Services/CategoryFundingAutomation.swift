@@ -43,99 +43,84 @@ enum CategoryFundingAutomation {
             && !transaction.tombstone
     }
 
-    /// Uncategorized transactions are deliberately left out of the seen set.
-    /// They can therefore become eligible when the user assigns a category.
-    static func shouldMarkSeen(_ transaction: Transaction) -> Bool {
-        transaction.categoryId != nil || transaction.isParent
-    }
-}
-
-@MainActor
-final class CategoryFundingAutomationMonitor {
-    private var budgetId: String?
-    private var versionAtReset = 0
-    private var hasBaseline = false
-    private var seenTransactionIds = Set<String>()
-
-    func reset(for budgetId: String?, dataVersion: Int) {
-        guard self.budgetId != budgetId else { return }
-        self.budgetId = budgetId
-        versionAtReset = dataVersion
-        hasBaseline = false
-        seenTransactionIds.removeAll()
-    }
-
-    func processCurrentSnapshot(using budgetStore: BudgetStore) {
-        reset(for: budgetStore.currentBudgetId, dataVersion: budgetStore.dataVersion)
-        guard budgetStore.dataVersion > versionAtReset else { return }
-
-        guard !hasBaseline else {
-            let newTransactions = budgetStore.transactions.filter {
-                !seenTransactionIds.contains($0.id)
-            }
-
-            for transaction in newTransactions where CategoryFundingAutomation.shouldMarkSeen(transaction) {
-                seenTransactionIds.insert(transaction.id)
-            }
-
-            guard !newTransactions.isEmpty else { return }
-            Task { [weak self, weak budgetStore] in
-                guard let self, let budgetStore else { return }
-                for transaction in newTransactions {
-                    await self.process(transaction, using: budgetStore)
-                }
-            }
-            return
-        }
-
-        seenTransactionIds = Set(
-            budgetStore.transactions.compactMap { transaction in
-                CategoryFundingAutomation.shouldMarkSeen(transaction) ? transaction.id : nil
-            }
+    /// Split parents have no category and are intentionally out of scope.
+    /// This helper is kept pure so the manual-entry integration can be tested
+    /// without a live BudgetStore.
+    static func isManualExpenseEligible(
+        _ transaction: Transaction,
+        selectedAccountId: String,
+        isIncomeCategory: Bool
+    ) -> Bool {
+        shouldProcess(
+            transaction,
+            selectedAccountId: selectedAccountId,
+            isIncomeCategory: isIncomeCategory
         )
-        hasBaseline = true
     }
 
-    private func process(_ transaction: Transaction, using budgetStore: BudgetStore) async {
-        guard let configuration = Self.loadConfiguration(for: budgetStore.currentBudgetId),
-              configuration.isEnabled,
-              let accountId = configuration.accountId else { return }
+    /// Called explicitly after a successful manual Add Transaction save.
+    /// There is deliberately no transaction monitor: imported, synced,
+    /// scheduled, duplicated, or edited transactions do not trigger this
+    /// automation.
+    @MainActor
+    static func processManualTransaction(
+        accountId: String,
+        using budgetStore: BudgetStore
+    ) async {
+        guard let configuration = CategoryFundingAutomationMonitor.loadConfiguration(
+            for: budgetStore.currentBudgetId
+        ),
+        configuration.isEnabled,
+        configuration.accountId == accountId else { return }
+
+        // AddTransactionView refreshes the store after a successful save. The
+        // new transaction receives the newest sort order, so selecting the
+        // highest sort order for this account avoids accidentally processing an
+        // older transaction when several rows share the same date.
+        guard let transaction = budgetStore.transactions
+            .filter({ $0.accountId == accountId && !$0.tombstone })
+            .max(by: { lhs, rhs in
+                (lhs.sortOrder ?? -.greatestFiniteMagnitude) <
+                    (rhs.sortOrder ?? -.greatestFiniteMagnitude)
+            }) else { return }
 
         let isIncomeCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
             .first(where: { $0.id == transaction.categoryId })?
             .isIncome ?? false
 
-        guard CategoryFundingAutomation.shouldProcess(
+        guard isManualExpenseEligible(
             transaction,
             selectedAccountId: accountId,
             isIncomeCategory: isIncomeCategory
         ) else { return }
 
-        let month = String(format: "%04d-%02d", transaction.date / 10000, (transaction.date / 100) % 100)
-        let displayedMonth = budgetStore.currentBudgetMonth?.month
-        await budgetStore.fetchBudgetMonth(month)
-        guard let category = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
-            $0.categoryId == transaction.categoryId
-        }) else {
-            restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
-            return
-        }
+        let month = String(
+            format: "%04d-%02d",
+            transaction.date / 10000,
+            (transaction.date / 100) % 100
+        )
 
-        let amountToFund = CategoryFundingAutomation.shortfall(
+        // Read the requested month directly from the database. This does not
+        // modify BudgetStore.currentBudgetMonth or requestedBudgetMonth, so a
+        // manual entry for another month cannot move the Budget tab.
+        guard let database = budgetStore.databaseForLogger,
+              let budgetMonth = try? await database.fetchBudgetMonth(month: month),
+              let category = budgetMonth.allCategoryBudgets.first(where: {
+                  $0.categoryId == transaction.categoryId
+              }) else { return }
+
+        let amountToFund = shortfall(
             transactionAmount: transaction.amount,
             availableAfterTransaction: category.available
         )
-        guard amountToFund > 0 else {
-            restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
-            return
-        }
+        guard amountToFund > 0 else { return }
 
         do {
             switch configuration.fundingSource {
             case .toBudget:
-                // To Budget is allowed to become negative in Actuali, so it
-                // can always provide the requested shortfall.
+                // To Budget is allowed to become negative, so it can always
+                // provide the complete shortfall.
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: nil,
@@ -145,17 +130,17 @@ final class CategoryFundingAutomationMonitor {
 
             case .category(let sourceCategoryId):
                 guard sourceCategoryId != category.categoryId,
-                      let sourceCategory = budgetStore.currentBudgetMonth?.allCategoryBudgets.first(where: {
+                      let sourceCategory = budgetMonth.allCategoryBudgets.first(where: {
                           $0.categoryId == sourceCategoryId
                       }) else {
                     budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
-                    restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
                     return
                 }
 
+                // Category sources must have enough available money. Do not
+                // partially transfer the source balance.
                 guard sourceCategory.available >= amountToFund else {
                     budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
-                    restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
                     return
                 }
 
@@ -168,19 +153,6 @@ final class CategoryFundingAutomationMonitor {
             }
         } catch {
             budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
-        }
-
-        restoreDisplayedMonth(displayedMonth, transactionMonth: month, using: budgetStore)
-    }
-
-    private func restoreDisplayedMonth(
-        _ displayedMonth: String?,
-        transactionMonth: String,
-        using budgetStore: BudgetStore
-    ) {
-        guard let displayedMonth, displayedMonth != transactionMonth else { return }
-        Task { @MainActor in
-            await budgetStore.fetchBudgetMonth(displayedMonth)
         }
     }
 
@@ -207,5 +179,25 @@ final class CategoryFundingAutomationMonitor {
 
     private static func key(for budgetId: String) -> String {
         "categoryFundingAutomation_\(budgetId)"
+    }
+}
+
+/// Kept as a small compatibility namespace for configuration persistence used
+/// by the Settings view and existing tests. Transaction monitoring has been
+/// removed: the automation is now explicitly invoked only by manual entry.
+enum CategoryFundingAutomationMonitor {
+    static func loadConfiguration(
+        for budgetId: String?,
+        defaults: UserDefaults = .standard
+    ) -> CategoryFundingAutomationConfiguration? {
+        CategoryFundingAutomation.loadConfiguration(for: budgetId, defaults: defaults)
+    }
+
+    static func saveConfiguration(
+        _ configuration: CategoryFundingAutomationConfiguration,
+        for budgetId: String?,
+        defaults: UserDefaults = .standard
+    ) {
+        CategoryFundingAutomation.saveConfiguration(configuration, for: budgetId, defaults: defaults)
     }
 }
