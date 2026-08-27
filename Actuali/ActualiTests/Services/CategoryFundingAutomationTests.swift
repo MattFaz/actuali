@@ -64,6 +64,7 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.fundingDecision(
             transactionAmount: -50,
             availableAfterTransaction: -30,
+            targetCategoryId: "groceries",
             fundingSource: .category("emergency-fund"),
             sourceAvailable: 30
         ) == .fund(30))
@@ -74,6 +75,7 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.fundingDecision(
             transactionAmount: -50,
             availableAfterTransaction: -30,
+            targetCategoryId: "groceries",
             fundingSource: .category("emergency-fund"),
             sourceAvailable: 20
         ) == .insufficientSource)
@@ -84,9 +86,21 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.fundingDecision(
             transactionAmount: -50,
             availableAfterTransaction: -50,
+            targetCategoryId: "groceries",
             fundingSource: .category("emergency-fund"),
             sourceAvailable: nil
         ) == .invalidSource)
+    }
+
+    @Test("A category cannot fund itself")
+    func sameSourceAndTargetIsInvalid() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -50,
+            targetCategoryId: "groceries",
+            fundingSource: .category("groceries"),
+            sourceAvailable: 100
+        ) == .sameSourceAndTarget)
     }
 
     @Test("To Budget can fund even when its balance is negative")
@@ -96,16 +110,6 @@ struct CategoryFundingAutomationTests {
             availableAfterTransaction: -50,
             fundingSource: .toBudget
         ) == .fund(50))
-    }
-
-    @Test("Selected category cannot fund itself")
-    func sameSourceAndTargetIsInvalid() {
-        let transaction = makeTransaction(categoryId: "groceries")
-        #expect(CategoryFundingAutomation.shouldProcess(
-            transaction,
-            selectedAccountId: "account-1",
-            isIncomeCategory: false
-        ))
     }
 
     @Test("Manual expense from selected account is eligible")
