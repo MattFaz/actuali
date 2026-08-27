@@ -1,5 +1,6 @@
 import Foundation
 
+/// Where a category shortfall is funded from.
 enum CategoryFundingSource: Hashable, Codable {
     case toBudget
     case category(String)
@@ -11,6 +12,13 @@ struct CategoryFundingAutomationConfiguration: Codable, Equatable {
     var fundingSource: CategoryFundingSource = .toBudget
 }
 
+enum CategoryFundingDecision: Equatable {
+    case none
+    case fund(Int)
+    case insufficientSource
+    case invalidSource
+}
+
 enum CategoryFundingAutomation {
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
@@ -20,6 +28,29 @@ enum CategoryFundingAutomation {
         let usableFundsBeforeTransaction = max(0, availableBeforeTransaction)
 
         return max(0, expense - usableFundsBeforeTransaction)
+    }
+
+    /// Decide whether the configured source can cover the amount required by
+    /// this new expense. To Budget may go negative; another category may not.
+    static func fundingDecision(
+        transactionAmount: Int,
+        availableAfterTransaction: Int,
+        fundingSource: CategoryFundingSource,
+        sourceAvailable: Int? = nil
+    ) -> CategoryFundingDecision {
+        let amount = shortfall(
+            transactionAmount: transactionAmount,
+            availableAfterTransaction: availableAfterTransaction
+        )
+        guard amount > 0 else { return .none }
+
+        switch fundingSource {
+        case .toBudget:
+            return .fund(amount)
+        case .category:
+            guard let sourceAvailable else { return .invalidSource }
+            return sourceAvailable >= amount ? .fund(amount) : .insufficientSource
+        }
     }
 
     static func shouldProcess(
@@ -37,43 +68,33 @@ enum CategoryFundingAutomation {
             && !transaction.tombstone
     }
 
-    static func isManualExpenseEligible(
-        _ transaction: Transaction,
-        selectedAccountId: String,
-        isIncomeCategory: Bool
-    ) -> Bool {
-        shouldProcess(
-            transaction,
-            selectedAccountId: selectedAccountId,
-            isIncomeCategory: isIncomeCategory
-        )
-    }
-
-    /// Called explicitly after a successful manual Add Transaction save.
-    /// This deliberately receives no account from the presenting view: the
-    /// save form can change its account. Instead, read the newest transaction
-    /// from the database-backed transaction query after the save completes.
-    /// Imported, synced, scheduled, duplicated, and edited transactions do not
-    /// invoke this method.
+    /// Runs only after a successful manual Add Transaction save. The id is the
+    /// exact row created by the form, so backdated transactions, rows on other
+    /// accounts, and newer rows elsewhere in the budget cannot be mistaken for
+    /// the triggering transaction. Rules have already run before this point,
+    /// so the stored transaction is authoritative.
     @MainActor
-    static func processLatestManualTransaction(using budgetStore: BudgetStore) async {
-        guard let budgetId = budgetStore.currentBudgetId,
-              let configuration = loadConfiguration(for: budgetId),
-              configuration.isEnabled,
-              configuration.accountId != nil else { return }
-
-        // Query the database-backed first page rather than the store's cached
-        // 500-row snapshot. This guarantees the just-created transaction is
-        // available even when the account has a long history.
-        guard let transaction = await budgetStore.fetchTransactions(limit: 1).first,
-              let selectedAccountId = configuration.accountId else { return }
+    static func process(
+        savedTransactionId: String,
+        using budgetStore: BudgetStore,
+        defaults: UserDefaults = .standard
+    ) async {
+        guard let configuration = loadConfiguration(
+            for: budgetStore.currentBudgetId,
+            defaults: defaults
+        ), configuration.isEnabled,
+              let selectedAccountId = configuration.accountId,
+              let database = budgetStore.databaseForLogger,
+              let transaction = try? await database.fetchTransaction(id: savedTransactionId) else {
+            return
+        }
 
         let isIncomeCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
             .first(where: { $0.id == transaction.categoryId })?
             .isIncome ?? false
 
-        guard isManualExpenseEligible(
+        guard shouldProcess(
             transaction,
             selectedAccountId: selectedAccountId,
             isIncomeCategory: isIncomeCategory
@@ -85,58 +106,60 @@ enum CategoryFundingAutomation {
             (transaction.date / 100) % 100
         )
 
-        // Read the budget month directly from the database so the automation
-        // never changes the month the Budget tab is displaying.
-        guard let database = budgetStore.databaseForLogger,
-              let budgetMonth = try? await database.fetchBudgetMonth(month: month),
+        guard let budgetMonth = try? await database.fetchBudgetMonth(month: month),
               let category = budgetMonth.allCategoryBudgets.first(where: {
                   $0.categoryId == transaction.categoryId
-              }) else { return }
+              }) else {
+            return
+        }
 
-        let amountToFund = shortfall(
+        let sourceAvailable: Int?
+        let sourceCategoryId: String?
+        switch configuration.fundingSource {
+        case .toBudget:
+            sourceAvailable = nil
+            sourceCategoryId = nil
+        case .category(let sourceId):
+            guard sourceId != category.categoryId else {
+                budgetStore.error = "Couldn't fund \(category.categoryName): choose a different funding category."
+                return
+            }
+            sourceCategoryId = sourceId
+            sourceAvailable = budgetMonth.allCategoryBudgets.first(where: {
+                $0.categoryId == sourceId
+            })?.available
+        }
+
+        switch fundingDecision(
             transactionAmount: transaction.amount,
-            availableAfterTransaction: category.available
-        )
-        guard amountToFund > 0 else { return }
-
-        do {
-            switch configuration.fundingSource {
-            case .toBudget:
-                // To Budget is allowed to go negative in Actual, so it can
-                // always cover the complete shortfall.
-                try await budgetStore.transferBudget(
-                    month: month,
-                    fromCategoryId: nil,
-                    toCategoryId: category.categoryId,
-                    amountCents: amountToFund
-                )
-
-            case .category(let sourceCategoryId):
-                guard sourceCategoryId != category.categoryId,
-                      let sourceCategory = budgetMonth.allCategoryBudgets.first(where: {
-                          $0.categoryId == sourceCategoryId
-                      }) else {
-                    budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
-                    return
-                }
-
-                // A category source must cover the complete shortfall. Never
-                // partially drain it and leave the user with an unexplained
-                // remaining shortfall.
-                guard sourceCategory.available >= amountToFund else {
-                    budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
-                    return
-                }
-
+            availableAfterTransaction: category.available,
+            fundingSource: configuration.fundingSource,
+            sourceAvailable: sourceAvailable
+        ) {
+        case .none:
+            return
+        case .invalidSource:
+            budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
+        case .insufficientSource:
+            budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
+        case .fund(let amountToFund):
+            let displayedMonth = budgetStore.currentBudgetMonth?.month
+            do {
                 try await budgetStore.transferBudget(
                     month: month,
                     fromCategoryId: sourceCategoryId,
                     toCategoryId: category.categoryId,
                     amountCents: amountToFund
                 )
+            } catch {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
             }
-        } catch {
-            budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
+
+            // transferBudget refreshes the transaction's month. Restore the
+            // month the user was viewing when the automation started.
+            if let displayedMonth, displayedMonth != month {
+                await budgetStore.fetchBudgetMonth(displayedMonth)
+            }
         }
     }
 
@@ -163,5 +186,60 @@ enum CategoryFundingAutomation {
 
     private static func key(for budgetId: String) -> String {
         "categoryFundingAutomation_\(budgetId)"
+    }
+}
+
+/// The existing BudgetStore save API returns Void. Manual category funding
+/// needs the exact created id, so this narrow helper mirrors only the standard
+/// expense-create path and leaves all existing edit/transfer/split behavior in
+/// BudgetStore untouched.
+extension BudgetStore {
+    @discardableResult
+    func createManualExpenseReturningID(_ form: TransactionForm) async throws -> String? {
+        guard form.type == .expense, form.splits.isEmpty, !form.collapseSplit else {
+            return nil
+        }
+
+        let date = Transaction.yyyymmdd(from: form.date)
+        guard case .standard(let amountCents) = try Self.plan(for: form), amountCents < 0 else {
+            return nil
+        }
+
+        let notes = form.notes.isEmpty ? nil : form.notes
+        let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
+        let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
+        let transaction = Transaction(
+            id: UUID().uuidString,
+            accountId: form.accountId,
+            date: date,
+            amount: amountCents,
+            payeeId: payeeId,
+            payeeName: payeeName,
+            categoryId: form.categoryId,
+            categoryName: nil,
+            notes: notes,
+            cleared: form.cleared,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: payeeName
+        )
+
+        try await createTransaction(transaction)
+        if form.recordLocation, let payeeId {
+            recordPayeeLocationIfAppropriate(payeeId: payeeId)
+        }
+
+        // A delete-transaction rule can remove the just-created row. Don't
+        // hand a non-existent id to the funding automation in that case.
+        guard let database = databaseForLogger,
+              let stored = try? await database.fetchTransaction(id: transaction.id),
+              stored != nil else {
+            return nil
+        }
+        return transaction.id
     }
 }
