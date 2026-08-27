@@ -36,9 +36,6 @@ struct AddTransactionView: View {
 
     @FocusState private var payeeFocused: Bool
 
-    /// Initializer for the "Add" flow. The optional prefill parameters carry
-    /// whatever an automation passed along — a failed Wallet log or the Add
-    /// Transaction with Review intent (see TransactionPrefill).
     init(
         accountId: String,
         payee: String = "",
@@ -61,14 +58,9 @@ struct AddTransactionView: View {
         _notes = State(initialValue: notes)
         _date = State(initialValue: date)
         _cleared = State(initialValue: cleared)
-        // A prefilled category is the automation's explicit choice — don't
-        // let the payee-history suggestion overwrite it.
         _userPickedCategory = State(initialValue: categoryId != nil)
     }
 
-    /// Initializer for the "Edit" flow. Transfer legs load as transfers —
-    /// From/To derive from the leg's sign (the opened row can be either side)
-    /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
         self.onSaved = nil
@@ -82,8 +74,6 @@ struct AddTransactionView: View {
                 _selectedAccountId = State(initialValue: editing.accountId)
                 _transferToAccountId = State(initialValue: editing.transferAcct)
             } else {
-                // Partner unknown (transfer payee missing): fall back to the
-                // leg's own account as From and let the user pick To.
                 _selectedAccountId = State(initialValue: editing.transferAcct ?? editing.accountId)
                 _transferToAccountId = State(initialValue:
                     editing.transferAcct == nil ? nil : editing.accountId)
@@ -101,33 +91,19 @@ struct AddTransactionView: View {
     }
 
     private var isEditing: Bool { editing != nil }
-    /// Presented flows (edit, account-detail "+", notification prefill) can
-    /// close themselves; the tab-hosted add flow can't. Cancel, post-save
-    /// behavior, and the header all branch on this.
     private var canDismiss: Bool { isEditing || isPresented }
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
     private var isEditingTransfer: Bool { editing?.transferId != nil }
 
-    /// Whether the edit form may offer turning this transaction into a
-    /// transfer (GH #259). Split parents and children are excluded — the
-    /// store refuses them, since a parent's amount is its children's and a
-    /// child has no row of its own to pair.
     private var canConvertToTransfer: Bool {
         guard let editing else { return false }
         return editing.transferId == nil && !editing.isParent && editing.parentId == nil
     }
     private var isConvertingToTransfer: Bool { isTransfer && canConvertToTransfer }
 
-    /// A transfer leg takes a category only when it sits in an on-budget
-    /// account and the other side is off-budget — money leaving the budget
-    /// still needs one (Actual's rule). Tracks the live picker selections so
-    /// re-targeting the accounts shows/hides the row immediately.
     private var editedTransferLegIsCategorizable: Bool {
         guard let editing, isTransfer else { return false }
-        // The edited row's own account is the one in the account picker,
-        // except on an existing transfer opened from its receiving leg —
-        // there the form shows the pair as From/To and the opened row is To.
         let openedOnDestinationLeg = editing.transferId != nil && editing.amount >= 0
         let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
         let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
@@ -139,21 +115,11 @@ struct AddTransactionView: View {
     }
     private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
 
-    /// Whether the form can offer the split option: a plain transaction in
-    /// either flow, or an existing parent mid-"Remove Split" (as an undo).
-    /// Transfers are excluded — they pair two accounts through `transferId`
-    /// and splitting would orphan the partner leg (the store refuses it), so
-    /// the button stays hidden rather than failing on save.
     private var canSplitIntoCategories: Bool {
         editing?.transferId == nil && (!isEditingSplitParent || unsplitRequested)
     }
 
-    /// Cents still unassigned across the split lines, nil while the total
-    /// doesn't parse yet. Blank lines count as zero so the remainder stays
-    /// visible while the user is still filling lines in.
     private var splitRemainingCents: Int? {
-        // Opposite-direction lines hand their amount back to the remainder
-        // instead of consuming it (GH #216).
         SplitEntryMath.remainingCents(total: amount, lineAmounts: splitLines.map { line in
             line.isOpposite && !line.amount.isEmpty ? "-\(line.amount)" : line.amount
         })
@@ -163,8 +129,6 @@ struct AddTransactionView: View {
         splitLines.contains { $0.amount.isEmpty }
     }
 
-    /// Open accounts ordered to match the webapp's AccountAutocomplete:
-    /// on-budget first, then off-budget, each group by sort_order.
     private var orderedOpenAccounts: [Account] {
         budgetStore.accounts
             .filter { !$0.closed }
@@ -174,11 +138,6 @@ struct AddTransactionView: View {
             }
     }
 
-    /// Converting keeps the edited row on its own side of the transfer, so
-    /// the form asks for one account — the other one — instead of the From/To
-    /// pair a new transfer needs. The account row stays editable and keeps
-    /// its usual label: moving a transaction between accounts is an ordinary
-    /// edit, and converting doesn't take that away.
     private var accountPickerLabel: String {
         isTransfer && !isConvertingToTransfer ? "From" : "Account"
     }
@@ -207,16 +166,11 @@ struct AddTransactionView: View {
         guard let db = budgetStore.databaseForLogger else { return }
         Task { @MainActor in
             guard let cat = try? await db.mostRecentCategoryId(forPayeeId: payeeId) else { return }
-            // Re-check after the await: the user may have picked a category
-            // while the lookup was in flight — don't clobber their choice.
             guard !userPickedCategory else { return }
             selectedCategoryId = cat
         }
     }
 
-    /// Load nearby payees when the payee field gains focus. Requests
-    /// permission on first use; every failure path degrades to "no
-    /// suggestions" silently.
     private func loadNearbyPayees() {
         guard !isEditing else { return }
         Task { @MainActor in
@@ -235,9 +189,6 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Swipe-delete on a nearby suggestion tombstones that one location
-    /// record, then reloads: the payee legitimately reappears if it has
-    /// another recorded location within range.
     private func deleteNearbySuggestion(_ nearby: NearbyPayee) {
         Task { @MainActor in
             guard await budgetStore.deletePayeeLocation(nearby.location) else { return }
@@ -290,20 +241,12 @@ struct AddTransactionView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        // A split parent's sign is the children's; flipping
-                        // it would have to flip every line, so it stays fixed.
-                        // A transfer stays a transfer: converting one back
-                        // would orphan the partner leg (the store refuses it).
                         .disabled(isEditingSplitParent || isEditingTransfer)
                     }
 
                     HStack {
                         Text(amountSignSymbol)
                             .foregroundStyle(amountSignColor)
-                        // The amount is the first thing entered in a fresh
-                        // form, so the add flow opens with the keyboard ready.
-                        // Edits and prefilled amounts already have one and
-                        // start with the keyboard down.
                         AmountInputField(
                             text: $amount,
                             conventionalAmountEntry: budgetStore.conventionalAmountEntry,
@@ -417,8 +360,6 @@ struct AddTransactionView: View {
                         }
 
                         if isEditingSplitParent && !isSplitting && !unsplitRequested {
-                            // Placeholder while the children load into the
-                            // editable split lines below.
                             HStack {
                                 Text("Category")
                                 Spacer()
@@ -456,22 +397,13 @@ struct AddTransactionView: View {
                 }
 
                 Section {
-                    // One line while the note is short — an empty three-line
-                    // box only pushes Cleared and the save button off screen —
-                    // growing as the text needs it, up to six.
                     TextField("Notes", text: $notes, axis: .vertical)
                         .lineLimit(1...6)
-                    // Links in the note stay openable while the text is a
-                    // TextField (GH #190) — this form doubles as the only
-                    // full view of a transaction's note.
                     NoteLinkRows(text: notes)
                 }
 
                 Section {
                     Toggle("Cleared", isOn: $cleared)
-                    // Only the paths that record locations (adds and split
-                    // edits) get the per-save opt-out; standard edits never
-                    // record, so the toggle would be a no-op there.
                     if (!isEditing || isEditingSplitParent) && !isTransfer
                         && budgetStore.payeeLocationWritesEnabled
                         && budgetStore.recordPayeeLocations {
@@ -496,17 +428,9 @@ struct AddTransactionView: View {
                         }
                     }
                     .disabled(saveDisabled)
-                    // Hardware-keyboard commit, for the iPad case where the
-                    // form is filled without ever leaving the keys. Return on
-                    // its own belongs to the focused field; ⌘Return is the
-                    // whole form. Inert while the save is disabled.
                     .keyboardShortcut(.return, modifiers: .command)
                 }
 
-                // Cancel sits under the save button rather than in the
-                // navigation bar: the two decisions belong together at the
-                // end of the form, and its own section makes it the same
-                // full-width row as the save button.
                 Section {
                     Button(role: .destructive, action: cancelEntry) {
                         HStack {
@@ -516,21 +440,11 @@ struct AddTransactionView: View {
                             Spacer()
                         }
                     }
-                    // Esc cancels on a hardware keyboard while the row is on
-                    // screen. A Form row is lazy, so on a form long enough to
-                    // scroll the shortcut isn't registered until the row is
-                    // reached — the same reachability the tap has.
                     .keyboardShortcut(.cancelAction)
                 }
             }
             .readableWidth()
-            // The form's default ~35pt top inset is dead space on the
-            // header-less tab root; 8pt keeps the first section off the status
-            // bar without it. Presented flows have a title up there and keep
-            // the stock inset.
             .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
-            // Presented flows keep their sheet titles; the tab root shows no
-            // header, matching the Accounts and Budget tabs.
             .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
@@ -544,18 +458,11 @@ struct AddTransactionView: View {
             }
             .disabled(isLoading)
             .task {
-                // Load a split parent's children as editable lines. Inherited
-                // payees load as empty so a parent payee edit follows through
-                // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
             }
         }
     }
 
-    /// Any presented flow (edit, account-detail "+", notification prefill)
-    /// closes on Cancel; the tab-hosted add flow has nothing to dismiss to, so
-    /// Cancel discards the entry and returns to the user's Start Page instead
-    /// (GH #281).
     private func cancelEntry() {
         if canDismiss {
             dismiss()
@@ -565,10 +472,6 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Load a split parent's children as editable lines. Inherited payees
-    /// load as empty so a parent payee edit follows through to them,
-    /// mirroring Actual's cascade rule. Reused both on first appearance and
-    /// when the user undoes an unsplit after swiping the lines away.
     private func loadSplitChildren() async {
         guard let editing, editing.isParent, splitLines.isEmpty else { return }
         splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
@@ -576,8 +479,6 @@ struct AddTransactionView: View {
                 childId: child.id,
                 categoryId: child.categoryId,
                 amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
-                // A child running against the parent's direction — a refund
-                // inside a spend split — keeps its flip on reload (GH #216).
                 isOpposite: (child.amount < 0) != (editing.amount < 0),
                 notes: child.notes ?? "",
                 payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
@@ -585,8 +486,6 @@ struct AddTransactionView: View {
         }
     }
 
-    /// Editable split lines for the add flow: one category + amount per
-    /// line, with the unassigned remainder in the footer.
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
@@ -594,12 +493,6 @@ struct AddTransactionView: View {
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
-                    // Swiping away every line on an existing parent is the
-                    // same intent as "Remove Split": switch to
-                    // single-transaction mode and seed the collapse category
-                    // from a removed line (the parent carries none). The
-                    // lines are gone from memory, so undoing via the split
-                    // button reloads them from the database.
                     let removed = offsets.compactMap { splitLines[$0] }
                     splitLines.remove(atOffsets: offsets)
                     if splitLines.isEmpty {
@@ -617,11 +510,6 @@ struct AddTransactionView: View {
             } label: {
                 Label("Add Line", systemImage: "plus")
             }
-            // Tapping "Remove Split" on an existing parent switches the form
-            // to single-transaction mode: keep the lines in memory for an
-            // instant undo and seed the collapse category from the first
-            // line that has one (the parent itself carries none). In the add
-            // flow it just clears the lines, as before.
             Button(role: .destructive) {
                 if isEditingSplitParent {
                     unsplitRequested = true
@@ -641,26 +529,15 @@ struct AddTransactionView: View {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
                     .foregroundStyle(.red)
             } else if splitRemainingCents == 0 && hasBlankSplitLine {
-                // Nothing left to assign but a line is still blank — say why
-                // Save stays disabled instead of leaving it a mystery.
                 Text("Fill in or remove the empty line")
                     .foregroundStyle(.red)
             }
         }
     }
 
-    /// Begin a split from the form. The add flow starts from two empty
-    /// lines; editing a plain transaction seeds the first line with the
-    /// transaction's current category and full amount so nothing is lost if
-    /// the user only fills the second line — mirroring Actual's desktop
-    /// behavior of moving the row's category onto the first sub-row. An
-    /// existing parent undoing "Remove Split" just re-enters split mode: the
-    /// children were kept in `splitLines`, so nothing needs reloading.
     private func startSplit() {
         unsplitRequested = false
         guard !isEditingSplitParent else {
-            // Existing parent: if the lines were kept (Remove Split toggle)
-            // they reappear instantly; if they were swiped away, reload them.
             if splitLines.isEmpty {
                 Task { await loadSplitChildren() }
             }
@@ -700,8 +577,6 @@ struct AddTransactionView: View {
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
         if isTransfer && transferToAccountId == nil { return true }
-        // A blank line reads as zero for the remainder display, but the store
-        // rejects zero-amount children — keep save blocked until it's filled.
         if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
@@ -727,17 +602,18 @@ struct AddTransactionView: View {
         )
 
         do {
-            let savedTransactionId = try await budgetStore.saveTransaction(form, editing: editing)
+            let savedTransactionId: String?
+            if editing == nil && txType == .expense && splitLines.isEmpty {
+                savedTransactionId = try await budgetStore.createManualExpenseReturningID(form)
+            } else {
+                try await budgetStore.saveTransaction(form, editing: editing)
+                savedTransactionId = nil
+            }
+
             onSaved?(savedTransactionId)
             if canDismiss {
-                // Presented flows (edit, account-detail "+", notification
-                // prefill) close; the account-detail host is already the
-                // saved transaction's list.
                 dismiss()
             } else {
-                // The tab-hosted flow has nothing to dismiss: reset for the
-                // next entry and route to the saved transaction's account
-                // list so every add flow lands on the relevant list.
                 resetForm()
                 NotificationRouter.shared.pendingAccountNavigation = form.accountId
             }
@@ -758,12 +634,7 @@ struct AddTransactionView: View {
         errorMessage = nil
         splitLines = []
         unsplitRequested = false
-        // A fresh form suggests categories from payee history again — a
-        // discarded manual pick must not keep suppressing the lookup.
         userPickedCategory = false
-        // A reset can arrive with the amount or payee field still focused —
-        // Esc or ⌘Return from a hardware keyboard — and a fresh form doesn't
-        // keep the old keyboard up.
         dismissKeyboard()
     }
 
@@ -778,9 +649,6 @@ struct AddTransactionView: View {
 
 /// Math for the split entry section, kept off the view for testability.
 enum SplitEntryMath {
-    /// Cents still unassigned across the split lines. Blank lines count as
-    /// zero so the remainder stays visible mid-entry; nil while the total or
-    /// a non-blank line doesn't parse.
     static func remainingCents(total: String, lineAmounts: [String]) -> Int? {
         guard let dollars = Double(total),
               let totalCents = Transaction.cents(fromDollars: dollars) else { return nil }
@@ -793,23 +661,15 @@ enum SplitEntryMath {
         return totalCents - assigned
     }
 
-    /// Plain dot-decimal string for non-negative cents, the format
-    /// AmountInputField keeps in its binding.
     static func amountString(fromCents cents: Int) -> String {
         "\(cents / 100).\(String(format: "%02d", cents % 100))"
     }
 }
 
-/// One editable split line: a category picked through a sheet and an amount.
-/// Borderless button so the amount field keeps its own tap target in the row.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
-    /// The transaction's direction, so the line's sign glyph can show its
-    /// effective direction relative to it.
     var txType: TransactionType
-    /// The section-wide unassigned remainder; a positive value on a line with
-    /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
     @State private var showCategoryPicker = false
 
@@ -823,8 +683,6 @@ private struct SplitLineRow: View {
         return "Category"
     }
 
-    /// Whether the line runs as an outflow once the transaction's direction
-    /// and the line's flip are combined.
     private var isOutflow: Bool {
         (txType == .expense) != line.isOpposite
     }
@@ -840,15 +698,11 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 Spacer()
-                // Every line carries a sign like the total's, so direction is
-                // never implicit; tapping it flips the line — how a refund
-                // goes inside a spend split (GH #216).
                 Button {
                     line.isOpposite.toggle()
                 } label: {
                     Text(isOutflow ? "-" : "+")
                         .foregroundStyle(isOutflow ? Color.red : Color.green)
-                        // Grow the tap target beyond the one-character glyph.
                         .frame(width: 24, height: 24)
                         .contentShape(Rectangle())
                 }
@@ -862,9 +716,6 @@ private struct SplitLineRow: View {
                 )
                     .frame(width: 110)
             }
-            // No fill offer on a flipped line: the remainder is stated in the
-            // transaction's direction, and filling it here would double the
-            // gap instead of closing it.
             if line.amount.isEmpty, !line.isOpposite, let remaining = remainingCents, remaining > 0 {
                 HStack {
                     Spacer()
@@ -877,7 +728,6 @@ private struct SplitLineRow: View {
                     .buttonStyle(.borderless)
                 }
             }
-            // Empty payee inherits the transaction's payee
             TextField("Payee (optional)", text: $line.payeeName)
                 .font(.subheadline)
                 .autocorrectionDisabled()
@@ -895,51 +745,15 @@ private struct SplitLineRow: View {
     }
 }
 
-/// Currency amount field with two digit-entry modes, picked by the
-/// `conventionalAmountEntry` setting.
-///
-/// Calculator entry (the default): digits shift right-to-left into the cents
-/// position — typing 1, 2, 0 produces 0.01, 0.12, 1.20. As soon as the user
-/// taps `.` (or `,` in comma-decimal locales), the field switches to explicit
-/// decimal entry where prior digits are reinterpreted as the integer part —
-/// so 1, ., 0 produces 1.0.
-///
-/// Conventional entry: digits stand for whole units and the decimal separator
-/// is always typed — 1, 2, 0 produces 120, and 1, ., 0 produces 1.0. Nothing
-/// gains a fraction the user didn't type, so zero-decimal currencies never
-/// need a trailing ".00" (GH #211).
-///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
-/// the text's own sign. With `onToggleSign`, the same button appears but the
-/// sign lives outside the field (a split line's direction flip) and the text
-/// stays unsigned. Neither set means sign is handled elsewhere entirely
-/// (e.g. the expense/income toggle).
-///
-/// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
-/// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
-/// when editing ends. Evaluation is strictly left-to-right with no operator
-/// precedence — this is an entry aid, not a calculator. The binding always
-/// holds the plain evaluated decimal, never the expression, so a save taken
-/// mid-expression (the Save button is an ordinary row and doesn't end
-/// editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
     @Binding var text: String
-    /// When true, digits are entered as a conventional decimal amount instead
-    /// of shifting into cents.
     var conventionalAmountEntry = false
     var alignment: NSTextAlignment = .natural
     var allowsNegative = false
     var weight: UIFont.Weight = .regular
-    /// Bring up the keyboard as soon as the field lands on screen. For
-    /// sheets whose whole purpose is entering an amount.
     var autofocus = false
-    /// Shows the ± toolbar button and delegates it here instead of signing
-    /// the text — for callers whose sign is separate state.
     var onToggleSign: (() -> Void)? = nil
 
-    /// becomeFirstResponder is a no-op until the view joins a window, and
-    /// during a sheet presentation that happens well after makeUIView —
-    /// didMoveToWindow is the earliest reliable moment.
     final class AutofocusTextField: UITextField {
         var wantsAutofocus = false
         private var hasAutofocused = false
@@ -963,22 +777,15 @@ struct AmountInputField: UIViewRepresentable {
         if weight == .regular {
             field.font = .preferredFont(forTextStyle: .body)
         } else {
-            // Weighted variant of the body style so Dynamic Type still scales.
             let descriptor = UIFontDescriptor
                 .preferredFontDescriptor(withTextStyle: .body)
                 .addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
             field.font = UIFont(descriptor: descriptor, size: 0)
         }
         field.adjustsFontForContentSizeCategory = true
-        // The SwiftUI keyboard toolbar only attaches to SwiftUI text fields,
-        // and the decimal pad has neither a return key nor operators — without
-        // this accessory bar there is no way to dismiss the keyboard from this
-        // field, or to do arithmetic in it.
         let toolbar = UIToolbar(frame: CGRect(x: 0, y: 0, width: 100, height: 44))
         var items: [UIBarButtonItem] = []
         if allowsNegative || onToggleSign != nil {
-            // The decimal pad has no minus key, so this button is the only
-            // keyboard affordance for flipping an amount's sign.
             items.append(UIBarButtonItem(
                 image: UIImage(systemName: "plus.forwardslash.minus"),
                 style: .plain,
@@ -995,7 +802,6 @@ struct AmountInputField: UIViewRepresentable {
             items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-        // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
         let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
         items.append(UIBarButtonItem(
             title: "Done", style: doneStyle,
@@ -1011,10 +817,6 @@ struct AmountInputField: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextField, context: Context) {
         context.coordinator.parent = self
-        // Compare against what the coordinator last wrote out rather than the
-        // field's own text: mid-expression the field reads "12.50 + 6.00"
-        // while the binding holds "18.50", and that mismatch is expected.
-        // Only a change from outside the field should reset the state.
         if text != context.coordinator.lastPublishedText {
             uiView.text = text
             context.coordinator.sync(fromDisplay: text)
@@ -1026,7 +828,6 @@ struct AmountInputField: UIViewRepresentable {
     }
 
     final class Coordinator: NSObject, UITextFieldDelegate {
-        /// The four toolbar operators. Left-to-right evaluation only.
         enum Operator: Character, CaseIterable {
             case add = "+", subtract = "−", multiply = "×", divide = "÷"
 
@@ -1062,8 +863,6 @@ struct AmountInputField: UIViewRepresentable {
                 case .add: return lhs + rhs
                 case .subtract: return lhs - rhs
                 case .multiply: return lhs * rhs
-                // Dividing by zero has no sensible amount to show, so the
-                // operator is dropped and the running total stands.
                 case .divide: return rhs == 0 ? lhs : lhs / rhs
                 }
             }
@@ -1071,14 +870,11 @@ struct AmountInputField: UIViewRepresentable {
 
         var parent: AmountInputField
         weak var textField: UITextField?
-        /// The last value written to the binding, so `updateUIView` can tell
-        /// an outside change from the field's own echo.
         private(set) var lastPublishedText: String?
         private var integerDigits: String = ""
         private var hasDecimalPoint: Bool = false
         private var fractionDigits: String = ""
         private var isNegative: Bool = false
-        /// Everything to the left of the pending operator, already evaluated.
         private var accumulatedValue: Double?
         private var pendingOperator: Operator?
 
@@ -1086,8 +882,6 @@ struct AmountInputField: UIViewRepresentable {
             self.parent = parent
         }
 
-        /// True once the current operand has any content of its own, so a
-        /// bare sign or a dangling operator doesn't count as typed input.
         private var hasTypedOperand: Bool {
             !integerDigits.isEmpty || hasDecimalPoint
         }
@@ -1152,15 +946,11 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         func textFieldDidEndEditing(_ textField: UITextField) {
-            // Done, tapping away or dismissing the keyboard always leaves a
-            // plain amount behind, never a half-finished expression.
             finalizeExpression()
             applyDisplay(to: textField)
         }
 
         @objc func toggleSign() {
-            // Delegated sign lives outside the text (a split line's flip);
-            // the field's own text stays unsigned.
             if let onToggleSign = parent.onToggleSign {
                 onToggleSign()
                 return
@@ -1177,9 +967,6 @@ struct AmountInputField: UIViewRepresentable {
         @objc func multiplyTapped() { pushOperator(.multiply) }
         @objc func divideTapped() { pushOperator(.divide) }
 
-        /// Folds the operand just typed into the running total and arms the
-        /// next operator. Tapping a second operator without typing anything
-        /// in between just swaps which one is armed.
         private func pushOperator(_ op: Operator) {
             guard accumulatedValue != nil || hasTypedOperand else { return }
             if hasTypedOperand {
@@ -1197,18 +984,14 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
-        /// Collapses the expression back down to a single editable operand.
         private func finalizeExpression() {
             guard let pending = pendingOperator, let acc = accumulatedValue else { return }
-            // A dangling operator ("12.50 ×" then Done) leaves the running
-            // total alone rather than multiplying it by an implied zero.
             let result = hasTypedOperand ? pending.apply(acc, currentOperandValue()) : acc
             accumulatedValue = nil
             pendingOperator = nil
             setOperand(to: result)
         }
 
-        /// The value the expression carries so far, evaluated left to right.
         private func resolvedValue() -> Double {
             guard let pending = pendingOperator, let acc = accumulatedValue else {
                 return currentOperandValue()
@@ -1220,9 +1003,6 @@ struct AmountInputField: UIViewRepresentable {
             Double(computeOperandDisplay()) ?? 0
         }
 
-        /// Rounds to cents and drops the sign where the field can't show one
-        /// — those callers get their sign from the expense/income toggle, so
-        /// the field carries a magnitude and 50 − 80 reads as 30.00.
         private func normalized(_ value: Double) -> Double {
             let signed = parent.allowsNegative ? value : abs(value)
             return (signed * 100).rounded() / 100
@@ -1235,21 +1015,16 @@ struct AmountInputField: UIViewRepresentable {
             isNegative = false
         }
 
-        /// Loads a computed result back into the digit state so it keeps
-        /// behaving like typed input (backspace, another operator, and so on).
         private func setOperand(to value: Double) {
             let rounded = normalized(value)
             let cents = Int((abs(rounded) * 100).rounded())
             isNegative = parent.allowsNegative && rounded < 0
             integerDigits = String(cents / 100)
-            // Conventional entry never adds a fraction the user didn't type,
-            // so a whole result comes back as a whole number.
             hasDecimalPoint = !(parent.conventionalAmountEntry && cents % 100 == 0)
             fractionDigits = hasDecimalPoint ? String(format: "%02d", cents % 100) : ""
         }
 
         private func handleCharacter(_ character: Character) {
-            // Hardware-keyboard minus; the on-screen path is the ± toolbar button.
             if character == "-", parent.allowsNegative {
                 isNegative.toggle()
                 return
@@ -1280,8 +1055,6 @@ struct AmountInputField: UIViewRepresentable {
             } else if isNegative {
                 isNegative = false
             } else if pendingOperator != nil {
-                // Backspacing through an empty operand undoes the operator and
-                // hands the running total back as editable digits.
                 pendingOperator = nil
                 if let acc = accumulatedValue {
                     setOperand(to: acc)
@@ -1290,12 +1063,9 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
-        /// Just the operand currently being typed, with no running total in
-        /// front of it.
         private func computeOperandDisplay() -> String {
             let sign = isNegative ? "-" : ""
             if !hasDecimalPoint && integerDigits.isEmpty {
-                // A bare "-" so a sign toggled before any digits stays visible.
                 return sign
             }
             if hasDecimalPoint {
@@ -1311,15 +1081,11 @@ struct AmountInputField: UIViewRepresentable {
             return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
         }
 
-        /// An evaluated value as the field shows it: two decimals, except in
-        /// conventional entry where a whole result stays whole.
         private func displayValue(_ value: Double) -> String {
             let whole = parent.conventionalAmountEntry && value == value.rounded()
             return String(format: whole ? "%.0f" : "%.2f", value)
         }
 
-        /// What the field shows: the running total and armed operator, if any,
-        /// followed by the operand being typed.
         private func computeFieldText() -> String {
             let operandText = computeOperandDisplay()
             guard let pending = pendingOperator, let acc = accumulatedValue else {
@@ -1331,8 +1097,6 @@ struct AmountInputField: UIViewRepresentable {
                 : "\(accText) \(pending.rawValue) \(operandText)"
         }
 
-        /// What the binding carries: always a plain decimal, so callers can
-        /// parse it at any moment — including mid-expression.
         private func computeBoundText() -> String {
             guard pendingOperator != nil, accumulatedValue != nil else {
                 return computeOperandDisplay()
@@ -1353,8 +1117,6 @@ struct AmountInputField: UIViewRepresentable {
     }
 }
 
-/// Searchable category list, shared by the transaction form and the
-/// uncategorized-transactions quick-categorize flow.
 struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
