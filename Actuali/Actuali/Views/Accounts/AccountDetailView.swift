@@ -5,6 +5,9 @@ struct AccountDetailView: View {
     let account: Account
 
     @State private var pager: TransactionPager?
+    /// Which account `pager` was built for. The iPad split layout reuses one
+    /// instance of this view across selections, so the account can change
+    /// under state that was scoped to the previous one.
     @State private var pagerAccountId: String?
     @State private var breakdown: AccountBalanceBreakdown?
     @State private var showingBreakdown = false
@@ -14,6 +17,8 @@ struct AccountDetailView: View {
     @State private var showingReconcile = false
     @State private var showingWalletImport = false
     @State private var editingTransaction: Transaction?
+    /// The account's note (GH #198). Starts `.unsupported` so the menu item
+    /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
     @State private var isSelecting = false
@@ -24,6 +29,8 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
+    /// Limit and headroom for a tracked card with a limit set, else nil. Read
+    /// once so the visible row and the breakdown row can't disagree.
     private var creditHeadroom: (limit: Int, available: Int)? {
         guard let available = budgetStore.availableCredit(for: account.id),
               let limit = budgetStore.creditCardLimits[account.id] else { return nil }
@@ -35,6 +42,10 @@ struct AccountDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The pager is created on first use rather than in init because its
+    /// fetch closure needs the environment store, which isn't available
+    /// until body/task time. Rebuilt when the account changes: the closure
+    /// captures the id, so a reused pager would keep paging the old account.
     private func currentPager() -> TransactionPager {
         if let pager, pagerAccountId == account.id { return pager }
         let store = budgetStore
@@ -74,6 +85,11 @@ struct AccountDetailView: View {
         note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
     }
 
+    /// The account's note (GH #198), presented exactly as a category's is (see
+    /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
+    /// while searching — a search is about finding transactions, not reading
+    /// guidance — and on files with no `notes` table, where an edit could never
+    /// save.
     private var noteSection: some View {
         Section("Note") {
             if note.isEmpty {
@@ -104,23 +120,30 @@ struct AccountDetailView: View {
         }
     }
 
+    private func handleManualTransactionSaved(_ savedTransactionId: String?) {
+        guard let savedTransactionId else { return }
+        Task { @MainActor in
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: budgetStore
+            )
+        }
+    }
+
     private func breakdownRow(_ title: String, amount: Int) -> some View {
         breakdownRow(title, value: budgetStore.displayBalance(amount))
     }
 
     private func breakdownRow(_ title: String, value: String) -> some View {
         HStack {
-            Text(title).foregroundStyle(.secondary)
+            Text(title)
+                .foregroundStyle(.secondary)
             Spacer()
-            Text(value).foregroundStyle(.secondary).animatedAmount(value)
+            Text(value)
+                .foregroundStyle(.secondary)
+                .animatedAmount(value)
         }
         .font(.subheadline)
-    }
-
-    private func handleManualTransactionSaved() {
-        Task { @MainActor in
-            await CategoryFundingAutomation.processLatestManualTransaction(using: budgetStore)
-        }
     }
 
     var body: some View {
@@ -134,7 +157,7 @@ struct AccountDetailView: View {
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance))
+                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
                         if breakdown != nil {
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.semibold))
@@ -175,7 +198,8 @@ struct AccountDetailView: View {
                         HStack {
                             Text("Billing Cycle")
                             Spacer()
-                            Text(dueSummary).fontWeight(.semibold)
+                            Text(dueSummary)
+                                .fontWeight(.semibold)
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.tertiary)
@@ -338,7 +362,7 @@ struct AccountDetailView: View {
                 accountId: account.id,
                 onSaved: handleManualTransactionSaved
             )
-            .environmentObject(budgetStore)
+                .environmentObject(budgetStore)
         }
         .sheet(item: $editingTransaction) { transaction in
             AddTransactionView(editing: transaction).environmentObject(budgetStore)
