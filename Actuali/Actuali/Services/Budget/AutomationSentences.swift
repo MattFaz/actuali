@@ -133,7 +133,7 @@ enum AutomationSentences {
 
     // MARK: - Note rendering (port of template-notes.ts unparse)
 
-    private static func prefix(forPriority priority: Int?) -> String {
+    private static func templatePrefix(forPriority priority: Int?) -> String {
         // Priority 0 is the parser's "unset" default and drops the suffix.
         guard let priority, priority != 0 else { return "#template" }
         return "#template-\(priority)"
@@ -176,7 +176,7 @@ enum AutomationSentences {
         refill: GoalTemplate?,
         categoryName: (String) -> String?
     ) -> String? {
-        let prefix = prefix(forPriority: template.priority)
+        let prefix = templatePrefix(forPriority: template.priority)
         switch template.type {
         case .goal:
             return "#goal \(trimTrailingZeros(template.amount ?? 0))"
@@ -226,7 +226,7 @@ enum AutomationSentences {
         case .limit:
             guard let limit = template.limit else { return nil }
             if let refill {
-                return "\(prefix(forPriority: refill.priority)) \(limitToString(limit))"
+                return "\(templatePrefix(forPriority: refill.priority)) \(limitToString(limit))"
             }
             return "\(prefix) 0 \(limitToString(limit))"
         case .refill, .error:

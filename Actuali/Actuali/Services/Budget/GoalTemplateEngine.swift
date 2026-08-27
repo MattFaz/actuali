@@ -260,11 +260,11 @@ final class GoalTemplateContext {
         // batch to whichever sibling ran first (upstream redistributeBatch).
         redistributeBatch(
             &perTemplateLocal,
-            siblings: priorityTemplates.filter { $0.template.type == .by }.map(\.index),
+            siblings: priorityTemplates.filter { $0.template.type == .by }.map { $0.index },
             weightOf: { Double(max(0, byPerTemplate[$0] ?? 0)) })
         redistributeBatch(
             &perTemplateLocal,
-            siblings: priorityTemplates.filter { $0.template.type == .schedule }.map(\.index),
+            siblings: priorityTemplates.filter { $0.template.type == .schedule }.map { $0.index },
             weightOf: { max(0, schedulePerTemplate[$0] ?? 0) })
 
         var scale = 1.0
