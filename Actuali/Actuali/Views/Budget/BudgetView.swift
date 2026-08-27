@@ -298,12 +298,19 @@ struct BudgetView: View {
                     }
                 }
             } header: {
+                // The Income group can be swiped only to UNhide, never to
+                // hide: hiding it would drop the app's only income total
+                // from the budget table entirely. `onSetHidden` is passed
+                // only when the group is already hidden (e.g. leftover
+                // state from before this restriction existed), so the
+                // swipe button never offers "Hide" — only "Show" when
+                // needed. (GH #130's collapse control still applies.)
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
+                    onSetHidden: (group?.hidden == true ? group : nil).map { hiddenGroup in
+                        { hidden in setCategoryGroupHidden(hiddenGroup.id, hidden: hidden) }
                     },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
@@ -314,12 +321,19 @@ struct BudgetView: View {
             }
         } else {
             Section {
+                // The Income group can be swiped only to UNhide, never to
+                // hide: hiding it would drop the app's only income total
+                // from the budget table entirely. `onSetHidden` is passed
+                // only when the group is already hidden (e.g. leftover
+                // state from before this restriction existed), so the
+                // swipe button never offers "Hide" — only "Show" when
+                // needed. (GH #130's collapse control still applies.)
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
+                    onSetHidden: (group?.hidden == true ? group : nil).map { hiddenGroup in
+                        { hidden in setCategoryGroupHidden(hiddenGroup.id, hidden: hidden) }
                     },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
