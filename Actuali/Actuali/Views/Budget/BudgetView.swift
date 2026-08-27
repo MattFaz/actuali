@@ -78,6 +78,19 @@ struct BudgetView: View {
     @State private var transactionsDestination: CategoryTransactionsDestination?
     @State private var newBudgetItem: NewBudgetItem?
     @State private var categoryFilter: BudgetCategoryFilter = .all
+    @State private var templateResult: GoalTemplateResultAlert?
+    @State private var isRunningTemplates = false
+
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.isWideLayout) private var isWideLayout
+
+    /// Category details present as an inspector column beside the table in a
+    /// wide window, and as the usual sheet everywhere else. Same gate as
+    /// AccountsListView's split layout.
+    private var usesInspector: Bool {
+        horizontalSizeClass == .regular && isWideLayout
+    }
+
     /// Comma-joined group ids the user has collapsed, PWA-style. Stored as a
     /// string because @AppStorage can't hold a Set directly.
     @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
@@ -162,8 +175,30 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
-            .sheet(item: $selectedCategory) { category in
+            // Compact only — in a wide window the inspector below presents
+            // the same selection instead. The conditional binding also hands
+            // an open presentation over to the other style on a window resize.
+            .sheet(item: usesInspector ? .constant(nil) : $selectedCategory) { category in
                 CategoryBudgetDetailSheet(category: category)
+            }
+            .inspector(isPresented: Binding(
+                get: { usesInspector && selectedCategory != nil },
+                set: { if !$0 { selectedCategory = nil } }
+            )) {
+                if let category = selectedCategory {
+                    // .id resets the editor's @State (name draft, history) when
+                    // the selection moves to another category — unlike a sheet,
+                    // the inspector stays mounted across selections, so without
+                    // it the previous category's draft would linger.
+                    // ponytail: `category` is the value captured at tap time, so
+                    // amounts shown in Quick Assign can go stale if a sync lands
+                    // while the column is open — same ceiling the sheet always
+                    // had, just longer-lived. Upgrade path: re-resolve by
+                    // categoryId+month from currentBudgetMonth at render.
+                    CategoryBudgetDetailSheet(category: category)
+                        .id(category.id)
+                        .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
+                }
             }
             .sheet(item: $transferContext) { context in
                 BudgetTransferSheet(context: context)
@@ -184,8 +219,22 @@ struct BudgetView: View {
                     ProgressView()
                 }
             }
+            .alert(item: $templateResult) { result in
+                Alert(
+                    title: Text(result.title),
+                    message: Text(result.message),
+                    dismissButton: .default(Text("OK"))
+                )
+            }
         }
         .initialSyncBanner()
+    }
+
+    /// Outcome of a goal-template run, presented as an alert.
+    struct GoalTemplateResultAlert: Identifiable {
+        let id = UUID()
+        let title: String
+        let message: String
     }
 
     /// One group's rows, extracted from the `List` so the body stays within
@@ -437,8 +486,41 @@ struct BudgetView: View {
             let hasBudget = budgetStore.currentBudgetMonth != nil
             BudgetOptionsMenu(
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
-                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil
+                collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
+                onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
+                    ? { runTemplates($0) } : nil
             )
+        }
+    }
+
+    /// Run the month's template action and surface the outcome — the web
+    /// shows these as toast notifications; an alert is the iOS equivalent.
+    private func runTemplates(_ action: BudgetStore.GoalTemplateAction) {
+        guard !isRunningTemplates else { return }
+        isRunningTemplates = true
+        Task {
+            let outcome = await budgetStore.runGoalTemplates(month: selectedMonth, action: action)
+            isRunningTemplates = false
+            switch outcome {
+            case .applied(let count):
+                templateResult = .init(
+                    title: "Templates Applied",
+                    message: "Successfully applied templates to \(count) categor\(count == 1 ? "y" : "ies").")
+            case .upToDate:
+                templateResult = .init(
+                    title: "Templates Applied",
+                    message: "All templates are up to date.")
+            case .checkPassed:
+                templateResult = .init(
+                    title: "Check Passed",
+                    message: "All templates passed the check.")
+            case .errors(let errors):
+                templateResult = .init(
+                    title: "Template Errors",
+                    message: errors.joined(separator: "\n\n"))
+            case .failed(let message):
+                templateResult = .init(title: "Template Error", message: message)
+            }
         }
     }
 
@@ -925,7 +1007,9 @@ struct CategoryBudgetRow: View {
                 } label: {
                     BudgetAmountPill(
                         text: budgetStore.displayBudgetCell(category.available),
-                        color: category.isOverspent ? .red : (category.available == 0 ? .secondary : .green)
+                        color: balanceColor(
+                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
+                            zero: .secondary)
                     )
                 }
                 .buttonStyle(.borderless)
@@ -959,6 +1043,15 @@ struct CategoryBudgetRow: View {
                 .tint(isHidden ? .accentColor : .secondary)
             }
         }
+        .modifier(CategoryRowContextMenu(
+            category: category,
+            isHidden: isHidden,
+            onSetHidden: onSetHidden,
+            onShowDetails: onShowDetails,
+            onEditBudget: onEditBudget,
+            onShowTransactions: onShowTransactions,
+            onMoveMoney: onMoveMoney
+        ))
     }
 }
 
@@ -1002,7 +1095,9 @@ struct CleanCategoryBudgetRow: View {
                     onMoveMoney(category)
                 } label: {
                     Text(budgetStore.displayBalance(category.available))
-                        .foregroundColor(category.isOverspent ? .red : .green)
+                        .foregroundColor(balanceColor(
+                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
+                            zero: .green))
                 }
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
@@ -1064,7 +1159,71 @@ struct CleanCategoryBudgetRow: View {
             }
         }
         .padding(.vertical, 2)
+        .modifier(CategoryRowContextMenu(
+            category: category,
+            isHidden: isHidden,
+            onSetHidden: onSetHidden,
+            onShowDetails: onShowDetails,
+            onEditBudget: onEditBudget,
+            onShowTransactions: onShowTransactions,
+            onMoveMoney: onMoveMoney
+        ))
     }
+}
+
+/// Shared long-press/right-click menu for both category row styles — the same
+/// actions as the row's tappable cells plus the hide/show swipe action.
+private struct CategoryRowContextMenu: ViewModifier {
+    let category: CategoryBudget
+    let isHidden: Bool
+    let onSetHidden: ((Bool) -> Void)?
+    let onShowDetails: (CategoryBudget) -> Void
+    let onEditBudget: (CategoryBudget) -> Void
+    let onShowTransactions: (CategoryBudget, String?) -> Void
+    let onMoveMoney: (CategoryBudget) -> Void
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Button { onShowDetails(category) } label: {
+                Label("Category Details", systemImage: "info.circle")
+            }
+            Button { onEditBudget(category) } label: {
+                Label("Edit Budgeted Amount", systemImage: "pencil")
+            }
+            Button { onShowTransactions(category, category.month) } label: {
+                Label("Transactions This Month", systemImage: "list.bullet")
+            }
+            Button { onShowTransactions(category, nil) } label: {
+                Label("All Transactions", systemImage: "list.bullet.rectangle")
+            }
+            // Zero balance: nothing to move, nothing to cover — same rule as
+            // the balance pill.
+            if category.available != 0 {
+                Button { onMoveMoney(category) } label: {
+                    Label(category.isOverspent ? "Cover Overspending" : "Move Money",
+                          systemImage: "arrow.left.arrow.right")
+                }
+            }
+            if let onSetHidden {
+                Button { onSetHidden(!isHidden) } label: {
+                    Label(isHidden ? "Show Category" : "Hide Category",
+                          systemImage: isHidden ? "eye" : "eye.slash")
+                }
+            }
+        }
+    }
+}
+
+/// Balance color with goal awareness — port of the web's
+/// `makeBalanceAmountStyle`: negative is always red; with goal templates
+/// enabled and a goal on the row, orange marks an underfunded goal and green
+/// a funded one; otherwise the caller's zero-balance color applies.
+private func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -> Color {
+    if category.isOverspent { return .red }
+    if goalsEnabled, category.goal != nil {
+        return category.isGoalUnderfunded ? .orange : .green
+    }
+    return category.available == 0 ? zero : .green
 }
 
 /// Whether `month` ("YYYY-MM") is before the current calendar month. The
@@ -1525,6 +1684,7 @@ struct CategoryBudgetDetailSheet: View {
     @State private var history: [CategoryBudget] = []
     @State private var isSavingName = false
     @State private var isApplyingSuggestion = false
+    @State private var isApplyingTemplate = false
     @State private var errorMessage: String?
 
     init(category: CategoryBudget) {
@@ -1567,6 +1727,10 @@ struct CategoryBudgetDetailSheet: View {
                             }
                         }
                     }
+                }
+
+                if budgetStore.goalTemplatesEnabled {
+                    goalSection
                 }
 
                 Section(
@@ -1642,6 +1806,74 @@ struct CategoryBudgetDetailSheet: View {
             }
             .disabled(isSavingName)
             .interactiveDismissDisabled(isSavingName)
+        }
+    }
+
+    /// Goal status mirroring the web's balance tooltip: funding state against
+    /// the goal, the goal type (long-term `#goal` vs template automation), and
+    /// the tracked amount. Templates are set in the category note (`#template`
+    /// / `#goal` lines) and applied from the month's template actions.
+    @ViewBuilder private var goalSection: some View {
+        Section(
+            content: {
+                if let goal = category.goal, let difference = category.differenceToGoal {
+                    LabeledContent("Status") {
+                        if difference == 0 {
+                            Text("Fully Funded").foregroundStyle(.green)
+                        } else if difference > 0 {
+                            Text("Overfunded (\(budgetStore.displayBalance(difference)))")
+                                .foregroundStyle(.green)
+                        } else {
+                            Text("Underfunded (\(budgetStore.displayBalance(difference)))")
+                                .foregroundStyle(.orange)
+                        }
+                    }
+                    LabeledContent("Goal Type", value: category.longGoal ? "Goal" : "Automation")
+                    LabeledContent("Goal") {
+                        Text(budgetStore.displayBalance(goal)).monospacedDigit()
+                    }
+                    LabeledContent(category.longGoal ? "Balance" : "Budgeted") {
+                        Text(budgetStore.displayBalance(category.goalTrackedAmount))
+                            .monospacedDigit()
+                    }
+                }
+                Button {
+                    Task { await applyTemplate() }
+                } label: {
+                    Label("Apply Budget Template", systemImage: "wand.and.stars")
+                }
+                .disabled(isApplyingTemplate)
+            },
+            header: {
+                Text("Goal")
+            },
+            footer: {
+                if category.goal == nil {
+                    Text("Define templates with #template or #goal lines in this category's note, then apply them here.")
+                }
+            }
+        )
+    }
+
+    private func applyTemplate() async {
+        isApplyingTemplate = true
+        errorMessage = nil
+        let outcome = await budgetStore.runGoalTemplates(
+            month: category.month, action: .apply, categoryId: category.categoryId)
+        switch outcome {
+        case .applied:
+            dismiss()
+        case .upToDate:
+            errorMessage = "No templates to apply for this category."
+            isApplyingTemplate = false
+        case .errors(let errors):
+            errorMessage = errors.joined(separator: "\n")
+            isApplyingTemplate = false
+        case .failed(let message):
+            errorMessage = message
+            isApplyingTemplate = false
+        case .checkPassed:
+            isApplyingTemplate = false
         }
     }
 
