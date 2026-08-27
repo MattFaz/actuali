@@ -6,26 +6,52 @@ struct CategoryFundingAutomationTests {
     @Test("Sufficient category funds require no funding")
     func sufficientFunds() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: 50) == 0)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: 50,
+            fundingSource: .toBudget
+        ) == .none)
     }
 
     @Test("Partial category funds fund only the shortfall")
     func partialFunds() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -30) == 30)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -30,
+            fundingSource: .toBudget
+        ) == .fund(30))
     }
 
     @Test("Zero category funds fund the full transaction")
     func zeroFunds() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -50) == 50)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -50,
+            fundingSource: .toBudget
+        ) == .fund(50))
     }
 
     @Test("Exact category balance requires no funding")
     func exactBalance() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: 0) == 0)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: 0,
+            fundingSource: .category("emergency-fund"),
+            sourceAvailable: 50
+        ) == .none)
     }
 
     @Test("Existing overspending is preserved")
     func existingOverspending() {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -50, availableAfterTransaction: -550) == 50)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -550,
+            fundingSource: .toBudget
+        ) == .fund(50))
     }
 
     @Test("Existing overspending of any size only funds the new transaction")
@@ -33,10 +59,59 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.shortfall(transactionAmount: -125, availableAfterTransaction: -1000) == 125)
     }
 
+    @Test("Category funding source with enough money funds the complete shortfall")
+    func categorySourceSufficient() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -30,
+            fundingSource: .category("emergency-fund"),
+            sourceAvailable: 30
+        ) == .fund(30))
+    }
+
+    @Test("Category funding source cannot be partially drained")
+    func categorySourceInsufficient() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -30,
+            fundingSource: .category("emergency-fund"),
+            sourceAvailable: 20
+        ) == .insufficientSource)
+    }
+
+    @Test("Missing category funding source is reported as invalid")
+    func categorySourceMissing() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -50,
+            fundingSource: .category("emergency-fund"),
+            sourceAvailable: nil
+        ) == .invalidSource)
+    }
+
+    @Test("To Budget can fund even when its balance is negative")
+    func negativeToBudget() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -50,
+            fundingSource: .toBudget
+        ) == .fund(50))
+    }
+
+    @Test("Selected category cannot fund itself")
+    func sameSourceAndTargetIsInvalid() {
+        let transaction = makeTransaction(categoryId: "groceries")
+        #expect(CategoryFundingAutomation.shouldProcess(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false
+        ))
+    }
+
     @Test("Manual expense from selected account is eligible")
     func manualExpenseIsEligible() {
         let transaction = makeTransaction(categoryId: "groceries")
-        #expect(CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -46,7 +121,7 @@ struct CategoryFundingAutomationTests {
     @Test("Uncategorized transactions are ignored")
     func uncategorized() {
         let transaction = makeTransaction(categoryId: nil)
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -56,7 +131,7 @@ struct CategoryFundingAutomationTests {
     @Test("Transactions from another account are ignored")
     func nonSelectedAccount() {
         let transaction = makeTransaction(accountId: "account-2", categoryId: "groceries")
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -66,7 +141,7 @@ struct CategoryFundingAutomationTests {
     @Test("Income transactions are ignored")
     func income() {
         let transaction = makeTransaction(amount: 5000, categoryId: "income")
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: true
@@ -76,7 +151,7 @@ struct CategoryFundingAutomationTests {
     @Test("Transfers are ignored")
     func transfer() {
         let transaction = makeTransaction(categoryId: "groceries", transferId: "other-leg")
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -86,7 +161,7 @@ struct CategoryFundingAutomationTests {
     @Test("Non-expense amounts are ignored")
     func nonExpense() {
         let transaction = makeTransaction(amount: 1000, categoryId: "groceries")
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
@@ -96,7 +171,18 @@ struct CategoryFundingAutomationTests {
     @Test("Split parents are ignored")
     func splitParent() {
         let transaction = makeTransaction(categoryId: nil, isParent: true)
-        #expect(!CategoryFundingAutomation.isManualExpenseEligible(
+        #expect(!CategoryFundingAutomation.shouldProcess(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false
+        ))
+    }
+
+    @Test("Deleted transactions are ignored")
+    func deletedTransaction() {
+        var transaction = makeTransaction(categoryId: "groceries")
+        transaction.tombstone = true
+        #expect(!CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
             isIncomeCategory: false
