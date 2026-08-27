@@ -1685,6 +1685,7 @@ struct CategoryBudgetDetailSheet: View {
     @State private var isSavingName = false
     @State private var isApplyingSuggestion = false
     @State private var isApplyingTemplate = false
+    @State private var editingAutomations = false
     @State private var errorMessage: String?
 
     init(category: CategoryBudget) {
@@ -1804,6 +1805,9 @@ struct CategoryBudgetDetailSheet: View {
                     note: note.text
                 )
             }
+            .sheet(isPresented: $editingAutomations) {
+                BudgetAutomationsSheet(categoryId: category.categoryId, month: category.month)
+            }
             .disabled(isSavingName)
             .interactiveDismissDisabled(isSavingName)
         }
@@ -1837,6 +1841,13 @@ struct CategoryBudgetDetailSheet: View {
                             .monospacedDigit()
                     }
                 }
+                if budgetStore.goalTemplatesUIEnabled {
+                    Button {
+                        editingAutomations = true
+                    } label: {
+                        Label("Edit Automations", systemImage: "slider.horizontal.3")
+                    }
+                }
                 Button {
                     Task { await applyTemplate() }
                 } label: {
@@ -1848,7 +1859,7 @@ struct CategoryBudgetDetailSheet: View {
                 Text("Goal")
             },
             footer: {
-                if category.goal == nil {
+                if category.goal == nil, !budgetStore.goalTemplatesUIEnabled {
                     Text("Define templates with #template or #goal lines in this category's note, then apply them here.")
                 }
             }

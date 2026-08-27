@@ -42,10 +42,17 @@ struct BudgetViewSettingsView: View {
                     }
                 ))
                 .disabled(budgetStore.currentBudgetId == nil)
+                Toggle("Automations Editor", isOn: Binding(
+                    get: { budgetStore.goalTemplatesUIEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesUIEnabled(enabled) }
+                    }
+                ))
+                .disabled(budgetStore.currentBudgetId == nil || !budgetStore.goalTemplatesEnabled)
             } header: {
                 Text("Experimental")
             } footer: {
-                Text("Set budgeting goals per category with #template and #goal lines in category notes, then apply them from the Budget tab's options menu. Synced with the web app's Goal Templates experimental feature.")
+                Text("Set budgeting goals per category with #template and #goal lines in category notes, or with the visual automations editor, then apply them from the Budget tab's options menu. Synced with the web app's Goal Templates experimental features.")
             }
         }
         .readableWidth()

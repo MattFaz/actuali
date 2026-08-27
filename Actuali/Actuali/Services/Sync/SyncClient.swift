@@ -1005,6 +1005,62 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Store one category's automations from the editor UI — goal_def,
+    /// cleanup_def and the template_settings source marker in one message
+    /// batch (upstream `budget/set-category-automations`). nil defs clear
+    /// the columns.
+    func storeCategoryAutomations(
+        categoryId: String,
+        goalDef: String?,
+        cleanupDef: String?,
+        source: String
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("storeCategoryAutomations() - source: \(source, privacy: .public)")
+
+        let fields: [(column: String, value: (any Sendable)?)] = [
+            ("goal_def", goalDef),
+            ("cleanup_def", cleanupDef),
+            ("template_settings", "{\"source\": \"\(source)\"}"),
+        ]
+        let messages = try await messageGenerator.messages(
+            dataset: "categories", row: categoryId, fields: fields)
+
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    /// Create (or revive) a cleanup pool row — upstream `resolveCleanupGroup`
+    /// writes the row through the sync engine so other clients see the pool.
+    func upsertCleanupGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("upsertCleanupGroup() - name: \(name, privacy: .private)")
+
+        let fields: [(column: String, value: (any Sendable)?)] = [
+            ("name", name),
+            ("tombstone", 0),
+        ]
+        let messages = try await messageGenerator.messages(
+            dataset: "cleanup_groups", row: id, fields: fields)
+
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
     /// Write the budget amounts and goal columns a template run produced, all
     /// in one message batch (upstream's setBudgets + setGoals under a single
     /// batchMessages). Both write the same (month, category) row, so the two

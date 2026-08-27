@@ -1864,6 +1864,7 @@ final class BudgetDatabase: Sendable {
         let groupHidden: Bool
         let sourceIsUI: Bool
         let goalDef: String?
+        let cleanupDef: String?
         let note: String?
     }
 
@@ -1873,7 +1874,7 @@ final class BudgetDatabase: Sendable {
             let noteSelect = hasNotes ? ", n.note AS note" : ""
             let noteJoin = hasNotes ? "LEFT JOIN notes n ON n.id = c.id" : ""
             let rows = try Row.fetchAll(db, sql: """
-                SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def,
+                SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def, c.cleanup_def,
                        c.template_settings, g.hidden AS group_hidden\(noteSelect)
                 FROM categories c
                 LEFT JOIN category_groups g ON g.id = c.cat_group
@@ -1897,7 +1898,54 @@ final class BudgetDatabase: Sendable {
                     groupHidden: (row["group_hidden"] ?? 0) == 1,
                     sourceIsUI: sourceIsUI,
                     goalDef: row["goal_def"],
+                    cleanupDef: row["cleanup_def"],
                     note: hasNotes ? row["note"] : nil)
+            }
+        }
+    }
+
+    /// Live cleanup pools (`cleanup_groups`), for the automation editor.
+    func fetchCleanupGroups() async throws -> [(id: String, name: String)] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("cleanup_groups") else { return [] }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name FROM cleanup_groups
+                WHERE (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY name
+                """)
+            return rows.compactMap { row in
+                guard let id: String = row["id"], let name: String = row["name"] else {
+                    return nil
+                }
+                return (id, name)
+            }
+        }
+    }
+
+    /// Tombstone cleanup pools no live category references any more.
+    /// Local-only like upstream's `tombstoneOrphanCleanupGroups` (a plain
+    /// UPDATE, no CRDT messages) — every client re-derives it from the
+    /// synced cleanup_defs.
+    func tombstoneOrphanCleanupGroups() async throws {
+        try await dbQueue.write { db in
+            guard try db.tableExists("cleanup_groups") else { return }
+            let defs = try String.fetchAll(db, sql: """
+                SELECT cleanup_def FROM categories
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND cleanup_def IS NOT NULL
+                """)
+            var referenced: Set<String> = []
+            for def in defs {
+                for row in CleanupTemplate.decodeArray(fromJSON: def) ?? [] {
+                    if let groupId = row.groupId { referenced.insert(groupId) }
+                }
+            }
+            if referenced.isEmpty {
+                try db.execute(sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0")
+            } else {
+                let placeholders = referenced.map { _ in "?" }.joined(separator: ",")
+                try db.execute(
+                    sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0 AND id NOT IN (\(placeholders))",
+                    arguments: StatementArguments(Array(referenced)))
             }
         }
     }

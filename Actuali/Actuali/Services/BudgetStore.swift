@@ -1687,6 +1687,8 @@ final class BudgetStore: ObservableObject {
             let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
             let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
                 id: "flags.goalTemplatesEnabled") == "true"
+            let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
+                id: "flags.goalTemplatesUIEnabled") == "true"
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1723,6 +1725,7 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedBudgetMonth
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
+            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
             publishWidgetSnapshot()
 
@@ -1876,10 +1879,12 @@ final class BudgetStore: ObservableObject {
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
-            // Same story for the goal-templates flag — the web's Experimental
-            // settings toggle arrives as a synced preference.
+            // Same story for the goal-templates flags — the web's Experimental
+            // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(
                 id: "flags.goalTemplatesEnabled") == "true"
+            let fetchedGoalTemplatesUIFlag = try await database.fetchPreference(
+                id: "flags.goalTemplatesUIEnabled") == "true"
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -1899,6 +1904,7 @@ final class BudgetStore: ObservableObject {
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
+            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             // Last in the batch: assigning this publishes a widget snapshot,
             // which must see the balances above rather than the previous
             // refresh's. Skipped when the user picked a currency in Settings
@@ -4895,6 +4901,240 @@ final class BudgetStore: ObservableObject {
             logger.error("Goal template run failed: \(error.localizedDescription, privacy: .public)")
             return .failed(error.localizedDescription)
         }
+    }
+
+    // MARK: Automation editor (goalTemplatesUIEnabled beta)
+
+    /// Mirror of the web's `flags.goalTemplatesUIEnabled` synced preference —
+    /// gates the visual automations editor, on top of goalTemplatesEnabled.
+    @Published private(set) var goalTemplatesUIEnabled = false
+
+    func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(
+                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false")
+            goalTemplatesUIEnabled = enabled
+        } catch {
+            self.error = "Failed to update automations setting: \(error.localizedDescription)"
+        }
+    }
+
+    /// Everything the automations editor needs for one category — the port
+    /// of BudgetAutomationsModal's load phase.
+    struct AutomationEditorData {
+        var categoryName = ""
+        var entries: [AutomationEntry] = []
+        var cleanup = CleanupConfig()
+        /// Notes-managed category: saving from the editor migrates it to UI
+        /// management, with a warning shown first (web parity).
+        var needsMigration = false
+        /// The note's original template/cleanup lines, for the warning box.
+        var originalNoteLines = ""
+        /// Templates contain an error row the editor can't represent — the
+        /// web refuses to open the editor in this state.
+        var hasUnsupportedTemplates = false
+        var existingNote = ""
+        var schedules: [GoalScheduleInfo] = []
+        /// Percentage sources: special aliases plus income categories.
+        var incomeSources: [(id: String, name: String)] = []
+        var categoryNames: [String: String] = [:]
+        var cleanupGroups: [(id: String, name: String)] = []
+    }
+
+    func loadAutomationEditor(categoryId: String) async throws -> AutomationEditorData {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        let rows = try await database.fetchGoalTemplateCategories()
+        guard let row = rows.first(where: { $0.id == categoryId }) else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        var data = AutomationEditorData()
+        data.categoryName = row.name
+        data.needsMigration = !row.sourceIsUI
+        data.existingNote = row.note ?? ""
+        data.schedules = try await database.fetchSchedules()
+            .filter { $0.name?.isEmpty == false }
+            .map {
+                GoalScheduleInfo(
+                    id: $0.id, name: $0.name, completed: $0.completed,
+                    amount: $0.amount, dateCondition: $0.dateCondition)
+            }
+        data.categoryNames = Dictionary(
+            uniqueKeysWithValues: rows.map { ($0.id, $0.name) })
+        data.incomeSources = rows.filter(\.isIncome).map { ($0.id, $0.name) }
+        data.cleanupGroups = try await database.fetchCleanupGroups()
+
+        var templates: [GoalTemplate]
+        var cleanup: [CleanupTemplate]
+        if data.needsMigration {
+            templates = (row.note).map(GoalTemplateNotes.parseTemplates(fromNote:)) ?? []
+            let parsedRows = (row.note).map(CleanupNotes.parseRows(fromNote:)) ?? []
+            // Note-based cleanup addresses pools by name; create missing
+            // pools so nothing is silently dropped (upstream resolves and
+            // creates them while parsing too).
+            let neededNames = Set(parsedRows.compactMap(\.groupName))
+            var nameToId = Dictionary(
+                uniqueKeysWithValues: data.cleanupGroups.map { ($0.name.lowercased(), $0.id) })
+            for name in neededNames where nameToId[name.lowercased()] == nil {
+                let id = try await createCleanupGroup(name: name)
+                nameToId[name.lowercased()] = id
+                data.cleanupGroups.append((id, name))
+            }
+            cleanup = CleanupNotes.toTemplates(parsedRows) { nameToId[$0.lowercased()] }
+            data.originalNoteLines = (row.note ?? "")
+                .components(separatedBy: "\n")
+                .filter {
+                    let trimmed = $0.trimmingCharacters(in: .whitespaces)
+                    return trimmed.hasPrefix("#template") || trimmed.hasPrefix("#goal")
+                        || trimmed.lowercased().hasPrefix("#cleanup")
+                }
+                .joined(separator: "\n")
+        } else {
+            templates = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)) ?? []
+            cleanup = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+        }
+
+        data.hasUnsupportedTemplates = templates.contains { $0.type == .error }
+
+        // Text templates address income categories by name; the editor works
+        // with ids (web resolves the same way before building entries).
+        let incomeNameToId = Dictionary(
+            uniqueKeysWithValues: data.incomeSources.map { ($0.name.lowercased(), $0.id) })
+        templates = templates.map { template in
+            guard template.type == .percentage, let source = template.category,
+                  let id = incomeNameToId[source.lowercased()] else { return template }
+            var resolved = template
+            resolved.category = id
+            return resolved
+        }
+
+        if !data.hasUnsupportedTemplates {
+            data.entries = BudgetAutomations.migrateToEntries(templates, schedules: data.schedules)
+        }
+        data.cleanup = CleanupConfig.from(cleanup: cleanup)
+        return data
+    }
+
+    /// Projected budgeted amount and per-entry contributions — the editor's
+    /// live "Estimated monthly total" (upstream dry-run-category-template).
+    func dryRunAutomations(
+        month: String,
+        categoryId: String,
+        templates: [GoalTemplate]
+    ) async -> (budgeted: Int, perTemplate: [Int]) {
+        guard let database else { return (0, templates.map { _ in 0 }) }
+        do {
+            let rows = try await database.fetchGoalTemplateCategories()
+            guard let row = rows.first(where: { $0.id == categoryId }) else {
+                return (0, templates.map { _ in 0 })
+            }
+            let sheet = try await database.fetchGoalTemplateSheet(month: month)
+            let schedules = try await database.fetchSchedules()
+                .filter { $0.name?.isEmpty == false }
+                .map {
+                    GoalScheduleInfo(
+                        id: $0.id, name: $0.name, completed: $0.completed,
+                        amount: $0.amount, dateCondition: $0.dateCondition)
+                }
+            return GoalTemplateEngine.dryRun(
+                month: month,
+                category: GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome),
+                templates: templates,
+                allCategories: rows.map {
+                    GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
+                },
+                schedules: schedules,
+                sheet: sheet)
+        } catch {
+            return (0, templates.map { _ in 0 })
+        }
+    }
+
+    /// Save the editor's automations as UI-managed (source 'ui'), which is
+    /// also what completes a notes → UI migration.
+    func saveAutomations(
+        categoryId: String,
+        templates: [GoalTemplate],
+        cleanup: [CleanupTemplate]
+    ) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.storeCategoryAutomations(
+            categoryId: categoryId,
+            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
+            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
+            source: "ui")
+        try await database.tombstoneOrphanCleanupGroups()
+    }
+
+    func createCleanupGroup(name: String) async throws -> String {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        // Reuse (and revive) an existing pool with this name, like upstream
+        // resolveCleanupGroup.
+        if let existing = try await database.fetchCleanupGroups()
+            .first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
+            return existing.id
+        }
+        let id = UUID().uuidString.lowercased()
+        try await syncClient.upsertCleanupGroup(id: id, name: trimmed)
+        return id
+    }
+
+    /// The un-migrate note preview: existing note merged with the rendered
+    /// `#template`/`#goal`/`#cleanup` lines the automations produce.
+    func renderUnmigrateNote(
+        data: AutomationEditorData,
+        templates: [GoalTemplate],
+        cleanup: [CleanupTemplate]
+    ) -> String {
+        let categoryName: (String) -> String? = { data.categoryNames[$0] }
+        let groupName: (String) -> String? = { id in
+            data.cleanupGroups.first { $0.id == id }?.name
+        }
+        let rendered = [
+            AutomationSentences.renderNoteTemplates(templates, categoryName: categoryName),
+            CleanupNotes.toNotes(cleanup, groupName: groupName),
+        ].filter { !$0.isEmpty }.joined(separator: "\n")
+        return AutomationSentences.mergeIntoNote(
+            existingNote: data.existingNote, rendered: rendered)
+    }
+
+    /// Hand a UI-managed category back to notes: save the edited note, clear
+    /// the UI defs, and re-derive goal_def/cleanup_def from the note — the
+    /// web's "Save notes & un-migrate".
+    func unmigrateAutomations(categoryId: String, note: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setNote(id: categoryId, note: note)
+
+        let templates = GoalTemplateNotes.noteHasTemplates(note)
+            ? GoalTemplateNotes.parseTemplates(fromNote: note) : []
+        let cleanupRows = CleanupNotes.parseRows(fromNote: note)
+        var cleanup: [CleanupTemplate] = []
+        if !cleanupRows.isEmpty {
+            let neededNames = Set(cleanupRows.compactMap(\.groupName))
+            var nameToId: [String: String] = [:]
+            if let database {
+                for group in try await database.fetchCleanupGroups() {
+                    nameToId[group.name.lowercased()] = group.id
+                }
+            }
+            for name in neededNames where nameToId[name.lowercased()] == nil {
+                nameToId[name.lowercased()] = try await createCleanupGroup(name: name)
+            }
+            cleanup = CleanupNotes.toTemplates(cleanupRows) { nameToId[$0.lowercased()] }
+        }
+
+        try await syncClient.storeCategoryAutomations(
+            categoryId: categoryId,
+            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
+            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
+            source: "notes")
+        try await database?.tombstoneOrphanCleanupGroups()
     }
 
     /// Port of upstream `checkTemplateNotes`: surface unparseable lines and

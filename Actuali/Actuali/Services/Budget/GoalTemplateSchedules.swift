@@ -24,6 +24,9 @@ struct GoalScheduleInfo: Sendable {
 enum GoalTemplateSchedules {
 
     struct ScheduleTarget {
+        /// Position of the source template in the caller's template array,
+        /// for per-template contribution attribution (dry-run projections).
+        let templateIndex: Int
         let template: GoalTemplate
         var target: Int
         let nextDateString: String // "yyyy-MM-dd"
@@ -59,7 +62,7 @@ enum GoalTemplateSchedules {
     /// Port of `createScheduleList`. Completed and past-dated schedules drop
     /// out (upstream records errors for them that the caller then discards).
     static func createScheduleList(
-        templates: [GoalTemplate],
+        templates: [(index: Int, template: GoalTemplate)],
         currentMonth: String,
         categoryIsIncome: Bool,
         schedules: [GoalScheduleInfo]
@@ -67,7 +70,7 @@ enum GoalTemplateSchedules {
         let monthStart = BudgetMonthMath.day(currentMonth) ?? .today()
         var targets: [ScheduleTarget] = []
 
-        for template in templates where template.type == .schedule {
+        for (templateIndex, template) in templates where template.type == .schedule {
             // Prefer scheduleId (UI-managed templates) so renames don't break
             // the lookup; fall back to the trimmed name for notes templates.
             let schedule: GoalScheduleInfo?
@@ -120,6 +123,7 @@ enum GoalTemplateSchedules {
             }
 
             targets.append(ScheduleTarget(
+                templateIndex: templateIndex,
                 template: template,
                 target: target,
                 nextDateString: nextDate.iso,
@@ -184,9 +188,11 @@ enum GoalTemplateSchedules {
     // MARK: - runSchedule
 
     /// Port of `runSchedule`'s budgeting math. Returns the new to-budget total
-    /// for the category (the caller subtracts what was already accumulated).
+    /// for the category (the caller subtracts what was already accumulated),
+    /// plus each schedule template's monthly contribution — the weights the
+    /// caller uses to split the batched total for per-row projections.
     static func run(
-        templates: [GoalTemplate],
+        templates: [(index: Int, template: GoalTemplate)],
         currentMonth: String,
         balance: Int,
         lastMonthBalance: Int,
@@ -195,7 +201,7 @@ enum GoalTemplateSchedules {
         categoryIsIncome: Bool,
         isTracking: Bool,
         schedules: [GoalScheduleInfo]
-    ) -> Int {
+    ) -> (toBudget: Int, perTemplate: [Int: Double]) {
         var toBudget = toBudget
         let targets = createScheduleList(
             templates: templates, currentMonth: currentMonth,
@@ -225,14 +231,27 @@ enum GoalTemplateSchedules {
         let totalSinking = sinking.reduce(0.0) { $0 + Double($1.target) }
         let totalSinkingBaseContribution = sinking.reduce(0.0) { $0 + monthlyBaseContribution($1) }
 
+        // Per-schedule monthly contributions, keyed by the source template's
+        // index — mirrors upstream's perScheduleMonthly map.
+        var perTemplate: [Int: Double] = [:]
+        func addContribution(_ target: ScheduleTarget, _ amount: Double) {
+            perTemplate[target.templateIndex, default: 0] += amount
+        }
+
         if Double(balance) >= totalSinking + totalPayMonthOf
             || (Double(lastMonthGoal) < totalSinking + totalPayMonthOf
                 && lastMonthGoal != 0
                 && balance >= lastMonthGoal
                 && numSubMonthly > 0) {
             toBudget += BudgetMonthMath.jsRound(totalPayMonthOf + totalSinkingBaseContribution)
+            for target in payMonthOf where target.numMonths == 0 {
+                addContribution(target, Double(target.target))
+            }
+            for target in sinking {
+                addContribution(target, monthlyBaseContribution(target))
+            }
         } else {
-            let totalSinkingContribution = sinkingContributionTotal(
+            let (totalSinkingContribution, sinkingPerTemplate) = sinkingContributionBreakdown(
                 sinking, lastMonthBalance: lastMonthBalance)
             if sinking.isEmpty {
                 toBudget += BudgetMonthMath.jsRound(totalPayMonthOf + totalSinkingContribution)
@@ -240,8 +259,14 @@ enum GoalTemplateSchedules {
             } else {
                 toBudget += BudgetMonthMath.jsRound(totalPayMonthOf + totalSinkingContribution)
             }
+            for target in payMonthOf where target.numMonths == 0 {
+                addContribution(target, Double(target.target))
+            }
+            for (index, amount) in sinkingPerTemplate {
+                perTemplate[index, default: 0] += amount
+            }
         }
-        return toBudget
+        return (toBudget, perTemplate)
     }
 
     /// Port of `getMonthlyBaseContribution`.
@@ -270,15 +295,17 @@ enum GoalTemplateSchedules {
         }
     }
 
-    /// Port of `getSinkingContributionBreakdown`'s total: each schedule needs
-    /// its target minus what earlier ones left behind, spread across the
-    /// months until it's due.
-    private static func sinkingContributionTotal(
+    /// Port of `getSinkingContributionBreakdown`: each schedule needs its
+    /// target minus what earlier ones left behind, spread across the months
+    /// until it's due — with each schedule's own contribution recorded for
+    /// per-template projections.
+    private static func sinkingContributionBreakdown(
         _ sinking: [ScheduleTarget],
         lastMonthBalance: Int
-    ) -> Double {
+    ) -> (total: Double, perTemplate: [Int: Double]) {
         var total = 0.0
         var remainder = 0.0
+        var perTemplate: [Int: Double] = [:]
         for (index, schedule) in sinking.enumerated() {
             remainder = index == 0
                 ? Double(schedule.target - lastMonthBalance)
@@ -290,8 +317,10 @@ enum GoalTemplateSchedules {
             } else {
                 remainder = abs(remainder)
             }
-            total += contributionTarget / Double(schedule.numMonths + 1)
+            let contribution = contributionTarget / Double(schedule.numMonths + 1)
+            total += contribution
+            perTemplate[schedule.templateIndex, default: 0] += contribution
         }
-        return total
+        return (total, perTemplate)
     }
 }

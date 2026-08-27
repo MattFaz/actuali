@@ -82,12 +82,18 @@ final class GoalTemplateContext {
     private let allCategories: [GoalTemplateCategory]
     private let currentMonth: String
 
-    private var templates: [GoalTemplate] = []
-    private var remainder: [GoalTemplate] = []
+    /// Template lists keep the index into the caller's template array so
+    /// per-template contributions (dry-run projections) can be attributed
+    /// back — upstream keys its maps by object identity instead.
+    private var templates: [(index: Int, template: GoalTemplate)] = []
+    private var remainder: [(index: Int, template: GoalTemplate)] = []
     private var goals: [GoalTemplate] = []
     private var priorities: Set<Int> = []
     private var remainderWeight: Double = 0
     private(set) var toBudgetAmount = 0
+    /// Amount budgeted per input-template index (see `templates`).
+    private var perTemplateContribution: [Int: Int] = [:]
+    private let skipAvailableClamp: Bool
     private var fullAmount: Int?
     private var isLongGoal: Bool?
     private var goalAmount: Int?
@@ -99,11 +105,15 @@ final class GoalTemplateContext {
     private var limitHold = false
     let previouslyBudgeted: Int
     private let hideDecimal: Bool
+    private let inputTemplateCount: Int
 
     struct Values {
         let budgeted: Int
         let goal: Int?
         let longGoal: Bool?
+        /// Contribution per input template, aligned with the init templates
+        /// array (0 for goals, limits, and templates that budgeted nothing).
+        let perTemplate: [Int]
     }
 
     init(
@@ -114,7 +124,8 @@ final class GoalTemplateContext {
         sheet: GoalTemplateSheet,
         schedules: [GoalScheduleInfo],
         allCategories: [GoalTemplateCategory],
-        currentMonth: String
+        currentMonth: String,
+        skipAvailableClamp: Bool = false
     ) throws {
         self.category = category
         self.month = month
@@ -122,8 +133,10 @@ final class GoalTemplateContext {
         self.schedules = schedules
         self.allCategories = allCategories
         self.currentMonth = currentMonth
+        self.skipAvailableClamp = skipAvailableClamp
         previouslyBudgeted = budgeted
         hideDecimal = sheet.hideFraction
+        inputTemplateCount = templates.count
 
         let lastMonth = BudgetMonthMath.subMonths(month, 1)
         var fromLastMonth = sheet.leftover(month: lastMonth, category: category.id)
@@ -138,12 +151,12 @@ final class GoalTemplateContext {
         try Self.checkByAndScheduleAndSpend(templates: templates, month: month, schedules: schedules)
         try Self.checkPercentage(templates: templates, categories: allCategories)
 
-        for template in templates {
+        for (index, template) in templates.enumerated() {
             if template.directive == .template, template.type != .remainder, template.type != .limit {
-                self.templates.append(template)
+                self.templates.append((index, template))
                 if let priority = template.priority { priorities.insert(priority) }
             } else if template.directive == .template, template.type == .remainder {
-                remainder.append(template)
+                remainder.append((index, template))
                 remainderWeight += template.weight ?? 1
             } else if template.directive == .goal, template.type == .goal {
                 goals.append(template)
@@ -177,14 +190,20 @@ final class GoalTemplateContext {
         guard priorities.contains(priority), !limitMet else { return 0 }
 
         let priorityTemplates = templates.filter {
-            $0.directive == .template && $0.priority == priority
+            $0.template.directive == .template && $0.template.priority == priority
         }
         var available = budgetAvail
         var toBudget = 0
         var byFlag = false
         var scheduleFlag = false
+        // Per-template budgets for this priority pass, in iteration order —
+        // the batched by/schedule totals land on the first sibling and are
+        // redistributed below, mirroring upstream's perTemplateLocal map.
+        var perTemplateLocal: [(index: Int, value: Int)] = []
+        var byPerTemplate: [Int: Int] = [:]
+        var schedulePerTemplate: [Int: Double] = [:]
 
-        for template in priorityTemplates {
+        for (index, template) in priorityTemplates {
             var newBudget = 0
             switch template.type {
             case .simple:
@@ -201,12 +220,16 @@ final class GoalTemplateContext {
                 newBudget = try runPercentage(template, availableFunds: availStart)
             case .by:
                 // All `by` templates in the priority run as one batch.
-                if !byFlag { newBudget = runBy() }
+                if !byFlag {
+                    let result = runBy()
+                    newBudget = result.toBudget
+                    byPerTemplate = result.perTemplateNeed
+                }
                 byFlag = true
             case .schedule:
                 if !scheduleFlag {
                     let lastMonth = BudgetMonthMath.subMonths(month, 1)
-                    let newTotal = GoalTemplateSchedules.run(
+                    let result = GoalTemplateSchedules.run(
                         templates: priorityTemplates,
                         currentMonth: month,
                         balance: fromLastMonth + toBudget,
@@ -218,7 +241,8 @@ final class GoalTemplateContext {
                         schedules: schedules)
                     // The schedule run returns the whole to-budget figure, so
                     // strip what earlier templates already contributed.
-                    newBudget = newTotal - toBudget
+                    newBudget = result.toBudget - toBudget
+                    schedulePerTemplate = result.perTemplate
                     scheduleFlag = true
                 }
             case .average:
@@ -228,7 +252,22 @@ final class GoalTemplateContext {
             }
             available -= newBudget
             toBudget += newBudget
+            perTemplateLocal.append((index, newBudget))
         }
+
+        // Split the batched by/schedule totals across their siblings by each
+        // template's own need, so per-row projections don't credit the whole
+        // batch to whichever sibling ran first (upstream redistributeBatch).
+        redistributeBatch(
+            &perTemplateLocal,
+            siblings: priorityTemplates.filter { $0.template.type == .by }.map(\.index),
+            weightOf: { Double(max(0, byPerTemplate[$0] ?? 0)) })
+        redistributeBatch(
+            &perTemplateLocal,
+            siblings: priorityTemplates.filter { $0.template.type == .schedule }.map(\.index),
+            weightOf: { max(0, schedulePerTemplate[$0] ?? 0) })
+
+        var scale = 1.0
 
         // Limit cap for the running total (balance carried in counts).
         if limitCheck, toBudget + toBudgetAmount + fromLastMonth >= limitAmount {
@@ -236,23 +275,89 @@ final class GoalTemplateContext {
             toBudget = limitAmount - toBudgetAmount - fromLastMonth
             limitMet = true
             available = available + original - toBudget
+            if original > 0 { scale *= Double(toBudget) / Double(original) }
         }
 
         if hideDecimal {
+            // Track the rounding delta so per-row contributions sum to the
+            // engine's actual budgeted amount.
+            let preRound = toBudget
             toBudget = removeFraction(toBudget)
+            if preRound != 0 { scale *= Double(toBudget) / Double(preRound) }
         }
 
         // Don't overbudget at a positive priority unless this is an income
-        // category (which credits rather than spends the pool).
-        if priority > 0, available < 0, !category.isIncome {
+        // category (which credits rather than spends the pool). Dry runs skip
+        // the clamp so future months show the templates' intended amount.
+        if priority > 0, available < 0, !category.isIncome, !skipAvailableClamp {
             fullAmount = (fullAmount ?? 0) + toBudget
-            toBudget = max(0, toBudget + available)
+            let adjusted = max(0, toBudget + available)
+            if toBudget > 0 { scale *= Double(adjusted) / Double(toBudget) }
+            toBudget = adjusted
             toBudgetAmount += toBudget
         } else {
             fullAmount = (fullAmount ?? 0) + toBudget
             toBudgetAmount += toBudget
         }
+
+        // Distribute the priority's final budget across its templates. The
+        // limit branch can produce a negative scale when the carried balance
+        // already exceeds the cap; floor at 0 so projections never go
+        // negative. The last entry takes the residual so the shares sum to
+        // toBudget exactly.
+        let perRowScale = max(0, scale)
+        var remaining = max(0, toBudget)
+        for (position, entry) in perTemplateLocal.enumerated() {
+            let isLast = position == perTemplateLocal.count - 1
+            let share = isLast
+                ? remaining
+                : max(0, min(remaining, BudgetMonthMath.jsRound(Double(entry.value) * perRowScale)))
+            perTemplateContribution[entry.index, default: 0] += share
+            remaining -= share
+        }
         return category.isIncome ? -toBudget : toBudget
+    }
+
+    /// Port of upstream `redistributeBatch`: zero the siblings' local values
+    /// and re-split their total by weight, last sibling absorbing rounding.
+    private func redistributeBatch(
+        _ perTemplateLocal: inout [(index: Int, value: Int)],
+        siblings: [Int],
+        weightOf: (Int) -> Double
+    ) {
+        guard siblings.count >= 2 else { return }
+        let siblingSet = Set(siblings)
+        var total = 0
+        for (position, entry) in perTemplateLocal.enumerated()
+            where siblingSet.contains(entry.index) {
+            total += entry.value
+            perTemplateLocal[position].value = 0
+        }
+        guard total != 0 else { return }
+
+        let totalWeight = siblings.reduce(0.0) { $0 + weightOf($1) }
+        var shares: [Int: Int] = [:]
+        var remaining = total
+        for (position, index) in siblings.enumerated() {
+            let isLast = position == siblings.count - 1
+            let share: Int
+            if isLast {
+                share = remaining
+            } else if totalWeight > 0 {
+                share = BudgetMonthMath.jsRound(Double(total) * weightOf(index) / totalWeight)
+            } else {
+                // Equal split fallback when no weights are usable.
+                share = BudgetMonthMath.jsRound(Double(total) / Double(siblings.count))
+            }
+            let allocated = max(0, min(share, remaining))
+            shares[index] = allocated
+            remaining -= allocated
+        }
+        for (position, entry) in perTemplateLocal.enumerated() {
+            if let share = shares[entry.index] {
+                perTemplateLocal[position].value = share
+            }
+        }
     }
 
     func runRemainder(budgetAvail: Int, perWeight: Double) -> Int {
@@ -275,13 +380,36 @@ final class GoalTemplateContext {
             limitMet = true
         }
 
+        // Attribute the pass across the remainder templates by weight, the
+        // last one absorbing rounding (upstream runRemainder's share loop).
+        if toBudget > 0, remainderWeight > 0 {
+            var remaining = toBudget
+            for (position, entry) in remainder.enumerated() {
+                let isLast = position == remainder.count - 1
+                let share = isLast
+                    ? remaining
+                    : BudgetMonthMath.jsRound(
+                        Double(toBudget) * (entry.template.weight ?? 1) / remainderWeight)
+                let allocated = max(0, min(share, remaining))
+                perTemplateContribution[entry.index, default: 0] += allocated
+                remaining -= allocated
+            }
+        }
+
         toBudgetAmount += toBudget
         return toBudget
     }
 
     func getValues() -> Values {
         runGoal()
-        return Values(budgeted: toBudgetAmount, goal: goalAmount, longGoal: isLongGoal)
+        var perTemplate = [Int](repeating: 0, count: inputTemplateCount)
+        for (index, contribution) in perTemplateContribution
+            where index >= 0 && index < inputTemplateCount {
+            perTemplate[index] = contribution
+        }
+        return Values(
+            budgeted: toBudgetAmount, goal: goalAmount, longGoal: isLongGoal,
+            perTemplate: perTemplate)
     }
 
     private func runGoal() {
@@ -412,7 +540,7 @@ final class GoalTemplateContext {
     }
 
     private func checkSpend() throws {
-        if templates.count(where: { $0.type == .spend }) > 1 {
+        if templates.count(where: { $0.template.type == .spend }) > 1 {
             throw GoalTemplateError.category("Only one spend template is allowed per category")
         }
     }
@@ -571,12 +699,12 @@ final class GoalTemplateContext {
         return BudgetMonthMath.jsRound(Double(sum) / Double(months.count))
     }
 
-    private func runBy() -> Int {
-        let byTemplates = templates.filter { $0.type == .by }
+    private func runBy() -> (toBudget: Int, perTemplateNeed: [Int: Int]) {
+        let byTemplates = templates.filter { $0.template.type == .by }
         var savedInfo: [(numMonths: Int, period: Int?)] = []
         var shortestMonths: Int?
 
-        for template in byTemplates {
+        for (_, template) in byTemplates {
             var targetMonth = template.month ?? ""
             let period: Int? = template.annual == true
                 ? (template.repeatCount ?? 1) * 12
@@ -596,9 +724,10 @@ final class GoalTemplateContext {
 
         let shortNumMonths = shortestMonths ?? 0
         var totalNeeded = 0
-        for (index, template) in byTemplates.enumerated() {
-            let (numMonths, period) = savedInfo[index]
-            let target = BudgetMonthMath.amountToInteger(template.amount ?? 0)
+        var perTemplateNeed: [Int: Int] = [:]
+        for (position, entry) in byTemplates.enumerated() {
+            let (numMonths, period) = savedInfo[position]
+            let target = BudgetMonthMath.amountToInteger(entry.template.amount ?? 0)
             let amount: Int
             if numMonths > shortNumMonths, let period, period > 0 {
                 // Back-interpolate what the longer-window template needs
@@ -611,10 +740,12 @@ final class GoalTemplateContext {
             } else {
                 amount = target
             }
+            perTemplateNeed[entry.index] = amount
             totalNeeded += amount
         }
-        return BudgetMonthMath.jsRound(
+        let toBudget = BudgetMonthMath.jsRound(
             Double(totalNeeded - fromLastMonth) / Double(shortNumMonths + 1))
+        return (toBudget, perTemplateNeed)
     }
 }
 
@@ -760,5 +891,50 @@ enum GoalTemplateEngine {
                 longGoal: values.longGoal == true))
         }
         return .applied(count: contexts.count, budgets: budgets, goals: goals)
+    }
+
+    /// Port of upstream `dryRunCategoryTemplate`: how much would these
+    /// templates budget for one category this month, and how much does each
+    /// template contribute? Skips the available-funds clamp so future months
+    /// (where To Budget is empty) show the templates' intended amounts.
+    /// Validation errors return zeros, matching upstream.
+    static func dryRun(
+        month: String,
+        category: GoalTemplateCategory,
+        templates: [GoalTemplate],
+        allCategories: [GoalTemplateCategory],
+        schedules: [GoalScheduleInfo],
+        sheet: GoalTemplateSheet,
+        currentMonth: String = BudgetMonthMath.currentMonth()
+    ) -> (budgeted: Int, perTemplate: [Int]) {
+        let zeros = [Int](repeating: 0, count: templates.count)
+        guard !templates.isEmpty else { return (0, zeros) }
+        do {
+            let budgeted = sheet.budgeted(month: month, category: category.id)
+            let context = try GoalTemplateContext(
+                templates: templates,
+                category: category,
+                month: month,
+                budgeted: budgeted,
+                sheet: sheet,
+                schedules: schedules,
+                allCategories: allCategories,
+                currentMonth: currentMonth,
+                skipAvailableClamp: true)
+            var availBudget = sheet.availableStart
+            if !context.isGoalOnly() { availBudget += budgeted }
+            availBudget += context.limitExcess
+            for priority in context.getPriorities().sorted() {
+                let availStart = availBudget
+                let budget = try context.runTemplatesForPriority(
+                    priority, budgetAvail: availBudget, availStart: availStart)
+                availBudget -= budget
+            }
+            _ = distributeRemainder(contexts: [context], availBudget: availBudget)
+            let values = context.getValues()
+            return (values.budgeted, values.perTemplate)
+        } catch {
+            return (0, zeros)
+        }
     }
 }
