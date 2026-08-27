@@ -30,6 +30,23 @@ struct BudgetViewSettingsView: View {
                     Text("Group Totals are available in Detailed view.")
                 }
             }
+
+            // Mirrors the web's Settings → Experimental features toggle: the
+            // flag is a synced preference, so flipping it here flips it for
+            // every client on this budget.
+            Section {
+                Toggle("Budget Goal Templates", isOn: Binding(
+                    get: { budgetStore.goalTemplatesEnabled },
+                    set: { enabled in
+                        Task { await budgetStore.setGoalTemplatesEnabled(enabled) }
+                    }
+                ))
+                .disabled(budgetStore.currentBudgetId == nil)
+            } header: {
+                Text("Experimental")
+            } footer: {
+                Text("Set budgeting goals per category with #template and #goal lines in category notes, then apply them from the Budget tab's options menu. Synced with the web app's Goal Templates experimental feature.")
+            }
         }
         .readableWidth()
         .navigationTitle("Budget View")
