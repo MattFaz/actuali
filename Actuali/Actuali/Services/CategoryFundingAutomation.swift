@@ -20,6 +20,8 @@ enum CategoryFundingDecision: Equatable {
 }
 
 enum CategoryFundingAutomation {
+    /// Existing overspending is intentionally preserved. The calculation only
+    /// considers positive money that was available before the new expense.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
         guard transactionAmount < 0 else { return 0 }
 
@@ -236,8 +238,7 @@ extension BudgetStore {
         // A delete-transaction rule can remove the just-created row. Don't
         // hand a non-existent id to the funding automation in that case.
         guard let database = databaseForLogger,
-              let stored = try? await database.fetchTransaction(id: transaction.id),
-              stored != nil else {
+              (try? await database.fetchTransaction(id: transaction.id)) != nil else {
             return nil
         }
         return transaction.id
