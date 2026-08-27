@@ -1445,9 +1445,6 @@ final class BudgetDatabase: Sendable {
     /// The month-by-month walk `fetchBudgetMonth` documents below, extracted
     /// so goal templates can read any prior month's leftover/carryover.
     static func budgetWalk(_ db: Database, targetMonthInt: Int) throws -> BudgetWalkResult {
-        try await dbQueue.read { db in
-            let targetMonthInt = Self.monthStringToInt(month)
-
             // Detect which budget table the budget uses.
             // Envelope (zero_budgets) clamps negative leftover to 0 unless
             // the carryover flag is set. Tracking (reflect_budgets) drops
@@ -1853,149 +1850,149 @@ final class BudgetDatabase: Sendable {
         }
         return year * 100 + month + 1
     }
-    
-        // MARK: - Goal Templates
 
-        /// One category as the goal-template pipeline sees it: identity, whether
-        /// its templates are UI-managed (web's template editor) or notes-managed,
-        /// the stored `goal_def`, and its note text for the notes → goal_def sync.
-        struct GoalTemplateCategoryRow: Sendable {
-            let id: String
-            let name: String
-            let isIncome: Bool
-            let hidden: Bool
-            let groupHidden: Bool
-            let sourceIsUI: Bool
-            let goalDef: String?
-            let note: String?
-        }
+    // MARK: - Goal Templates
 
-        func fetchGoalTemplateCategories() async throws -> [GoalTemplateCategoryRow] {
-            try await dbQueue.read { db in
-                let hasNotes = try db.tableExists("notes")
-                let noteSelect = hasNotes ? ", n.note AS note" : ""
-                let noteJoin = hasNotes ? "LEFT JOIN notes n ON n.id = c.id" : ""
-                let rows = try Row.fetchAll(db, sql: """
-                    SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def,
-                           c.template_settings, g.hidden AS group_hidden\(noteSelect)
-                    FROM categories c
-                    LEFT JOIN category_groups g ON g.id = c.cat_group
-                    \(noteJoin)
-                    WHERE (c.tombstone = 0 OR c.tombstone IS NULL)
-                    """)
-                return rows.compactMap { row -> GoalTemplateCategoryRow? in
-                    guard let id: String = row["id"] else { return nil }
-                    // template_settings is a JSON blob; upstream treats anything
-                    // that isn't explicitly source:'ui' as notes-managed.
-                    let settings: String? = row["template_settings"]
-                    let sourceIsUI = settings
-                        .flatMap { $0.data(using: .utf8) }
-                        .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                        .flatMap { $0["source"] as? String } == "ui"
-                    return GoalTemplateCategoryRow(
-                        id: id,
-                        name: row["name"] ?? "Unknown",
-                        isIncome: (row["is_income"] ?? 0) == 1,
-                        hidden: (row["hidden"] ?? 0) == 1,
-                        groupHidden: (row["group_hidden"] ?? 0) == 1,
-                        sourceIsUI: sourceIsUI,
-                        goalDef: row["goal_def"],
-                        note: hasNotes ? row["note"] : nil)
-                }
+    /// One category as the goal-template pipeline sees it: identity, whether
+    /// its templates are UI-managed (web's template editor) or notes-managed,
+    /// the stored `goal_def`, and its note text for the notes → goal_def sync.
+    struct GoalTemplateCategoryRow: Sendable {
+        let id: String
+        let name: String
+        let isIncome: Bool
+        let hidden: Bool
+        let groupHidden: Bool
+        let sourceIsUI: Bool
+        let goalDef: String?
+        let note: String?
+    }
+
+    func fetchGoalTemplateCategories() async throws -> [GoalTemplateCategoryRow] {
+        try await dbQueue.read { db in
+            let hasNotes = try db.tableExists("notes")
+            let noteSelect = hasNotes ? ", n.note AS note" : ""
+            let noteJoin = hasNotes ? "LEFT JOIN notes n ON n.id = c.id" : ""
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def,
+                       c.template_settings, g.hidden AS group_hidden\(noteSelect)
+                FROM categories c
+                LEFT JOIN category_groups g ON g.id = c.cat_group
+                \(noteJoin)
+                WHERE (c.tombstone = 0 OR c.tombstone IS NULL)
+                """)
+            return rows.compactMap { row -> GoalTemplateCategoryRow? in
+                guard let id: String = row["id"] else { return nil }
+                // template_settings is a JSON blob; upstream treats anything
+                // that isn't explicitly source:'ui' as notes-managed.
+                let settings: String? = row["template_settings"]
+                let sourceIsUI = settings
+                    .flatMap { $0.data(using: .utf8) }
+                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                    .flatMap { $0["source"] as? String } == "ui"
+                return GoalTemplateCategoryRow(
+                    id: id,
+                    name: row["name"] ?? "Unknown",
+                    isIncome: (row["is_income"] ?? 0) == 1,
+                    hidden: (row["hidden"] ?? 0) == 1,
+                    groupHidden: (row["group_hidden"] ?? 0) == 1,
+                    sourceIsUI: sourceIsUI,
+                    goalDef: row["goal_def"],
+                    note: hasNotes ? row["note"] : nil)
             }
         }
+    }
 
-        /// The sheet-value snapshot the goal-template engine runs against: every
-        /// cell it can read, for all months up to and including `month`.
-        func fetchGoalTemplateSheet(month: String) async throws -> GoalTemplateSheet {
-            try await dbQueue.read { db in
-                let targetMonthInt = Self.monthStringToInt(month)
-                let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
+    /// The sheet-value snapshot the goal-template engine runs against: every
+    /// cell it can read, for all months up to and including `month`.
+    func fetchGoalTemplateSheet(month: String) async throws -> GoalTemplateSheet {
+        try await dbQueue.read { db in
+            let targetMonthInt = Self.monthStringToInt(month)
+            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
 
-                var sheet = GoalTemplateSheet()
-                sheet.isTracking = !walk.isEnvelope
+            var sheet = GoalTemplateSheet()
+            sheet.isTracking = !walk.isEnvelope
 
-                if walk.isEnvelope {
-                    sheet.availableStart = walk.toBudget
-                } else {
-                    // tracking `total-saved`: budgeted income minus budgeted
-                    // expenses for the month (loot-core tracking.ts).
-                    let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
-                    var saved = 0
-                    for (categoryId, budgetRow) in targetBudgets {
-                        saved += walk.incomeCatIds.contains(categoryId)
-                            ? budgetRow.amount : -budgetRow.amount
-                    }
-                    sheet.availableStart = saved
+            if walk.isEnvelope {
+                sheet.availableStart = walk.toBudget
+            } else {
+                // tracking `total-saved`: budgeted income minus budgeted
+                // expenses for the month (loot-core tracking.ts).
+                let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
+                var saved = 0
+                for (categoryId, budgetRow) in targetBudgets {
+                    saved += walk.incomeCatIds.contains(categoryId)
+                        ? budgetRow.amount : -budgetRow.amount
                 }
-
-                if try db.tableExists("preferences") {
-                    let hideFraction = try String.fetchOne(
-                        db, sql: "SELECT value FROM preferences WHERE id = 'hideFraction'")
-                    sheet.hideFraction = hideFraction == "true"
-                }
-
-                for (monthInt, rowsByCategory) in walk.budgetByMonthCat {
-                    for (categoryId, budgetRow) in rowsByCategory {
-                        let key = GoalTemplateSheet.MonthCat(monthInt, categoryId)
-                        sheet.budgeted[key] = budgetRow.amount
-                        if budgetRow.flag { sheet.carryover.insert(key) }
-                        if let goal = budgetRow.goal { sheet.goals[key] = goal }
-                        if budgetRow.goal != nil || budgetRow.longGoal != nil {
-                            sheet.goalRows.insert(key)
-                        }
-                        if let existing = sheet.firstActivityMonth[categoryId] {
-                            sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
-                        } else {
-                            sheet.firstActivityMonth[categoryId] = monthInt
-                        }
-                    }
-                }
-                for (monthInt, spentByCategory) in walk.spentByMonthCat {
-                    var income = 0
-                    for (categoryId, amount) in spentByCategory {
-                        sheet.spent[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
-                        if walk.incomeCatIds.contains(categoryId) { income += amount }
-                        if let existing = sheet.firstActivityMonth[categoryId] {
-                            sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
-                        } else {
-                            sheet.firstActivityMonth[categoryId] = monthInt
-                        }
-                    }
-                    sheet.totalIncome[monthInt] = income
-                }
-                for (monthInt, leftoverByCategory) in walk.leftoverByMonthCat {
-                    for (categoryId, amount) in leftoverByCategory {
-                        sheet.leftover[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
-                    }
-                }
-                return sheet
+                sheet.availableStart = saved
             }
-        }
 
-        /// Clear `goal_def` on categories whose notes no longer hold templates.
-        /// Deliberately not CRDT-synced: upstream's
-        /// `resetCategoryGoalDefsWithNoTemplates` is a plain UPDATE too — every
-        /// client re-derives the reset from the synced notes.
-        func resetGoalDefs(categoryIds: [String]) async throws {
-            guard !categoryIds.isEmpty else { return }
-            try await dbQueue.write { db in
-                let placeholders = categoryIds.map { _ in "?" }.joined(separator: ",")
-                try db.execute(
-                    sql: "UPDATE categories SET goal_def = NULL WHERE id IN (\(placeholders))",
-                    arguments: StatementArguments(categoryIds))
+            if try db.tableExists("preferences") {
+                let hideFraction = try String.fetchOne(
+                    db, sql: "SELECT value FROM preferences WHERE id = 'hideFraction'")
+                sheet.hideFraction = hideFraction == "true"
             }
-        }
 
-        /// A synced preference value (`preferences` table), nil when unset or the
-        /// table is missing.
-        func fetchPreference(id: String) async throws -> String? {
-            try await dbQueue.read { db in
-                guard try db.tableExists("preferences") else { return nil }
-                return try String.fetchOne(
-                    db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: [id])
+            for (monthInt, rowsByCategory) in walk.budgetByMonthCat {
+                for (categoryId, budgetRow) in rowsByCategory {
+                    let key = GoalTemplateSheet.MonthCat(monthInt, categoryId)
+                    sheet.budgeted[key] = budgetRow.amount
+                    if budgetRow.flag { sheet.carryover.insert(key) }
+                    if let goal = budgetRow.goal { sheet.goals[key] = goal }
+                    if budgetRow.goal != nil || budgetRow.longGoal != nil {
+                        sheet.goalRows.insert(key)
+                    }
+                    if let existing = sheet.firstActivityMonth[categoryId] {
+                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
+                    } else {
+                        sheet.firstActivityMonth[categoryId] = monthInt
+                    }
+                }
             }
+            for (monthInt, spentByCategory) in walk.spentByMonthCat {
+                var income = 0
+                for (categoryId, amount) in spentByCategory {
+                    sheet.spent[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
+                    if walk.incomeCatIds.contains(categoryId) { income += amount }
+                    if let existing = sheet.firstActivityMonth[categoryId] {
+                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
+                    } else {
+                        sheet.firstActivityMonth[categoryId] = monthInt
+                    }
+                }
+                sheet.totalIncome[monthInt] = income
+            }
+            for (monthInt, leftoverByCategory) in walk.leftoverByMonthCat {
+                for (categoryId, amount) in leftoverByCategory {
+                    sheet.leftover[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
+                }
+            }
+            return sheet
         }
+    }
+
+    /// Clear `goal_def` on categories whose notes no longer hold templates.
+    /// Deliberately not CRDT-synced: upstream's
+    /// `resetCategoryGoalDefsWithNoTemplates` is a plain UPDATE too — every
+    /// client re-derives the reset from the synced notes.
+    func resetGoalDefs(categoryIds: [String]) async throws {
+        guard !categoryIds.isEmpty else { return }
+        try await dbQueue.write { db in
+            let placeholders = categoryIds.map { _ in "?" }.joined(separator: ",")
+            try db.execute(
+                sql: "UPDATE categories SET goal_def = NULL WHERE id IN (\(placeholders))",
+                arguments: StatementArguments(categoryIds))
+        }
+    }
+
+    /// A synced preference value (`preferences` table), nil when unset or the
+    /// table is missing.
+    func fetchPreference(id: String) async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return nil }
+            return try String.fetchOne(
+                db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: [id])
+        }
+    }
 
     // MARK: - Clock Storage
 

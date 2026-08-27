@@ -134,6 +134,8 @@ struct CategoryBudget: Identifiable, Hashable {
     }
 
     var isOverspent: Bool {
+        available < 0
+    }
 
     /// Overspending carried in from earlier months (negative, or 0 when the
     /// carryover is a credit). Actual's web UI doesn't surface this either,

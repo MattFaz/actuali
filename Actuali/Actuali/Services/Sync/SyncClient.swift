@@ -974,6 +974,108 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Store parsed goal templates into `categories.goal_def` (optimistic
+    /// local-first). Mirrors upstream `storeTemplates` (goal-template.ts): the
+    /// JSON template array plus a `template_settings` source marker, batched
+    /// into one message set. nil goalDef clears the column (a UI-managed
+    /// category being handed back to notes).
+    func storeGoalDefs(_ updates: [(categoryId: String, goalDef: String?, source: String)]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !updates.isEmpty else { return }
+
+        logger.debug("storeGoalDefs() - categories: \(updates.count, privacy: .public)")
+
+        var messages: [CRDTMessage] = []
+        for update in updates {
+            let fields: [(column: String, value: (any Sendable)?)] = [
+                ("goal_def", update.goalDef),
+                ("template_settings", "{\"source\": \"\(update.source)\"}"),
+            ]
+            messages += try await messageGenerator.messages(
+                dataset: "categories", row: update.categoryId, fields: fields)
+        }
+
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    /// Write the budget amounts and goal columns a template run produced, all
+    /// in one message batch (upstream's setBudgets + setGoals under a single
+    /// batchMessages). Both write the same (month, category) row, so the two
+    /// lists are merged per category before generating messages — creating
+    /// the row once with its month/category identity when it doesn't exist.
+    func applyGoalTemplateWrites(
+        month: String,
+        budgets: [GoalTemplateEngine.BudgetWrite],
+        goals: [GoalTemplateEngine.GoalWrite]
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !budgets.isEmpty || !goals.isEmpty else { return }
+
+        logger.debug("applyGoalTemplateWrites() - month: \(month, privacy: .public), budgets: \(budgets.count, privacy: .public), goals: \(goals.count, privacy: .public)")
+
+        let budgetsByCategory = Dictionary(uniqueKeysWithValues: budgets.map { ($0.category, $0) })
+        let goalsByCategory = Dictionary(uniqueKeysWithValues: goals.map { ($0.category, $0) })
+
+        var messages: [CRDTMessage] = []
+        for categoryId in Set(budgetsByCategory.keys).union(goalsByCategory.keys).sorted() {
+            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+                throw SyncError.budgetTableMissing
+            }
+            var fields: [(column: String, value: (any Sendable)?)] = []
+            if !cell.exists {
+                fields.append(("month", cell.monthInt))
+                fields.append(("category", categoryId))
+            }
+            if let budget = budgetsByCategory[categoryId] {
+                fields.append(("amount", budget.amount))
+            }
+            if let goal = goalsByCategory[categoryId] {
+                fields.append(("goal", goal.goal))
+                // Upstream stores 1 or null, never 0.
+                fields.append(("long_goal", goal.longGoal ? 1 : nil))
+            }
+            messages += try await messageGenerator.messages(
+                dataset: cell.table, row: cell.rowId, fields: fields)
+        }
+
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
+    /// Write one synced preference (the `preferences` table), e.g. the
+    /// `flags.goalTemplatesEnabled` feature flag — same shape as
+    /// `updateCurrencyCode`, which predates this generic path.
+    func setPreference(id: String, value: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        logger.debug("setPreference() - id: \(id, privacy: .public)")
+
+        let messages = try await messageGenerator.messages(
+            dataset: "preferences", row: id, fields: [("value", value)])
+
+        try database.applyMessages(messages)
+        for msg in try database.insertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        scheduleAutomaticSync()
+    }
+
     /// Save the note attached to a row — a category, for now (GH #131) —
     /// optimistic local-first. Mirrors upstream notes-save (loot-core
     /// server/notes/app.ts): a single `note` cell on the `notes` table, keyed
