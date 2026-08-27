@@ -17,6 +17,7 @@ enum CategoryFundingDecision: Equatable {
     case fund(Int)
     case insufficientSource
     case invalidSource
+    case sameSourceAndTarget
 }
 
 enum CategoryFundingAutomation {
@@ -37,6 +38,7 @@ enum CategoryFundingAutomation {
     static func fundingDecision(
         transactionAmount: Int,
         availableAfterTransaction: Int,
+        targetCategoryId: String? = nil,
         fundingSource: CategoryFundingSource,
         sourceAvailable: Int? = nil
     ) -> CategoryFundingDecision {
@@ -49,7 +51,8 @@ enum CategoryFundingAutomation {
         switch fundingSource {
         case .toBudget:
             return .fund(amount)
-        case .category:
+        case .category(let sourceId):
+            guard sourceId != targetCategoryId else { return .sameSourceAndTarget }
             guard let sourceAvailable else { return .invalidSource }
             return sourceAvailable >= amount ? .fund(amount) : .insufficientSource
         }
@@ -122,10 +125,6 @@ enum CategoryFundingAutomation {
             sourceAvailable = nil
             sourceCategoryId = nil
         case .category(let sourceId):
-            guard sourceId != category.categoryId else {
-                budgetStore.error = "Couldn't fund \(category.categoryName): choose a different funding category."
-                return
-            }
             sourceCategoryId = sourceId
             sourceAvailable = budgetMonth.allCategoryBudgets.first(where: {
                 $0.categoryId == sourceId
@@ -135,6 +134,7 @@ enum CategoryFundingAutomation {
         switch fundingDecision(
             transactionAmount: transaction.amount,
             availableAfterTransaction: category.available,
+            targetCategoryId: category.categoryId,
             fundingSource: configuration.fundingSource,
             sourceAvailable: sourceAvailable
         ) {
@@ -144,6 +144,8 @@ enum CategoryFundingAutomation {
             budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
         case .insufficientSource:
             budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
+        case .sameSourceAndTarget:
+            budgetStore.error = "Couldn't fund \(category.categoryName): choose a different funding category."
         case .fund(let amountToFund):
             let displayedMonth = budgetStore.currentBudgetMonth?.month
             do {
