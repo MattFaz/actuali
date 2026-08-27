@@ -1685,6 +1685,8 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
+                id: "flags.goalTemplatesEnabled") == "true"
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1720,6 +1722,7 @@ final class BudgetStore: ObservableObject {
                 currentBudgetMonth = fetchedBudgetMonth
             }
             widgetBudgetMonth = fetchedBudgetMonth
+            goalTemplatesEnabled = fetchedGoalTemplatesFlag
             dataVersion += 1
             publishWidgetSnapshot()
 
@@ -1873,6 +1876,10 @@ final class BudgetStore: ObservableObject {
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
+            // Same story for the goal-templates flag — the web's Experimental
+            // settings toggle arrives as a synced preference.
+            let fetchedGoalTemplatesFlag = try await database.fetchPreference(
+                id: "flags.goalTemplatesEnabled") == "true"
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -1891,6 +1898,7 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
+            goalTemplatesEnabled = fetchedGoalTemplatesFlag
             // Last in the batch: assigning this publishes a widget snapshot,
             // which must see the balances above rather than the previous
             // refresh's. Skipped when the user picked a currency in Settings
@@ -4734,6 +4742,186 @@ final class BudgetStore: ObservableObject {
             amount: amountCents
         )
         await fetchBudgetMonth(month)
+    }
+
+    // MARK: - Goal Templates (budget goals, GH #371)
+
+    /// Mirror of the web's `flags.goalTemplatesEnabled` synced preference.
+    /// Gates all goal UI, exactly as the web's feature flag does.
+    @Published private(set) var goalTemplatesEnabled = false
+
+    enum GoalTemplateAction {
+        case check
+        case apply
+        case overwrite
+    }
+
+    enum GoalTemplateOutcome: Equatable {
+        case applied(Int)
+        case upToDate
+        case checkPassed
+        case errors([String])
+        case failed(String)
+    }
+
+    /// Flip the synced feature flag (the web's Settings → Experimental
+    /// features toggle), so all clients agree on whether goals are on.
+    func setGoalTemplatesEnabled(_ enabled: Bool) async {
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(
+                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false")
+            goalTemplatesEnabled = enabled
+        } catch {
+            self.error = "Failed to update goal templates setting: \(error.localizedDescription)"
+        }
+    }
+
+    /// Check/apply/overwrite budget templates for a month — the port of
+    /// upstream's `budget/check-templates`, `budget/apply-goal-template` and
+    /// `budget/overwrite-goal-template` handlers. Passing `categoryId` scopes
+    /// the run to one category (`budget/apply-single-category-template`),
+    /// which always overwrites, hidden or not — same as the web.
+    func runGoalTemplates(
+        month: String,
+        action: GoalTemplateAction,
+        categoryId: String? = nil
+    ) async -> GoalTemplateOutcome {
+        guard let database, let syncClient else {
+            return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
+        }
+        do {
+            let rows = try await database.fetchGoalTemplateCategories()
+            let schedules = try await database.fetchSchedules()
+                .filter { $0.name?.isEmpty == false }
+                .map {
+                    GoalScheduleInfo(
+                        id: $0.id, name: $0.name, completed: $0.completed,
+                        amount: $0.amount, dateCondition: $0.dateCondition)
+                }
+
+            // Notes → templates. UI-managed categories (web template editor)
+            // keep their stored goal_def untouched.
+            var parsedNotes: [String: [GoalTemplate]] = [:]
+            for row in rows where !row.sourceIsUI {
+                if let note = row.note, GoalTemplateNotes.noteHasTemplates(note) {
+                    let templates = GoalTemplateNotes.parseTemplates(fromNote: note)
+                    if !templates.isEmpty { parsedNotes[row.id] = templates }
+                }
+            }
+
+            if action == .check {
+                return checkOutcome(rows: rows, parsedNotes: parsedNotes, schedules: schedules)
+            }
+
+            let scope: (String) -> Bool
+            if let categoryId {
+                scope = { $0 == categoryId }
+            } else {
+                scope = { _ in true }
+            }
+
+            // Store the parsed notes into goal_def (upstream storeTemplates),
+            // skipping unchanged categories to avoid CRDT churn — the end
+            // state is identical.
+            var storeUpdates: [(categoryId: String, goalDef: String?, source: String)] = []
+            for row in rows where scope(row.id) {
+                guard let templates = parsedNotes[row.id] else { continue }
+                let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:))
+                if stored != templates, let encoded = GoalTemplate.encodeArray(templates) {
+                    storeUpdates.append((row.id, encoded, "notes"))
+                }
+            }
+            try await syncClient.storeGoalDefs(storeUpdates)
+
+            // Orphaned defs: notes-managed categories whose notes lost their
+            // templates (upstream resetCategoryGoalDefsWithNoTemplates).
+            let resetIds = rows.filter {
+                scope($0.id) && !$0.sourceIsUI && $0.goalDef != nil && parsedNotes[$0.id] == nil
+            }.map(\.id)
+            try await database.resetGoalDefs(categoryIds: resetIds)
+
+            // Effective templates per category after the store above.
+            var categoryTemplates: [String: [GoalTemplate]] = parsedNotes
+            for row in rows where row.sourceIsUI {
+                if let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)),
+                   !stored.isEmpty {
+                    categoryTemplates[row.id] = stored
+                }
+            }
+            if let categoryId {
+                categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
+            }
+
+            let sheet = try await database.fetchGoalTemplateSheet(month: month)
+            let allCategories = rows.map {
+                GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
+            }
+            let processCategories: [GoalTemplateCategory]
+            if let categoryId {
+                processCategories = rows
+                    .filter { $0.id == categoryId }
+                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
+            } else {
+                processCategories = rows
+                    .filter { !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
+                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
+            }
+
+            let result = GoalTemplateEngine.run(
+                month: month,
+                force: action == .overwrite || categoryId != nil,
+                categoryTemplates: categoryTemplates,
+                categories: processCategories,
+                allCategories: allCategories,
+                schedules: schedules,
+                sheet: sheet)
+
+            switch result {
+            case .errors(let errors):
+                return .errors(errors)
+            case .upToDate(let goalResets):
+                try await syncClient.applyGoalTemplateWrites(
+                    month: month, budgets: [], goals: goalResets)
+                if !goalResets.isEmpty { await fetchBudgetMonth(month) }
+                return .upToDate
+            case .applied(let count, let budgets, let goals):
+                try await syncClient.applyGoalTemplateWrites(
+                    month: month, budgets: budgets, goals: goals)
+                await fetchBudgetMonth(month)
+                return .applied(count)
+            }
+        } catch {
+            logger.error("Goal template run failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    /// Port of upstream `checkTemplateNotes`: surface unparseable lines and
+    /// schedule templates naming schedules that don't exist.
+    private func checkOutcome(
+        rows: [BudgetDatabase.GoalTemplateCategoryRow],
+        parsedNotes: [String: [GoalTemplate]],
+        schedules: [GoalScheduleInfo]
+    ) -> GoalTemplateOutcome {
+        let scheduleNames = Set(schedules.compactMap(\.name))
+        var errors: [String] = []
+        for row in rows {
+            guard let templates = parsedNotes[row.id] else { continue }
+            for template in templates {
+                if template.type == .error {
+                    if let message = template.error, message.contains("adjustment") {
+                        errors.append("\(row.name): \(template.line ?? "")\nError: \(message)")
+                    } else {
+                        errors.append("\(row.name): \(template.line ?? "")")
+                    }
+                } else if template.type == .schedule, let name = template.name,
+                          !scheduleNames.contains(name) {
+                    errors.append("\(row.name): Schedule \"\(name)\" does not exist")
+                }
+            }
+        }
+        return errors.isEmpty ? .checkPassed : .errors(errors)
     }
 
     // MARK: - Notes
