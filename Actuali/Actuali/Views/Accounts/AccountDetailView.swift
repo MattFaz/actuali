@@ -356,7 +356,7 @@ struct AccountDetailView: View {
                 Button {
                     showingReconcile = true
                 } label: {
-                    Label("Reconcile", systemImage: "checkmark.seal")
+                    Label("Reconcile", systemImage: "lock.fill")
                 }
             }
         }
