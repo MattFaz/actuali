@@ -1360,6 +1360,7 @@ struct BudgetGroupHeader: View {
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.75)
+                            .frame(maxHeight: .infinity, alignment: .center)
                     }
                 }
                 .contentShape(Rectangle())
