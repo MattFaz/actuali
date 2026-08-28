@@ -47,6 +47,18 @@ enum BudgetColumn {
     }
 }
 
+/// One source of truth for the hide/show swipe action labels and icons used
+/// on rows and group headers throughout the budget table.
+enum HideShowAction {
+    static func title(isHidden: Bool) -> String {
+        isHidden ? "Show" : "Hide"
+    }
+
+    static func systemImage(isHidden: Bool) -> String {
+        isHidden ? "eye" : "eye.slash"
+    }
+}
+
 private extension BudgetStore {
     /// Masked variant of `BudgetColumn.text` for the budget table's cells.
     /// Lives here rather than on the store proper so the table's
@@ -310,8 +322,8 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: (group?.hidden == true ? group : nil).map { hiddenGroup in
-                        { hidden in setCategoryGroupHidden(hiddenGroup.id, hidden: hidden) }
+                    onSetHidden: BudgetView.incomeGroupHideAction(isHidden: group?.hidden == true) { hidden in
+                        if let group { setCategoryGroupHidden(group.id, hidden: hidden) }
                     },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
@@ -327,8 +339,8 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: (group?.hidden == true ? group : nil).map { hiddenGroup in
-                        { hidden in setCategoryGroupHidden(hiddenGroup.id, hidden: hidden) }
+                    onSetHidden: BudgetView.incomeGroupHideAction(isHidden: group?.hidden == true) { hidden in
+                        if let group { setCategoryGroupHidden(group.id, hidden: hidden) }
                     },
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
@@ -960,7 +972,10 @@ struct CategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(
+                        HideShowAction.title(isHidden: isHidden),
+                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
+                    )
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1064,7 +1079,10 @@ struct CleanCategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(
+                        HideShowAction.title(isHidden: isHidden),
+                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
+                    )
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1347,10 +1365,9 @@ struct BudgetGroupHeader: View {
                         } else {
                             Text(name)
                                 .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .minimumScaleFactor(0.75)
-                                .frame(maxHeight: .infinity, alignment: .center)
+                                .foregroundStyle(.primary)
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.85)
                         }
                     }
                     Spacer(minLength: 4)
@@ -1396,8 +1413,8 @@ struct BudgetGroupHeader: View {
                         onSetHidden(!isHidden)
                     } label: {
                         Label(
-                            isHidden ? "Show Group" : "Hide Group",
-                            systemImage: isHidden ? "eye" : "eye.slash"
+                            HideShowAction.title(isHidden: isHidden),
+                            systemImage: HideShowAction.systemImage(isHidden: isHidden)
                         )
                     }
                 } label: {
@@ -1414,7 +1431,10 @@ struct BudgetGroupHeader: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(
+                        HideShowAction.title(isHidden: isHidden),
+                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
+                    )
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1453,6 +1473,15 @@ struct BudgetGroupHeader: View {
         usesTableNumberFormat
             ? budgetStore.displayBudgetCell(amount)
             : budgetStore.displayBalance(amount)
+    }
+}
+
+extension BudgetView {
+    nonisolated static func incomeGroupHideAction(
+        isHidden: Bool,
+        setter: @escaping (Bool) -> Void
+    ) -> ((Bool) -> Void)? {
+        isHidden ? setter : nil
     }
 }
 
@@ -1517,7 +1546,10 @@ struct IncomeCategoryRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(
+                        HideShowAction.title(isHidden: isHidden),
+                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
+                    )
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
