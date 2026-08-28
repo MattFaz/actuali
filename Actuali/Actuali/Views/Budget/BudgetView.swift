@@ -188,7 +188,6 @@ struct BudgetView: View {
         .initialSyncBanner()
     }
 
-
     /// One group's rows, extracted from the `List` so the body stays within
     /// the compiler's type-check budget.
     @ViewBuilder
@@ -226,7 +225,8 @@ struct BudgetView: View {
                     onSetHidden: {
                         setCategoryGroupHidden(group.id, hidden: $0)
                     },
-                    onToggleCollapse: { toggleCollapsed(group.id) }
+                    onToggleCollapse: { toggleCollapsed(group.id) },
+                    showsEllipsisMenu: true   // clean style uses ellipsis
                 )
                 .textCase(nil)
             }
@@ -244,7 +244,8 @@ struct BudgetView: View {
                     },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     onToggleCollapse: { toggleCollapsed(group.id) },
-                    reservesTwoLines: true
+                    reservesTwoLines: true,
+                    showsEllipsisMenu: false  // detailed style uses swipe
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
@@ -315,19 +316,13 @@ struct BudgetView: View {
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
-                    }
+                    },
+                    showsEllipsisMenu: true   // clean style uses ellipsis
                 )
                 .textCase(nil)
             }
         } else {
             Section {
-                // The Income group can be swiped only to UNhide, never to
-                // hide: hiding it would drop the app's only income total
-                // from the budget table entirely. `onSetHidden` is passed
-                // only when the group is already hidden (e.g. leftover
-                // state from before this restriction existed), so the
-                // swipe button never offers "Hide" — only "Show" when
-                // needed. (GH #130's collapse control still applies.)
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
@@ -340,7 +335,8 @@ struct BudgetView: View {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     },
                     usesTableNumberFormat: true,
-                    reservesTwoLines: true
+                    reservesTwoLines: true,
+                    showsEllipsisMenu: false  // detailed style uses swipe
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
@@ -1298,10 +1294,10 @@ private struct CaptionedAmountPill: View {
 /// Budgeted, Spent and Balance totals in the table's three rightmost
 /// columns, each captioned the same way the pinned summary bar is.
 ///
-/// Hiding the group uses the same swipe-to-hide gesture as category rows
-/// (`CategoryBudgetRow` / `CleanCategoryBudgetRow`) rather than an inline
-/// "..." menu, so hide behavior is consistent everywhere in the budget
-/// table.
+/// The way to hide/show the group depends on the display style:
+/// - **Clean style** uses a three‑dot ellipsis menu (because section headers
+///   don't support swipe actions reliably).
+/// - **Detailed style** uses a swipe‑to‑hide gesture, matching category rows.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
@@ -1323,28 +1319,63 @@ struct BudgetGroupHeader: View {
     /// whether names wrap or not (GH #252); the clean style's plain section
     /// titles keep their natural height.
     var reservesTwoLines = false
+    /// If true, an ellipsis menu is shown for hide/show (clean style).
+    /// If false, swipe‑to‑hide is used instead (detailed style).
+    var showsEllipsisMenu: Bool = false
 
     var body: some View {
-        Button(action: onToggleCollapse) {
-            HStack(alignment: .top, spacing: BudgetColumn.spacing) {
-                // Nested so the chevron centers against the name (which can
-                // run one or two lines) rather than pinning to the top of
-                // the row alongside the totals' captions.
-                HStack(spacing: BudgetColumn.spacing) {
-                    DisclosureChevron(
-                        isExpanded: !isCollapsed,
-                        font: .caption2.weight(.semibold)
-                    )
-                    .foregroundStyle(.secondary)
-                    if reservesTwoLines {
-                        TwoLineName(
-                            text: name,
-                            font: .subheadline.weight(.semibold),
-                            minimumScaleFactor: 0.85
+        HStack(spacing: 8) {
+            // Collapse button (chevron + name + totals)
+            Button(action: onToggleCollapse) {
+                HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+                    // Nested so the chevron centers against the name (which can
+                    // run one or two lines) rather than pinning to the top of
+                    // the row alongside the totals' captions.
+                    HStack(spacing: BudgetColumn.spacing) {
+                        DisclosureChevron(
+                            isExpanded: !isCollapsed,
+                            font: .caption2.weight(.semibold)
                         )
-                        .foregroundStyle(.primary)
-                    } else {
-                        Text(name)
+                        .foregroundStyle(.secondary)
+                        if reservesTwoLines {
+                            TwoLineName(
+                                text: name,
+                                font: .subheadline.weight(.semibold),
+                                minimumScaleFactor: 0.85
+                            )
+                            .foregroundStyle(.primary)
+                        } else {
+                            Text(name)
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.75)
+                                .frame(maxHeight: .infinity, alignment: .center)
+                        }
+                    }
+                    Spacer(minLength: 4)
+                    if let totals {
+                        CaptionedAmountPill(
+                            label: "Budgeted",
+                            text: budgetStore.displayBudgetCell(totals.budgeted),
+                            dimmed: totals.budgeted == 0
+                        )
+                        CaptionedAmountPill(
+                            label: "Spent",
+                            text: budgetStore.displayBudgetCell(totals.spent),
+                            dimmed: totals.spent == 0
+                        )
+                        CaptionedAmountPill(
+                            label: "Balance",
+                            text: budgetStore.displayBudgetCell(totals.balance),
+                            // Same three-way treatment as the category rows, so a
+                            // group that lands on zero doesn't read as healthy.
+                            color: totals.balance < 0
+                                ? .red
+                                : (totals.balance == 0 ? .secondary : .green)
+                        )
+                    } else if let receivedTotal {
+                        Text("Received \(receivedText(receivedTotal))")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -1352,43 +1383,34 @@ struct BudgetGroupHeader: View {
                             .frame(maxHeight: .infinity, alignment: .center)
                     }
                 }
-                Spacer(minLength: 4)
-                if let totals {
-                    CaptionedAmountPill(
-                        label: "Budgeted",
-                        text: budgetStore.displayBudgetCell(totals.budgeted),
-                        dimmed: totals.budgeted == 0
-                    )
-                    CaptionedAmountPill(
-                        label: "Spent",
-                        text: budgetStore.displayBudgetCell(totals.spent),
-                        dimmed: totals.spent == 0
-                    )
-                    CaptionedAmountPill(
-                        label: "Balance",
-                        text: budgetStore.displayBudgetCell(totals.balance),
-                        // Same three-way treatment as the category rows, so a
-                        // group that lands on zero doesn't read as healthy.
-                        color: totals.balance < 0
-                            ? .red
-                            : (totals.balance == 0 ? .secondary : .green)
-                    )
-                } else if let receivedTotal {
-                    Text("Received \(receivedText(receivedTotal))")
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.75)
-                }
+                .contentShape(Rectangle())
             }
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Toggles the group's categories")
+
+            // Ellipsis menu only in clean style
+            if showsEllipsisMenu, let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show Group" : "Hide Group",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityLabel("Options for \(name)")
+            }
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
         .opacity(isHidden ? 0.5 : 1)
+        // Swipe‑to‑hide only in detailed style
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
+            if !showsEllipsisMenu, let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
