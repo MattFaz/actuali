@@ -85,6 +85,19 @@ struct AccountDetailView: View {
         note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
     }
 
+    /// Fire the category-funding automation only for a newly-created manual
+    /// standard expense. The callback carries the exact saved row id, so
+    /// backdated entries and transactions in other accounts cannot be mixed up.
+    private func handleManualTransactionSaved(_ savedTransactionId: String?) {
+        guard let savedTransactionId else { return }
+        Task { @MainActor in
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: budgetStore
+            )
+        }
+    }
+
     /// The account's note (GH #198), presented exactly as a category's is (see
     /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
     /// while searching — a search is about finding transactions, not reading
@@ -379,7 +392,10 @@ struct AccountDetailView: View {
                 .environmentObject(budgetStore)
         }
         .sheet(isPresented: $showingAddTransaction) {
-            AddTransactionView(accountId: account.id)
+            AddTransactionView(
+                accountId: account.id,
+                onSaved: handleManualTransactionSaved
+            )
                 .environmentObject(budgetStore)
         }
         .sheet(item: $editingTransaction) { transaction in

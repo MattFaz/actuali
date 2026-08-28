@@ -111,6 +111,16 @@ struct AddTransactionTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
 
+    private func handleManualTransactionSaved(_ savedTransactionId: String?) {
+        guard let savedTransactionId else { return }
+        Task { @MainActor in
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: budgetStore
+            )
+        }
+    }
+
     var body: some View {
         let configuredId = budgetStore.defaultAccountId
         let validDefaultAccount = configuredId.flatMap { id in
@@ -119,7 +129,10 @@ struct AddTransactionTabView: View {
         let fallbackAccount = budgetStore.accounts.first { !$0.closed }
 
         if let account = validDefaultAccount ?? fallbackAccount {
-            AddTransactionView(accountId: account.id)
+            AddTransactionView(
+                accountId: account.id,
+                onSaved: handleManualTransactionSaved
+            )
                 .onAppear {
                     if configuredId != nil && validDefaultAccount == nil {
                         budgetStore.defaultAccountId = nil
