@@ -112,6 +112,23 @@ struct CategoryFundingAutomationTests {
         ) == .fund(50))
     }
 
+    @Test("Zero-amount expense remains a valid standard transaction")
+    func zeroAmountExpensePlan() throws {
+        let form = BudgetStore.TransactionForm(
+            accountId: "account-1",
+            type: .expense,
+            amount: "0",
+            payeeName: "Corner Shop",
+            transferToAccountId: nil,
+            categoryId: "groceries",
+            notes: "",
+            date: Date(),
+            cleared: false
+        )
+
+        #expect(try BudgetStore.plan(for: form) == .standard(amountCents: 0))
+    }
+
     @Test("Manual expense from selected account is eligible")
     func manualExpenseIsEligible() {
         let transaction = makeTransaction(categoryId: "groceries")
