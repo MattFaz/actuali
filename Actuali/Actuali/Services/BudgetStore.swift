@@ -4940,9 +4940,14 @@ final class BudgetStore: ObservableObject {
         var incomeSources: [(id: String, name: String)] = []
         var categoryNames: [String: String] = [:]
         var cleanupGroups: [(id: String, name: String)] = []
+        /// Dry-run inputs, fetched once at load: unsaved edits stay local to
+        /// the editor, so the sheet snapshot can't drift while it's open.
+        var category = GoalTemplateCategory(id: "", name: "", isIncome: false)
+        var allCategories: [GoalTemplateCategory] = []
+        var sheet = GoalTemplateSheet()
     }
 
-    func loadAutomationEditor(categoryId: String) async throws -> AutomationEditorData {
+    func loadAutomationEditor(categoryId: String, month: String) async throws -> AutomationEditorData {
         guard let database else { throw BudgetStoreError.syncNotConfigured }
         let rows = try await database.fetchGoalTemplateCategories()
         guard let row = rows.first(where: { $0.id == categoryId }) else {
@@ -4964,6 +4969,11 @@ final class BudgetStore: ObservableObject {
             uniqueKeysWithValues: rows.map { ($0.id, $0.name) })
         data.incomeSources = rows.filter(\.isIncome).map { ($0.id, $0.name) }
         data.cleanupGroups = try await database.fetchCleanupGroups()
+        data.category = GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome)
+        data.allCategories = rows.map {
+            GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
+        }
+        data.sheet = try await database.fetchGoalTemplateSheet(month: month)
 
         var templates: [GoalTemplate]
         var cleanup: [CleanupTemplate]
@@ -4975,7 +4985,8 @@ final class BudgetStore: ObservableObject {
             // creates them while parsing too).
             let neededNames = Set(parsedRows.compactMap(\.groupName))
             var nameToId = Dictionary(
-                uniqueKeysWithValues: data.cleanupGroups.map { ($0.name.lowercased(), $0.id) })
+                data.cleanupGroups.map { ($0.name.lowercased(), $0.id) },
+                uniquingKeysWith: { first, _ in first })
             for name in neededNames where nameToId[name.lowercased()] == nil {
                 let id = try await createCleanupGroup(name: name)
                 nameToId[name.lowercased()] = id
@@ -4999,8 +5010,11 @@ final class BudgetStore: ObservableObject {
 
         // Text templates address income categories by name; the editor works
         // with ids (web resolves the same way before building entries).
+        // Duplicate names are possible (categories in different groups);
+        // resolve to the first match rather than trapping.
         let incomeNameToId = Dictionary(
-            uniqueKeysWithValues: data.incomeSources.map { ($0.name.lowercased(), $0.id) })
+            data.incomeSources.map { ($0.name.lowercased(), $0.id) },
+            uniquingKeysWith: { first, _ in first })
         templates = templates.map { template in
             guard template.type == .percentage, let source = template.category,
                   let id = incomeNameToId[source.lowercased()] else { return template }
@@ -5018,37 +5032,20 @@ final class BudgetStore: ObservableObject {
 
     /// Projected budgeted amount and per-entry contributions — the editor's
     /// live "Estimated monthly total" (upstream dry-run-category-template).
+    /// Pure computation over the load-time snapshot, so it can run on every
+    /// (debounced) edit without touching the database.
     func dryRunAutomations(
         month: String,
-        categoryId: String,
+        data: AutomationEditorData,
         templates: [GoalTemplate]
-    ) async -> (budgeted: Int, perTemplate: [Int]) {
-        guard let database else { return (0, templates.map { _ in 0 }) }
-        do {
-            let rows = try await database.fetchGoalTemplateCategories()
-            guard let row = rows.first(where: { $0.id == categoryId }) else {
-                return (0, templates.map { _ in 0 })
-            }
-            let sheet = try await database.fetchGoalTemplateSheet(month: month)
-            let schedules = try await database.fetchSchedules()
-                .filter { $0.name?.isEmpty == false }
-                .map {
-                    GoalScheduleInfo(
-                        id: $0.id, name: $0.name, completed: $0.completed,
-                        amount: $0.amount, dateCondition: $0.dateCondition)
-                }
-            return GoalTemplateEngine.dryRun(
-                month: month,
-                category: GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome),
-                templates: templates,
-                allCategories: rows.map {
-                    GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
-                },
-                schedules: schedules,
-                sheet: sheet)
-        } catch {
-            return (0, templates.map { _ in 0 })
-        }
+    ) -> (budgeted: Int, perTemplate: [Int]) {
+        GoalTemplateEngine.dryRun(
+            month: month,
+            category: data.category,
+            templates: templates,
+            allCategories: data.allCategories,
+            schedules: data.schedules,
+            sheet: data.sheet)
     }
 
     /// Save the editor's automations as UI-managed (source 'ui'), which is

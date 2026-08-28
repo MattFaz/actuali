@@ -481,4 +481,24 @@ struct GoalTemplateEngineTests {
         #expect(budgets.first { $0.category == "a" }?.amount == -10000)
         #expect(budgets.first { $0.category == "b" }?.amount == 10000)
     }
+
+    // MARK: - Malformed input (the grammar is digits-only, so these parse)
+
+    @Test func periodicZeroPeriodBudgetsNothing() throws {
+        var template = try parse("#template-1 100 repeat every 2 weeks starting 2024-01-01")
+        template.period = .init(period: .week, amount: 0)
+        let context = try makeContext([template])
+        #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 0)
+    }
+
+    @Test func periodicInvalidStartDateBudgetsNothing() throws {
+        let context = try makeContext([try parse("#template-1 100 repeat every week starting 0000-00-00")])
+        #expect(try context.runTemplatesForPriority(1, budgetAvail: 1_000_000, availStart: 1_000_000) == 0)
+    }
+
+    @Test func weeklyLimitInvalidStartDateIsAnError() throws {
+        #expect(throws: GoalTemplateError.self) {
+            _ = try makeContext([try parse("#template 100 up to 150 per week starting 2023-13-01")])
+        }
+    }
 }

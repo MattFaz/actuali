@@ -30,10 +30,6 @@ enum BudgetMonthMath {
         return year * 100 + month
     }
 
-    static func monthString(fromInt monthInt: Int) -> String {
-        String(format: "%04d-%02d", monthInt / 100, monthInt % 100)
-    }
-
     /// Month-or-day string → "yyyy-MM", like upstream `addMonths`.
     static func addMonths(_ value: String, _ n: Int) -> String {
         guard let (year, month) = yearAndMonth(value) else { return value }
@@ -85,11 +81,6 @@ enum BudgetMonthMath {
 
     static func subDays(_ value: String, _ n: Int) -> String {
         addDays(value, -n)
-    }
-
-    static func differenceInCalendarDays(_ a: String, _ b: String) -> Int {
-        guard let first = day(a), let second = day(b) else { return 0 }
-        return second.days(until: first)
     }
 
     /// Days in the month of `value` — upstream's

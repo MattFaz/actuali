@@ -506,7 +506,9 @@ final class GoalTemplateContext {
                 let numDays = BudgetMonthMath.daysInMonth(month)
                 limitAmount += BudgetMonthMath.amountToInteger(limit.amount) * numDays
             case .weekly:
-                guard let start = limit.start else {
+                // Also rejects unparseable dates: addWeeks returns them
+                // unchanged, so the walk below would never terminate.
+                guard let start = limit.start, BudgetMonthMath.day(start) != nil else {
                     throw GoalTemplateError.category(
                         "Weekly limit requires a start date (YYYY-MM-DD)")
                 }
@@ -576,6 +578,10 @@ final class GoalTemplateContext {
         let numPeriods = period.amount
         var date = (template.starting?.isEmpty == false)
             ? template.starting! : BudgetMonthMath.firstDayOfMonth(month)
+        // A zero period or an unparseable start date would make the date walks
+        // below never advance (the shift helpers return malformed input
+        // unchanged), hanging the app.
+        guard numPeriods > 0, BudgetMonthMath.day(date) != nil else { return 0 }
 
         // `addMonths` collapses a day string to "yyyy-MM" exactly like
         // upstream's month utils — the lexicographic compares below rely on it.

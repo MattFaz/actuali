@@ -356,7 +356,8 @@ struct BudgetAutomationsSheet: View {
 
     private func load() async {
         do {
-            let loaded = try await budgetStore.loadAutomationEditor(categoryId: categoryId)
+            let loaded = try await budgetStore.loadAutomationEditor(
+                categoryId: categoryId, month: month)
             data = loaded
             entries = loaded.entries
             cleanup = loaded.cleanup
@@ -368,14 +369,14 @@ struct BudgetAutomationsSheet: View {
 
     private func scheduleDryRun() {
         dryRunTask?.cancel()
+        guard let data else { return }
         let snapshot = entries
         dryRunTask = Task {
             // Debounce typing, like the web's 200ms debounce.
             try? await Task.sleep(for: .milliseconds(200))
             guard !Task.isCancelled else { return }
-            let result = await budgetStore.dryRunAutomations(
-                month: month, categoryId: categoryId, templates: snapshot.map(\.template))
-            guard !Task.isCancelled else { return }
+            let result = budgetStore.dryRunAutomations(
+                month: month, data: data, templates: snapshot.map(\.template))
             totalMonthly = result.budgeted
             var byEntry: [UUID: Int] = [:]
             for (index, entry) in snapshot.enumerated()
