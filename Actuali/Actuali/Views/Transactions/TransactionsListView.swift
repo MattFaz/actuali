@@ -247,11 +247,17 @@ struct TransactionPagingSentinel: View {
 struct TransactionGroupingToggle: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
+    private var isGrouped: Bool {
+        budgetStore.transactionDisplayMode == .groupedByDate
+    }
+
     var body: some View {
-        Toggle("Group by Date", isOn: Binding(
-            get: { budgetStore.transactionDisplayMode == .groupedByDate },
+        Toggle(isOn: Binding(
+            get: { isGrouped },
             set: { budgetStore.transactionDisplayMode = $0 ? .groupedByDate : .flat }
-        ))
+        )) {
+            Label("Group by Date", systemImage: isGrouped ? "calendar.badge.checkmark" : "calendar")
+        }
     }
 }
 
