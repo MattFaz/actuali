@@ -115,7 +115,14 @@ struct TransactionsListView: View {
                 TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
-                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
+                Button {
+                    budgetStore.hideClearedTransactions.toggle()
+                } label: {
+                    Label(
+                        "Hide Cleared Transactions",
+                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
+                    )
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -252,12 +259,16 @@ struct TransactionGroupingToggle: View {
     }
 
     var body: some View {
-        Toggle(isOn: Binding(
-            get: { isGrouped },
-            set: { budgetStore.transactionDisplayMode = $0 ? .groupedByDate : .flat }
-        )) {
-            Label("Group by Date", systemImage: isGrouped ? "calendar.badge.checkmark" : "calendar")
+        Button {
+            budgetStore.transactionDisplayMode = isGrouped ? .flat : .groupedByDate
+        } label: {
+            Label(
+                "Group by Date",
+                systemImage: isGrouped ? "calendar.badge.checkmark" : "calendar"
+            )
         }
+        // Ensure the button looks like a toolbar item, not a plain text button.
+        .buttonStyle(.borderless)
     }
 }
 
