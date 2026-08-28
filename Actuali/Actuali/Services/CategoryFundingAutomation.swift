@@ -117,8 +117,19 @@ enum CategoryFundingAutomation {
             defaults: defaults
         ), configuration.isEnabled,
               let selectedAccountId = configuration.accountId,
-              let database = budgetStore.databaseForLogger,
-              let transaction = try? await database.fetchTransaction(id: savedTransactionId) else {
+              let database = budgetStore.databaseForLogger else {
+            return
+        }
+
+        let transaction: Transaction
+        do {
+            guard let fetched = try await database.fetchTransaction(id: savedTransactionId) else {
+                // A delete-transaction rule may legitimately remove the row.
+                return
+            }
+            transaction = fetched
+        } catch {
+            budgetStore.error = "Category funding automation couldn't verify the saved transaction: \(error.localizedDescription)"
             return
         }
 
@@ -139,10 +150,22 @@ enum CategoryFundingAutomation {
             (transaction.date / 100) % 100
         )
 
-        guard let budgetMonth = try? await database.fetchBudgetMonth(month: month),
-              let category = budgetMonth.allCategoryBudgets.first(where: {
-                  $0.categoryId == transaction.categoryId
-              }) else {
+        let budgetMonth: BudgetMonth
+        do {
+            guard let fetched = try await database.fetchBudgetMonth(month: month) else {
+                // A month with no budget rows is a normal no-op; there is
+                // nothing to fund without a category budget snapshot.
+                return
+            }
+            budgetMonth = fetched
+        } catch {
+            budgetStore.error = "Category funding automation couldn't load the budget month: \(error.localizedDescription)"
+            return
+        }
+
+        guard let category = budgetMonth.allCategoryBudgets.first(where: {
+            $0.categoryId == transaction.categoryId
+        }) else {
             return
         }
 
@@ -241,7 +264,8 @@ extension BudgetStore {
         }
 
         let date = Transaction.yyyymmdd(from: form.date)
-        guard case .standard(let amountCents) = try Self.plan(for: form), amountCents <= 0 else {
+        guard form.type == .expense,
+              case .standard(let amountCents) = try Self.plan(for: form) else {
             return nil
         }
 
