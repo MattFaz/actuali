@@ -113,6 +113,7 @@ struct CategoryFundingAutomationTests {
     }
 
     @Test("Zero-amount expense remains a valid standard transaction")
+    @MainActor
     func zeroAmountExpensePlan() throws {
         let form = BudgetStore.TransactionForm(
             accountId: "account-1",
