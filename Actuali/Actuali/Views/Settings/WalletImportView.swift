@@ -6,8 +6,8 @@ import SwiftUI
 /// FinanceKit transaction picker (GH #55, Tier 1). The picker needs no
 /// FinanceKit entitlement — the user hand-picks transactions and access is
 /// one-time, so this works for any App Store build. Full automatic sync
-/// (Tier 2) needs Apple's managed FinanceKit entitlement and is tracked
-/// separately.
+/// (Tier 2) needs Apple's managed FinanceKit entitlement and lives in bank
+/// sync — see `BankSyncSetupView` and `FinanceKitWalletStore`.
 struct WalletImportView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss

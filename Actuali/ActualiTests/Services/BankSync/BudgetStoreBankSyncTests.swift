@@ -455,7 +455,7 @@ struct BudgetStoreBankSyncTests {
              "name": "Savings", "balance": "0.00"}
             """.utf8))
 
-        try await store.linkBankAccount(accountId: Self.accountId, to: remote)
+        try await store.linkBankAccount(accountId: Self.accountId, to: remote.remoteAccount)
 
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])

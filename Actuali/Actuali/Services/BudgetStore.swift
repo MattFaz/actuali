@@ -1069,6 +1069,13 @@ final class BudgetStore: ObservableObject {
         simpleFINClient = client
     }
 
+    /// Test-only: swap in a stub Wallet store so the FinanceKit sync path can
+    /// be exercised off-device (the real store only answers on entitled
+    /// iPhones).
+    func setAppleWalletStoreForTesting(_ store: any AppleWalletReading) {
+        appleWalletStore = store
+    }
+
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -2382,12 +2389,42 @@ final class BudgetStore: ObservableObject {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
     }
 
-    // MARK: - Bank Sync (SimpleFIN)
+    // MARK: - Bank Sync (SimpleFIN & Apple Wallet)
 
     /// Talks to a SimpleFIN bridge directly, with a key claimed on this
     /// device. Only used when the server has no SimpleFIN of its own — see
     /// `makeBankSyncProvider`.
     private var simpleFINClient = SimpleFINClient()
+
+    /// Reads Wallet (FinanceKit) accounts and transactions. Only answers on
+    /// iPhones with Wallet data and the FinanceKit entitlement; everywhere
+    /// else `availability()` says so and the Wallet half of bank sync stays
+    /// out of the way.
+    private var appleWalletStore: any AppleWalletReading = FinanceKitWalletStore()
+
+    /// Whether Wallet data can be read here, as of the last check. Drives
+    /// which of the setup screen's Wallet states shows.
+    @Published private(set) var appleWalletAvailability: AppleWalletAvailability = .unsupported
+
+    func refreshAppleWalletAvailability() async {
+        appleWalletAvailability = await appleWalletStore.availability()
+    }
+
+    /// Ask the person for read access to Wallet. Returns whether it was
+    /// granted — FinanceKit shows its own consent sheet, so all that's left
+    /// here is remembering the answer.
+    @discardableResult
+    func connectAppleWallet() async throws -> Bool {
+        let granted = try await appleWalletStore.requestAccess()
+        appleWalletAvailability = await appleWalletStore.availability()
+        return granted
+    }
+
+    /// Every Wallet account (Apple Card, Apple Cash, Savings), for the
+    /// linking screen.
+    func fetchAppleWalletAccounts() async throws -> [AppleWalletAccount] {
+        try await appleWalletStore.accounts()
+    }
 
     /// How far back a sync reaches when an account has nothing to anchor to.
     /// 89 days ago through today inclusive is 90 days, the window upstream
@@ -2533,14 +2570,14 @@ final class BudgetStore: ObservableObject {
         bankSyncAccounts.first { $0.id == accountId }
     }
 
-    func linkBankAccount(accountId: String, to remote: SimpleFINAccount) async throws {
+    func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.linkAccount(
             accountId: accountId,
             externalAccountId: remote.id,
-            source: .simpleFin,
-            institutionId: remote.org.bankId ?? remote.org.displayName,
-            institutionName: remote.org.displayName
+            source: remote.source,
+            institutionId: remote.institutionId,
+            institutionName: remote.institutionName
         )
         await refreshDataOnly()
     }
@@ -2561,16 +2598,37 @@ final class BudgetStore: ObservableObject {
         // and race the first one's writes.
         guard !isBankSyncing else { return BankSyncResult() }
 
-        let targets = bankSyncAccounts.filter {
-            $0.source == .simpleFin && !$0.closed
-                && (accountIds.isEmpty || accountIds.contains($0.id))
+        let linked = bankSyncAccounts.filter {
+            !$0.closed && (accountIds.isEmpty || accountIds.contains($0.id))
         }
-        guard !targets.isEmpty else { return BankSyncResult() }
+        let simpleFinTargets = linked.filter { $0.source == .simpleFin }
+        var walletTargets = linked.filter { $0.source == .financeKit }
+
+        var result = BankSyncResult()
+
+        // A Wallet link lives in the budget file, but its data only exists in
+        // the Wallet of the device that made it. Where this device can't
+        // possibly serve it — no FinanceKit data, or never asked — skip
+        // quietly; access someone turned off is theirs to turn back on.
+        if !walletTargets.isEmpty {
+            switch await appleWalletStore.availability() {
+            case .authorized:
+                break
+            case .denied:
+                result.problems.append(
+                    "Wallet access is turned off. Allow Actuali to read Wallet in Settings, then sync again."
+                )
+                walletTargets = []
+            case .unsupported, .notDetermined:
+                walletTargets = []
+            }
+        }
+
+        let targets = simpleFinTargets + walletTargets
+        guard !targets.isEmpty else { return result }
 
         isBankSyncing = true
         defer { isBankSyncing = false }
-
-        let provider = try await makeBankSyncProvider()
 
         // An account that already has history only needs the window since its
         // earliest transaction; one that has none takes the full lookback.
@@ -2582,16 +2640,43 @@ final class BudgetStore: ObservableObject {
             // mean the same thing here: take the full lookback.
             oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
         }
+        func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
+            accounts.map {
+                BankSyncTarget(
+                    externalId: $0.externalAccountId,
+                    startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
+                )
+            }
+        }
 
-        let downloaded = try await provider.download(targets.map {
-            BankSyncTarget(
-                externalId: $0.externalAccountId,
-                startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
-            )
-        })
+        // Each source downloads on its own; with both in play, one failing is
+        // that source's problem, not the sync's — its targets fall through the
+        // loop below as "failed" while the other source's still import.
+        var downloaded = BankSyncDownloadSet()
+        if !simpleFinTargets.isEmpty {
+            do {
+                let provider = try await makeBankSyncProvider()
+                let set = try await provider.download(downloadTargets(simpleFinTargets))
+                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
+                downloaded.problems += set.problems
+            } catch {
+                guard !walletTargets.isEmpty else { throw error }
+                downloaded.problems.append(error.localizedDescription)
+            }
+        }
+        if !walletTargets.isEmpty {
+            do {
+                let set = try await AppleWalletProvider(store: appleWalletStore)
+                    .download(downloadTargets(walletTargets))
+                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
+                downloaded.problems += set.problems
+            } catch {
+                guard !simpleFinTargets.isEmpty else { throw error }
+                downloaded.problems.append(error.localizedDescription)
+            }
+        }
 
-        var result = BankSyncResult()
-        result.problems = downloaded.problems
+        result.problems += downloaded.problems
         // One rules/context fetch for the whole run, not one per row.
         let prepared = await syncClient.prepareRules()
         let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
@@ -2602,8 +2687,9 @@ final class BudgetStore: ObservableObject {
                 // A connection-level problem already explains why nothing came
                 // back; don't also tell them to relink an account that's fine.
                 if downloaded.problems.isEmpty {
-                    result.problems.append(
-                        "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
+                    result.problems.append(target.source == .financeKit
+                        ? "\(target.name): this device's Wallet doesn't have this account — it was probably linked on another device. Unlink it and link it again here."
+                        : "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
                     )
                     statuses.append((target.id, nil, "account-missing"))
                 } else {
