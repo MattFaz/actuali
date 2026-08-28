@@ -152,12 +152,7 @@ enum CategoryFundingAutomation {
 
         let budgetMonth: BudgetMonth
         do {
-            guard let fetched = try await database.fetchBudgetMonth(month: month) else {
-                // A month with no budget rows is a normal no-op; there is
-                // nothing to fund without a category budget snapshot.
-                return
-            }
-            budgetMonth = fetched
+            budgetMonth = try await database.fetchBudgetMonth(month: month)
         } catch {
             budgetStore.error = "Category funding automation couldn't load the budget month: \(error.localizedDescription)"
             return
