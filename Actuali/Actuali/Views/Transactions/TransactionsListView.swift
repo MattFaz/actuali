@@ -402,7 +402,7 @@ struct ClearedIndicator: View {
     var body: some View {
         Group {
             if reconciled {
-                Image(systemName: "Lock.fill")
+                Image(systemName: "lock.fill")
                     .foregroundStyle(.blue)
                     .imageScale(.large)
             } else if cleared {
