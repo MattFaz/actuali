@@ -150,6 +150,14 @@ enum CategoryFundingAutomation {
         let sourceCategoryId: String?
         switch configuration.fundingSource {
         case .toBudget:
+            // Tracking budgets do not have a To Budget pool. Never pass nil as
+            // a funding source here because the sync layer would otherwise
+            // increase the destination budget target without a corresponding
+            // source transaction.
+            guard !budgetMonth.isTrackingBudget else {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose another funding category."
+                return
+            }
             sourceAvailable = nil
             sourceCategoryId = nil
         case .category(let sourceId):
@@ -233,7 +241,7 @@ extension BudgetStore {
         }
 
         let date = Transaction.yyyymmdd(from: form.date)
-        guard case .standard(let amountCents) = try Self.plan(for: form), amountCents < 0 else {
+        guard case .standard(let amountCents) = try Self.plan(for: form), amountCents <= 0 else {
             return nil
         }
 
@@ -274,4 +282,3 @@ extension BudgetStore {
         return transaction.id
     }
 }
-
