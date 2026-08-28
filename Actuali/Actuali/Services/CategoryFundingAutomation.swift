@@ -79,6 +79,8 @@ enum CategoryFundingAutomation {
     /// same pre-transfer balance and move too much money.
     @MainActor
     private static var pendingProcessingTask: Task<Void, Never>?
+    @MainActor
+    private static var pendingProcessingGeneration = 0
 
     /// Runs only after a successful manual Add Transaction save. The id is the
     /// exact row created by the form, so backdated transactions, rows on other
@@ -91,6 +93,8 @@ enum CategoryFundingAutomation {
         using budgetStore: BudgetStore,
         defaults: UserDefaults = .standard
     ) async {
+        pendingProcessingGeneration += 1
+        let generation = pendingProcessingGeneration
         let previousTask = pendingProcessingTask
         let currentTask = Task { @MainActor in
             if let previousTask {
@@ -104,6 +108,12 @@ enum CategoryFundingAutomation {
         }
         pendingProcessingTask = currentTask
         await currentTask.value
+
+        // A newer call may already have installed its own task. Only the
+        // latest completed call is allowed to clear the shared reference.
+        if pendingProcessingGeneration == generation {
+            pendingProcessingTask = nil
+        }
     }
 
     @MainActor
@@ -292,12 +302,8 @@ extension BudgetStore {
             recordPayeeLocationIfAppropriate(payeeId: payeeId)
         }
 
-        // A delete-transaction rule can remove the just-created row. Don't
-        // hand a non-existent id to the funding automation in that case.
-        guard let database = databaseForLogger,
-              (try? await database.fetchTransaction(id: transaction.id)) != nil else {
-            return nil
-        }
+        // A delete-transaction rule can remove the just-created row. The
+        // automation handles that case when it looks up the saved id.
         return transaction.id
     }
 }
