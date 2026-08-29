@@ -130,13 +130,25 @@ struct CategoryFundingAutomationTests {
         #expect(try BudgetStore.plan(for: form) == .standard(amountCents: 0))
     }
 
-    @Test("Manual expense from selected account is eligible")
+    @Test("Manual expense from selected on-budget account is eligible")
     func manualExpenseIsEligible() {
         let transaction = makeTransaction(categoryId: "groceries")
         #expect(CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
-            isIncomeCategory: false
+            isIncomeCategory: false,
+            isOffBudgetAccount: false
+        ))
+    }
+
+    @Test("Off-budget account transactions are ignored")
+    func offBudgetAccount() {
+        let transaction = makeTransaction(categoryId: "groceries")
+        #expect(!CategoryFundingAutomation.shouldProcess(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false,
+            isOffBudgetAccount: true
         ))
     }
 
@@ -254,6 +266,15 @@ struct CategoryFundingAutomationTests {
     @Test("Default funding source is To Budget")
     func defaultFundingSource() {
         #expect(CategoryFundingAutomationConfiguration().fundingSource == .toBudget)
+    }
+
+    @Test("Sufficient funds produce no funding even for a tracking budget source check")
+    func trackingBudgetWithNoShortfallNeedsNoFunding() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: 25,
+            fundingSource: .toBudget
+        ) == .none)
     }
 
     private func makeTransaction(
