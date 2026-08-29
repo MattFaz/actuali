@@ -19,8 +19,12 @@ final class SettingsNavigationUITests: XCTestCase {
             ).firstMatch
         case "Privacy":
             content = app.switches["Hide Balances"]
-        case "Manage":
-            content = app.buttons["Scheduled Transactions"]
+        case "Scheduled Transactions":
+            content = app.navigationBars["Scheduled Transactions"]
+        case "Rules":
+            content = app.navigationBars["Rules"]
+        case "Bank Sync (SimpleFIN)":
+            content = app.navigationBars["Bank Sync (SimpleFIN)"]
         case "About":
             content = app.staticTexts["Version"]
         default:
@@ -46,7 +50,9 @@ final class SettingsNavigationUITests: XCTestCase {
             "Transactions & Automation",
             "Display",
             "Privacy",
-            "Manage",
+            "Scheduled Transactions",
+            "Rules",
+            "Bank Sync (SimpleFIN)",
             "About"
         ] {
             let row = app.buttons[destination]
