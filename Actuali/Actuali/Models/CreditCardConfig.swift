@@ -6,19 +6,9 @@ struct CreditCardConfig: Codable, Equatable, Hashable, Sendable {
     var statementDay: Int
     var dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays
     var limit: Int?
+}
 
-    init(statementDay: Int, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays, limit: Int? = nil) {
-        self.statementDay = statementDay
-        self.dueOffsetDays = dueOffsetDays
-        self.limit = limit
-    }
-
-    enum CodingKeys: String, CodingKey {
-        case statementDay
-        case dueOffsetDays
-        case limit
-    }
-
+extension CreditCardConfig {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         statementDay = try container.decode(Int.self, forKey: .statementDay)

@@ -887,6 +887,10 @@ actor SyncClient {
 
     /// Persists or clears a credit card account configuration in the budget's `preferences` table
     /// under `actuali:credit_card:<accountId>`, so it syncs across all devices.
+    ///
+    /// Upstream compatibility: Actual's `preferences` table (`packages/loot-core/src/server/preferences/app.ts`)
+    /// is a key-value store (`id TEXT PRIMARY KEY, value TEXT`) that treats unknown preference keys as passthrough
+    /// synced items without schema constraints or client-side side-effects.
     func setCreditCardConfig(accountId: String, config: CreditCardConfig?) async throws {
         let key = BudgetDatabase.creditCardPreferenceKey(for: accountId)
         let jsonString: String?

@@ -625,11 +625,15 @@ final class BudgetStore: ObservableObject {
 
     /// Writes a card's cycle config. A nil `statementDay` stops tracking the
     /// account and clears everything stored for it, the limit included.
-    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
+    func setCreditCard(
+        accountId: String,
+        statementDay: Int?,
+        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
+        limit: Int? = nil
+    ) {
         guard currentBudgetId != nil else { return }
         let config: CreditCardConfig?
         if let statementDay {
-            let limit = creditCardConfigs[accountId]?.limit
             let newConfig = CreditCardConfig(
                 statementDay: statementDay,
                 dueOffsetDays: dueOffsetDays,
@@ -641,7 +645,6 @@ final class BudgetStore: ObservableObject {
             creditCardConfigs.removeValue(forKey: accountId)
             config = nil
         }
-        objectWillChange.send()
 
         if let syncClient {
             Task { [syncClient] in
@@ -653,16 +656,13 @@ final class BudgetStore: ObservableObject {
     /// The limit is written on its own so no caller can erase it by leaving an
     /// argument off a cycle update. A nil `cents` clears it.
     func setCreditLimit(accountId: String, cents: Int?) {
-        guard currentBudgetId != nil, var config = creditCardConfigs[accountId] else { return }
-        config.limit = cents
-        creditCardConfigs[accountId] = config
-        objectWillChange.send()
-
-        if let syncClient {
-            Task { [syncClient] in
-                try? await syncClient.setCreditCardConfig(accountId: accountId, config: config)
-            }
-        }
+        guard let config = creditCardConfigs[accountId] else { return }
+        setCreditCard(
+            accountId: accountId,
+            statementDay: config.statementDay,
+            dueOffsetDays: config.dueOffsetDays,
+            limit: cents
+        )
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -1776,11 +1776,20 @@ final class BudgetStore: ObservableObject {
                 subscribeToSyncState()
 
                 if let legacyCardsToMigrate, let syncClient {
+                    var allWritten = true
                     for (accountId, config) in legacyCardsToMigrate {
                         do {
                             try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
                         } catch {
+                            allWritten = false
                             logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
+                        }
+                    }
+                    // Erase the legacy keys only after every write lands, so a failed
+                    // migration retries on the next load and a removed card stays removed.
+                    if allWritten {
+                        for prefix in ["creditCardStatementDays_", "creditCardDueOffsets_", "creditCardLimits_"] {
+                            UserDefaults.standard.removeObject(forKey: prefix + budgetId)
                         }
                     }
                 }

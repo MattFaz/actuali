@@ -90,24 +90,4 @@ struct BudgetDatabaseCreditCardTests {
         let configs = try await db.fetchCreditCardConfigs()
         #expect(configs.isEmpty)
     }
-
-    @Test func fetchPreferencesReturnsPrefixFilteredDictionary() async throws {
-        let (db, url) = try makeDatabase()
-        defer { cleanup(url) }
-
-        try await db.dbQueueForTesting.write { conn in
-            try conn.execute(sql: """
-                INSERT INTO preferences (id, value) VALUES
-                    ('actuali:custom:item1', 'value1'),
-                    ('actuali:custom:item2', 'value2'),
-                    ('other_prefix:item',   'value3');
-            """)
-        }
-
-        let prefixed = try await db.fetchPreferences(prefix: "actuali:custom:")
-        #expect(prefixed.count == 2)
-        #expect(prefixed["item1"] == "value1")
-        #expect(prefixed["item2"] == "value2")
-        #expect(prefixed["item"] == nil)
-    }
 }

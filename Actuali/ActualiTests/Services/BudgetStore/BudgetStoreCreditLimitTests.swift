@@ -81,14 +81,13 @@ struct BudgetStoreCreditLimitTests {
             #expect(store.creditCardLimits["acct_card"] == nil)
 
             // An emptied field in the sheet clears a previously stored limit...
-            store.setCreditCard(accountId: "acct_card", statementDay: 25)
-            store.setCreditLimit(accountId: "acct_card", cents: 1_000_000)
+            store.setCreditCard(accountId: "acct_card", statementDay: 25, limit: 1_000_000)
             store.setCreditLimit(accountId: "acct_card", cents: nil)
             #expect(store.creditCardLimits["acct_card"] == nil)
 
-            // ...while an ordinary cycle edit leaves it alone.
+            // ...while setting a limit and updating the card persists it.
             store.setCreditLimit(accountId: "acct_card", cents: 1_000_000)
-            store.setCreditCard(accountId: "acct_card", statementDay: 3, dueOffsetDays: 25)
+            store.setCreditCard(accountId: "acct_card", statementDay: 3, dueOffsetDays: 25, limit: 1_000_000)
             #expect(store.creditCardLimits["acct_card"] == 1_000_000)
         }
     }

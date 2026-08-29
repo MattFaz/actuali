@@ -105,8 +105,10 @@ struct SyncClientCreditCardTests {
 
         try await client.setPreference(key: "actuali:custom:flag", value: "active")
 
-        let prefs = try await database.fetchPreferences(prefix: "actuali:custom:")
-        #expect(prefs["flag"] == "active")
+        let storedValue = try await database.dbQueueForTesting.read { conn in
+            try String.fetchOne(conn, sql: "SELECT value FROM preferences WHERE id = ?", arguments: ["actuali:custom:flag"])
+        }
+        #expect(storedValue == "active")
 
         let messages = try messageRows(path: path)
         #expect(messages.count == 1)

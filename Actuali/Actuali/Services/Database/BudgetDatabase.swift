@@ -3283,40 +3283,32 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Preferences (Synced Budget-level Key-Value Store)
 
-    /// Fetches all key-value pairs from the `preferences` table whose keys begin with a given prefix.
-    /// Returns a dictionary mapping suffix (key with prefix stripped) -> raw string value.
-    func fetchPreferences(prefix: String) async throws -> [String: String] {
-        try await dbQueue.read { db in
-            guard try db.tableExists("preferences") else { return [:] }
-            let rows = try Row.fetchAll(
-                db,
-                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL AND value != ''",
-                arguments: ["\(prefix)%"]
-            )
-            var results: [String: String] = [:]
-            for row in rows {
-                guard let id: String = row["id"],
-                      let value: String = row["value"],
-                      id.hasPrefix(prefix) else { continue }
-                let suffix = String(id.dropFirst(prefix.count))
-                results[suffix] = value
-            }
-            return results
-        }
+    /// Preference key prefix for synced credit card configurations.
+    static let creditCardPreferenceKeyPrefix = "actuali:credit_card:"
+
+    /// Preference key for a specific account's credit card config.
+    static func creditCardPreferenceKey(for accountId: String) -> String {
+        "\(creditCardPreferenceKeyPrefix)\(accountId)"
     }
 
-    /// Fetches and decodes all JSON Codable values matching a key prefix.
-    /// Returns a dictionary mapping suffix (key with prefix stripped) -> T.
-    func fetchDecodablePreferences<T: Decodable>(prefix: String) async throws -> [String: T] {
-        let rawDict = try await fetchPreferences(prefix: prefix)
-        var results: [String: T] = [:]
-        for (suffix, jsonString) in rawDict {
-            if let data = jsonString.data(using: .utf8),
-               let item = try? JSONDecoder().decode(T.self, from: data) {
-                results[suffix] = item
+    /// Fetches all synced credit card configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
+    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return [:] }
+            let prefix = Self.creditCardPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
+            )
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let value: String = row["value"],
+                      let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
+                result[String(id.dropFirst(prefix.count))] = config
             }
         }
-        return results
     }
 
     /// Fetch currency code from preferences table (stored by Actual Budget)
@@ -3347,20 +3339,6 @@ final class BudgetDatabase: Sendable {
                 """)
             return row?["value"]
         }
-    }
-
-    /// Preference key prefix for synced credit card configurations.
-    static let creditCardPreferenceKeyPrefix = "actuali:credit_card:"
-
-    /// Preference key for a specific account's credit card config.
-    static func creditCardPreferenceKey(for accountId: String) -> String {
-        "\(creditCardPreferenceKeyPrefix)\(accountId)"
-    }
-
-    /// Fetches all synced credit card configurations stored in the `preferences` table.
-    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
-    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
-        try await fetchDecodablePreferences(prefix: Self.creditCardPreferenceKeyPrefix)
     }
 
     // MARK: - Payee Insert

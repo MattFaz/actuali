@@ -182,7 +182,7 @@ struct CreditCardCycleTests {
         await body(store)
     }
 
-    @Test func statementDaysPersistInUserDefaults() async {
+    @Test func statementDaysPersistAndClearInStore() async {
         await withStore { store in
             store.setCreditCard(accountId: "acct_chase", statementDay: 18)
             store.setCreditCard(accountId: "acct_apple", statementDay: 31)

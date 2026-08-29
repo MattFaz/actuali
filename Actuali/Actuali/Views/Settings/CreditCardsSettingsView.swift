@@ -179,9 +179,9 @@ struct CreditCardsSettingsView: View {
                         budgetStore.setCreditCard(
                             accountId: selectedAccountId,
                             statementDay: selectedStatementDay,
-                            dueOffsetDays: selectedDueOffset
+                            dueOffsetDays: selectedDueOffset,
+                            limit: enteredLimitCents
                         )
-                        budgetStore.setCreditLimit(accountId: selectedAccountId, cents: enteredLimitCents)
                         showingAddSheet = false
                         editingAccountId = nil
                     }
