@@ -20,7 +20,7 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Privacy":
             content = app.switches["Hide Balances"]
         case "Manage":
-            content = app.buttons["Rules"]
+            content = app.buttons["Scheduled Transactions"]
         case "About":
             content = app.staticTexts["Version"]
         default:
