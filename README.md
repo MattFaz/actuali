@@ -87,7 +87,7 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 ## Requirements
 
 - A self-hosted [Actual Budget server](https://actualbudget.org/docs/install/) you can reach from your phone
-- iPhone or iPad running iOS/iPadOS 26.0 or later
+- iPhone or iPad running iOS/iPadOS 18.0 or later
 
 ## Install
 

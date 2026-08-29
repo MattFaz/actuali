@@ -107,4 +107,12 @@ struct CreditCardCycle: Equatable, Hashable {
         let dueStr = Transaction.formattedDate(from: upcomingDueDate(for: today).yyyymmdd, style: .abbreviated)
         return "Due \(dueStr) (\(days)d)"
     }
+
+    /// Compact variant of `dueSummary` for pill badges ("Due in 27d"). Defers to
+    /// `dueSummary` within a day of the due date, so the two can't drift on the
+    /// wording that matters most.
+    func dueShortSummary(for today: DayDate = .today()) -> String {
+        let days = daysUntilDue(for: today)
+        return days <= 1 ? dueSummary(for: today) : "Due in \(days)d"
+    }
 }

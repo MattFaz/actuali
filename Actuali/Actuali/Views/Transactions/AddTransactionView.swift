@@ -996,8 +996,10 @@ struct AmountInputField: UIViewRepresentable {
             items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+        // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
+        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
         items.append(UIBarButtonItem(
-            title: "Done", style: .prominent,
+            title: "Done", style: doneStyle,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items

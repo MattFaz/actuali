@@ -29,6 +29,7 @@ struct AccountsListView: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
+    @State private var showingCreditCards = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
     /// Split layout only. Starts on All Accounts so the detail column has
@@ -284,13 +285,13 @@ struct AccountsListView: View {
             ContentUnavailableView(
                 "Select a Budget",
                 systemImage: "dollarsign.circle",
-                description: Text("You're connected. Choose a budget in Settings to load it here.")
+                description: Text("You're connected. Choose a budget in More → Connection & Data to load it here.")
             )
         } else {
             ContentUnavailableView(
                 "No Budget Loaded",
                 systemImage: "dollarsign.circle",
-                description: Text("Go to Settings to connect to your Actual Budget server")
+                description: Text("Go to More → Connection & Data to connect to your Actual Budget server")
             )
         }
     }
@@ -328,6 +329,12 @@ struct AccountsListView: View {
                             }
                             .disabled(budgetStore.isBankSyncing)
                         }
+                        Button {
+                            showingCreditCards = true
+                        } label: {
+                            Label("Credit Cards", systemImage: "creditcard")
+                        }
+                        Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label("Hide Closed", systemImage: "archivebox")
                         }
@@ -376,6 +383,17 @@ struct AccountsListView: View {
             .sheet(isPresented: $showingPendingImports) {
                 PendingImportsView()
                     .environmentObject(budgetStore)
+            }
+            .sheet(isPresented: $showingCreditCards) {
+                NavigationStack {
+                    CreditCardsSettingsView()
+                        .environmentObject(budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingCreditCards = false }
+                            }
+                        }
+                }
             }
             .onAppear {
                 consumePendingAllAccountsNavigation()
@@ -453,8 +471,8 @@ struct AccountsListView: View {
 }
 
 /// Green over positive, red over negative, primary at exactly zero — shared
-/// by every balance-displaying view in this file so the three don't drift.
-private func balanceColor(for balance: Int) -> Color {
+/// by every balance-displaying view so the copies don't drift.
+func balanceColor(for balance: Int) -> Color {
     if balance > 0 { return .green }
     if balance < 0 { return .red }
     return .primary

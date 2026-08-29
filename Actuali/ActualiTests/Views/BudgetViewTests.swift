@@ -20,4 +20,16 @@ struct BudgetViewTests {
 
         #expect(ids == ["essentials", "lifestyle"])
     }
+
+    @Test func groupHeaderLabelIncludesBudgetedTotal() {
+        let label = BudgetGroupHeader.totalsAccessibilityLabel(
+            name: "Everyday",
+            isCollapsed: false,
+            budgeted: "$100.00",
+            spent: "-$40.00",
+            balance: "$60.00"
+        )
+
+        #expect(label == "Everyday, expanded, budgeted $100.00, spent -$40.00, balance $60.00")
+    }
 }

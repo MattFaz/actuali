@@ -17,8 +17,12 @@ final class CategoryNotesUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
-        // Groceries is the demo category that ships annotated.
-        let groceries = app.buttons["All transactions for Groceries"]
+        // Groceries is the demo category that ships annotated. The spent pill
+        // opens the transactions view (#243 repurposed the name button for
+        // category details); its label ends with the current month.
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Transactions for Groceries in'")
+        ).firstMatch
         var scrollsLeft = 8
         while !groceries.isHittable && scrollsLeft > 0 {
             app.swipeUp()
@@ -73,7 +77,9 @@ final class CategoryNotesUITests: XCTestCase {
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
                       "Budget tab not found")
 
-        let rent = app.buttons["All transactions for Rent"]
+        let rent = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Transactions for Rent in'")
+        ).firstMatch
         var scrollsLeft = 8
         while !rent.isHittable && scrollsLeft > 0 {
             app.swipeUp()

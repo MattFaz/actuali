@@ -11,6 +11,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         showGroupTotals: Bool = true,
         showBudgetCheckInStrip: Bool = true,
         hideZeroBudgetCategories: Bool = false,
+        showCategoryStatusDots: Bool = true,
         showBudgetProgressBars: Bool = true
     ) -> XCUIApplication {
         let app = XCUIApplication()
@@ -21,6 +22,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
             "-showGroupTotals", showGroupTotals ? "YES" : "NO",
             "-showBudgetCheckInStrip", showBudgetCheckInStrip ? "YES" : "NO",
             "-hideZeroBudgetCategories", hideZeroBudgetCategories ? "YES" : "NO",
+            "-showCategoryStatusDots", showCategoryStatusDots ? "YES" : "NO",
             "-showBudgetProgressBars", showBudgetProgressBars ? "YES" : "NO",
         ]
         app.launch()
@@ -29,7 +31,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
     @MainActor
     private func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["Settings"].tap()
+        app.tabBars.buttons["More"].tap()
         if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
             return
         }
@@ -182,6 +184,38 @@ final class BudgetViewSettingsUITests: XCTestCase {
         XCTAssertTrue(
             firstBudgetProgressBar(in: app).waitForExistence(timeout: 5),
             "Turning Budget Progress Bars back on should restore them"
+        )
+    }
+
+    @MainActor
+    func testCategoryStatusDotsToggleControlsBudgetRows() throws {
+        let app = launchSettings(showCategoryStatusDots: true)
+        openBudgetViewSettings(in: app)
+
+        let toggle = app.switches["Category Status Dots"]
+        XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Category Status Dots toggle not found")
+
+        app.tabBars.buttons["Budget"].tap()
+        let statusDot = app.descendants(matching: .any)["categoryStatusDot"].firstMatch
+        XCTAssertTrue(
+            statusDot.waitForExistence(timeout: 10),
+            "The demo budget should start with visible category status dots"
+        )
+
+        openBudgetViewSettings(in: app)
+        tapSwitch(toggle)
+        app.tabBars.buttons["Budget"].tap()
+        XCTAssertTrue(
+            statusDot.waitForNonExistence(timeout: 5),
+            "Turning Category Status Dots off should remove them from category rows"
+        )
+
+        openBudgetViewSettings(in: app)
+        tapSwitch(toggle)
+        app.tabBars.buttons["Budget"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["categoryStatusDot"].firstMatch.waitForExistence(timeout: 5),
+            "Turning Category Status Dots back on should restore them"
         )
     }
 }

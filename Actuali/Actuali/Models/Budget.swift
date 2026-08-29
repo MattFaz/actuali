@@ -15,6 +15,19 @@ struct BudgetMonth: Identifiable, Hashable {
     /// for envelope budgets — nil for tracking budgets.
     var toBudget: Int?
 
+    /// Hidden rows stay available to the Budget tab without changing the
+    /// visible-row totals or leaking into widgets and intents.
+    var hiddenCategoryBudgets: [CategoryBudget] = []
+    var hiddenIncomeCategories: [IncomeCategory] = []
+
+    var allCategoryBudgets: [CategoryBudget] {
+        categoryBudgets + hiddenCategoryBudgets
+    }
+
+    var allIncomeCategories: [IncomeCategory] {
+        incomeCategories + hiddenIncomeCategories
+    }
+
     var isTrackingBudget: Bool {
         toBudget == nil
     }
@@ -73,6 +86,10 @@ struct IncomeCategory: Identifiable, Hashable {
     var sortOrder: Double
     var budgeted: Int // In cents; only meaningful for tracking budgets
     var received: Int // In cents (positive when money came in)
+    var hidden = false
+    var groupHidden = false
+
+    var isEffectivelyHidden: Bool { hidden || groupHidden }
 }
 
 struct CategoryBudget: Identifiable, Hashable {
@@ -88,6 +105,10 @@ struct CategoryBudget: Identifiable, Hashable {
     var spent: Int // In cents (negative value, net of inflows)
     var available: Int // In cents (budgeted + spent + carryover)
     var carryover: Int
+    var hidden = false
+    var groupHidden = false
+
+    var isEffectivelyHidden: Bool { hidden || groupHidden }
 
     var isOverspent: Bool {
         available < 0

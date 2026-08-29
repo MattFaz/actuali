@@ -544,7 +544,7 @@ enum DemoDataSeeder {
         // the current month, so the net-worth/cash-flow trends always cover the
         // seeded data regardless of when the demo is loaded. Ordered by `y`.
         try insertWidget(db, pageId: mainPageId, type: "markdown-card", y: 0, width: 12, height: 2, meta: """
-            {"content":"**Welcome to the demo** 👋\\n\\nThis is sample data stored only on this device \u{2014} nothing you do here can touch a server or a real budget. When you\u{2019}re ready, connect your own Actual Budget server in **Settings**."}
+            {"content":"**Welcome to the demo** 👋\\n\\nThis is sample data stored only on this device \u{2014} nothing you do here can touch a server or a real budget. When you\u{2019}re ready, connect your own Actual Budget server in **More → Connection & Data**."}
             """)
         try insertWidget(db, pageId: mainPageId, type: "net-worth-card", y: 1, width: 12, height: 2, meta: """
             {"name":"Net Worth","timeFrame":{"start":"2024-01","end":"2024-06","mode":"sliding-window"},"interval":"Monthly"}

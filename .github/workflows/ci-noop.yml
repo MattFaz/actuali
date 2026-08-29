@@ -1,6 +1,12 @@
 # Companion to ci.yml: PRs that don't touch app code (website, docs) still get
-# a passing "Build and Test" check, so branch protection can require it
-# unconditionally. The paths-ignore list must mirror ci.yml's paths list.
+# passing "Unit Tests (iOS 26)" and "Unit Tests (iOS 18)" checks, so branch
+# protection can require them unconditionally. The paths-ignore list must
+# mirror ci.yml's paths list exactly.
+#
+# ponytail: mirrored lists stop both workflows firing on a workflow-only PR,
+# but not on a mixed one (a workflow file plus a doc), which still reports each
+# check name twice. Collapse to one workflow with a changed-files gate on the
+# macOS jobs if that duplication ever actually gates a merge.
 name: CI (no app changes)
 
 on:
@@ -8,14 +14,20 @@ on:
     branches: [main]
     paths-ignore:
       - "Actuali/**"
-      - ".github/workflows/ci.yml"
+      - ".github/workflows/**"
 
 permissions:
   contents: read
 
 jobs:
-  test:
-    name: Build and Test
+  test-ios26:
+    name: Unit Tests (iOS 26)
     runs-on: ubuntu-latest
     steps:
-      - run: echo "No app code changed — skipping build and tests."
+      - run: echo "No app code changed — skipping iOS 26 tests."
+
+  test-ios18:
+    name: Unit Tests (iOS 18)
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "No app code changed — skipping iOS 18 tests."

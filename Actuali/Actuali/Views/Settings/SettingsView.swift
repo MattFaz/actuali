@@ -49,7 +49,7 @@ struct SettingsView: View {
                 }
             }
             .readableWidth()
-            .navigationTitle("Settings")
+            .navigationTitle("More")
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
         // Keep the store-wide loading indicator above the navigation stack so
