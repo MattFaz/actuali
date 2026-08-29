@@ -2,7 +2,7 @@ import Foundation
 
 /// A Wallet (FinanceKit) transaction reduced to the fields Actuali imports.
 /// Framework-independent so mapping and dedup stay unit-testable — the thin
-/// FinanceKit bridge lives in `WalletImportView` (GH #55, Tier 1).
+/// FinanceKit bridge lives in `FinanceKitWalletStore` (GH #55, Tier 1).
 struct WalletImportCandidate: Identifiable, Hashable {
     /// FinanceKit transaction UUID, lowercased — stored as `financial_id`
     /// (Actual's imported_id) for dedup across imports.
@@ -27,34 +27,25 @@ enum WalletImportMapper {
     /// Map one Wallet transaction to an import candidate.
     /// - Returns: `nil` for rejected transactions (the money never moved) and
     ///   for amounts that don't fit integer cents.
-    static func candidate(
-        id: UUID,
-        amount: Decimal,
-        isCredit: Bool,
-        merchantName: String?,
-        transactionDescription: String,
-        status: Status,
-        date: Date
-    ) -> WalletImportCandidate? {
-        guard status != .rejected else { return nil }
-        guard let unsignedCents = cents(from: amount) else { return nil }
+    static func candidate(from transaction: AppleWalletTransaction) -> WalletImportCandidate? {
+        guard transaction.status != .rejected else { return nil }
+        guard let unsignedCents = cents(from: transaction.amount) else { return nil }
 
         // Wallet merchant strings carry the same processor noise as the
         // Shortcuts flow ("SQ *", store numbers) — normalize the same way.
         let rawPayee: String
-        if let merchantName, !merchantName.isEmpty {
+        if let merchantName = transaction.merchantName, !merchantName.isEmpty {
             rawPayee = merchantName
         } else {
-            rawPayee = transactionDescription
+            rawPayee = transaction.description
         }
-        let payee = MerchantNormalizer.normalize(rawPayee)
 
         return WalletImportCandidate(
-            id: id.uuidString.lowercased(),
-            amountCents: isCredit ? unsignedCents : -unsignedCents,
-            payeeName: payee,
-            date: date,
-            cleared: status == .booked
+            id: transaction.id,
+            amountCents: transaction.isCredit ? unsignedCents : -unsignedCents,
+            payeeName: MerchantNormalizer.normalize(rawPayee),
+            date: transaction.date,
+            cleared: transaction.status == .booked
         )
     }
 

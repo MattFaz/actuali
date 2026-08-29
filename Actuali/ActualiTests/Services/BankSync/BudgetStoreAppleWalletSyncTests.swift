@@ -3,20 +3,6 @@ import GRDB
 import Testing
 @testable import Actuali
 
-/// A canned Wallet, standing in for FinanceKit off-device.
-private struct StubWalletStore: AppleWalletReading {
-    var availabilityValue: AppleWalletAvailability = .authorized
-    var accountsValue: [AppleWalletAccount] = []
-    var transactionsByAccount: [String: [AppleWalletTransaction]] = [:]
-
-    func availability() async -> AppleWalletAvailability { availabilityValue }
-    func requestAccess() async throws -> Bool { availabilityValue == .authorized }
-    func accounts() async throws -> [AppleWalletAccount] { accountsValue }
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction] {
-        transactionsByAccount[accountId] ?? []
-    }
-}
-
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreAppleWalletSyncTests {
@@ -296,9 +282,13 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(result.problems[0].contains("Apple Card"))
         #expect(result.problems[0].contains("Wallet"))
 
+        // Missing-from-Wallet is this device's view, not the account's state:
+        // the same link can be serving fine on the device that made it, so no
+        // failure status may be stamped into the synced columns.
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
         )
-        #expect(account["bank_sync_status"] == "account-missing")
+        let status: String? = account["bank_sync_status"]
+        #expect(status == nil)
     }
 }

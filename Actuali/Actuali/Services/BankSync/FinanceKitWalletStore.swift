@@ -37,7 +37,7 @@ struct FinanceKitWalletStore: AppleWalletReading {
         )
         return accounts.map { account in
             AppleWalletAccount(
-                id: account.id.uuidString.lowercased(),
+                id: account.id.uuidString,
                 name: account.displayName,
                 institutionName: account.institutionName,
                 balanceCents: centsByAccount[account.id]
@@ -56,17 +56,7 @@ struct FinanceKitWalletStore: AppleWalletReading {
                 $0.accountID == accountUUID
             })
         )
-        return transactions.map { transaction in
-            AppleWalletTransaction(
-                id: transaction.id.uuidString.lowercased(),
-                amount: transaction.transactionAmount.amount,
-                isCredit: transaction.creditDebitIndicator == .credit,
-                merchantName: transaction.merchantName,
-                description: transaction.transactionDescription,
-                status: Self.status(from: transaction.status),
-                date: transaction.transactionDate
-            )
-        }
+        return transactions.map(AppleWalletTransaction.init)
     }
 
     /// Signed cents from a FinanceKit balance: credit is money there, debit is
@@ -82,9 +72,28 @@ struct FinanceKitWalletStore: AppleWalletReading {
               let cents = WalletImportMapper.cents(from: balance.amount.amount) else { return nil }
         return balance.creditDebitIndicator == .credit ? cents : -cents
     }
+}
 
-    private static func status(from status: FinanceKit.TransactionStatus) -> WalletImportMapper.Status {
-        switch status {
+/// The one place FinanceKit's transaction shape is read. Both consumers — the
+/// Tier-1 picker import and bank sync — go through this, so an SDK change
+/// lands in exactly one file.
+extension AppleWalletTransaction {
+    init(_ transaction: FinanceKit.Transaction) {
+        self.init(
+            id: transaction.id.uuidString,
+            amount: transaction.transactionAmount.amount,
+            isCredit: transaction.creditDebitIndicator == .credit,
+            merchantName: transaction.merchantName,
+            description: transaction.transactionDescription,
+            status: WalletImportMapper.Status(transaction.status),
+            date: transaction.transactionDate
+        )
+    }
+}
+
+extension WalletImportMapper.Status {
+    init(_ status: FinanceKit.TransactionStatus) {
+        self = switch status {
         case .authorized: .authorized
         case .memo: .memo
         case .pending: .pending

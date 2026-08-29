@@ -2603,6 +2603,13 @@ final class BudgetStore: ObservableObject {
         }
         let simpleFinTargets = linked.filter { $0.source == .simpleFin }
         var walletTargets = linked.filter { $0.source == .financeKit }
+        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
+
+        // Nothing may suspend between the isBankSyncing guard above and this
+        // write — an await in that window would let a second call slip past
+        // the guard and import everything twice.
+        isBankSyncing = true
+        defer { isBankSyncing = false }
 
         var result = BankSyncResult()
 
@@ -2626,9 +2633,6 @@ final class BudgetStore: ObservableObject {
 
         let targets = simpleFinTargets + walletTargets
         guard !targets.isEmpty else { return result }
-
-        isBankSyncing = true
-        defer { isBankSyncing = false }
 
         // An account that already has history only needs the window since its
         // earliest transaction; one that has none takes the full lookback.
@@ -2691,9 +2695,15 @@ final class BudgetStore: ObservableObject {
                         ? "\(target.name): this device's Wallet doesn't have this account — it was probably linked on another device. Unlink it and link it again here."
                         : "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
                     )
-                    statuses.append((target.id, nil, "account-missing"))
-                } else {
-                    statuses.append((target.id, nil, "failed"))
+                }
+                // A Wallet account another device serves fine is only missing
+                // *here*, so this device-relative state must not be stamped
+                // into the synced status columns — it would paint an error
+                // badge on every client over a link that works where it was
+                // made. SimpleFIN is one shared feed, so there it's stamped.
+                if target.source != .financeKit {
+                    statuses.append((target.id, nil,
+                                     downloaded.problems.isEmpty ? "account-missing" : "failed"))
                 }
                 continue
             }

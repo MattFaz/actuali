@@ -33,7 +33,9 @@ struct WalletImportView: View {
 
     /// Wallet selection mapped to import candidates, picker order preserved.
     private var candidates: [WalletImportCandidate] {
-        walletSelection.compactMap { Self.candidate(from: $0) }
+        walletSelection.compactMap {
+            WalletImportMapper.candidate(from: AppleWalletTransaction($0))
+        }
     }
 
     private var importableCount: Int {
@@ -198,30 +200,6 @@ struct WalletImportView: View {
         alreadyImportedIds = budgetStore.walletFinancialIds(accountId: accountId)
     }
 
-    /// Bridge FinanceKit's transaction into the framework-free candidate the
-    /// mapper and store work with.
-    private static func candidate(from transaction: FinanceKit.Transaction) -> WalletImportCandidate? {
-        WalletImportMapper.candidate(
-            id: transaction.id,
-            amount: transaction.transactionAmount.amount,
-            isCredit: transaction.creditDebitIndicator == .credit,
-            merchantName: transaction.merchantName,
-            transactionDescription: transaction.transactionDescription,
-            status: Self.status(from: transaction.status),
-            date: transaction.transactionDate
-        )
-    }
-
-    private static func status(from status: FinanceKit.TransactionStatus) -> WalletImportMapper.Status {
-        switch status {
-        case .authorized: .authorized
-        case .memo: .memo
-        case .pending: .pending
-        case .booked: .booked
-        case .rejected: .rejected
-        @unknown default: .booked
-        }
-    }
 }
 
 #Preview {

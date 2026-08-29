@@ -2,19 +2,6 @@ import Foundation
 import Testing
 @testable import Actuali
 
-private struct StubWalletStore: AppleWalletReading {
-    var availabilityValue: AppleWalletAvailability = .authorized
-    var accountsValue: [AppleWalletAccount] = []
-    var transactionsByAccount: [String: [AppleWalletTransaction]] = [:]
-
-    func availability() async -> AppleWalletAvailability { availabilityValue }
-    func requestAccess() async throws -> Bool { availabilityValue == .authorized }
-    func accounts() async throws -> [AppleWalletAccount] { accountsValue }
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction] {
-        transactionsByAccount[accountId] ?? []
-    }
-}
-
 struct AppleWalletSyncTests {
 
     private func transaction(
@@ -68,7 +55,7 @@ struct AppleWalletSyncTests {
         let candidate = try #require(BankSyncCandidate(
             appleWallet: transaction(merchantName: "SQ *BLUE BOTTLE #123")
         ))
-        #expect(candidate.payeeName == "BLUE BOTTLE")
+        #expect(candidate.payeeName == "Blue Bottle")
     }
 
     @Test func aMissingMerchantFallsBackToTheDescription() throws {

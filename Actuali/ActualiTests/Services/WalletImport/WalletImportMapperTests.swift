@@ -13,15 +13,15 @@ struct WalletImportMapperTests {
         status: WalletImportMapper.Status = .booked,
         date: Date = Date(timeIntervalSince1970: 1_750_000_000)
     ) -> WalletImportCandidate? {
-        WalletImportMapper.candidate(
-            id: id,
+        WalletImportMapper.candidate(from: AppleWalletTransaction(
+            id: id.uuidString,
             amount: amount,
             isCredit: isCredit,
             merchantName: merchantName,
-            transactionDescription: transactionDescription,
+            description: transactionDescription,
             status: status,
             date: date
-        )
+        ))
     }
 
     @Test func debitMapsToNegativeCents() throws {
