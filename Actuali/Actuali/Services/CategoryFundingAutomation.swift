@@ -61,9 +61,11 @@ enum CategoryFundingAutomation {
     static func shouldProcess(
         _ transaction: Transaction,
         selectedAccountId: String,
-        isIncomeCategory: Bool
+        isIncomeCategory: Bool,
+        isOffBudgetAccount: Bool = false
     ) -> Bool {
         transaction.accountId == selectedAccountId
+            && !isOffBudgetAccount
             && transaction.amount < 0
             && transaction.categoryId != nil
             && !transaction.isParent
@@ -147,11 +149,15 @@ enum CategoryFundingAutomation {
             .flatMap(\.categories)
             .first(where: { $0.id == transaction.categoryId })?
             .isIncome ?? false
+        let isOffBudgetAccount = budgetStore.accounts
+            .first(where: { $0.id == selectedAccountId })?
+            .offBudget ?? false
 
         guard shouldProcess(
             transaction,
             selectedAccountId: selectedAccountId,
-            isIncomeCategory: isIncomeCategory
+            isIncomeCategory: isIncomeCategory,
+            isOffBudgetAccount: isOffBudgetAccount
         ) else { return }
 
         let month = String(
@@ -178,14 +184,6 @@ enum CategoryFundingAutomation {
         let sourceCategoryId: String?
         switch configuration.fundingSource {
         case .toBudget:
-            // Tracking budgets do not have a To Budget pool. Never pass nil as
-            // a funding source here because the sync layer would otherwise
-            // increase the destination budget target without a corresponding
-            // source transaction.
-            guard !budgetMonth.isTrackingBudget else {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose another funding category."
-                return
-            }
             sourceAvailable = nil
             sourceCategoryId = nil
         case .category(let sourceId):
@@ -211,6 +209,11 @@ enum CategoryFundingAutomation {
         case .sameSourceAndTarget:
             budgetStore.error = "Couldn't fund \(category.categoryName): choose a different funding category."
         case .fund(let amountToFund):
+            if case .toBudget = configuration.fundingSource, budgetMonth.isTrackingBudget {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose another funding category."
+                return
+            }
+
             let displayedMonth = budgetStore.currentBudgetMonth?.month
             do {
                 try await budgetStore.transferBudget(
