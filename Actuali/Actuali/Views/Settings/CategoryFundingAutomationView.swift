@@ -31,7 +31,7 @@ struct CategoryFundingAutomationView: View {
             Section {
                 Picker("Account", selection: $configuration.accountId) {
                     Text("None").tag(String?.none)
-                    ForEach(budgetStore.accounts.filter { !$0.closed }, id: \.id) { account in
+                    ForEach(budgetStore.accounts.filter { !$0.closed && !$0.offBudget }, id: \.id) { account in
                         Text(account.name).tag(Optional(account.id))
                     }
                 }
