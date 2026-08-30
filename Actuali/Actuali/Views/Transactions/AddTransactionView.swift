@@ -727,13 +727,10 @@ struct AddTransactionView: View {
         )
 
         do {
-            let savedTransactionId: String?
-            if editing == nil && txType == .expense && splitLines.isEmpty {
-                savedTransactionId = try await budgetStore.createManualExpenseReturningID(form)
-            } else {
-                try await budgetStore.saveTransaction(form, editing: editing)
-                savedTransactionId = nil
-            }
+            let savedTransactionId = try await budgetStore.saveTransaction(
+                form,
+                editing: editing
+            )
             onSaved?(savedTransactionId)
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
