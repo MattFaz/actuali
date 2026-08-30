@@ -97,6 +97,32 @@ struct AppleWalletSyncTests {
         Calendar.current.date(byAdding: .day, value: -days, to: Date())!
     }
 
+    // MARK: - Apple Card remaining credit
+
+    /// Apple Card reports its balance as an available-only snapshot, and that
+    /// number is the *remaining credit*: with a $5,000 limit and $3,500 left
+    /// to spend, the card owes $1,500.
+    @Test func whatsOwedIsRemainingCreditLessTheLimit() {
+        #expect(AppleWalletAccount.owedBalance(
+            fromRemainingCredit: 350_000, creditLimitCents: 500_000
+        ) == -150_000)
+    }
+
+    /// An overpaid card has more to spend than its limit — a positive balance.
+    @Test func anOverpaidCardComesOutPositive() {
+        #expect(AppleWalletAccount.owedBalance(
+            fromRemainingCredit: 510_000, creditLimitCents: 500_000
+        ) == 10_000)
+    }
+
+    /// With no known limit there's no way to work out what's owed; no balance
+    /// beats importing the remaining credit as if it were one.
+    @Test func aCardWithoutAKnownLimitGetsNoBalance() {
+        #expect(AppleWalletAccount.owedBalance(
+            fromRemainingCredit: 350_000, creditLimitCents: nil
+        ) == nil)
+    }
+
     @Test func latestBalanceSnapshotWins() throws {
         let accountId = Self.cardId
         let older = AppleWalletBalance(
@@ -112,9 +138,29 @@ struct AppleWalletSyncTests {
             includesPending: true
         )
 
-        let latest = try #require(FinanceKitWalletStore.latestBalances([older, newer])[accountId])
+        let latest = try #require(FinanceKitWalletStore.latestBalance([older, newer]))
 
         #expect(latest == newer)
+    }
+
+    @Test func newestBalanceWithoutAnAmountDoesNotFallBackToAnOlderSnapshot() throws {
+        let older = AppleWalletBalance(
+            accountId: Self.cardId,
+            cents: -50000,
+            asOfDate: Date(timeIntervalSince1970: 1_000),
+            includesPending: false
+        )
+        let newer = AppleWalletBalance(
+            accountId: Self.cardId,
+            cents: nil,
+            asOfDate: Date(timeIntervalSince1970: 2_000),
+            includesPending: true
+        )
+
+        let latest = try #require(FinanceKitWalletStore.latestBalance([older, newer]))
+
+        #expect(latest == newer)
+        #expect(latest.cents == nil)
     }
 
     @Test func downloadCoversOnlyAccountsTheWalletHas() async throws {
