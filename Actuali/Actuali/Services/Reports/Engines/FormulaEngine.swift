@@ -1,14 +1,14 @@
 import Foundation
 
-/// Native evaluator for formula-card widgets. Actual evaluates Formula cards
-/// with HyperFormula. Actuali intentionally keeps this native and read-only,
-/// but supports the common numeric subset needed to render Formula cards that
-/// were created in the Actual Budget web app: arithmetic, comparisons,
-/// QUERY/QUERY_COUNT, common aggregate/math functions, and IF/AND/OR/NOT.
+/// Native evaluator for Formula card widgets. Actual evaluates Formula cards
+/// with HyperFormula; Actuali keeps this evaluator native and read-only.
+///
+/// The important part for QUERY is that it follows Actual's transaction
+/// aggregation semantics: live transactions only, split parents excluded,
+/// and children of tombstoned/missing parents ignored.
 enum FormulaEngine {
 
     enum Result: Equatable {
-        /// Currency units (upstream integerToAmount: cents / 100).
         case value(Double)
         case unsupported(String)
     }
@@ -24,21 +24,24 @@ enum FormulaEngine {
         }
 
         var parser = Parser(String(formula.dropFirst()))
-        guard let expr = parser.parseExpression() else {
+        guard let expression = parser.parseExpression() else {
             return .unsupported("This formula isn't supported yet")
         }
 
         do {
-            let value = try evaluate(expr, meta: meta, transactions: transactions,
-                                     today: today, context: context)
+            let value = try evaluate(
+                expression,
+                meta: meta,
+                transactions: transactions,
+                today: today,
+                context: context
+            )
             guard value.isFinite else {
                 return .unsupported("This formula returned an invalid number")
             }
             return .value(value)
         } catch EvalError.divisionByZero {
             return .unsupported("Division by zero")
-        } catch EvalError.invalidFunction {
-            return .unsupported("This formula isn't supported yet")
         } catch {
             return .unsupported("This formula isn't supported yet")
         }
@@ -50,29 +53,7 @@ enum FormulaEngine {
         case invalidArgument
     }
 
-    /// Sum (currency units) of transactions matching the named query's
-    /// conditions and time frame. Unknown names are 0, like upstream.
-    private static func querySum(
-        named name: String,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) -> Double {
-        queryMatches(named: name, meta: meta, transactions: transactions, today: today, context: context)
-            .reduce(0) { $0 + $1.amount }
-            / 100
-    }
-
-    private static func queryCount(
-        named name: String,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) -> Double {
-        Double(queryMatches(named: name, meta: meta, transactions: transactions, today: today, context: context).count)
-    }
+    // MARK: - Query evaluation
 
     private static func queryMatches(
         named name: String,
@@ -83,7 +64,29 @@ enum FormulaEngine {
     ) -> [Transaction] {
         guard let query = meta?.queries?[name] else { return [] }
 
-        var pool = transactions.filter { !$0.tombstone }
+        // Actual's transaction aggregates operate on leaf transactions rather
+        // than split-parent rows. A split parent contains the total and its
+        // children contain the individual portions; including both would
+        // double-count a split transaction.
+        //
+        // Children of tombstoned/missing parents are also ignored. Build the
+        // set from the supplied report rows so this remains correct even when
+        // the caller has loaded both parent and child rows.
+        let liveIDs = Set(
+            transactions
+                .filter { !$0.tombstone }
+                .map(\.id)
+        )
+
+        var pool = transactions.filter { transaction in
+            guard !transaction.tombstone else { return false }
+            guard !transaction.isParent else { return false }
+            if let parentId = transaction.parentId {
+                return liveIDs.contains(parentId)
+            }
+            return true
+        }
+
         if let timeFrame = query.timeFrame, timeFrame.mode != nil {
             let (start, end) = TimeFrame.resolve(timeFrame, asOf: today)
             let startYMD = ymdInt(from: start)
@@ -101,14 +104,52 @@ enum FormulaEngine {
         }
     }
 
-    private static func ymdInt(from date: Date) -> Int {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        let c = cal.dateComponents([.year, .month, .day], from: date)
-        return (c.year ?? 0) * 10000 + (c.month ?? 0) * 100 + (c.day ?? 0)
+    private static func querySum(
+        named name: String,
+        meta: FormulaMeta?,
+        transactions: [Transaction],
+        today: Date,
+        context: ConditionsFilter.Context
+    ) -> Double {
+        Double(
+            queryMatches(
+                named: name,
+                meta: meta,
+                transactions: transactions,
+                today: today,
+                context: context
+            ).reduce(0) { $0 + $1.amount }
+        ) / 100
     }
 
-    // MARK: - Expression tree
+    private static func queryCount(
+        named name: String,
+        meta: FormulaMeta?,
+        transactions: [Transaction],
+        today: Date,
+        context: ConditionsFilter.Context
+    ) -> Double {
+        Double(
+            queryMatches(
+                named: name,
+                meta: meta,
+                transactions: transactions,
+                today: today,
+                context: context
+            ).count
+        )
+    }
+
+    private static func ymdInt(from date: Date) -> Int {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let components = calendar.dateComponents([.year, .month, .day], from: date)
+        return (components.year ?? 0) * 10000
+            + (components.month ?? 0) * 100
+            + (components.day ?? 0)
+    }
+
+    // MARK: - Evaluation
 
     indirect enum Expr: Equatable {
         case number(Double)
@@ -132,46 +173,46 @@ enum FormulaEngine {
     }
 
     private static func evaluate(
-        _ expr: Expr,
+        _ expression: Expr,
         meta: FormulaMeta?,
         transactions: [Transaction],
         today: Date,
         context: ConditionsFilter.Context
     ) throws -> Double {
-        switch expr {
-        case .number(let n):
-            return n
+        switch expression {
+        case .number(let value):
+            return value
         case .string:
             throw EvalError.invalidArgument
-        case .add(let l, let r):
-            return try evaluate(l, meta: meta, transactions: transactions, today: today, context: context)
-                + evaluate(r, meta: meta, transactions: transactions, today: today, context: context)
-        case .sub(let l, let r):
-            return try evaluate(l, meta: meta, transactions: transactions, today: today, context: context)
-                - evaluate(r, meta: meta, transactions: transactions, today: today, context: context)
-        case .mul(let l, let r):
-            return try evaluate(l, meta: meta, transactions: transactions, today: today, context: context)
-                * evaluate(r, meta: meta, transactions: transactions, today: today, context: context)
-        case .div(let l, let r):
-            let divisor = try evaluate(r, meta: meta, transactions: transactions, today: today, context: context)
+        case .add(let left, let right):
+            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
+                + evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+        case .sub(let left, let right):
+            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
+                - evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+        case .mul(let left, let right):
+            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
+                * evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+        case .div(let left, let right):
+            let divisor = try evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
             guard abs(divisor) > .ulpOfOne else { throw EvalError.divisionByZero }
-            return try evaluate(l, meta: meta, transactions: transactions, today: today, context: context) / divisor
-        case .neg(let e):
-            return try -evaluate(e, meta: meta, transactions: transactions, today: today, context: context)
-        case .compare(let op, let l, let r):
-            let left = try evaluate(l, meta: meta, transactions: transactions, today: today, context: context)
-            let right = try evaluate(r, meta: meta, transactions: transactions, today: today, context: context)
+            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context) / divisor
+        case .neg(let value):
+            return try -evaluate(value, meta: meta, transactions: transactions, today: today, context: context)
+        case .compare(let op, let left, let right):
+            let lhs = try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
+            let rhs = try evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
             switch op {
-            case .equal: return left == right ? 1 : 0
-            case .notEqual: return left != right ? 1 : 0
-            case .less: return left < right ? 1 : 0
-            case .lessOrEqual: return left <= right ? 1 : 0
-            case .greater: return left > right ? 1 : 0
-            case .greaterOrEqual: return left >= right ? 1 : 0
+            case .equal: return lhs == rhs ? 1 : 0
+            case .notEqual: return lhs != rhs ? 1 : 0
+            case .less: return lhs < rhs ? 1 : 0
+            case .lessOrEqual: return lhs <= rhs ? 1 : 0
+            case .greater: return lhs > rhs ? 1 : 0
+            case .greaterOrEqual: return lhs >= rhs ? 1 : 0
             }
-        case .function(let rawName, let args):
+        case .function(let name, let args):
             return try evaluateFunction(
-                name: rawName.uppercased(),
+                name: name.uppercased(),
                 args: args,
                 meta: meta,
                 transactions: transactions,
@@ -203,8 +244,7 @@ enum FormulaEngine {
             return queryCount(named: queryName, meta: meta, transactions: transactions, today: today, context: context)
 
         case "SUM":
-            return try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
-                .reduce(0, +)
+            return try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context).reduce(0, +)
 
         case "AVERAGE":
             let values = try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
@@ -227,9 +267,7 @@ enum FormulaEngine {
             return values.reduce(1, *)
 
         case "COUNT":
-            return Double(
-                try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context).count
-            )
+            return Double(try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context).count)
 
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
@@ -285,22 +323,19 @@ enum FormulaEngine {
 
         case "AND":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            let values = try args.map {
-                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context)
-            }
-            return values.allSatisfy { $0 != 0 } ? 1 : 0
+            return try args.allSatisfy {
+                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context) != 0
+            } ? 1 : 0
 
         case "OR":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            let values = try args.map {
-                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context)
-            }
-            return values.contains { $0 != 0 } ? 1 : 0
+            return try args.contains {
+                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context) != 0
+            } ? 1 : 0
 
         case "NOT":
             guard args.count == 1 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            return value == 0 ? 1 : 0
+            return try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context) == 0 ? 1 : 0
 
         case "PI":
             guard args.isEmpty else { throw EvalError.invalidArgument }
@@ -311,8 +346,8 @@ enum FormulaEngine {
         }
     }
 
-    private static func stringArgument(_ expr: Expr) -> String? {
-        guard case .string(let value) = expr else { return nil }
+    private static func stringArgument(_ expression: Expr) -> String? {
+        guard case .string(let value) = expression else { return nil }
         return value
     }
 
@@ -331,27 +366,19 @@ enum FormulaEngine {
         }
     }
 
-    // MARK: - Recursive-descent parser
-    //
-    //   expression := additive (comparison additive)?
-    //   additive   := term (('+' | '-') term)*
-    //   term       := factor (('*' | '/') factor)*
-    //   factor     := NUMBER | STRING | '-' factor | '(' expression ')'
-    //               | IDENTIFIER '(' comma-separated expressions ')'
-    //
-    // This deliberately does not implement cell ranges or budget-specific
-    // functions yet. Unsupported functions become a visible read-only error.
+    // MARK: - Parser
+
     struct Parser {
         private let chars: [Character]
-        private var pos = 0
+        private var position = 0
 
         init(_ input: String) {
             chars = Array(input)
         }
 
         mutating func parseExpression() -> Expr? {
-            guard let expr = expression(), atEnd() else { return nil }
-            return expr
+            guard let expression = expression(), atEnd() else { return nil }
+            return expression
         }
 
         private mutating func expression() -> Expr? {
@@ -386,152 +413,152 @@ enum FormulaEngine {
 
         private mutating func factor() -> Expr? {
             skipWhitespace()
-            guard let c = peek() else { return nil }
+            guard let character = peek() else { return nil }
 
-            if c == "-" {
+            if character == "-" {
                 advance()
                 guard let inner = factor() else { return nil }
                 return .neg(inner)
             }
 
-            if c == "(" {
+            if character == "(" {
                 advance()
                 guard let inner = expression(), consume(")") else { return nil }
                 return inner
             }
 
-            if c == "\"" {
+            if character == "\"" {
                 return stringLiteral()
             }
 
-            if c.isNumber || c == "." {
+            if character.isNumber || character == "." {
                 return number()
             }
 
-            if c.isLetter || c == "_" {
+            if character.isLetter || character == "_" {
                 return functionCall()
             }
 
             return nil
         }
 
-        private mutating func number() -> Expr? {
+        private mutating func functionCall() -> Expr? {
             skipWhitespace()
-            var digits = ""
-            var decimalSeen = false
-            while let c = peek() {
-                if c.isNumber {
-                    digits.append(c)
-                    advance()
-                } else if c == "." && !decimalSeen {
-                    decimalSeen = true
-                    digits.append(c)
-                    advance()
-                } else {
-                    break
-                }
+            var name = ""
+            while let character = peek(), character.isLetter || character.isNumber || character == "_" {
+                name.append(character)
+                advance()
             }
-            return Double(digits).map(Expr.number)
+            guard consume("(") else { return nil }
+
+            var arguments: [Expr] = []
+            skipWhitespace()
+            if consume(")") {
+                return .function(name: name, args: arguments)
+            }
+
+            while true {
+                guard let argument = expression() else { return nil }
+                arguments.append(argument)
+                if consume(")") { break }
+                guard consume(",") else { return nil }
+            }
+
+            return .function(name: name, args: arguments)
         }
 
         private mutating func stringLiteral() -> Expr? {
             guard consume("\"") else { return nil }
             var value = ""
-            while let c = peek() {
-                if c == "\"" {
+            while let character = peek() {
+                if character == "\"" {
                     advance()
                     return .string(value)
                 }
-                if c == "\\" {
+                if character == "\\" {
                     advance()
                     guard let escaped = peek() else { return nil }
-                    switch escaped {
-                    case "\"": value.append("\"")
-                    case "\\": value.append("\\")
-                    case "n": value.append("\n")
-                    case "r": value.append("\r")
-                    case "t": value.append("\t")
-                    default: value.append(escaped)
-                    }
+                    value.append(escaped)
                     advance()
                 } else {
-                    value.append(c)
+                    value.append(character)
                     advance()
                 }
             }
             return nil
         }
 
-        private mutating func functionCall() -> Expr? {
+        private mutating func number() -> Expr? {
             skipWhitespace()
-            var ident = ""
-            while let c = peek(), c.isLetter || c.isNumber || c == "_" {
-                ident.append(c)
-                advance()
-            }
-            guard consume("(") else { return nil }
+            var value = ""
+            var decimalSeen = false
 
-            var args: [Expr] = []
-            skipWhitespace()
-            if consume(")") {
-                return .function(name: ident, args: args)
-            }
-
-            while true {
-                guard let arg = expression() else { return nil }
-                args.append(arg)
-                if consume(")") {
-                    return .function(name: ident, args: args)
+            while let character = peek() {
+                if character.isNumber {
+                    value.append(character)
+                    advance()
+                } else if character == "." && !decimalSeen {
+                    decimalSeen = true
+                    value.append(character)
+                    advance()
+                } else {
+                    break
                 }
-                guard consume(",") else { return nil }
             }
+
+            return Double(value).map(Expr.number)
         }
 
         private mutating func comparisonOperator() -> CompareOp? {
             skipWhitespace()
-            if consume("=") { return .equal }
-            if consume("<") {
-                if consume(">") { return .notEqual }
-                if consume("=") { return .lessOrEqual }
-                return .less
-            }
-            if consume(">") {
-                if consume("=") { return .greaterOrEqual }
-                return .greater
-            }
+            if match(["<", "="]) { return .lessOrEqual }
+            if match([">", "="]) { return .greaterOrEqual }
+            if match(["<", ">"]){ return .notEqual }
+            if match(["="]) { return .equal }
+            if match(["<"]) { return .less }
+            if match([">"]) { return .greater }
             return nil
         }
 
+        private mutating func peekOperator(_ operators: [Character]) -> Character? {
+            skipWhitespace()
+            guard let character = peek(), operators.contains(character) else { return nil }
+            return character
+        }
+
+        private mutating func match(_ sequence: [Character]) -> Bool {
+            guard position + sequence.count <= chars.count else { return false }
+            for (offset, expected) in sequence.enumerated() where chars[position + offset] != expected {
+                return false
+            }
+            position += sequence.count
+            return true
+        }
+
         private func peek() -> Character? {
-            pos < chars.count ? chars[pos] : nil
+            position < chars.count ? chars[position] : nil
         }
 
         private mutating func advance() {
-            pos += 1
+            position += 1
         }
 
         private mutating func skipWhitespace() {
-            while let c = peek(), c.isWhitespace {
+            while let character = peek(), character.isWhitespace {
                 advance()
             }
         }
 
-        private mutating func peekOperator(_ ops: [Character]) -> Character? {
+        private mutating func consume(_ character: Character) -> Bool {
             skipWhitespace()
-            guard let c = peek(), ops.contains(c) else { return nil }
-            return c
-        }
-
-        private mutating func consume(_ c: Character) -> Bool {
-            skipWhitespace()
-            guard peek() == c else { return false }
+            guard peek() == character else { return false }
             advance()
             return true
         }
 
         private mutating func atEnd() -> Bool {
             skipWhitespace()
-            return pos >= chars.count
+            return position >= chars.count
         }
     }
 }
