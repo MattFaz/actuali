@@ -1250,13 +1250,8 @@ struct BudgetAmountPill: View {
             .minimumScaleFactor(0.6)
             .foregroundStyle(dimmed ? Color.secondary : color)
             .animatedAmount(text)
-            .padding(.horizontal, 6)
             .padding(.vertical, 3)
             .frame(width: BudgetColumn.width, alignment: .trailing)
-            .background(
-                RoundedRectangle(cornerRadius: 8)
-                    .fill(Color(.systemFill).opacity(0.1))
-            )
     }
 }
 
