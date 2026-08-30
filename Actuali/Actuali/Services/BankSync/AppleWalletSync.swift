@@ -94,7 +94,10 @@ protocol AppleWalletReading: Sendable {
     /// Ask the person for read access. Returns whether it was granted.
     func requestAccess() async throws -> Bool
     func accounts() async throws -> [AppleWalletAccount]
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction]
+    /// Transactions on or after `sinceDay` (`YYYYMMDD`). A store may return
+    /// more — the caller drops anything before the day — but shouldn't return
+    /// meaningfully less-bounded history than asked for.
+    func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction]
 }
 
 /// Turns Wallet data into the same download shape the SimpleFIN providers
@@ -112,7 +115,9 @@ struct AppleWalletProvider: Sendable {
             guard let account = accounts.first(where: { $0.id == target.externalId })
             else { continue }
 
-            let transactions = try await store.transactions(accountId: target.externalId)
+            let transactions = try await store.transactions(
+                accountId: target.externalId, sinceDay: target.startDay
+            )
             let candidates = transactions
                 .compactMap(BankSyncCandidate.init(appleWallet:))
                 .filter { $0.date >= target.startDay }

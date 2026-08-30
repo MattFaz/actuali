@@ -2479,6 +2479,11 @@ final class BudgetStore: ObservableObject {
         var accountsSynced = 0
         var added = 0
         var updated = 0
+        /// The rows this run inserted (opening balances excluded), so the
+        /// automatic Wallet sync can post the new-transaction notification —
+        /// the detector behind `notifyAboutSyncedTransactions` only sees rows
+        /// authored by *other* devices, which imports made here are not.
+        var importedTransactions: [Transaction] = []
         /// Anything worth telling the person about: a bank connection that
         /// needs re-authenticating, an account SimpleFIN no longer knows.
         /// A run can succeed for some accounts and report problems for others.
@@ -2605,7 +2610,32 @@ final class BudgetStore: ObservableObject {
             bankSyncAccounts = []
             return
         }
-        let synced = (try? await database.fetchBankSyncAccounts()) ?? []
+        var synced = (try? await database.fetchBankSyncAccounts()) ?? []
+
+        // Early builds wrote financeKit links into the synced columns, where
+        // the ids mean nothing to any other device and today's unlink path
+        // can no longer reach them. Adopt each into the device-local store
+        // first, then clear the columns the way any unlink would. Idempotent:
+        // once cleared, there are no strays left to find.
+        let strays = synced.filter { $0.source == .financeKit }
+        if !strays.isEmpty, currentBudgetId != nil {
+            var links = appleWalletLinks
+            for stray in strays where links[stray.id] == nil {
+                links[stray.id] = stray.externalAccountId
+            }
+            appleWalletLinks = links
+            if let syncClient {
+                for stray in strays {
+                    try? await syncClient.unlinkAccount(accountId: stray.id)
+                }
+                synced = (try? await database.fetchBankSyncAccounts()) ?? []
+            } else {
+                // No sync client yet (restored budget): serve the link from
+                // the local store now, leave the columns for a later load.
+                synced.removeAll { $0.source == .financeKit }
+            }
+        }
+
         let walletLinks = appleWalletLinks
         guard !walletLinks.isEmpty else {
             bankSyncAccounts = synced
@@ -2644,7 +2674,22 @@ final class BudgetStore: ObservableObject {
             .map(\.id)
         guard !walletIds.isEmpty else { return }
         guard await appleWalletStore.availability() == .authorized else { return }
-        _ = try? await syncBankAccounts(accountIds: walletIds)
+        guard let result = try? await syncBankAccounts(accountIds: walletIds),
+              !result.importedTransactions.isEmpty else { return }
+
+        // The same summary notification a server sync posts — an import
+        // nobody triggered is exactly when a banner earns its place. The
+        // detector path can't see these rows (they're authored by this
+        // device), so they're handed over directly. Opt-in and permission
+        // are enforced inside the notifier.
+        let accountNames = accounts.reduce(into: [String: String]()) { $0[$1.id] = $1.name }
+        await NewTransactionNotifier.notify(
+            about: result.importedTransactions,
+            currencyCode: currencyCode,
+            narrowSymbol: useNarrowCurrencySymbol,
+            accountNames: accountNames,
+            offBudgetAccountIds: offBudgetAccountIds
+        )
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
@@ -2816,6 +2861,7 @@ final class BudgetStore: ObservableObject {
                 )
                 result.added += outcome.added
                 result.updated += outcome.updated
+                result.importedTransactions += outcome.inserted
                 result.accountsSynced += 1
                 statuses.append((target.id, syncedAt, download.status))
             } catch {
@@ -2840,7 +2886,7 @@ final class BudgetStore: ObservableObject {
         into target: BankSyncAccount,
         isFirstSync: Bool,
         prepared: SyncClient.PreparedRules
-    ) async throws -> (added: Int, updated: Int) {
+    ) async throws -> (added: Int, updated: Int, inserted: [Transaction]) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
 
         // The provider already dropped anything older than this account's own
@@ -2859,7 +2905,7 @@ final class BudgetStore: ObservableObject {
             ) ? 1 : 0
         }
         guard let earliest = candidates.map(\.date).min(),
-              let latest = candidates.map(\.date).max() else { return (added, 0) }
+              let latest = candidates.map(\.date).max() else { return (added, 0, []) }
 
         // Resolve payees by name without creating any: the payee pass compares
         // ids, and a name the budget doesn't have yet can't match anything.
@@ -2892,6 +2938,7 @@ final class BudgetStore: ObservableObject {
 
         // Oldest first: sort_order is stamped at insert, so inserting in date
         // order leaves the newest transaction at the top of the account.
+        var inserted: [Transaction] = []
         for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
             let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
             let transaction = Transaction(
@@ -2915,9 +2962,10 @@ final class BudgetStore: ObservableObject {
                 financialId: candidate.importedId
             )
             try await syncClient.createTransaction(transaction, prepared: prepared)
+            inserted.append(transaction)
         }
 
-        return (added + plan.inserts.count, plan.updates.count)
+        return (added + plan.inserts.count, plan.updates.count, inserted)
     }
 
     /// Give a freshly linked account the opening balance its imported history
@@ -4375,6 +4423,9 @@ final class BudgetStore: ObservableObject {
         await client.automaticSync()
         lastSyncTime = Date()
         await refreshDataOnly()
+        // Wallet feeds import in the same background window, so a purchase
+        // reaches the budget — and can notify — without the app being opened.
+        await autoSyncAppleWalletAccounts()
         return true
     }
 

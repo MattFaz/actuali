@@ -46,18 +46,28 @@ struct FinanceKitWalletStore: AppleWalletReading {
         }
     }
 
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction] {
+    func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
         guard let accountUUID = UUID(uuidString: accountId) else { return [] }
-        // ponytail: fetches the account's full history every sync and lets the
-        // caller drop what's outside the window. FinanceKit reads are local, so
-        // this holds up to years of Apple Card history; the upgrade path is a
-        // transactionDate bound in the predicate.
-        let transactions = try await FinanceStore.shared.transactions(
-            query: TransactionQuery(predicate: #Predicate<FinanceKit.Transaction> {
-                $0.accountID == accountUUID
-            })
-        )
-        return transactions.map(AppleWalletTransaction.init)
+        // Only the sync window: an Apple Card can carry years of history, and
+        // this read now runs on every foregrounding. The provider still drops
+        // anything the local-midnight boundary lets through early.
+        let start = Transaction.date(fromYYYYMMDD: sinceDay)
+        do {
+            return try await FinanceStore.shared.transactions(
+                query: TransactionQuery(predicate: #Predicate<FinanceKit.Transaction> {
+                    $0.accountID == accountUUID && $0.transactionDate >= start
+                })
+            ).map(AppleWalletTransaction.init)
+        } catch {
+            // If FinanceKit won't evaluate the date bound, full history still
+            // syncs correctly — it's only more work. A genuinely failing read
+            // fails here too, so nothing real is swallowed.
+            return try await FinanceStore.shared.transactions(
+                query: TransactionQuery(predicate: #Predicate<FinanceKit.Transaction> {
+                    $0.accountID == accountUUID
+                })
+            ).map(AppleWalletTransaction.init)
+        }
     }
 
     static func latestBalances(_ balances: [AppleWalletBalance]) -> [String: AppleWalletBalance] {

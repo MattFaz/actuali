@@ -179,6 +179,64 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(store.bankSyncSummary == nil)
     }
 
+    /// What a run inserts comes back on the result, so the automatic sync
+    /// can post the new-transaction notification — the detector path only
+    /// sees rows authored by other devices, which these are not. The opening
+    /// balance stays out; nobody needs a banner for it.
+    @Test func theResultCarriesInsertedRowsForNotification() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        let result = try await store.syncBankAccounts()
+        #expect(result.importedTransactions.count == 2)
+        #expect(result.importedTransactions.allSatisfy { $0.accountId == Self.accountId })
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.importedTransactions.isEmpty)
+    }
+
+    /// Early builds wrote financeKit links into the synced columns. Loading
+    /// adopts them into the device-local store and clears the columns like an
+    /// unlink would — the link itself must survive the move.
+    @Test func strayColumnLinksMigrateToTheDeviceLocalStore() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        let externalId = Self.externalAccountId
+        try await queue.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+                WHERE id = ?
+                """, arguments: [externalId, accountId])
+        }
+        let store = try await makeStore(
+            database: database, walletStore: appleCard(), linked: false
+        )
+
+        // The link survives, served from the device-local store…
+        let link = try #require(store.bankSyncAccount(forAccountId: accountId))
+        #expect(link.source == .financeKit)
+        #expect(link.externalAccountId == externalId)
+
+        // …the synced columns are cleared the way any unlink clears them…
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [accountId])
+        )
+        let source: String? = account["account_sync_source"]
+        let externalColumn: String? = account["account_id"]
+        let bank: String? = account["bank"]
+        #expect(source == nil)
+        #expect(externalColumn == nil)
+        #expect(bank == nil)
+
+        // …and the account still syncs.
+        let result = try await store.syncBankAccounts()
+        #expect(result.accountsSynced == 1)
+    }
+
     /// A device that can't serve the feed skips the automatic pass entirely —
     /// no import, and no alert nobody asked for.
     @Test func autoSyncStaysQuietWhenWalletCantAnswer() async throws {
