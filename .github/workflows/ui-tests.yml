@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   ui-test:
+    if: github.repository == 'MattFaz/actuali'
     name: UI Tests (iOS 26)
     runs-on: macos-26
     # Serial execution costs wall-clock (see the test step): budget for a
