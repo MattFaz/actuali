@@ -29,9 +29,13 @@ struct FinanceKitWalletStore: AppleWalletReading {
     func accounts() async throws -> [AppleWalletAccount] {
         let accounts = try await FinanceStore.shared.accounts(query: AccountQuery())
         let balances = try await FinanceStore.shared.accountBalances(query: AccountBalanceQuery())
-        let balancesByAccount = Self.latestBalances(balances.compactMap(Self.balance(from:)))
         return accounts.map { account in
-            let balance = balancesByAccount[account.id.uuidString.lowercased()]
+            // Which of a snapshot's numbers is the balance depends on the
+            // account it belongs to, so snapshots are mapped per account.
+            let snapshots = balances
+                .filter { $0.accountID == account.id }
+                .compactMap { Self.balance(from: $0, for: account) }
+            let balance = Self.latestBalances(snapshots)[account.id.uuidString.lowercased()]
             return AppleWalletAccount(
                 id: account.id.uuidString,
                 name: account.displayName,
@@ -56,28 +60,57 @@ struct FinanceKitWalletStore: AppleWalletReading {
         return transactions.map(AppleWalletTransaction.init)
     }
 
-    /// Signed cents from a FinanceKit balance: credit is money there, debit is
-    /// money owed — which is how an Apple Card's balance comes out negative.
     static func latestBalances(_ balances: [AppleWalletBalance]) -> [String: AppleWalletBalance] {
         Dictionary(grouping: balances, by: \AppleWalletBalance.accountId)
             .compactMapValues { $0.max { $0.asOfDate < $1.asOfDate } }
     }
 
-    private static func balance(from accountBalance: AccountBalance) -> AppleWalletBalance? {
-        let selection: (balance: Balance, includesPending: Bool)? = switch accountBalance.currentBalance {
-        case .available(let available): (available, true)
-        case .booked(let booked): (booked, false)
-        case .availableAndBooked(let available, _): (available, true)
+    /// One snapshot's balance, picked per account kind. Booked is what's
+    /// there or owed; available includes pending — but on a credit card the
+    /// available number is the *remaining credit*, not a balance at all, so
+    /// there the booked number wins and an available-only snapshot has to be
+    /// resolved against the card's limit (Apple Card reports only that shape).
+    private static func balance(
+        from accountBalance: AccountBalance,
+        for account: FinanceKit.Account
+    ) -> AppleWalletBalance? {
+        let isLiability = account.liabilityAccount != nil
+        let selection: (balance: Balance, includesPending: Bool, isRemainingCredit: Bool)?
+        selection = switch accountBalance.currentBalance {
+        case .booked(let booked): (booked, false, false)
+        case .availableAndBooked(let available, let booked):
+            isLiability ? (booked, false, false) : (available, true, false)
+        case .available(let available): (available, true, isLiability)
         @unknown default: nil
         }
-        guard let (balance, includesPending) = selection else { return nil }
-        guard let cents = WalletImportMapper.cents(from: balance.amount.amount) else { return nil }
+        guard let (balance, includesPending, isRemainingCredit) = selection,
+              let signed = signedCents(balance) else { return nil }
+
+        // Remaining credit moves the moment a charge authorizes, so a balance
+        // derived from it already includes pending.
+        let cents = isRemainingCredit
+            ? AppleWalletAccount.owedBalance(
+                fromRemainingCredit: signed,
+                creditLimitCents: account.liabilityAccount?.creditInformation.creditLimit
+                    .flatMap { WalletImportMapper.cents(from: $0.amount) }
+            )
+            : signed
+        guard let cents else { return nil }
+
         return AppleWalletBalance(
             accountId: accountBalance.accountID.uuidString.lowercased(),
-            cents: balance.creditDebitIndicator == .credit ? cents : -cents,
+            cents: cents,
             asOfDate: balance.asOfDate,
             includesPending: includesPending
         )
+    }
+
+    /// Signed cents from one FinanceKit balance: credit is money there, debit
+    /// is money owed — which is how an Apple Card's booked balance comes out
+    /// negative.
+    private static func signedCents(_ balance: Balance) -> Int? {
+        guard let cents = WalletImportMapper.cents(from: balance.amount.amount) else { return nil }
+        return balance.creditDebitIndicator == .credit ? cents : -cents
     }
 }
 

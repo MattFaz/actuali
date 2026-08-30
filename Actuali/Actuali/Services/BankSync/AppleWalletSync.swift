@@ -139,4 +139,13 @@ extension AppleWalletAccount {
             source: .financeKit
         )
     }
+
+    /// A credit card's *available* number is its remaining credit, not a
+    /// balance: what's owed is that less the limit — negative like any credit
+    /// card balance, positive when overpaid. With no known limit there's no
+    /// way to say what's owed; better no balance than the remaining credit
+    /// imported as one.
+    static func owedBalance(fromRemainingCredit remainingCents: Int, creditLimitCents: Int?) -> Int? {
+        creditLimitCents.map { remainingCents - $0 }
+    }
 }
