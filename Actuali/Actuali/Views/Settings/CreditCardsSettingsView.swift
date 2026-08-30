@@ -77,7 +77,13 @@ struct CreditCardsSettingsView: View {
                     }
                     .onDelete { offsets in
                         for accountId in offsets.map({ cards[$0].account.id }) {
-                            budgetStore.setCreditCard(accountId: accountId, statementDay: nil)
+                            Task {
+                                await budgetStore.setCreditCard(
+                                    accountId: accountId,
+                                    statementDay: nil,
+                                    limit: nil
+                                )
+                            }
                         }
                     }
                 }
@@ -159,7 +165,13 @@ struct CreditCardsSettingsView: View {
                 if isEditing {
                     Section {
                         Button("Remove Credit Card Tracking", role: .destructive) {
-                            budgetStore.setCreditCard(accountId: selectedAccountId, statementDay: nil)
+                            Task {
+                                await budgetStore.setCreditCard(
+                                    accountId: selectedAccountId,
+                                    statementDay: nil,
+                                    limit: nil
+                                )
+                            }
                             editingAccountId = nil
                         }
                     }
@@ -176,12 +188,14 @@ struct CreditCardsSettingsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        budgetStore.setCreditCard(
-                            accountId: selectedAccountId,
-                            statementDay: selectedStatementDay,
-                            dueOffsetDays: selectedDueOffset,
-                            limit: enteredLimitCents
-                        )
+                        Task {
+                            await budgetStore.setCreditCard(
+                                accountId: selectedAccountId,
+                                statementDay: selectedStatementDay,
+                                dueOffsetDays: selectedDueOffset,
+                                limit: enteredLimitCents
+                            )
+                        }
                         showingAddSheet = false
                         editingAccountId = nil
                     }

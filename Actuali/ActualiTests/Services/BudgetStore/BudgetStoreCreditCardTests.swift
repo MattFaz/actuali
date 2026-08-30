@@ -108,4 +108,35 @@ struct BudgetStoreCreditCardTests {
         await store.loadLocalBudget(budgetA)
         #expect(store.creditCardStatementDays["acct_chase"] == 18)
     }
+
+    @Test func setCreditCardPersistsThroughSync() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25, limit: 500_000)
+
+        #expect(store.creditCardStatementDays["acct_chase"] == 18)
+        #expect(store.creditCardDueOffsets["acct_chase"] == 25)
+        #expect(store.creditCardLimits["acct_chase"] == 500_000)
+
+        let configs = try await database.fetchCreditCardConfigs()
+        #expect(configs["acct_chase"]?.statementDay == 18)
+        #expect(configs["acct_chase"]?.dueOffsetDays == 25)
+        #expect(configs["acct_chase"]?.limit == 500_000)
+    }
 }

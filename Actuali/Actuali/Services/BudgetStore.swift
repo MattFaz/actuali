@@ -623,46 +623,31 @@ final class BudgetStore: ObservableObject {
         return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
     }
 
-    /// Writes a card's cycle config. A nil `statementDay` stops tracking the
-    /// account and clears everything stored for it, the limit included.
+    /// Writes a card's cycle config and persists it through SyncClient.
+    /// A nil `statementDay` stops tracking the account and clears everything stored for it.
     func setCreditCard(
         accountId: String,
         statementDay: Int?,
         dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
-        limit: Int? = nil
-    ) {
+        limit: Int?
+    ) async {
         guard currentBudgetId != nil else { return }
-        let config: CreditCardConfig?
-        if let statementDay {
-            let newConfig = CreditCardConfig(
-                statementDay: statementDay,
-                dueOffsetDays: dueOffsetDays,
-                limit: limit
-            )
-            creditCardConfigs[accountId] = newConfig
-            config = newConfig
-        } else {
-            creditCardConfigs.removeValue(forKey: accountId)
-            config = nil
+        let previous = creditCardConfigs
+        let config: CreditCardConfig? = statementDay.map {
+            CreditCardConfig(statementDay: $0, dueOffsetDays: dueOffsetDays, limit: limit)
         }
-
-        if let syncClient {
-            Task { [syncClient] in
-                try? await syncClient.setCreditCardConfig(accountId: accountId, config: config)
-            }
+        creditCardConfigs[accountId] = config
+        guard let syncClient else {
+            creditCardConfigs = previous
+            error = "Credit card settings need sync configured for this budget."
+            return
         }
-    }
-
-    /// The limit is written on its own so no caller can erase it by leaving an
-    /// argument off a cycle update. A nil `cents` clears it.
-    func setCreditLimit(accountId: String, cents: Int?) {
-        guard let config = creditCardConfigs[accountId] else { return }
-        setCreditCard(
-            accountId: accountId,
-            statementDay: config.statementDay,
-            dueOffsetDays: config.dueOffsetDays,
-            limit: cents
-        )
+        do {
+            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
+        } catch {
+            creditCardConfigs = previous
+            self.error = error.localizedDescription
+        }
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -1687,24 +1672,21 @@ final class BudgetStore: ObservableObject {
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
 
-            var legacyCardsToMigrate: [String: CreditCardConfig]?
-            if fetchedCreditCards.isEmpty {
-                var legacyConfigs: [String: CreditCardConfig] = [:]
-                let legacyDays = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
-                let legacyOffsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
-                let legacyLimits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-                for (accountId, statementDay) in legacyDays {
-                    let offset = legacyOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
-                    let limit = legacyLimits[accountId]
-                    legacyConfigs[accountId] = CreditCardConfig(statementDay: statementDay, dueOffsetDays: offset, limit: limit)
-                }
-                creditCardConfigs = legacyConfigs
-                if !legacyConfigs.isEmpty {
-                    legacyCardsToMigrate = legacyConfigs
-                }
-            } else {
-                creditCardConfigs = fetchedCreditCards
+            // Read the legacy keys on every load. A card already in the synced table
+            // wins; the rest still migrate, so a partial failure really does retry.
+            var legacyConfigs: [String: CreditCardConfig] = [:]
+            let legacyDays = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
+            let legacyOffsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
+            let legacyLimits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
+            for (accountId, statementDay) in legacyDays where fetchedCreditCards[accountId] == nil {
+                legacyConfigs[accountId] = CreditCardConfig(
+                    statementDay: statementDay,
+                    dueOffsetDays: legacyOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays,
+                    limit: legacyLimits[accountId]
+                )
             }
+            creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
+            let legacyCardsToMigrate = legacyConfigs.isEmpty ? nil : legacyConfigs
             
             accounts = fetchedAccounts
             transactions = fetchedTransactions

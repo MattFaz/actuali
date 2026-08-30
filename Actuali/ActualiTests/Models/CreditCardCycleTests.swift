@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 @testable import Actuali
 
@@ -162,60 +163,64 @@ struct CreditCardCycleTests {
 
     // MARK: - Store Persistence
 
-    /// Points the store at throwaway budget ids and clears every key they touch,
-    /// so a run can't leak card config into the real app's defaults.
+    /// Points the store at throwaway budget ids and configures test database and sync client.
     private func withStore(
         budgetIds: [String] = ["test-budget"],
-        _ body: @MainActor (BudgetStore) async -> Void
-    ) async {
-        let savedDefault = UserDefaults.standard.string(forKey: "currentBudgetId")
-        defer {
-            for id in budgetIds {
-                UserDefaults.standard.removeObject(forKey: "creditCardStatementDays_\(id)")
-                UserDefaults.standard.removeObject(forKey: "creditCardDueOffsets_\(id)")
-                UserDefaults.standard.removeObject(forKey: "creditCardLimits_\(id)")
-            }
-            UserDefaults.standard.set(savedDefault, forKey: "currentBudgetId")
+        _ body: @MainActor (BudgetStore) async throws -> Void
+    ) async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
         }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         let store = BudgetStore.previewInstance()
+        store.configureForTesting(database: database, syncClient: syncClient)
         store.currentBudgetId = budgetIds[0]
-        await body(store)
+        try await body(store)
     }
 
-    @Test func statementDaysPersistAndClearInStore() async {
-        await withStore { store in
-            store.setCreditCard(accountId: "acct_chase", statementDay: 18)
-            store.setCreditCard(accountId: "acct_apple", statementDay: 31)
+    @Test func statementDaysPersistAndClearInStore() async throws {
+        try await withStore { store in
+            await store.setCreditCard(accountId: "acct_chase", statementDay: 18, limit: nil)
+            await store.setCreditCard(accountId: "acct_apple", statementDay: 31, limit: nil)
 
             #expect(store.creditCardStatementDays["acct_chase"] == 18)
             #expect(store.creditCardStatementDays["acct_apple"] == 31)
             #expect(store.creditCardCycle(for: "acct_chase")?.statementDay == 18)
 
             // Remove card
-            store.setCreditCard(accountId: "acct_chase", statementDay: nil)
+            await store.setCreditCard(accountId: "acct_chase", statementDay: nil, limit: nil)
             #expect(store.creditCardStatementDays["acct_chase"] == nil)
             #expect(store.creditCardCycle(for: "acct_chase") == nil)
         }
     }
 
-    @Test func dueOffsetPersistsAndClearsWithTheCard() async {
-        await withStore { store in
-            store.setCreditCard(accountId: "acct_anz", statementDay: 20, dueOffsetDays: 45)
+    @Test func dueOffsetPersistsAndClearsWithTheCard() async throws {
+        try await withStore { store in
+            await store.setCreditCard(accountId: "acct_anz", statementDay: 20, dueOffsetDays: 45, limit: nil)
 
             #expect(store.creditCardDueOffsets["acct_anz"] == 45)
             #expect(store.creditCardCycle(for: "acct_anz")?.dueOffsetDays == 45)
 
             // Removing the card must not leave the offset behind to be picked up
             // by a later card on the same account.
-            store.setCreditCard(accountId: "acct_anz", statementDay: nil)
+            await store.setCreditCard(accountId: "acct_anz", statementDay: nil, limit: nil)
             #expect(store.creditCardDueOffsets["acct_anz"] == nil)
         }
     }
 
     /// Cards configured before the offset was per-card have a statement day and
     /// no offset; they must keep working on the previous fixed 15 days.
-    @Test func cardWithNoStoredOffsetFallsBackToTheDefault() async {
-        await withStore { store in
+    @Test func cardWithNoStoredOffsetFallsBackToTheDefault() async throws {
+        try await withStore { store in
             store.creditCardConfigs["acct_legacy"] = CreditCardConfig(statementDay: 10)
 
             let cycle = store.creditCardCycle(for: "acct_legacy")
@@ -224,9 +229,9 @@ struct CreditCardCycleTests {
         }
     }
 
-    @Test func cardConfigIsScopedToTheBudgetThatSetIt() async {
-        await withStore(budgetIds: ["budget-a", "budget-b"]) { store in
-            store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25)
+    @Test func cardConfigIsScopedToTheBudgetThatSetIt() async throws {
+        try await withStore(budgetIds: ["budget-a", "budget-b"]) { store in
+            await store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25, limit: nil)
 
             store.currentBudgetId = "budget-b"
             #expect(store.creditCardStatementDays.isEmpty)
@@ -235,9 +240,9 @@ struct CreditCardCycleTests {
         }
     }
 
-    @Test func cardConfigIsUnreachableWithNoOpenBudget() async {
-        await withStore { store in
-            store.setCreditCard(accountId: "acct_chase", statementDay: 18)
+    @Test func cardConfigIsUnreachableWithNoOpenBudget() async throws {
+        try await withStore { store in
+            await store.setCreditCard(accountId: "acct_chase", statementDay: 18, limit: nil)
 
             store.currentBudgetId = nil
             #expect(store.creditCardStatementDays.isEmpty)
@@ -245,7 +250,7 @@ struct CreditCardCycleTests {
 
             // The setter has nowhere to write, so it must not trap or leak into
             // another budget's keys.
-            store.setCreditCard(accountId: "acct_other", statementDay: 3)
+            await store.setCreditCard(accountId: "acct_other", statementDay: 3, limit: nil)
             #expect(store.creditCardStatementDays.isEmpty)
         }
     }
@@ -253,15 +258,15 @@ struct CreditCardCycleTests {
     /// The Settings badge and the Credit Cards list both read this, so a closed
     /// or deleted account must drop out of it — otherwise the badge counts cards
     /// the list refuses to show.
-    @Test func activeStatementDaysExcludeClosedAndMissingAccounts() async {
-        await withStore { store in
+    @Test func activeStatementDaysExcludeClosedAndMissingAccounts() async throws {
+        try await withStore { store in
             store.accounts = [
                 account(id: "acct_open", name: "Open Card"),
                 account(id: "acct_closed", name: "Closed Card", closed: true),
             ]
-            store.setCreditCard(accountId: "acct_open", statementDay: 15)
-            store.setCreditCard(accountId: "acct_closed", statementDay: 20)
-            store.setCreditCard(accountId: "acct_deleted", statementDay: 25)
+            await store.setCreditCard(accountId: "acct_open", statementDay: 15, limit: nil)
+            await store.setCreditCard(accountId: "acct_closed", statementDay: 20, limit: nil)
+            await store.setCreditCard(accountId: "acct_deleted", statementDay: 25, limit: nil)
 
             #expect(store.creditCardStatementDays.count == 3)
             #expect(store.activeCreditCardStatementDays == ["acct_open": 15])
@@ -278,16 +283,16 @@ struct CreditCardCycleTests {
     /// The account detail screen reads this rather than `creditCardCycle(for:)`,
     /// so a closed card can't keep advertising a payment due date there after it
     /// has dropped off the Credit Cards screen.
-    @Test func activeCycleIsNilForClosedAndMissingAccounts() async {
-        await withStore { store in
+    @Test func activeCycleIsNilForClosedAndMissingAccounts() async throws {
+        try await withStore { store in
             store.accounts = [
                 account(id: "acct_open", name: "Open Card"),
                 account(id: "acct_closed", name: "Closed Card", closed: true),
                 account(id: "acct_untracked", name: "Everyday Checking", type: .checking),
             ]
-            store.setCreditCard(accountId: "acct_open", statementDay: 15, dueOffsetDays: 25)
-            store.setCreditCard(accountId: "acct_closed", statementDay: 20)
-            store.setCreditCard(accountId: "acct_deleted", statementDay: 25)
+            await store.setCreditCard(accountId: "acct_open", statementDay: 15, dueOffsetDays: 25, limit: nil)
+            await store.setCreditCard(accountId: "acct_closed", statementDay: 20, limit: nil)
+            await store.setCreditCard(accountId: "acct_deleted", statementDay: 25, limit: nil)
 
             #expect(store.activeCreditCardCycle(for: "acct_open")?.dueOffsetDays == 25)
             #expect(store.activeCreditCardCycle(for: "acct_closed") == nil)
