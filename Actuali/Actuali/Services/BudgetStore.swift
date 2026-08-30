@@ -1069,19 +1069,6 @@ final class BudgetStore: ObservableObject {
         simpleFINClient = client
     }
 
-    /// Test-only: swap in a stub Wallet store so the FinanceKit sync path can
-    /// be exercised off-device (the real store only answers on entitled
-    /// iPhones).
-    func setAppleWalletStoreForTesting(_ store: any AppleWalletReading) {
-        appleWalletStore = store
-    }
-
-    /// Test-only: isolate device-local Wallet links from the app's defaults.
-    func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
-        appleWalletLinkDefaults = defaults
-        _currentBudgetId = Published(initialValue: budgetId)
-    }
-
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -1473,7 +1460,6 @@ final class BudgetStore: ObservableObject {
                 }
                 try? fileManager.deleteBudget(local.id)
                 forgetCachedCurrencyCode(for: local.id)
-                forgetAppleWalletLinks(for: local.id)
             }
 
             // The SimpleFIN access key goes too, for the same reason the
@@ -2396,68 +2382,12 @@ final class BudgetStore: ObservableObject {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
     }
 
-    // MARK: - Bank Sync (SimpleFIN & Apple Wallet)
+    // MARK: - Bank Sync (SimpleFIN)
 
     /// Talks to a SimpleFIN bridge directly, with a key claimed on this
     /// device. Only used when the server has no SimpleFIN of its own — see
     /// `makeBankSyncProvider`.
     private var simpleFINClient = SimpleFINClient()
-
-    /// Reads Wallet (FinanceKit) accounts and transactions. Only answers on
-    /// iPhones with Wallet data and the FinanceKit entitlement; everywhere
-    /// else `availability()` says so and the Wallet half of bank sync stays
-    /// out of the way.
-    private var appleWalletStore: any AppleWalletReading = FinanceKitWalletStore()
-
-    /// FinanceKit identifiers are meaningful only on this device. Keeping the
-    /// links per budget in UserDefaults prevents unknown provider values from
-    /// reaching Actual's synced `accounts` rows.
-    private var appleWalletLinkDefaults = UserDefaults.standard
-
-    private func appleWalletLinksKey(for budgetId: String) -> String {
-        "appleWalletLinks_\(budgetId)"
-    }
-
-    private var appleWalletLinks: [String: String] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return appleWalletLinkDefaults.dictionary(
-                forKey: appleWalletLinksKey(for: budgetId)
-            ) as? [String: String] ?? [:]
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            appleWalletLinkDefaults.set(newValue, forKey: appleWalletLinksKey(for: budgetId))
-        }
-    }
-
-    private func forgetAppleWalletLinks(for budgetId: String) {
-        appleWalletLinkDefaults.removeObject(forKey: appleWalletLinksKey(for: budgetId))
-    }
-
-    /// Whether Wallet data can be read here, as of the last check. Drives
-    /// which of the setup screen's Wallet states shows.
-    @Published private(set) var appleWalletAvailability: AppleWalletAvailability = .unsupported
-
-    func refreshAppleWalletAvailability() async {
-        appleWalletAvailability = await appleWalletStore.availability()
-    }
-
-    /// Ask the person for read access to Wallet. Returns whether it was
-    /// granted — FinanceKit shows its own consent sheet, so all that's left
-    /// here is remembering the answer.
-    @discardableResult
-    func connectAppleWallet() async throws -> Bool {
-        let granted = try await appleWalletStore.requestAccess()
-        appleWalletAvailability = await appleWalletStore.availability()
-        return granted
-    }
-
-    /// Every Wallet account (Apple Card, Apple Cash, Savings), for the
-    /// linking screen.
-    func fetchAppleWalletAccounts() async throws -> [AppleWalletAccount] {
-        try await appleWalletStore.accounts()
-    }
 
     /// How far back a sync reaches when an account has nothing to anchor to.
     /// 89 days ago through today inclusive is 90 days, the window upstream
@@ -2595,26 +2525,7 @@ final class BudgetStore: ObservableObject {
             bankSyncAccounts = []
             return
         }
-        let synced = (try? await database.fetchBankSyncAccounts()) ?? []
-        let walletLinks = appleWalletLinks
-        guard !walletLinks.isEmpty else {
-            bankSyncAccounts = synced
-            return
-        }
-        let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
-        let budgetAccounts = (try? await database.fetchAccounts()) ?? accounts
-        bankSyncAccounts = budgetAccounts.compactMap { account in
-            if let linked = syncedById[account.id] { return linked }
-            guard let externalId = walletLinks[account.id] else { return nil }
-            return BankSyncAccount(
-                id: account.id,
-                name: account.name,
-                externalAccountId: externalId,
-                syncSource: BankSyncSource.financeKit.rawValue,
-                offBudget: account.offBudget,
-                closed: account.closed
-            )
-        }
+        bankSyncAccounts = (try? await database.fetchBankSyncAccounts()) ?? []
     }
 
     /// The bank feed an account is wired up to, if any.
@@ -2622,37 +2533,19 @@ final class BudgetStore: ObservableObject {
         bankSyncAccounts.first { $0.id == accountId }
     }
 
-    func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
-        if remote.source == .financeKit {
-            guard currentBudgetId != nil else { throw BudgetStoreError.syncNotConfigured }
-            var links = appleWalletLinks
-            links[accountId] = remote.id
-            appleWalletLinks = links
-            await loadBankSyncAccounts()
-            return
-        }
+    func linkBankAccount(accountId: String, to remote: SimpleFINAccount) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.linkAccount(
             accountId: accountId,
             externalAccountId: remote.id,
-            source: remote.source,
-            institutionId: remote.institutionId,
-            institutionName: remote.institutionName
+            source: .simpleFin,
+            institutionId: remote.org.bankId ?? remote.org.displayName,
+            institutionName: remote.org.displayName
         )
-        var links = appleWalletLinks
-        links.removeValue(forKey: accountId)
-        appleWalletLinks = links
         await refreshDataOnly()
     }
 
     func unlinkBankAccount(accountId: String) async throws {
-        if bankSyncAccount(forAccountId: accountId)?.source == .financeKit {
-            var links = appleWalletLinks
-            links.removeValue(forKey: accountId)
-            appleWalletLinks = links
-            await loadBankSyncAccounts()
-            return
-        }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.unlinkAccount(accountId: accountId)
         await refreshDataOnly()
@@ -2668,39 +2561,16 @@ final class BudgetStore: ObservableObject {
         // and race the first one's writes.
         guard !isBankSyncing else { return BankSyncResult() }
 
-        let linked = bankSyncAccounts.filter {
-            !$0.closed && (accountIds.isEmpty || accountIds.contains($0.id))
+        let targets = bankSyncAccounts.filter {
+            $0.source == .simpleFin && !$0.closed
+                && (accountIds.isEmpty || accountIds.contains($0.id))
         }
-        let simpleFinTargets = linked.filter { $0.source == .simpleFin }
-        var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
+        guard !targets.isEmpty else { return BankSyncResult() }
 
-        // Nothing may suspend between the isBankSyncing guard above and this
-        // write — an await in that window would let a second call slip past
-        // the guard and import everything twice.
         isBankSyncing = true
         defer { isBankSyncing = false }
 
-        var result = BankSyncResult()
-
-        // Wallet links and Wallet data both live only on this device. Where
-        // FinanceKit can't serve them, skip quietly unless access was revoked.
-        if !walletTargets.isEmpty {
-            switch await appleWalletStore.availability() {
-            case .authorized:
-                break
-            case .denied:
-                result.problems.append(
-                    "Wallet access is turned off. Allow Actuali to read Wallet in Settings, then sync again."
-                )
-                walletTargets = []
-            case .unsupported, .notDetermined:
-                walletTargets = []
-            }
-        }
-
-        let targets = simpleFinTargets + walletTargets
-        guard !targets.isEmpty else { return result }
+        let provider = try await makeBankSyncProvider()
 
         // An account that already has history only needs the window since its
         // earliest transaction; one that has none takes the full lookback.
@@ -2712,45 +2582,16 @@ final class BudgetStore: ObservableObject {
             // mean the same thing here: take the full lookback.
             oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
         }
-        func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
-            accounts.map {
-                BankSyncTarget(
-                    externalId: $0.externalAccountId,
-                    startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
-                )
-            }
-        }
 
-        // Each source downloads on its own; with both in play, one failing is
-        // that source's problem, not the sync's — its targets fall through the
-        // loop below as "failed" while the other source's still import.
-        var downloaded = BankSyncDownloadSet()
-        var simpleFinProblems: [String] = []
-        var walletProblems: [String] = []
-        if !simpleFinTargets.isEmpty {
-            do {
-                let provider = try await makeBankSyncProvider()
-                let set = try await provider.download(downloadTargets(simpleFinTargets))
-                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                simpleFinProblems += set.problems
-            } catch {
-                guard !walletTargets.isEmpty else { throw error }
-                simpleFinProblems.append(error.localizedDescription)
-            }
-        }
-        if !walletTargets.isEmpty {
-            do {
-                let set = try await AppleWalletProvider(store: appleWalletStore)
-                    .download(downloadTargets(walletTargets))
-                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                walletProblems += set.problems
-            } catch {
-                guard !simpleFinTargets.isEmpty else { throw error }
-                walletProblems.append(error.localizedDescription)
-            }
-        }
+        let downloaded = try await provider.download(targets.map {
+            BankSyncTarget(
+                externalId: $0.externalAccountId,
+                startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
+            )
+        })
 
-        result.problems += simpleFinProblems + walletProblems
+        var result = BankSyncResult()
+        result.problems = downloaded.problems
         // One rules/context fetch for the whole run, not one per row.
         let prepared = await syncClient.prepareRules()
         let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
@@ -2760,20 +2601,13 @@ final class BudgetStore: ObservableObject {
             guard let download = downloaded.byAccount[target.externalAccountId] else {
                 // A connection-level problem already explains why nothing came
                 // back; don't also tell them to relink an account that's fine.
-                let sourceHasProblems = target.source == .financeKit
-                    ? !walletProblems.isEmpty
-                    : !simpleFinProblems.isEmpty
-                if target.source == .simpleFin && !sourceHasProblems {
+                if downloaded.problems.isEmpty {
                     result.problems.append(
                         "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
                     )
-                }
-                // Missing Wallet data is device-local state, so don't stamp it
-                // into synced status columns. SimpleFIN is a shared feed, so
-                // its missing/failed state belongs there.
-                if target.source != .financeKit {
-                    statuses.append((target.id, nil,
-                                     sourceHasProblems ? "failed" : "account-missing"))
+                    statuses.append((target.id, nil, "account-missing"))
+                } else {
+                    statuses.append((target.id, nil, "failed"))
                 }
                 continue
             }
@@ -3617,8 +3451,13 @@ final class BudgetStore: ObservableObject {
 
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
-    /// updates the transaction.
-    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws {
+    /// updates the transaction. Returns the id of a newly created standard
+    /// (non-transfer, non-split) transaction, so callers that need the exact
+    /// row just written — e.g. the category funding automation — don't have
+    /// to duplicate this save logic. Every other path (transfers, splits,
+    /// edits) returns nil: there is no single new row id to hand back.
+    @discardableResult
+    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
         let date = Transaction.yyyymmdd(from: form.date)
         let notes = form.notes.isEmpty ? nil : form.notes
 
@@ -3633,7 +3472,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form, otherAccountId: toAccountId,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 try await updateTransfer(
                     original: original,
@@ -3645,7 +3484,7 @@ final class BudgetStore: ObservableObject {
                     cleared: form.cleared,
                     categoryId: form.categoryId
                 )
-                return
+                return nil
             }
             try await createTransfer(
                 fromAccountId: form.accountId,
@@ -3655,6 +3494,7 @@ final class BudgetStore: ObservableObject {
                 notes: notes,
                 cleared: form.cleared
             )
+            return nil
 
         case .split(let amountCents, let lines):
             if let original {
@@ -3666,7 +3506,7 @@ final class BudgetStore: ObservableObject {
                         amountCents: amountCents, lines: lines,
                         date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 // Editing a plain transaction into a split: the original row
                 // becomes the parent and the form's lines its children.
@@ -3677,7 +3517,7 @@ final class BudgetStore: ObservableObject {
                     amountCents: amountCents, lines: lines,
                     date: date, notes: notes
                 )
-                return
+                return nil
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
@@ -3744,6 +3584,7 @@ final class BudgetStore: ObservableObject {
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
             }
+            return nil
 
         case .standard(let amountCents):
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
@@ -3758,7 +3599,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 // Split parents: the amount is the children's sum and the
                 // category lives on the children — never overwrite either
@@ -3786,6 +3627,7 @@ final class BudgetStore: ObservableObject {
                     try await cascadeSharedFieldsToChildren(
                         of: updated, originalPayeeId: original.payeeId)
                 }
+                return nil
             } else {
                 let transaction = Transaction(
                     id: UUID().uuidString,
@@ -3810,6 +3652,13 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
+                // A delete-transaction rule can remove the just-created row.
+                // Don't hand a non-existent id back to a caller that expects
+                // a real transaction (e.g. the category funding automation).
+                guard let database, (try? await database.fetchTransaction(id: transaction.id)) != nil else {
+                    return nil
+                }
+                return transaction.id
             }
         }
     }
