@@ -4980,15 +4980,14 @@ final class BudgetStore: ObservableObject {
         if data.needsMigration {
             templates = (row.note).map(GoalTemplateNotes.parseTemplates(fromNote:)) ?? []
             let parsedRows = (row.note).map(CleanupNotes.parseRows(fromNote:)) ?? []
-            // Note-based cleanup addresses pools by name; create missing
-            // pools so nothing is silently dropped (upstream resolves and
-            // creates them while parsing too).
+            // Resolve note-based pool names locally. New or tombstoned pools
+            // are written only if the user saves the editor.
             let neededNames = Set(parsedRows.compactMap(\.groupName))
             var nameToId = Dictionary(
                 data.cleanupGroups.map { ($0.name.lowercased(), $0.id) },
                 uniquingKeysWith: { first, _ in first })
             for name in neededNames where nameToId[name.lowercased()] == nil {
-                let id = try await createCleanupGroup(name: name)
+                let id = try await resolveCleanupGroup(name: name)
                 nameToId[name.lowercased()] = id
                 data.cleanupGroups.append((id, name))
             }
@@ -5053,11 +5052,13 @@ final class BudgetStore: ObservableObject {
     func saveAutomations(
         categoryId: String,
         templates: [GoalTemplate],
-        cleanup: [CleanupTemplate]
+        cleanup: [CleanupTemplate],
+        cleanupGroups: [(id: String, name: String)]
     ) async throws {
         guard let database, let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
+        try await persistCleanupGroups(cleanup, named: cleanupGroups)
         try await syncClient.storeCategoryAutomations(
             categoryId: categoryId,
             goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
@@ -5066,20 +5067,28 @@ final class BudgetStore: ObservableObject {
         try await database.tombstoneOrphanCleanupGroups()
     }
 
-    func createCleanupGroup(name: String) async throws -> String {
+    /// Resolve a cleanup pool for local editor state without writing it.
+    func resolveCleanupGroup(name: String) async throws -> String {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let id = try await database.findCleanupGroupId(named: trimmed) {
+            return id
+        }
+        return UUID().uuidString.lowercased()
+    }
+
+    private func persistCleanupGroups(
+        _ cleanup: [CleanupTemplate],
+        named groups: [(id: String, name: String)]
+    ) async throws {
         guard let database, let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        // Reuse (and revive) an existing pool with this name, like upstream
-        // resolveCleanupGroup.
-        if let existing = try await database.fetchCleanupGroups()
-            .first(where: { $0.name.lowercased() == trimmed.lowercased() }) {
-            return existing.id
+        let referenced = Set(cleanup.compactMap(\.groupId))
+        let live = Set(try await database.fetchCleanupGroups().map(\.id))
+        for group in groups where referenced.contains(group.id) && !live.contains(group.id) {
+            try await syncClient.upsertCleanupGroup(id: group.id, name: group.name)
         }
-        let id = UUID().uuidString.lowercased()
-        try await syncClient.upsertCleanupGroup(id: id, name: trimmed)
-        return id
     }
 
     /// The un-migrate note preview: existing note merged with the rendered
@@ -5112,18 +5121,23 @@ final class BudgetStore: ObservableObject {
             ? GoalTemplateNotes.parseTemplates(fromNote: note) : []
         let cleanupRows = CleanupNotes.parseRows(fromNote: note)
         var cleanup: [CleanupTemplate] = []
+        var cleanupGroups: [(id: String, name: String)] = []
         if !cleanupRows.isEmpty {
             let neededNames = Set(cleanupRows.compactMap(\.groupName))
             var nameToId: [String: String] = [:]
             if let database {
                 for group in try await database.fetchCleanupGroups() {
                     nameToId[group.name.lowercased()] = group.id
+                    cleanupGroups.append(group)
                 }
             }
             for name in neededNames where nameToId[name.lowercased()] == nil {
-                nameToId[name.lowercased()] = try await createCleanupGroup(name: name)
+                let id = try await resolveCleanupGroup(name: name)
+                nameToId[name.lowercased()] = id
+                cleanupGroups.append((id, name))
             }
             cleanup = CleanupNotes.toTemplates(cleanupRows) { nameToId[$0.lowercased()] }
+            try await persistCleanupGroups(cleanup, named: cleanupGroups)
         }
 
         try await syncClient.storeCategoryAutomations(

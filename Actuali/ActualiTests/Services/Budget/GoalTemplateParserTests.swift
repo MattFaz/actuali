@@ -229,6 +229,14 @@ struct GoalTemplateParserTests {
         #expect(templates[1].description == nil)
     }
 
+    @Test func extractsTemplatesFromCRLFNote() {
+        let templates = GoalTemplateNotes.parseTemplates(
+            fromNote: "Saving\r\n#template 50\r\n#goal 1000\r\n")
+        #expect(templates.count == 2)
+        #expect(templates[0].description == "Saving")
+        #expect(templates[1].type == .goal)
+    }
+
     @Test func extractsTemplateAfterLeadingText() {
         // Upstream slices the line at the first '#', so prefixed text still
         // parses as a template line.

@@ -93,8 +93,13 @@ struct BudgetStoreAutomationEditorTests {
                 INSERT INTO cleanup_groups (id, name) VALUES
                     ('pool-1', 'Vacation'),
                     ('pool-2', 'vacation');
+                INSERT INTO cleanup_groups (id, name, tombstone) VALUES
+                    ('pool-3', 'Archived', 1);
                 INSERT INTO notes (id, note) VALUES
-                    ('cat-x', '#template 10% of Salary' || char(10) || '#cleanup Vacation sink');
+                    ('cat-x', '#template 10% of Salary'
+                        || char(10) || '#cleanup Vacation sink'
+                        || char(10) || '#cleanup New Pool source'
+                        || char(10) || '#cleanup Archived sink');
             """)
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
@@ -108,7 +113,7 @@ struct BudgetStoreAutomationEditorTests {
         return store
     }
 
-    @Test func duplicateNamesResolveToFirstMatch() async throws {
+    @Test func loadResolvesNamesWithoutWritingCleanupGroups() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }
         let store = try await makeStore(database: database)
@@ -121,6 +126,31 @@ struct BudgetStoreAutomationEditorTests {
         #expect(resolved == "cat-salary-1" || resolved == "cat-salary-2")
         // cleanup_groups is fetched ORDER BY name (BINARY), so 'Vacation'
         // deterministically precedes 'vacation'.
-        #expect(data.cleanup.groups.map(\.groupId) == ["pool-1"])
+        let configuredIds = Set(data.cleanup.groups.map(\.groupId))
+        #expect(configuredIds.contains("pool-1"))
+        #expect(!configuredIds.contains("pool-2"))
+        #expect(configuredIds.contains("pool-3"))
+        #expect(data.cleanupGroups.contains { $0.name == "New Pool" })
+
+        let liveGroups = try await database.fetchCleanupGroups()
+        #expect(!liveGroups.contains { $0.name == "New Pool" })
+        #expect(!liveGroups.contains { $0.id == "pool-3" })
+    }
+
+    @Test func saveCreatesAndRevivesCleanupGroups() async throws {
+        let (database, url) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try await makeStore(database: database)
+        let data = try await store.loadAutomationEditor(categoryId: "cat-x", month: "2024-01")
+
+        try await store.saveAutomations(
+            categoryId: "cat-x",
+            templates: data.entries.map(\.template),
+            cleanup: data.cleanup.toCleanupTemplates(),
+            cleanupGroups: data.cleanupGroups)
+
+        let liveGroups = try await database.fetchCleanupGroups()
+        #expect(liveGroups.contains { $0.name == "New Pool" })
+        #expect(liveGroups.contains { $0.id == "pool-3" })
     }
 }

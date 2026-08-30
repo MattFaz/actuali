@@ -111,6 +111,22 @@ struct GoalTemplateEngineTests {
         }
     }
 
+    @Test func pastByWithZeroRepeatErrors() throws {
+        var template = try parse("#template-1 1000 by 2023-12 repeat every month")
+        template.repeatCount = 0
+        #expect(throws: (any Error).self) {
+            try makeContext([template])
+        }
+    }
+
+    @Test func annualZeroRepeatUsesOneYear() throws {
+        var template = try parse("#template-1 1000 by 2023-12 repeat every year")
+        template.repeatCount = 0
+        let context = try makeContext([template])
+        #expect(try context.runTemplatesForPriority(
+            1, budgetAvail: 1_000_000, availStart: 1_000_000) == 8333)
+    }
+
     // MARK: - Priorities and funds
 
     @Test func clampsAtAvailableFunds() throws {
@@ -420,6 +436,16 @@ struct GoalTemplateEngineTests {
         #expect(errors.count == 1)
         #expect(errors[0].hasPrefix("Test Category:"))
         #expect(errors[0].contains("Target month has passed"))
+    }
+
+    @Test func invalidTemplateBlocksValidTemplates() throws {
+        let invalid = GoalTemplateNotes.parseTemplates(fromNote: "#template nonsense")[0]
+        let result = runEngine(templates: ["test": [try parse("#template 100"), invalid]])
+        guard case .errors(let errors) = result else {
+            Issue.record("expected errors, got \(result)")
+            return
+        }
+        #expect(errors[0].contains("Invalid template syntax"))
     }
 
     @Test func remainderSpreadsLeftoverPoolByWeight() throws {

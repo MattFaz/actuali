@@ -1922,6 +1922,25 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Find a pool by name, including tombstoned rows so an editor save can
+    /// revive the existing id instead of creating a duplicate.
+    func findCleanupGroupId(named name: String) async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("cleanup_groups") else { return nil }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name FROM cleanup_groups
+                ORDER BY tombstone, name
+                """)
+            let target = name.lowercased()
+            return rows.compactMap { row -> (id: String, name: String)? in
+                guard let id: String = row["id"], let name: String = row["name"] else {
+                    return nil
+                }
+                return (id, name)
+            }.first { $0.name.lowercased() == target }?.id
+        }
+    }
+
     /// Tombstone cleanup pools no live category references any more.
     /// Local-only like upstream's `tombstoneOrphanCleanupGroups` (a plain
     /// UPDATE, no CRDT messages) — every client re-derives it from the

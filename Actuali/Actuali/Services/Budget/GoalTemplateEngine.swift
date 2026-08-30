@@ -138,6 +138,13 @@ final class GoalTemplateContext {
         hideDecimal = sheet.hideFraction
         inputTemplateCount = templates.count
 
+        if let invalid = templates.first(where: {
+            $0.type == .error || $0.directive == .error
+        }) {
+            throw GoalTemplateError.category(
+                "\(invalid.line ?? "Template"): \(invalid.error ?? "Invalid template syntax")")
+        }
+
         let lastMonth = BudgetMonthMath.subMonths(month, 1)
         var fromLastMonth = sheet.leftover(month: lastMonth, category: category.id)
         let carryover = sheet.carryover(month: lastMonth, category: category.id)
@@ -460,11 +467,17 @@ final class GoalTemplateContext {
 
         for template in templates where template.type == .by || template.type == .spend {
             let range = BudgetMonthMath.differenceInCalendarMonths(template.month ?? "", month)
-            if range < 0, template.repeatCount == nil, template.annual != true {
+            if range < 0, (repeatInterval(template) ?? 0) <= 0 {
                 throw GoalTemplateError.category(
                     "Target month has passed, remove or update the target month")
             }
         }
+    }
+
+    private static func repeatInterval(_ template: GoalTemplate) -> Int? {
+        guard template.annual == true else { return template.repeatCount }
+        let count = template.repeatCount ?? 1
+        return (count == 0 ? 1 : count) * 12
     }
 
     static func checkPercentage(
@@ -613,8 +626,7 @@ final class GoalTemplateContext {
         var alreadyBudgeted = fromLastMonth
         var firstMonth = true
 
-        let repeatInterval = template.annual == true
-            ? (template.repeatCount ?? 1) * 12 : template.repeatCount
+        let repeatInterval = Self.repeatInterval(template)
         var monthsAway = BudgetMonthMath.differenceInCalendarMonths(toMonth, month)
         if let repeatInterval, repeatInterval > 0, monthsAway < 0 {
             while monthsAway < 0 {
@@ -712,9 +724,7 @@ final class GoalTemplateContext {
 
         for (_, template) in byTemplates {
             var targetMonth = template.month ?? ""
-            let period: Int? = template.annual == true
-                ? (template.repeatCount ?? 1) * 12
-                : template.repeatCount
+            let period = Self.repeatInterval(template)
             var numMonths = BudgetMonthMath.differenceInCalendarMonths(targetMonth, month)
             if let period, period > 0 {
                 while numMonths < 0 {

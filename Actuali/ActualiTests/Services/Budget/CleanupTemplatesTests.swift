@@ -22,6 +22,15 @@ struct CleanupTemplatesTests {
         ])
     }
 
+    @Test func parsesCRLFNoteLines() {
+        let rows = CleanupNotes.parseRows(
+            fromNote: "#cleanup source\r\n#cleanup Vacation sink\r\n")
+        #expect(rows == [
+            .init(kind: .source, groupName: nil),
+            .init(kind: .sink(weight: 1), groupName: "Vacation"),
+        ])
+    }
+
     @Test func resolvesRowsToTemplates() {
         let rows = CleanupNotes.parseRows(fromNote: "#cleanup Vacation sink\n#cleanup Ghost")
         let templates = CleanupNotes.toTemplates(rows) { name in

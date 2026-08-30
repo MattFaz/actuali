@@ -82,7 +82,7 @@ enum CleanupNotes {
     static func parseRows(fromNote note: String) -> [ParsedRow] {
         var rows: [ParsedRow] = []
         for line in note.components(separatedBy: "\n") {
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             guard trimmed.lowercased().hasPrefix("#cleanup") else { continue }
             guard let row = parseLine(trimmed) else { continue }
             rows.append(row)

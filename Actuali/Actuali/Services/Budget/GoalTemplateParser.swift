@@ -554,12 +554,12 @@ enum GoalTemplateNotes {
             // Upstream takes `line.substring(line.indexOf('#'))` — the whole
             // line when there is no '#' (JS substring(-1) starts at 0).
             let fromHash = line.firstIndex(of: "#").map { String(line[$0...]) } ?? line
-            let trimmedLine = fromHash.trimmingCharacters(in: .whitespaces)
+            let trimmedLine = fromHash.trimmingCharacters(in: .whitespacesAndNewlines)
             let isTemplateLine = trimmedLine.hasPrefix(templatePrefix)
                 || trimmedLine.hasPrefix(goalPrefix)
 
             if !isTemplateLine {
-                if line.trimmingCharacters(in: .whitespaces).isEmpty
+                if line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                     || trimmedLine.hasPrefix(cleanupPrefix) {
                     descriptionLines = []
                 } else {

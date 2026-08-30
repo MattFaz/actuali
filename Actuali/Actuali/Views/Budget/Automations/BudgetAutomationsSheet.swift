@@ -125,7 +125,7 @@ struct BudgetAutomationsSheet: View {
                         cleanup: $cleanup,
                         groups: data?.cleanupGroups ?? [],
                         onCreateGroup: { name in
-                            let id = try await budgetStore.createCleanupGroup(name: name)
+                            let id = try await budgetStore.resolveCleanupGroup(name: name)
                             if data?.cleanupGroups.contains(where: { $0.id == id }) != true {
                                 data?.cleanupGroups.append((id, name))
                             }
@@ -393,7 +393,8 @@ struct BudgetAutomationsSheet: View {
             try await budgetStore.saveAutomations(
                 categoryId: categoryId,
                 templates: templates,
-                cleanup: cleanup.toCleanupTemplates())
+                cleanup: cleanup.toCleanupTemplates(),
+                cleanupGroups: data?.cleanupGroups ?? [])
             dismiss()
         } catch {
             loadError = error.localizedDescription
