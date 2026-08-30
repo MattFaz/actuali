@@ -23,7 +23,7 @@ struct BudgetStoreCreditCardTests {
             try db.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema)
         }
         try JSONEncoder().encode(BudgetMetadata(
-            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: nil,
+            id: id, budgetName: "Seed", cloudFileId: "cf-1", groupId: "group-1",
             resetClock: nil, lastUploaded: nil, encryptKeyId: nil
         )).write(to: manager.metadataPath(for: id))
     }
