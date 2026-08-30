@@ -119,7 +119,7 @@ struct BankSyncSetupView: View {
         } footer: {
             switch budgetStore.appleWalletAvailability {
             case .authorized:
-                Text("Tap an account to link it. Apple Card, Apple Cash and Savings transactions are read from this device's Wallet every time you sync, and stored in your budget file like any other transaction.")
+                Text("Tap an account to link it. Apple Card, Apple Cash and Savings transactions import automatically when you open the app or pull to refresh — read from this device's Wallet and stored in your budget file like any other transaction.")
             case .denied:
                 Text("Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings.")
             default:

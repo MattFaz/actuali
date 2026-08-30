@@ -166,6 +166,34 @@ struct BudgetStoreAppleWalletSyncTests {
 
     // MARK: - Tests
 
+    /// Budget load, foregrounding and pull-to-refresh import Wallet feeds
+    /// without a button press — and without popping the sync summary alert.
+    @Test func autoSyncImportsQuietly() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+        #expect(store.bankSyncSummary == nil)
+    }
+
+    /// A device that can't serve the feed skips the automatic pass entirely —
+    /// no import, and no alert nobody asked for.
+    @Test func autoSyncStaysQuietWhenWalletCantAnswer() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.availabilityValue = .denied
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        await store.autoSyncAppleWalletAccounts()
+
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        #expect(store.bankSyncSummary == nil)
+    }
+
     @Test func firstSyncImportsTransactionsAndACreditCardOpeningBalance() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }

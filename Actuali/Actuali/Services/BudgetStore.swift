@@ -1723,6 +1723,11 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
             publishWidgetSnapshot()
 
+            // Linked feeds drive the sync buttons in the accounts UI. Without
+            // this, a fresh launch hides them until something else happens to
+            // refresh the data.
+            await loadBankSyncAccounts()
+
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
@@ -1788,6 +1793,11 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
+
+        // A budget that just opened imports its Wallet feeds straight away.
+        // Launch is a foreground moment `syncOnForeground` usually races past
+        // while this load is still running, so it can't be left to that hook.
+        Task { await autoSyncAppleWalletAccounts() }
     }
 
     /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
@@ -2620,6 +2630,21 @@ final class BudgetStore: ObservableObject {
     /// The bank feed an account is wired up to, if any.
     func bankSyncAccount(forAccountId accountId: String) -> BankSyncAccount? {
         bankSyncAccounts.first { $0.id == accountId }
+    }
+
+    /// Import new Wallet transactions without a button press. Runs where a
+    /// refresh already happens — budget load, foregrounding, pull-to-refresh —
+    /// and only for FinanceKit accounts: their reads are local and free, while
+    /// SimpleFIN downloads stay behind an explicit sync. Quiet on purpose: no
+    /// summary alert for a sync nobody asked for, and a device that can't
+    /// serve the feed skips; a manual sync still reports problems.
+    func autoSyncAppleWalletAccounts() async {
+        let walletIds = bankSyncAccounts
+            .filter { $0.source == .financeKit && !$0.closed }
+            .map(\.id)
+        guard !walletIds.isEmpty else { return }
+        guard await appleWalletStore.availability() == .authorized else { return }
+        _ = try? await syncBankAccounts(accountIds: walletIds)
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
@@ -4280,6 +4305,8 @@ final class BudgetStore: ObservableObject {
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
             await notifyAboutSyncedTransactions()
+            // Pull-to-refresh doubles as the Wallet feed's refresh.
+            await autoSyncAppleWalletAccounts()
         }
         await work.value
     }
@@ -4329,6 +4356,9 @@ final class BudgetStore: ObservableObject {
         if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
         await notifyAboutSyncedTransactions()
+        // Coming to the foreground is when Wallet has new purchases to hand
+        // over, so the feeds import here without anyone pressing sync.
+        await autoSyncAppleWalletAccounts()
     }
 
     /// Headless sync for background refresh. On a cold background launch the
