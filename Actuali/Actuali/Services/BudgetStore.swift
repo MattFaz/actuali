@@ -1685,6 +1685,10 @@ final class BudgetStore: ObservableObject {
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
             let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
+                id: "flags.goalTemplatesEnabled") == "true"
+            let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
+                id: "flags.goalTemplatesUIEnabled") == "true"
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1720,6 +1724,8 @@ final class BudgetStore: ObservableObject {
                 currentBudgetMonth = fetchedBudgetMonth
             }
             widgetBudgetMonth = fetchedBudgetMonth
+            goalTemplatesEnabled = fetchedGoalTemplatesFlag
+            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
             publishWidgetSnapshot()
 
@@ -1878,6 +1884,12 @@ final class BudgetStore: ObservableObject {
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
+            // Same story for the goal-templates flags — the web's Experimental
+            // settings toggles arrive as synced preferences.
+            let fetchedGoalTemplatesFlag = try await database.fetchPreference(
+                id: "flags.goalTemplatesEnabled") == "true"
+            let fetchedGoalTemplatesUIFlag = try await database.fetchPreference(
+                id: "flags.goalTemplatesUIEnabled") == "true"
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -1896,6 +1908,8 @@ final class BudgetStore: ObservableObject {
             }
             widgetBudgetMonth = fetchedWidgetBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
+            goalTemplatesEnabled = fetchedGoalTemplatesFlag
+            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             // Last in the batch: assigning this publishes a widget snapshot,
             // which must see the balances above rather than the previous
             // refresh's. Skipped when the user picked a currency in Settings
@@ -4804,6 +4818,431 @@ final class BudgetStore: ObservableObject {
             amount: amountCents
         )
         await fetchBudgetMonth(month)
+    }
+
+    // MARK: - Goal Templates (budget goals, GH #371)
+
+    /// Mirror of the web's `flags.goalTemplatesEnabled` synced preference.
+    /// Gates all goal UI, exactly as the web's feature flag does.
+    @Published private(set) var goalTemplatesEnabled = false
+
+    enum GoalTemplateAction {
+        case check
+        case apply
+        case overwrite
+    }
+
+    enum GoalTemplateOutcome: Equatable {
+        case applied(Int)
+        case upToDate
+        case checkPassed
+        case errors([String])
+        case failed(String)
+    }
+
+    /// Flip the synced feature flag (the web's Settings → Experimental
+    /// features toggle), so all clients agree on whether goals are on.
+    func setGoalTemplatesEnabled(_ enabled: Bool) async {
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(
+                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false")
+            goalTemplatesEnabled = enabled
+        } catch {
+            self.error = "Failed to update goal templates setting: \(error.localizedDescription)"
+        }
+    }
+
+    /// Check/apply/overwrite budget templates for a month — the port of
+    /// upstream's `budget/check-templates`, `budget/apply-goal-template` and
+    /// `budget/overwrite-goal-template` handlers. Passing `categoryId` scopes
+    /// the run to one category (`budget/apply-single-category-template`),
+    /// which always overwrites, hidden or not — same as the web.
+    func runGoalTemplates(
+        month: String,
+        action: GoalTemplateAction,
+        categoryId: String? = nil
+    ) async -> GoalTemplateOutcome {
+        guard let database, let syncClient else {
+            return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
+        }
+        do {
+            let rows = try await database.fetchGoalTemplateCategories()
+            let schedules = try await database.fetchSchedules()
+                .filter { $0.name?.isEmpty == false }
+                .map {
+                    GoalScheduleInfo(
+                        id: $0.id, name: $0.name, completed: $0.completed,
+                        amount: $0.amount, dateCondition: $0.dateCondition)
+                }
+
+            // Notes → templates. UI-managed categories (web template editor)
+            // keep their stored goal_def untouched.
+            var parsedNotes: [String: [GoalTemplate]] = [:]
+            for row in rows where !row.sourceIsUI {
+                if let note = row.note, GoalTemplateNotes.noteHasTemplates(note) {
+                    let templates = GoalTemplateNotes.parseTemplates(fromNote: note)
+                    if !templates.isEmpty { parsedNotes[row.id] = templates }
+                }
+            }
+
+            if action == .check {
+                return checkOutcome(rows: rows, parsedNotes: parsedNotes, schedules: schedules)
+            }
+
+            let scope: (String) -> Bool
+            if let categoryId {
+                scope = { $0 == categoryId }
+            } else {
+                scope = { _ in true }
+            }
+
+            // Store the parsed notes into goal_def (upstream storeTemplates),
+            // skipping unchanged categories to avoid CRDT churn — the end
+            // state is identical.
+            var storeUpdates: [(categoryId: String, goalDef: String?, source: String)] = []
+            for row in rows where scope(row.id) {
+                guard let templates = parsedNotes[row.id] else { continue }
+                let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:))
+                if stored != templates, let encoded = GoalTemplate.encodeArray(templates) {
+                    storeUpdates.append((row.id, encoded, "notes"))
+                }
+            }
+            try await syncClient.storeGoalDefs(storeUpdates)
+
+            // Orphaned defs: notes-managed categories whose notes lost their
+            // templates (upstream resetCategoryGoalDefsWithNoTemplates).
+            let resetIds = rows.filter {
+                scope($0.id) && !$0.sourceIsUI && $0.goalDef != nil && parsedNotes[$0.id] == nil
+            }.map(\.id)
+            try await database.resetGoalDefs(categoryIds: resetIds)
+
+            // Effective templates per category after the store above.
+            var categoryTemplates: [String: [GoalTemplate]] = parsedNotes
+            for row in rows where row.sourceIsUI {
+                if let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)),
+                   !stored.isEmpty {
+                    categoryTemplates[row.id] = stored
+                }
+            }
+            if let categoryId {
+                categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
+            }
+
+            let sheet = try await database.fetchGoalTemplateSheet(month: month)
+            let allCategories = rows.map {
+                GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
+            }
+            let processCategories: [GoalTemplateCategory]
+            if let categoryId {
+                processCategories = rows
+                    .filter { $0.id == categoryId }
+                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
+            } else {
+                processCategories = rows
+                    .filter { !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
+                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
+            }
+
+            let result = GoalTemplateEngine.run(
+                month: month,
+                force: action == .overwrite || categoryId != nil,
+                categoryTemplates: categoryTemplates,
+                categories: processCategories,
+                allCategories: allCategories,
+                schedules: schedules,
+                sheet: sheet)
+
+            switch result {
+            case .errors(let errors):
+                return .errors(errors)
+            case .upToDate(let goalResets):
+                try await syncClient.applyGoalTemplateWrites(
+                    month: month, budgets: [], goals: goalResets)
+                if !goalResets.isEmpty { await fetchBudgetMonth(month) }
+                return .upToDate
+            case .applied(let count, let budgets, let goals):
+                try await syncClient.applyGoalTemplateWrites(
+                    month: month, budgets: budgets, goals: goals)
+                await fetchBudgetMonth(month)
+                return .applied(count)
+            }
+        } catch {
+            logger.error("Goal template run failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    // MARK: Automation editor (goalTemplatesUIEnabled beta)
+
+    /// Mirror of the web's `flags.goalTemplatesUIEnabled` synced preference —
+    /// gates the visual automations editor, on top of goalTemplatesEnabled.
+    @Published private(set) var goalTemplatesUIEnabled = false
+
+    func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(
+                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false")
+            goalTemplatesUIEnabled = enabled
+        } catch {
+            self.error = "Failed to update automations setting: \(error.localizedDescription)"
+        }
+    }
+
+    /// Everything the automations editor needs for one category — the port
+    /// of BudgetAutomationsModal's load phase.
+    struct AutomationEditorData {
+        var categoryName = ""
+        var entries: [AutomationEntry] = []
+        var cleanup = CleanupConfig()
+        /// Notes-managed category: saving from the editor migrates it to UI
+        /// management, with a warning shown first (web parity).
+        var needsMigration = false
+        /// The note's original template/cleanup lines, for the warning box.
+        var originalNoteLines = ""
+        /// Templates contain an error row the editor can't represent — the
+        /// web refuses to open the editor in this state.
+        var hasUnsupportedTemplates = false
+        var existingNote = ""
+        var schedules: [GoalScheduleInfo] = []
+        /// Percentage sources: special aliases plus income categories.
+        var incomeSources: [(id: String, name: String)] = []
+        var categoryNames: [String: String] = [:]
+        var cleanupGroups: [(id: String, name: String)] = []
+        /// Dry-run inputs, fetched once at load: unsaved edits stay local to
+        /// the editor, so the sheet snapshot can't drift while it's open.
+        var category = GoalTemplateCategory(id: "", name: "", isIncome: false)
+        var allCategories: [GoalTemplateCategory] = []
+        var sheet = GoalTemplateSheet()
+    }
+
+    func loadAutomationEditor(categoryId: String, month: String) async throws -> AutomationEditorData {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        let rows = try await database.fetchGoalTemplateCategories()
+        guard let row = rows.first(where: { $0.id == categoryId }) else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        var data = AutomationEditorData()
+        data.categoryName = row.name
+        data.needsMigration = !row.sourceIsUI
+        data.existingNote = row.note ?? ""
+        data.schedules = try await database.fetchSchedules()
+            .filter { $0.name?.isEmpty == false }
+            .map {
+                GoalScheduleInfo(
+                    id: $0.id, name: $0.name, completed: $0.completed,
+                    amount: $0.amount, dateCondition: $0.dateCondition)
+            }
+        data.categoryNames = Dictionary(
+            uniqueKeysWithValues: rows.map { ($0.id, $0.name) })
+        data.incomeSources = rows.filter(\.isIncome).map { ($0.id, $0.name) }
+        data.cleanupGroups = try await database.fetchCleanupGroups()
+        data.category = GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome)
+        data.allCategories = rows.map {
+            GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
+        }
+        data.sheet = try await database.fetchGoalTemplateSheet(month: month)
+
+        var templates: [GoalTemplate]
+        var cleanup: [CleanupTemplate]
+        if data.needsMigration {
+            templates = (row.note).map(GoalTemplateNotes.parseTemplates(fromNote:)) ?? []
+            let parsedRows = (row.note).map(CleanupNotes.parseRows(fromNote:)) ?? []
+            // Resolve note-based pool names locally. New or tombstoned pools
+            // are written only if the user saves the editor.
+            let neededNames = Set(parsedRows.compactMap(\.groupName))
+            var nameToId = Dictionary(
+                data.cleanupGroups.map { ($0.name.lowercased(), $0.id) },
+                uniquingKeysWith: { first, _ in first })
+            for name in neededNames where nameToId[name.lowercased()] == nil {
+                let id = try await resolveCleanupGroup(name: name)
+                nameToId[name.lowercased()] = id
+                data.cleanupGroups.append((id, name))
+            }
+            cleanup = CleanupNotes.toTemplates(parsedRows) { nameToId[$0.lowercased()] }
+            data.originalNoteLines = (row.note ?? "")
+                .components(separatedBy: "\n")
+                .filter {
+                    let trimmed = $0.trimmingCharacters(in: .whitespaces)
+                    return trimmed.hasPrefix("#template") || trimmed.hasPrefix("#goal")
+                        || trimmed.lowercased().hasPrefix("#cleanup")
+                }
+                .joined(separator: "\n")
+        } else {
+            templates = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)) ?? []
+            cleanup = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+        }
+
+        data.hasUnsupportedTemplates = templates.contains { $0.type == .error }
+
+        // Text templates address income categories by name; the editor works
+        // with ids (web resolves the same way before building entries).
+        // Duplicate names are possible (categories in different groups);
+        // resolve to the first match rather than trapping.
+        let incomeNameToId = Dictionary(
+            data.incomeSources.map { ($0.name.lowercased(), $0.id) },
+            uniquingKeysWith: { first, _ in first })
+        templates = templates.map { template in
+            guard template.type == .percentage, let source = template.category,
+                  let id = incomeNameToId[source.lowercased()] else { return template }
+            var resolved = template
+            resolved.category = id
+            return resolved
+        }
+
+        if !data.hasUnsupportedTemplates {
+            data.entries = BudgetAutomations.migrateToEntries(templates, schedules: data.schedules)
+        }
+        data.cleanup = CleanupConfig.from(cleanup: cleanup)
+        return data
+    }
+
+    /// Projected budgeted amount and per-entry contributions — the editor's
+    /// live "Estimated monthly total" (upstream dry-run-category-template).
+    /// Pure computation over the load-time snapshot, so it can run on every
+    /// (debounced) edit without touching the database.
+    func dryRunAutomations(
+        month: String,
+        data: AutomationEditorData,
+        templates: [GoalTemplate]
+    ) -> (budgeted: Int, perTemplate: [Int]) {
+        GoalTemplateEngine.dryRun(
+            month: month,
+            category: data.category,
+            templates: templates,
+            allCategories: data.allCategories,
+            schedules: data.schedules,
+            sheet: data.sheet)
+    }
+
+    /// Save the editor's automations as UI-managed (source 'ui'), which is
+    /// also what completes a notes → UI migration.
+    func saveAutomations(
+        categoryId: String,
+        templates: [GoalTemplate],
+        cleanup: [CleanupTemplate],
+        cleanupGroups: [(id: String, name: String)]
+    ) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await persistCleanupGroups(cleanup, named: cleanupGroups)
+        try await syncClient.storeCategoryAutomations(
+            categoryId: categoryId,
+            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
+            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
+            source: "ui")
+        try await database.tombstoneOrphanCleanupGroups()
+    }
+
+    /// Resolve a cleanup pool for local editor state without writing it.
+    func resolveCleanupGroup(name: String) async throws -> String {
+        guard let database else { throw BudgetStoreError.syncNotConfigured }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        if let id = try await database.findCleanupGroupId(named: trimmed) {
+            return id
+        }
+        return UUID().uuidString.lowercased()
+    }
+
+    private func persistCleanupGroups(
+        _ cleanup: [CleanupTemplate],
+        named groups: [(id: String, name: String)]
+    ) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let referenced = Set(cleanup.compactMap(\.groupId))
+        let live = Set(try await database.fetchCleanupGroups().map(\.id))
+        for group in groups where referenced.contains(group.id) && !live.contains(group.id) {
+            try await syncClient.upsertCleanupGroup(id: group.id, name: group.name)
+        }
+    }
+
+    /// The un-migrate note preview: existing note merged with the rendered
+    /// `#template`/`#goal`/`#cleanup` lines the automations produce.
+    func renderUnmigrateNote(
+        data: AutomationEditorData,
+        templates: [GoalTemplate],
+        cleanup: [CleanupTemplate]
+    ) -> String {
+        let categoryName: (String) -> String? = { data.categoryNames[$0] }
+        let groupName: (String) -> String? = { id in
+            data.cleanupGroups.first { $0.id == id }?.name
+        }
+        let rendered = [
+            AutomationSentences.renderNoteTemplates(templates, categoryName: categoryName),
+            CleanupNotes.toNotes(cleanup, groupName: groupName),
+        ].filter { !$0.isEmpty }.joined(separator: "\n")
+        return AutomationSentences.mergeIntoNote(
+            existingNote: data.existingNote, rendered: rendered)
+    }
+
+    /// Hand a UI-managed category back to notes: save the edited note, clear
+    /// the UI defs, and re-derive goal_def/cleanup_def from the note — the
+    /// web's "Save notes & un-migrate".
+    func unmigrateAutomations(categoryId: String, note: String) async throws {
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setNote(id: categoryId, note: note)
+
+        let templates = GoalTemplateNotes.noteHasTemplates(note)
+            ? GoalTemplateNotes.parseTemplates(fromNote: note) : []
+        let cleanupRows = CleanupNotes.parseRows(fromNote: note)
+        var cleanup: [CleanupTemplate] = []
+        var cleanupGroups: [(id: String, name: String)] = []
+        if !cleanupRows.isEmpty {
+            let neededNames = Set(cleanupRows.compactMap(\.groupName))
+            var nameToId: [String: String] = [:]
+            if let database {
+                for group in try await database.fetchCleanupGroups() {
+                    nameToId[group.name.lowercased()] = group.id
+                    cleanupGroups.append(group)
+                }
+            }
+            for name in neededNames where nameToId[name.lowercased()] == nil {
+                let id = try await resolveCleanupGroup(name: name)
+                nameToId[name.lowercased()] = id
+                cleanupGroups.append((id, name))
+            }
+            cleanup = CleanupNotes.toTemplates(cleanupRows) { nameToId[$0.lowercased()] }
+            try await persistCleanupGroups(cleanup, named: cleanupGroups)
+        }
+
+        try await syncClient.storeCategoryAutomations(
+            categoryId: categoryId,
+            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
+            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
+            source: "notes")
+        try await database?.tombstoneOrphanCleanupGroups()
+    }
+
+    /// Port of upstream `checkTemplateNotes`: surface unparseable lines and
+    /// schedule templates naming schedules that don't exist.
+    private func checkOutcome(
+        rows: [BudgetDatabase.GoalTemplateCategoryRow],
+        parsedNotes: [String: [GoalTemplate]],
+        schedules: [GoalScheduleInfo]
+    ) -> GoalTemplateOutcome {
+        let scheduleNames = Set(schedules.compactMap(\.name))
+        var errors: [String] = []
+        for row in rows {
+            guard let templates = parsedNotes[row.id] else { continue }
+            for template in templates {
+                if template.type == .error {
+                    if let message = template.error, message.contains("adjustment") {
+                        errors.append("\(row.name): \(template.line ?? "")\nError: \(message)")
+                    } else {
+                        errors.append("\(row.name): \(template.line ?? "")")
+                    }
+                } else if template.type == .schedule, let name = template.name,
+                          !scheduleNames.contains(name) {
+                    errors.append("\(row.name): Schedule \"\(name)\" does not exist")
+                }
+            }
+        }
+        return errors.isEmpty ? .checkPassed : .errors(errors)
     }
 
     // MARK: - Notes
