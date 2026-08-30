@@ -9,11 +9,18 @@ struct FormulaEngineTests {
         return c.date(from: DateComponents(year: 2026, month: 7, day: 11))!
     }()
 
-    private func tx(_ id: String, date: Int, amount: Int) -> Transaction {
+    private func tx(
+        _ id: String,
+        date: Int,
+        amount: Int,
+        isParent: Bool = false,
+        parentId: String? = nil,
+        tombstone: Bool = false
+    ) -> Transaction {
         Transaction(id: id, accountId: "a1", date: date, amount: amount,
                     payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
                     notes: nil, cleared: true, reconciled: false, transferId: nil,
-                    isParent: false, parentId: nil, tombstone: false,
+                    isParent: isParent, parentId: parentId, tombstone: tombstone,
                     sortOrder: nil, importedPayee: nil)
     }
 
@@ -38,15 +45,27 @@ struct FormulaEngineTests {
     @Test func sumsTwoQueriesOverSlidingWindow() {
         // sliding-window Apr slides to July (today's month): only July rows count.
         let transactions = [
-            tx("1", date: 20260705, amount: -300_000),  // -3000.00 expense, in window
-            tx("2", date: 20260702, amount: 100_000),   // +1000.00 income, in window
-            tx("3", date: 20260405, amount: -999_900),  // April: outside slid window
+            tx("1", date: 20260705, amount: -300_000),
+            tx("2", date: 20260702, amount: 100_000),
+            tx("3", date: 20260405, amount: -999_900),
         ]
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=query("expenses")+query("income")"#,
                        queries: savedThisMonthQueries),
             transactions: transactions, today: today, context: .empty)
         #expect(result == .value(-2000.00))
+    }
+
+    @Test func splitChildrenAreIncludedWithoutParentDoubleCount() {
+        let transactions = [
+            tx("parent", date: 20260705, amount: -10_000, isParent: true),
+            tx("child-1", date: 20260705, amount: -6_000, parentId: "parent"),
+            tx("child-2", date: 20260705, amount: -4_000, parentId: "parent"),
+        ]
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=query("expenses")"#, queries: savedThisMonthQueries),
+            transactions: transactions, today: today, context: .empty)
+        #expect(result == .value(-100.00))
     }
 
     @Test func uppercaseQueryAndSumMatchActualSyntax() {
@@ -83,20 +102,65 @@ struct FormulaEngineTests {
             ],
             today: today,
             context: .empty)
+        // 1000 - (-3000) = 4000.
         #expect(result == .value(4000.00))
     }
 
-    @Test func queryCountIsSupported() {
+    @Test func minProductCountFloorCeilingAndPiAreSupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=MIN(8, 2, 5) + PRODUCT(2, 3) + COUNT(1, 2, 3)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .value(11))
+
+        let result2 = FormulaEngine.compute(
+            meta: meta(formula: "=FLOOR(10.8, 1) + CEILING(10.2, 1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result2 == .value(22))
+
+        let result3 = FormulaEngine.compute(
+            meta: meta(formula: "=PI()"),
+            transactions: [], today: today, context: .empty)
+        guard case .value(let value) = result3 else {
+            Issue.record("expected PI() to return a value, got \(result3)")
+            return
+        }
+        #expect(abs(value - Double.pi) < 0.0000001)
+    }
+
+    @Test func logicalFunctionsAreSupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=IF(AND(1=1, 2=2), OR(0, 1), 0)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .value(1))
+
+        let result2 = FormulaEngine.compute(
+            meta: meta(formula: "=NOT(1=1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result2 == .value(0))
+    }
+
+    @Test func queryCountIsSupportedAndUsesTimeFrame() {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=QUERY_COUNT("expenses")"#, queries: savedThisMonthQueries),
             transactions: [
                 tx("1", date: 20260705, amount: -300_000),
                 tx("2", date: 20260702, amount: -50_000),
                 tx("3", date: 20260703, amount: 100_000),
+                tx("4", date: 20260403, amount: -10_000),
             ],
             today: today,
             context: .empty)
         #expect(result == .value(2))
+    }
+
+    @Test func invalidFunctionIsUnsupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=DOES_NOT_EXIST(1)"),
+            transactions: [], today: today, context: .empty)
+        guard case .unsupported = result else {
+            Issue.record("expected unsupported function")
+            return
+        }
     }
 
     @Test func honorsPrecedenceAndParens() {
@@ -127,7 +191,7 @@ struct FormulaEngineTests {
 
     @Test func unknownQueryNameCountsAsZero() {
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=QUERY("nope")+5"#),
+            meta: meta(formula: #"=query("nope")+5"#),
             transactions: [], today: today, context: .empty)
         #expect(result == .value(5))
     }
@@ -139,7 +203,6 @@ struct FormulaEngineTests {
     }
 
     @Test func decimalLiteralsParse() {
-        // Bare leading-dot decimals (".5") and standard decimals both parse.
         let bareDot = FormulaEngine.compute(
             meta: meta(formula: "=.5+1.25"), transactions: [], today: today, context: .empty)
         #expect(bareDot == .value(1.75))
