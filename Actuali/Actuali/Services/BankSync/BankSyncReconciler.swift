@@ -229,6 +229,23 @@ extension BankSyncCandidate {
         )
     }
 
+    /// The same, from a Wallet (FinanceKit) transaction, or nil for rejected
+    /// ones — the money never moved. Payees get the same processor-noise
+    /// cleanup as the Tier-1 picker import, so both routes file "SQ *Coffee"
+    /// under the same payee; the raw description survives in the notes.
+    init?(appleWallet transaction: AppleWalletTransaction) {
+        guard let imported = WalletImportMapper.candidate(from: transaction) else { return nil }
+        self.init(
+            importedId: imported.id,
+            date: Transaction.yyyymmdd(from: imported.date),
+            amount: imported.amountCents,
+            payeeName: imported.payeeName,
+            payeeId: nil,
+            notes: Self.notes(from: transaction.description),
+            cleared: imported.cleared
+        )
+    }
+
     /// The first name with anything in it. Not every bridge fills in a payee,
     /// and importing a nameless one would be worse than reusing the
     /// description.
