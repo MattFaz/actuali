@@ -76,6 +76,64 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
+    func testDetailedGroupSwipeHidesAndShowsExpenseGroup() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "detailed",
+            "-showHiddenCategories", "NO", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let essentials = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
+        ).firstMatch
+        XCTAssertTrue(essentials.waitForExistence(timeout: 10))
+
+        essentials.swipeLeft()
+        XCTAssertTrue(app.buttons["Hide"].waitForExistence(timeout: 5))
+        app.buttons["Hide"].tap()
+        XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
+
+        let optionsMenu = app.buttons["Budget options"]
+        optionsMenu.tap()
+        let showHidden = app.buttons["Show Hidden Categories"]
+        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
+        showHidden.tap()
+        XCTAssertTrue(essentials.waitForExistence(timeout: 5))
+
+        essentials.swipeLeft()
+        XCTAssertTrue(app.buttons["Show"].waitForExistence(timeout: 5))
+        app.buttons["Show"].tap()
+
+        optionsMenu.tap()
+        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
+        showHidden.tap()
+        XCTAssertTrue(essentials.waitForExistence(timeout: 5),
+                      "the group should remain visible after hidden categories are turned off")
+    }
+
+    @MainActor
+    func testDetailedIncomeGroupHasNoHideAction() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "detailed", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let income = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Income, ")
+        ).firstMatch
+        for _ in 0..<20 where !income.waitForExistence(timeout: 1) {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(income.waitForExistence(timeout: 5))
+
+        income.swipeLeft()
+        XCTAssertFalse(app.buttons["Hide"].waitForExistence(timeout: 2),
+                       "the Income group must not offer a hide action")
+    }
+
+    @MainActor
     func testIncomeGroupMatchesCollapseBehaviorInCleanStyle() throws {
         try assertIncomeGroupCollapses(displayStyle: "clean")
     }
