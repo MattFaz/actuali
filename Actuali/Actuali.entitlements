@@ -4,12 +4,21 @@
   App entitlements. The app group is how the widget extension reads the
   category-balance snapshot the app writes; the identifier must match
   WidgetSnapshotStore.appGroupID and ActualiWidgets.entitlements.
+
+  FinanceKit (ongoing Wallet access for bank sync) is a managed entitlement:
+  Apple grants it per-app on request, so device builds need a provisioning
+  profile that carries it. Simulator builds and CI are unaffected. The Tier-1
+  Wallet transaction picker works without it.
 -->
 <plist version="1.0">
 <dict>
 	<key>com.apple.security.application-groups</key>
 	<array>
 		<string>group.com.mfazz.ActualiOS</string>
+	</array>
+	<key>com.apple.developer.financekit</key>
+	<array>
+		<string>financial-data</string>
 	</array>
 </dict>
 </plist>
