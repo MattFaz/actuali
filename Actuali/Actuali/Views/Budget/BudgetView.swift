@@ -188,7 +188,6 @@ struct BudgetView: View {
         .initialSyncBanner()
     }
 
-
     /// One group's rows, extracted from the `List` so the body stays within
     /// the compiler's type-check budget.
     @ViewBuilder
@@ -280,6 +279,9 @@ struct BudgetView: View {
         let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let categories = displayedIncomeCategories(in: budget)
         let name = group?.name ?? categories.first?.groupName ?? "Income"
+        let onSetHidden = group.flatMap { group -> ((Bool) -> Void)? in
+            group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
+        }
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
@@ -298,13 +300,17 @@ struct BudgetView: View {
                     }
                 }
             } header: {
+                // The Income group can only be unhidden, never hidden:
+                // hiding it would drop the app's only income total
+                // from the budget table entirely. `onSetHidden` is passed
+                // only when the group is already hidden (e.g. leftover
+                // state from before this restriction existed). GH #130's
+                // collapse control still applies.
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
-                    },
+                    onSetHidden: onSetHidden,
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -318,9 +324,7 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: group.map { group in
-                        { setCategoryGroupHidden(group.id, hidden: $0) }
-                    },
+                    onSetHidden: onSetHidden,
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -1283,6 +1287,11 @@ private struct CaptionedAmountPill: View {
 /// Group header row: collapse control and group name, plus the group's
 /// Budgeted, Spent and Balance totals in the table's three rightmost
 /// columns, each captioned the same way the pinned summary bar is.
+///
+/// The way to hide/show the group depends on the display style:
+/// - **Clean style** uses a three‑dot ellipsis menu (because section headers
+///   don't support swipe actions reliably).
+/// - **Detailed style** uses a swipe‑to‑hide gesture, matching category rows.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
@@ -1304,7 +1313,6 @@ struct BudgetGroupHeader: View {
     /// whether names wrap or not (GH #252); the clean style's plain section
     /// titles keep their natural height.
     var reservesTwoLines = false
-
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleCollapse) {
@@ -1369,7 +1377,7 @@ struct BudgetGroupHeader: View {
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Toggles the group's categories")
 
-            if let onSetHidden {
+            if budgetStore.budgetDisplayStyle == .clean, let onSetHidden {
                 Menu {
                     Button {
                         onSetHidden(!isHidden)
@@ -1387,6 +1395,16 @@ struct BudgetGroupHeader: View {
             }
         }
         .opacity(isHidden ? 0.5 : 1)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if budgetStore.budgetDisplayStyle == .detailed, let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 
     /// The pills are decoration to VoiceOver once the button carries its own

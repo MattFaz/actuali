@@ -2,13 +2,14 @@ import SwiftUI
 
 private let simpleFINBridgeURL = URL(string: "https://bridge.simplefin.org/")!
 
-/// Set up SimpleFIN and wire its accounts to budget accounts.
+/// Set up bank feeds and wire their accounts to budget accounts.
 ///
-/// Two states. With a connection available — the server's own, or one claimed
-/// on this device — it lists the accounts the bridge serves, each either
-/// linked to a budget account or waiting to be. With neither, it's a paste
-/// field for a setup token. Which connection is in play is worth saying out
-/// loud: only the server's is shared with the web app.
+/// Two providers. Apple Wallet (FinanceKit) shows on devices that have Wallet
+/// data at all: connect once and its accounts are ready to link. SimpleFIN has
+/// two states — with a connection available (the server's own, or one claimed
+/// on this device) it lists the accounts the bridge serves; with neither, it's
+/// a paste field for a setup token. Which SimpleFIN connection is in play is
+/// worth saying out loud: only the server's is shared with the web app.
 struct BankSyncSetupView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
@@ -16,12 +17,18 @@ struct BankSyncSetupView: View {
     @State private var isConnecting = false
     @State private var isLoadingAccounts = false
     @State private var remoteAccounts: [SimpleFINAccount] = []
+    @State private var walletAccounts: [AppleWalletAccount] = []
+    @State private var isConnectingWallet = false
+    @State private var isLoadingWalletAccounts = false
     @State private var errorMessage: String?
-    @State private var linkTarget: SimpleFINAccount?
+    @State private var linkTarget: BankSyncRemoteAccount?
     @State private var showingDisconnectConfirmation = false
 
     var body: some View {
         List {
+            if budgetStore.appleWalletAvailability != .unsupported {
+                walletSection
+            }
             if budgetStore.canSyncBanks {
                 connectedSections
             } else {
@@ -31,8 +38,12 @@ struct BankSyncSetupView: View {
         .navigationTitle("Bank Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            // Which half of this screen applies depends on whether the server
-            // does SimpleFIN itself, so ask before deciding.
+            await budgetStore.refreshAppleWalletAvailability()
+            if budgetStore.appleWalletAvailability == .authorized {
+                await loadWalletAccounts()
+            }
+            // Which half of the SimpleFIN screen applies depends on whether
+            // the server does SimpleFIN itself, so ask before deciding.
             await budgetStore.refreshBankSyncSource()
             if budgetStore.canSyncBanks, remoteAccounts.isEmpty {
                 await loadRemoteAccounts()
@@ -56,6 +67,64 @@ struct BankSyncSetupView: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Your accounts stay linked and keep the transactions they've already imported. To sync from this device again you'll need a new setup token.")
+        }
+    }
+
+    // MARK: - Apple Wallet
+
+    @ViewBuilder
+    private var walletSection: some View {
+        Section {
+            switch budgetStore.appleWalletAvailability {
+            case .authorized:
+                if isLoadingWalletAccounts {
+                    HStack {
+                        ProgressView()
+                        Text("Loading accounts…")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if walletAccounts.isEmpty {
+                    Text("No Wallet accounts found on this device.")
+                        .foregroundStyle(.secondary)
+                } else {
+                    ForEach(walletAccounts) { account in
+                        Button {
+                            linkTarget = account.remoteAccount
+                        } label: {
+                            remoteAccountRow(account.remoteAccount)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            case .denied:
+                Label("Wallet access is turned off", systemImage: "exclamationmark.triangle")
+                    .foregroundStyle(.secondary)
+            default:
+                Button {
+                    connectWallet()
+                } label: {
+                    if isConnectingWallet {
+                        HStack {
+                            ProgressView()
+                            Text("Connecting…")
+                        }
+                    } else {
+                        Label("Connect Apple Wallet", systemImage: "wallet.pass")
+                    }
+                }
+                .disabled(isConnectingWallet)
+            }
+        } header: {
+            Text("Apple Wallet")
+        } footer: {
+            switch budgetStore.appleWalletAvailability {
+            case .authorized:
+                Text("Tap an account to link it. Apple Card, Apple Cash and Savings transactions are read from this device's Wallet every time you sync, and stored in your budget file like any other transaction.")
+            case .denied:
+                Text("Allow Actuali to read Wallet data in Settings to sync Apple Card, Apple Cash and Savings.")
+            default:
+                Text("Link Apple Card, Apple Cash and Savings so their transactions and balances import automatically when you sync. Apple asks once which data Actuali may read.")
+            }
         }
     }
 
@@ -130,9 +199,9 @@ struct BankSyncSetupView: View {
             } else {
                 ForEach(remoteAccounts) { remote in
                     Button {
-                        linkTarget = remote
+                        linkTarget = remote.remoteAccount
                     } label: {
-                        remoteAccountRow(remote)
+                        remoteAccountRow(remote.remoteAccount)
                     }
                     .buttonStyle(.plain)
                 }
@@ -161,11 +230,11 @@ struct BankSyncSetupView: View {
         }
     }
 
-    private func remoteAccountRow(_ remote: SimpleFINAccount) -> some View {
+    private func remoteAccountRow(_ remote: BankSyncRemoteAccount) -> some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text(remote.name)
-                Text(remote.org.displayName)
+                Text(remote.institutionName)
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 if let linked = linkedAccountName(for: remote) {
@@ -186,10 +255,10 @@ struct BankSyncSetupView: View {
         }
     }
 
-    /// The budget account a bridge account is already wired to, if any.
-    private func linkedAccountName(for remote: SimpleFINAccount) -> String? {
+    /// The budget account a provider-side account is already wired to, if any.
+    private func linkedAccountName(for remote: BankSyncRemoteAccount) -> String? {
         guard let link = budgetStore.bankSyncAccounts.first(where: {
-            $0.externalAccountId == remote.id && $0.source == .simpleFin
+            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
         }) else { return nil }
         return link.name
     }
@@ -225,6 +294,32 @@ struct BankSyncSetupView: View {
         }
     }
 
+    private func connectWallet() {
+        isConnectingWallet = true
+        Task {
+            defer { isConnectingWallet = false }
+            do {
+                // A declined consent sheet needs no alert of its own — the
+                // section flips to its denied state, which says what to do.
+                if try await budgetStore.connectAppleWallet() {
+                    await loadWalletAccounts()
+                }
+            } catch {
+                errorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func loadWalletAccounts() async {
+        isLoadingWalletAccounts = true
+        defer { isLoadingWalletAccounts = false }
+        do {
+            walletAccounts = try await budgetStore.fetchAppleWalletAccounts()
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     private func disconnect() {
         do {
             try budgetStore.disconnectSimpleFIN()
@@ -235,13 +330,13 @@ struct BankSyncSetupView: View {
     }
 }
 
-/// Pick what a bridge account feeds: an account the budget already has, or a
-/// new one created for it.
+/// Pick what a provider-side account feeds: an account the budget already
+/// has, or a new one created for it.
 struct BankAccountLinkView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
 
-    let remote: SimpleFINAccount
+    let remote: BankSyncRemoteAccount
 
     @State private var newAccountOffBudget = false
     @State private var isWorking = false
@@ -272,7 +367,7 @@ struct BankAccountLinkView: View {
                 } header: {
                     Text("New account")
                 } footer: {
-                    Text("Creates a budget account for \(remote.name) at \(remote.org.displayName) and links it. Its opening balance is worked out on the first sync.")
+                    Text("Creates a budget account for \(remote.name) at \(remote.institutionName) and links it. Its opening balance is worked out on the first sync.")
                 }
 
                 Section("Link to an existing account") {
@@ -319,7 +414,7 @@ struct BankAccountLinkView: View {
 
     private var currentLink: BankSyncAccount? {
         budgetStore.bankSyncAccounts.first {
-            $0.externalAccountId == remote.id && $0.source == .simpleFin
+            $0.externalAccountId == remote.id && $0.syncSource == remote.source.rawValue
         }
     }
 
