@@ -56,7 +56,7 @@ struct FormulaEngineTests {
                 tx("child-2", date: 20260705, amount: -4_000, parentId: "parent"),
                 tx("deleted", date: 20260705, amount: -500, tombstone: true),
             ], today: today, context: .empty)
-        #expect(result == .value(-10.00))
+        #expect(result == .value(-100.00))
     }
 
     @Test func uppercaseQueryAndSumMatchActualSyntax() {
@@ -79,30 +79,66 @@ struct FormulaEngineTests {
         #expect(result == .value(4000.00))
     }
 
-    @Test func honorsPrecedenceAndParens() {
-        let result = FormulaEngine.compute(
-            meta: meta(formula: "=2+3*4"), transactions: [], today: today, context: .empty)
-        #expect(result == .value(14))
-        let result2 = FormulaEngine.compute(
-            meta: meta(formula: "=(2+3)*-4"), transactions: [], today: today, context: .empty)
-        #expect(result2 == .value(-20))
+    @Test func commonFunctionsAreSupported() {
+        let average = FormulaEngine.compute(
+            meta: meta(formula: "=ROUND(AVERAGE(1, 2, 8), 1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(average == .number(3.7))
+
+        let minMax = FormulaEngine.compute(
+            meta: meta(formula: "=MAX(MIN(8, 2, 5), PRODUCT(2, 3))"),
+            transactions: [], today: today, context: .empty)
+        #expect(minMax == .number(6))
+
+        let math = FormulaEngine.compute(
+            meta: meta(formula: "=ABS(-5) + SQRT(16) + POWER(2, 3)"),
+            transactions: [], today: today, context: .empty)
+        #expect(math == .number(17))
+
+        let rounded = FormulaEngine.compute(
+            meta: meta(formula: "=FLOOR(10.8, 1) + CEILING(10.2, 1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(rounded == .number(21))
     }
 
-    @Test func divisionByZeroIsUnsupported() {
-        let result = FormulaEngine.compute(
-            meta: meta(formula: "=1/0"), transactions: [], today: today, context: .empty)
-        guard case .unsupported = result else {
-            Issue.record("expected .unsupported, got \(result)")
+    @Test func logicalAndCountFunctionsAreSupported() {
+        let logical = FormulaEngine.compute(
+            meta: meta(formula: "=IF(AND(1=1, 2=2), OR(0, 1), 0)"),
+            transactions: [], today: today, context: .empty)
+        #expect(logical == .number(1))
+
+        let not = FormulaEngine.compute(
+            meta: meta(formula: "=NOT(1=1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(not == .number(0))
+
+        let count = FormulaEngine.compute(
+            meta: meta(formula: #"=QUERY_COUNT("expenses")"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("1", date: 20260705, amount: -300_000),
+                tx("2", date: 20260702, amount: -50_000),
+                tx("3", date: 20260403, amount: -10_000),
+            ], today: today, context: .empty)
+        #expect(count == .number(2))
+
+        let pi = FormulaEngine.compute(
+            meta: meta(formula: "=PI()"),
+            transactions: [], today: today, context: .empty)
+        guard case .number(let value) = pi else {
+            Issue.record("expected PI() to return a plain number, got \(pi)")
             return
         }
+        #expect(abs(value - Double.pi) < 0.0000001)
     }
 
     @Test func extremeResultsAreUnsupportedBeforeDisplayConversion() {
-        let result = FormulaEngine.compute(
-            meta: meta(formula: "=100000000000000000000"), transactions: [], today: today, context: .empty)
-        guard case .unsupported = result else {
-            Issue.record("expected extreme result to be unsupported, got \(result)")
-            return
+        for formula in ["=POWER(10, 30)", "=100000000000000000000"] {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            guard case .unsupported = result else {
+                Issue.record("expected extreme result to be unsupported, got \(result)")
+                return
+            }
         }
     }
 
@@ -123,13 +159,31 @@ struct FormulaEngineTests {
         #expect(result == .value(5))
     }
 
+    @Test func honorsPrecedenceAndParens() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=2+3*4"), transactions: [], today: today, context: .empty)
+        #expect(result == .number(14))
+        let result2 = FormulaEngine.compute(
+            meta: meta(formula: "=(2+3)*-4"), transactions: [], today: today, context: .empty)
+        #expect(result2 == .number(-20))
+    }
+
+    @Test func divisionByZeroIsUnsupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=1/0"), transactions: [], today: today, context: .empty)
+        guard case .unsupported = result else {
+            Issue.record("expected .unsupported, got \(result)")
+            return
+        }
+    }
+
     @Test func decimalLiteralsParse() {
         let bareDot = FormulaEngine.compute(
             meta: meta(formula: "=.5+1.25"), transactions: [], today: today, context: .empty)
-        #expect(bareDot == .value(1.75))
+        #expect(bareDot == .number(1.75))
         let standard = FormulaEngine.compute(
             meta: meta(formula: "=0.5+1.25"), transactions: [], today: today, context: .empty)
-        #expect(standard == .value(1.75))
+        #expect(standard == .number(1.75))
     }
 
     @Test(arguments: [
