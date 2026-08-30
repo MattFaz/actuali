@@ -1,16 +1,21 @@
 import Foundation
 
-/// Native evaluator for Formula card widgets. Actual evaluates Formula cards
-/// with HyperFormula; Actuali keeps this evaluator native and read-only.
-///
-/// The important part for QUERY is that it follows Actual's transaction
-/// aggregation semantics: live transactions only, split parents excluded,
-/// and children of tombstoned/missing parents ignored.
+/// Native evaluator for formula-card widgets. Actual evaluates Formula cards
+/// with HyperFormula (a full spreadsheet engine); Actuali supports the numeric
+/// subset needed by the read-only Formula cards we can receive from Actual.
 enum FormulaEngine {
 
     enum Result: Equatable {
+        /// Currency units (upstream integerToAmount: cents / 100).
         case value(Double)
         case unsupported(String)
+    }
+
+    private struct Env {
+        let meta: FormulaMeta?
+        let transactions: [Transaction]
+        let today: Date
+        let context: ConditionsFilter.Context
     }
 
     static func compute(
@@ -24,18 +29,17 @@ enum FormulaEngine {
         }
 
         var parser = Parser(String(formula.dropFirst()))
-        guard let expression = parser.parseExpression() else {
+        guard let expr = parser.parseExpression() else {
             return .unsupported("This formula isn't supported yet")
         }
 
         do {
-            let value = try evaluate(
-                expression,
+            let value = try evaluate(expr, Env(
                 meta: meta,
                 transactions: transactions,
                 today: today,
                 context: context
-            )
+            ))
             guard value.isFinite else {
                 return .unsupported("This formula returned an invalid number")
             }
@@ -53,42 +57,17 @@ enum FormulaEngine {
         case invalidArgument
     }
 
-    // MARK: - Query evaluation
+    // MARK: - Queries
 
-    private static func queryMatches(
-        named name: String,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) -> [Transaction] {
-        guard let query = meta?.queries?[name] else { return [] }
+    /// `fetchTransactionsForReports()` supplies live leaf rows: it excludes
+    /// tombstoned rows, split parents, and children of dead split parents.
+    /// Keep QUERY scoped to those rows and avoid duplicating database logic here.
+    private static func queryMatches(named name: String, _ env: Env) -> [Transaction] {
+        guard let query = env.meta?.queries?[name] else { return [] }
 
-        // Actual's transaction aggregates operate on leaf transactions rather
-        // than split-parent rows. A split parent contains the total and its
-        // children contain the individual portions; including both would
-        // double-count a split transaction.
-        //
-        // Children of tombstoned/missing parents are also ignored. Build the
-        // set from the supplied report rows so this remains correct even when
-        // the caller has loaded both parent and child rows.
-        let liveIDs = Set(
-            transactions
-                .filter { !$0.tombstone }
-                .map(\.id)
-        )
-
-        var pool = transactions.filter { transaction in
-            guard !transaction.tombstone else { return false }
-            guard !transaction.isParent else { return false }
-            if let parentId = transaction.parentId {
-                return liveIDs.contains(parentId)
-            }
-            return true
-        }
-
+        var pool = env.transactions
         if let timeFrame = query.timeFrame, timeFrame.mode != nil {
-            let (start, end) = TimeFrame.resolve(timeFrame, asOf: today)
+            let (start, end) = TimeFrame.resolve(timeFrame, asOf: env.today)
             let startYMD = ymdInt(from: start)
             let endYMD = ymdInt(from: end)
             pool = pool.filter { $0.date >= startYMD && $0.date <= endYMD }
@@ -99,57 +78,27 @@ enum FormulaEngine {
                 transaction: $0,
                 conditions: query.conditions,
                 op: query.conditionsOp,
-                context: context
+                context: env.context
             )
         }
     }
 
-    private static func querySum(
-        named name: String,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) -> Double {
-        Double(
-            queryMatches(
-                named: name,
-                meta: meta,
-                transactions: transactions,
-                today: today,
-                context: context
-            ).reduce(0) { $0 + $1.amount }
-        ) / 100
+    private static func querySum(named name: String, _ env: Env) -> Double {
+        Double(queryMatches(named: name, env).reduce(0) { $0 + $1.amount }) / 100
     }
 
-    private static func queryCount(
-        named name: String,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) -> Double {
-        Double(
-            queryMatches(
-                named: name,
-                meta: meta,
-                transactions: transactions,
-                today: today,
-                context: context
-            ).count
-        )
+    private static func queryCount(named name: String, _ env: Env) -> Double {
+        Double(queryMatches(named: name, env).count)
     }
 
     private static func ymdInt(from date: Date) -> Int {
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let components = calendar.dateComponents([.year, .month, .day], from: date)
-        return (components.year ?? 0) * 10000
-            + (components.month ?? 0) * 100
-            + (components.day ?? 0)
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.year, .month, .day], from: date)
+        return (c.year ?? 0) * 10000 + (c.month ?? 0) * 100 + (c.day ?? 0)
     }
 
-    // MARK: - Evaluation
+    // MARK: - Expression tree
 
     indirect enum Expr: Equatable {
         case number(Double)
@@ -172,36 +121,27 @@ enum FormulaEngine {
         case greaterOrEqual
     }
 
-    private static func evaluate(
-        _ expression: Expr,
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) throws -> Double {
+    private static func evaluate(_ expression: Expr, _ env: Env) throws -> Double {
         switch expression {
         case .number(let value):
             return value
         case .string:
             throw EvalError.invalidArgument
         case .add(let left, let right):
-            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
-                + evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+            return try evaluate(left, env) + evaluate(right, env)
         case .sub(let left, let right):
-            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
-                - evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+            return try evaluate(left, env) - evaluate(right, env)
         case .mul(let left, let right):
-            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
-                * evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+            return try evaluate(left, env) * evaluate(right, env)
         case .div(let left, let right):
-            let divisor = try evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+            let divisor = try evaluate(right, env)
             guard abs(divisor) > .ulpOfOne else { throw EvalError.divisionByZero }
-            return try evaluate(left, meta: meta, transactions: transactions, today: today, context: context) / divisor
+            return try evaluate(left, env) / divisor
         case .neg(let value):
-            return try -evaluate(value, meta: meta, transactions: transactions, today: today, context: context)
+            return try -evaluate(value, env)
         case .compare(let op, let left, let right):
-            let lhs = try evaluate(left, meta: meta, transactions: transactions, today: today, context: context)
-            let rhs = try evaluate(right, meta: meta, transactions: transactions, today: today, context: context)
+            let lhs = try evaluate(left, env)
+            let rhs = try evaluate(right, env)
             switch op {
             case .equal: return lhs == rhs ? 1 : 0
             case .notEqual: return lhs != rhs ? 1 : 0
@@ -211,131 +151,101 @@ enum FormulaEngine {
             case .greaterOrEqual: return lhs >= rhs ? 1 : 0
             }
         case .function(let name, let args):
-            return try evaluateFunction(
-                name: name.uppercased(),
-                args: args,
-                meta: meta,
-                transactions: transactions,
-                today: today,
-                context: context
-            )
+            return try evaluateFunction(name: name.uppercased(), args: args, env)
         }
     }
 
-    private static func evaluateFunction(
-        name: String,
-        args: [Expr],
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) throws -> Double {
+    private static func evaluateFunction(name: String, args: [Expr], _ env: Env) throws -> Double {
         switch name {
         case "QUERY":
             guard args.count == 1, let queryName = stringArgument(args[0]) else {
                 throw EvalError.invalidArgument
             }
-            return querySum(named: queryName, meta: meta, transactions: transactions, today: today, context: context)
+            return querySum(named: queryName, env)
 
         case "QUERY_COUNT":
             guard args.count == 1, let queryName = stringArgument(args[0]) else {
                 throw EvalError.invalidArgument
             }
-            return queryCount(named: queryName, meta: meta, transactions: transactions, today: today, context: context)
+            return queryCount(named: queryName, env)
 
         case "SUM":
-            return try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context).reduce(0, +)
+            return try numericArguments(args, env).reduce(0, +)
 
         case "AVERAGE":
-            let values = try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
+            let values = try numericArguments(args, env)
             guard !values.isEmpty else { throw EvalError.invalidArgument }
             return values.reduce(0, +) / Double(values.count)
 
         case "MIN":
-            let values = try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
+            let values = try numericArguments(args, env)
             guard let first = values.first else { throw EvalError.invalidArgument }
             return values.dropFirst().reduce(first, Swift.min)
 
         case "MAX":
-            let values = try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
+            let values = try numericArguments(args, env)
             guard let first = values.first else { throw EvalError.invalidArgument }
             return values.dropFirst().reduce(first, Swift.max)
 
         case "PRODUCT":
-            let values = try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context)
+            let values = try numericArguments(args, env)
             guard !values.isEmpty else { throw EvalError.invalidArgument }
             return values.reduce(1, *)
 
         case "COUNT":
-            return Double(try numericArguments(args, meta: meta, transactions: transactions, today: today, context: context).count)
+            return Double(try numericArguments(args, env).count)
 
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
-            return abs(try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context))
+            return abs(try evaluate(args[0], env))
 
         case "SQRT":
             guard args.count == 1 else { throw EvalError.invalidArgument }
-            return sqrt(try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context))
+            return sqrt(try evaluate(args[0], env))
 
         case "POWER":
             guard args.count == 2 else { throw EvalError.invalidArgument }
-            let base = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            let exponent = try evaluate(args[1], meta: meta, transactions: transactions, today: today, context: context)
-            return pow(base, exponent)
+            return pow(try evaluate(args[0], env), try evaluate(args[1], env))
 
         case "ROUND":
             guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let number = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            let digits = args.count == 2
-                ? Int(try evaluate(args[1], meta: meta, transactions: transactions, today: today, context: context))
-                : 0
+            let value = try evaluate(args[0], env)
+            let digits = args.count == 2 ? Int(try evaluate(args[1], env)) : 0
             let factor = pow(10, Double(digits))
-            return (number * factor).rounded() / factor
+            return (value * factor).rounded() / factor
 
         case "FLOOR":
             guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let number = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            let significance = args.count == 2
-                ? try evaluate(args[1], meta: meta, transactions: transactions, today: today, context: context)
-                : 1
+            let value = try evaluate(args[0], env)
+            let significance = args.count == 2 ? try evaluate(args[1], env) : 1
             guard significance != 0 else { throw EvalError.divisionByZero }
-            return floor(number / significance) * significance
+            return floor(value / significance) * significance
 
         case "CEILING":
             guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let number = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            let significance = args.count == 2
-                ? try evaluate(args[1], meta: meta, transactions: transactions, today: today, context: context)
-                : 1
+            let value = try evaluate(args[0], env)
+            let significance = args.count == 2 ? try evaluate(args[1], env) : 1
             guard significance != 0 else { throw EvalError.divisionByZero }
-            return ceil(number / significance) * significance
+            return ceil(value / significance) * significance
 
         case "IF":
             guard args.count == 3 else { throw EvalError.invalidArgument }
-            let condition = try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context)
-            return try evaluate(
-                condition != 0 ? args[1] : args[2],
-                meta: meta,
-                transactions: transactions,
-                today: today,
-                context: context
-            )
+            let condition = try evaluate(args[0], env)
+            return try evaluate(condition != 0 ? args[1] : args[2], env)
 
         case "AND":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            return try args.allSatisfy {
-                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context) != 0
-            } ? 1 : 0
+            for arg in args where try evaluate(arg, env) == 0 { return 0 }
+            return 1
 
         case "OR":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            return try args.contains {
-                try evaluate($0, meta: meta, transactions: transactions, today: today, context: context) != 0
-            } ? 1 : 0
+            for arg in args where try evaluate(arg, env) != 0 { return 1 }
+            return 0
 
         case "NOT":
             guard args.count == 1 else { throw EvalError.invalidArgument }
-            return try evaluate(args[0], meta: meta, transactions: transactions, today: today, context: context) == 0 ? 1 : 0
+            return try evaluate(args[0], env) == 0 ? 1 : 0
 
         case "PI":
             guard args.isEmpty else { throw EvalError.invalidArgument }
@@ -351,34 +261,24 @@ enum FormulaEngine {
         return value
     }
 
-    private static func numericArguments(
-        _ args: [Expr],
-        meta: FormulaMeta?,
-        transactions: [Transaction],
-        today: Date,
-        context: ConditionsFilter.Context
-    ) throws -> [Double] {
+    private static func numericArguments(_ args: [Expr], _ env: Env) throws -> [Double] {
         try args.map {
-            guard case .string = $0 else {
-                return try evaluate($0, meta: meta, transactions: transactions, today: today, context: context)
-            }
+            guard case .string = $0 else { return try evaluate($0, env) }
             throw EvalError.invalidArgument
         }
     }
 
-    // MARK: - Parser
+    // MARK: - Recursive-descent parser
 
     struct Parser {
         private let chars: [Character]
-        private var position = 0
+        private var pos = 0
 
-        init(_ input: String) {
-            chars = Array(input)
-        }
+        init(_ input: String) { chars = Array(input) }
 
         mutating func parseExpression() -> Expr? {
-            guard let expression = expression(), atEnd() else { return nil }
-            return expression
+            guard let expr = expression(), atEnd() else { return nil }
+            return expr
         }
 
         private mutating func expression() -> Expr? {
@@ -413,75 +313,63 @@ enum FormulaEngine {
 
         private mutating func factor() -> Expr? {
             skipWhitespace()
-            guard let character = peek() else { return nil }
+            guard let c = peek() else { return nil }
 
-            if character == "-" {
+            if c == "-" {
                 advance()
                 guard let inner = factor() else { return nil }
                 return .neg(inner)
             }
 
-            if character == "(" {
+            if c == "(" {
                 advance()
                 guard let inner = expression(), consume(")") else { return nil }
                 return inner
             }
 
-            if character == "\"" {
-                return stringLiteral()
-            }
-
-            if character.isNumber || character == "." {
-                return number()
-            }
-
-            if character.isLetter || character == "_" {
-                return functionCall()
-            }
-
+            if c == "\"" { return stringLiteral() }
+            if c.isNumber || c == "." { return number() }
+            if c.isLetter || c == "_" { return functionCall() }
             return nil
         }
 
         private mutating func functionCall() -> Expr? {
             skipWhitespace()
             var name = ""
-            while let character = peek(), character.isLetter || character.isNumber || character == "_" {
-                name.append(character)
+            while let c = peek(), c.isLetter || c.isNumber || c == "_" {
+                name.append(c)
                 advance()
             }
             guard consume("(") else { return nil }
 
-            var arguments: [Expr] = []
+            var args: [Expr] = []
             skipWhitespace()
-            if consume(")") {
-                return .function(name: name, args: arguments)
-            }
+            if consume(")") { return .function(name: name, args: args) }
 
             while true {
-                guard let argument = expression() else { return nil }
-                arguments.append(argument)
+                guard let arg = expression() else { return nil }
+                args.append(arg)
                 if consume(")") { break }
                 guard consume(",") else { return nil }
             }
-
-            return .function(name: name, args: arguments)
+            return .function(name: name, args: args)
         }
 
         private mutating func stringLiteral() -> Expr? {
             guard consume("\"") else { return nil }
             var value = ""
-            while let character = peek() {
-                if character == "\"" {
+            while let c = peek() {
+                if c == "\"" {
                     advance()
                     return .string(value)
                 }
-                if character == "\\" {
+                if c == "\\" {
                     advance()
                     guard let escaped = peek() else { return nil }
                     value.append(escaped)
                     advance()
                 } else {
-                    value.append(character)
+                    value.append(c)
                     advance()
                 }
             }
@@ -492,20 +380,18 @@ enum FormulaEngine {
             skipWhitespace()
             var value = ""
             var decimalSeen = false
-
-            while let character = peek() {
-                if character.isNumber {
-                    value.append(character)
+            while let c = peek() {
+                if c.isNumber {
+                    value.append(c)
                     advance()
-                } else if character == "." && !decimalSeen {
+                } else if c == "." && !decimalSeen {
                     decimalSeen = true
-                    value.append(character)
+                    value.append(c)
                     advance()
                 } else {
                     break
                 }
             }
-
             return Double(value).map(Expr.number)
         }
 
@@ -522,43 +408,36 @@ enum FormulaEngine {
 
         private mutating func peekOperator(_ operators: [Character]) -> Character? {
             skipWhitespace()
-            guard let character = peek(), operators.contains(character) else { return nil }
-            return character
+            guard let c = peek(), operators.contains(c) else { return nil }
+            return c
         }
 
         private mutating func match(_ sequence: [Character]) -> Bool {
-            guard position + sequence.count <= chars.count else { return false }
-            for (offset, expected) in sequence.enumerated() where chars[position + offset] != expected {
+            guard pos + sequence.count <= chars.count else { return false }
+            for (offset, expected) in sequence.enumerated() where chars[pos + offset] != expected {
                 return false
             }
-            position += sequence.count
+            pos += sequence.count
             return true
         }
 
-        private func peek() -> Character? {
-            position < chars.count ? chars[position] : nil
-        }
-
-        private mutating func advance() {
-            position += 1
-        }
+        private func peek() -> Character? { pos < chars.count ? chars[pos] : nil }
+        private mutating func advance() { pos += 1 }
 
         private mutating func skipWhitespace() {
-            while let character = peek(), character.isWhitespace {
-                advance()
-            }
+            while let c = peek(), c.isWhitespace { advance() }
         }
 
-        private mutating func consume(_ character: Character) -> Bool {
+        private mutating func consume(_ c: Character) -> Bool {
             skipWhitespace()
-            guard peek() == character else { return false }
+            guard peek() == c else { return false }
             advance()
             return true
         }
 
         private mutating func atEnd() -> Bool {
             skipWhitespace()
-            return position >= chars.count
+            return pos >= chars.count
         }
     }
 }
