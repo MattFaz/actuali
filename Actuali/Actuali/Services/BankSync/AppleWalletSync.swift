@@ -46,7 +46,7 @@ struct AppleWalletAccount: Identifiable, Sendable, Equatable {
 /// A FinanceKit balance reduced to what selecting the latest snapshot needs.
 struct AppleWalletBalance: Sendable, Equatable {
     let accountId: String
-    let cents: Int
+    let cents: Int?
     let asOfDate: Date
     let includesPending: Bool
 }
@@ -94,7 +94,10 @@ protocol AppleWalletReading: Sendable {
     /// Ask the person for read access. Returns whether it was granted.
     func requestAccess() async throws -> Bool
     func accounts() async throws -> [AppleWalletAccount]
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction]
+    /// Transactions on or after `sinceDay` (`YYYYMMDD`). A store may return
+    /// more — the caller drops anything before the day — but shouldn't return
+    /// meaningfully less-bounded history than asked for.
+    func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction]
 }
 
 /// Turns Wallet data into the same download shape the SimpleFIN providers
@@ -112,7 +115,9 @@ struct AppleWalletProvider: Sendable {
             guard let account = accounts.first(where: { $0.id == target.externalId })
             else { continue }
 
-            let transactions = try await store.transactions(accountId: target.externalId)
+            let transactions = try await store.transactions(
+                accountId: target.externalId, sinceDay: target.startDay
+            )
             let candidates = transactions
                 .compactMap(BankSyncCandidate.init(appleWallet:))
                 .filter { $0.date >= target.startDay }
@@ -138,5 +143,14 @@ extension AppleWalletAccount {
             balanceCents: balanceCents,
             source: .financeKit
         )
+    }
+
+    /// A credit card's *available* number is its remaining credit, not a
+    /// balance: what's owed is that less the limit — negative like any credit
+    /// card balance, positive when overpaid. With no known limit there's no
+    /// way to say what's owed; better no balance than the remaining credit
+    /// imported as one.
+    static func owedBalance(fromRemainingCredit remainingCents: Int, creditLimitCents: Int?) -> Int? {
+        creditLimitCents.map { remainingCents - $0 }
     }
 }
