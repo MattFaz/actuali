@@ -17,6 +17,14 @@ struct FormulaWidgetView: View {
                     .lineLimit(1)
                     .foregroundStyle(units < 0 ? Color.red : Color.green)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
+            case .number(let value):
+                Text(Self.numberFormatter.string(from: NSNumber(value: value)) ?? String(value))
+                    .font(.system(size: 34, weight: .bold))
+                    .monospacedDigit()
+                    .minimumScaleFactor(0.5)
+                    .lineLimit(1)
+                    .foregroundStyle(.primary)
+                    .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             case .unsupported(let reason):
                 Text(reason)
                     .font(.subheadline)
@@ -28,4 +36,11 @@ struct FormulaWidgetView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
+
+    private static let numberFormatter: NumberFormatter = {
+        let formatter = NumberFormatter()
+        formatter.maximumFractionDigits = 2
+        formatter.minimumFractionDigits = 0
+        return formatter
+    }()
 }
