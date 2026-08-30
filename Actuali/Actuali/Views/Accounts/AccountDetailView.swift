@@ -349,17 +349,15 @@ struct AccountDetailView: View {
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
-           ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    withAnimation { budgetStore.hideClearedTransactions.toggle() }
-                } label: {
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $budgetStore.hideClearedTransactions) {
                     Label(
                         "Hide Cleared Transactions",
                         systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
                     )
                 }
             }
-            
+
             ToolbarItem(placement: .secondaryAction) {
                 Button {
                     showingReconcile = true
