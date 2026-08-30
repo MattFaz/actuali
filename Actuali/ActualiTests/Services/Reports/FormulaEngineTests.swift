@@ -49,6 +49,56 @@ struct FormulaEngineTests {
         #expect(result == .value(-2000.00))
     }
 
+    @Test func uppercaseQueryAndSumMatchActualSyntax() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=SUM(QUERY("expenses"), QUERY("income"))"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("1", date: 20260705, amount: -300_000),
+                tx("2", date: 20260702, amount: 100_000),
+            ],
+            today: today,
+            context: .empty)
+        #expect(result == .value(-2000.00))
+    }
+
+    @Test func commonMathFunctionsAreSupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=ROUND(AVERAGE(1, 2, 8), 1)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .value(3.7))
+
+        let result2 = FormulaEngine.compute(
+            meta: meta(formula: "=MAX(ABS(-5), SQRT(16), POWER(2, 3))"),
+            transactions: [], today: today, context: .empty)
+        #expect(result2 == .value(8))
+    }
+
+    @Test func ifAndComparisonsAreSupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=IF(QUERY("income") > 0, QUERY("income") - QUERY("expenses"), 0)"#,
+                       queries: savedThisMonthQueries),
+            transactions: [
+                tx("1", date: 20260705, amount: -300_000),
+                tx("2", date: 20260702, amount: 100_000),
+            ],
+            today: today,
+            context: .empty)
+        #expect(result == .value(1000.00))
+    }
+
+    @Test func queryCountIsSupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=QUERY_COUNT("expenses")"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("1", date: 20260705, amount: -300_000),
+                tx("2", date: 20260702, amount: -50_000),
+                tx("3", date: 20260703, amount: 100_000),
+            ],
+            today: today,
+            context: .empty)
+        #expect(result == .value(2))
+    }
+
     @Test func honorsPrecedenceAndParens() {
         let result = FormulaEngine.compute(
             meta: meta(formula: "=2+3*4"), transactions: [], today: today, context: .empty)
@@ -66,9 +116,9 @@ struct FormulaEngineTests {
         }
     }
 
-    @Test func functionsBeyondQueryAreUnsupported() {
+    @Test func functionsBeyondSupportedSubsetAreUnsupported() {
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=IF(query("a")>0, 1, 2)"#),
+            meta: meta(formula: #"=BUDGET_QUERY("spent", "all", "2026-01", "2026-07")"#),
             transactions: [], today: today, context: .empty)
         guard case .unsupported = result else {
             Issue.record("expected .unsupported, got \(result)"); return
@@ -77,7 +127,7 @@ struct FormulaEngineTests {
 
     @Test func unknownQueryNameCountsAsZero() {
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=query("nope")+5"#),
+            meta: meta(formula: #"=QUERY("nope")+5"#),
             transactions: [], today: today, context: .empty)
         #expect(result == .value(5))
     }
@@ -100,11 +150,12 @@ struct FormulaEngineTests {
 
     @Test(arguments: [
         "=",            // empty expression
-        "=query(",      // missing argument
+        "=QUERY(",      // missing argument
         "=1.2.3",       // malformed number
         "=1 2",         // trailing garbage
         "=(1+2",        // unclosed paren
-        #"=query("a"#,  // unclosed quote
+        #"=QUERY("a"#,  // unclosed quote
+        "=SUM(1 2)",    // missing comma between arguments
     ])
     func malformedFormulasAreUnsupported(formula: String) {
         let result = FormulaEngine.compute(
