@@ -28,22 +28,35 @@ struct FinanceKitWalletStore: AppleWalletReading {
 
     func accounts() async throws -> [AppleWalletAccount] {
         let accounts = try await FinanceStore.shared.accounts(query: AccountQuery())
-        let balances = try await FinanceStore.shared.accountBalances(query: AccountBalanceQuery())
-        return accounts.map { account in
-            // Which of a snapshot's numbers is the balance depends on the
-            // account it belongs to, so snapshots are mapped per account.
-            let snapshots = balances
-                .filter { $0.accountID == account.id }
-                .compactMap { Self.balance(from: $0, for: account) }
-            let balance = Self.latestBalances(snapshots)[account.id.uuidString.lowercased()]
-            return AppleWalletAccount(
+        var result: [AppleWalletAccount] = []
+        for account in accounts {
+            let accountId = account.id
+            let available = try await FinanceStore.shared.accountBalances(query: AccountBalanceQuery(
+                sortDescriptors: [SortDescriptor(\AccountBalance.available?.asOfDate, order: .reverse)],
+                predicate: #Predicate<AccountBalance> {
+                    $0.accountID == accountId && $0.available != nil
+                },
+                limit: 1
+            ))
+            let booked = try await FinanceStore.shared.accountBalances(query: AccountBalanceQuery(
+                sortDescriptors: [SortDescriptor(\AccountBalance.booked?.asOfDate, order: .reverse)],
+                predicate: #Predicate<AccountBalance> {
+                    $0.accountID == accountId && $0.booked != nil
+                },
+                limit: 1
+            ))
+            let balance = Self.latestBalance((available + booked).compactMap {
+                Self.balance(from: $0, for: account)
+            })
+            result.append(AppleWalletAccount(
                 id: account.id.uuidString,
                 name: account.displayName,
                 institutionName: account.institutionName,
                 balanceCents: balance?.cents,
                 balanceIncludesPending: balance?.includesPending ?? false
-            )
+            ))
         }
+        return result
     }
 
     func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
@@ -70,9 +83,8 @@ struct FinanceKitWalletStore: AppleWalletReading {
         }
     }
 
-    static func latestBalances(_ balances: [AppleWalletBalance]) -> [String: AppleWalletBalance] {
-        Dictionary(grouping: balances, by: \AppleWalletBalance.accountId)
-            .compactMapValues { $0.max { $0.asOfDate < $1.asOfDate } }
+    static func latestBalance(_ balances: [AppleWalletBalance]) -> AppleWalletBalance? {
+        balances.max { $0.asOfDate < $1.asOfDate }
     }
 
     /// One snapshot's balance, picked per account kind. Booked is what's
@@ -93,19 +105,19 @@ struct FinanceKitWalletStore: AppleWalletReading {
         case .available(let available): (available, true, isLiability)
         @unknown default: nil
         }
-        guard let (balance, includesPending, isRemainingCredit) = selection,
-              let signed = signedCents(balance) else { return nil }
+        guard let (balance, includesPending, isRemainingCredit) = selection else { return nil }
 
         // Remaining credit moves the moment a charge authorizes, so a balance
         // derived from it already includes pending.
         let cents = isRemainingCredit
-            ? AppleWalletAccount.owedBalance(
-                fromRemainingCredit: signed,
+            ? signedCents(balance).flatMap {
+                AppleWalletAccount.owedBalance(
+                fromRemainingCredit: $0,
                 creditLimitCents: account.liabilityAccount?.creditInformation.creditLimit
                     .flatMap { WalletImportMapper.cents(from: $0.amount) }
-            )
-            : signed
-        guard let cents else { return nil }
+                )
+            }
+            : signedCents(balance)
 
         return AppleWalletBalance(
             accountId: accountBalance.accountID.uuidString.lowercased(),

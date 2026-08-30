@@ -46,7 +46,7 @@ struct AppleWalletAccount: Identifiable, Sendable, Equatable {
 /// A FinanceKit balance reduced to what selecting the latest snapshot needs.
 struct AppleWalletBalance: Sendable, Equatable {
     let accountId: String
-    let cents: Int
+    let cents: Int?
     let asOfDate: Date
     let includesPending: Bool
 }

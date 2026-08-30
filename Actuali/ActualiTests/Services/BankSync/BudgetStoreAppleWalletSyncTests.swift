@@ -179,6 +179,36 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(store.bankSyncSummary == nil)
     }
 
+    @Test func pullToRefreshImportsWalletTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        await store.sync()
+
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+    }
+
+    @Test func foregroundSyncImportsWalletTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        await store.syncOnForeground()
+
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+    }
+
+    @Test func backgroundSyncImportsWalletTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        #expect(await store.syncInBackground())
+
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+    }
+
     /// What a run inserts comes back on the result, so the automatic sync
     /// can post the new-transaction notification — the detector path only
     /// sees rows authored by other devices, which these are not. The opening

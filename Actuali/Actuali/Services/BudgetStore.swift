@@ -1793,11 +1793,6 @@ final class BudgetStore: ObservableObject {
         }
 
         isLoading = false
-
-        // A budget that just opened imports its Wallet feeds straight away.
-        // Launch is a foreground moment `syncOnForeground` usually races past
-        // while this load is still running, so it can't be left to that hook.
-        Task { await autoSyncAppleWalletAccounts() }
     }
 
     /// Seed `payeeLocationWritesEnabled` from the last cached answer for the
@@ -2663,33 +2658,22 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Import new Wallet transactions without a button press. Runs where a
-    /// refresh already happens — budget load, foregrounding, pull-to-refresh —
+    /// refresh already happens — foregrounding, pull-to-refresh, background —
     /// and only for FinanceKit accounts: their reads are local and free, while
     /// SimpleFIN downloads stay behind an explicit sync. Quiet on purpose: no
     /// summary alert for a sync nobody asked for, and a device that can't
     /// serve the feed skips; a manual sync still reports problems.
-    func autoSyncAppleWalletAccounts() async {
+    @discardableResult
+    func autoSyncAppleWalletAccounts() async -> [Transaction] {
         let walletIds = bankSyncAccounts
             .filter { $0.source == .financeKit && !$0.closed }
             .map(\.id)
-        guard !walletIds.isEmpty else { return }
-        guard await appleWalletStore.availability() == .authorized else { return }
+        guard !walletIds.isEmpty else { return [] }
+        guard await appleWalletStore.availability() == .authorized else { return [] }
         guard let result = try? await syncBankAccounts(accountIds: walletIds),
-              !result.importedTransactions.isEmpty else { return }
+              !result.importedTransactions.isEmpty else { return [] }
 
-        // The same summary notification a server sync posts — an import
-        // nobody triggered is exactly when a banner earns its place. The
-        // detector path can't see these rows (they're authored by this
-        // device), so they're handed over directly. Opt-in and permission
-        // are enforced inside the notifier.
-        let accountNames = accounts.reduce(into: [String: String]()) { $0[$1.id] = $1.name }
-        await NewTransactionNotifier.notify(
-            about: result.importedTransactions,
-            currencyCode: currencyCode,
-            narrowSymbol: useNarrowCurrencySymbol,
-            accountNames: accountNames,
-            offBudgetAccountIds: offBudgetAccountIds
-        )
+        return result.importedTransactions
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
@@ -4352,9 +4336,9 @@ final class BudgetStore: ObservableObject {
             lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
-            await notifyAboutSyncedTransactions()
             // Pull-to-refresh doubles as the Wallet feed's refresh.
-            await autoSyncAppleWalletAccounts()
+            let walletTransactions = await autoSyncAppleWalletAccounts()
+            await notifyAboutSyncedTransactions(additional: walletTransactions)
         }
         await work.value
     }
@@ -4403,10 +4387,10 @@ final class BudgetStore: ObservableObject {
         // an occurrence another client already covered.
         if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
-        await notifyAboutSyncedTransactions()
         // Coming to the foreground is when Wallet has new purchases to hand
         // over, so the feeds import here without anyone pressing sync.
-        await autoSyncAppleWalletAccounts()
+        let walletTransactions = await autoSyncAppleWalletAccounts()
+        await notifyAboutSyncedTransactions(additional: walletTransactions)
     }
 
     /// Headless sync for background refresh. On a cold background launch the
@@ -4425,7 +4409,8 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
         // Wallet feeds import in the same background window, so a purchase
         // reaches the budget — and can notify — without the app being opened.
-        await autoSyncAppleWalletAccounts()
+        let walletTransactions = await autoSyncAppleWalletAccounts()
+        await notifyAboutSyncedTransactions(additional: walletTransactions)
         return true
     }
 
@@ -4437,14 +4422,18 @@ final class BudgetStore: ObservableObject {
         return (try? await database.fetchTransaction(id: id)) ?? nil
     }
 
-    /// Detect transactions that arrived via the sync just completed and post
-    /// the summary notification for them. Shared by the foreground and
+    /// Detect transactions that arrived via the sync just completed, combine
+    /// them with any locally imported Wallet rows, and post one summary
+    /// notification. Shared by the foreground and
     /// background sync paths so behavior is uniform: a foreground sync posts
     /// the same notification a background refresh would (NotificationRouter's
     /// willPresent shows it as a banner in-app) instead of silently consuming
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
-    func notifyAboutSyncedTransactions() async {
-        let fresh = await detectNewTransactionsForNotification()
+    func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
+        await notifyAboutTransactions(await detectNewTransactionsForNotification() + additional)
+    }
+
+    private func notifyAboutTransactions(_ fresh: [Transaction]) async {
         // The sync that just ran refreshed the accounts cache, so names are
         // current even on a cold background launch.
         let accountNames = accounts.reduce(into: [String: String]()) {

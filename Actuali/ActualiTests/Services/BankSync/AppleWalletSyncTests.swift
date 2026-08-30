@@ -138,9 +138,29 @@ struct AppleWalletSyncTests {
             includesPending: true
         )
 
-        let latest = try #require(FinanceKitWalletStore.latestBalances([older, newer])[accountId])
+        let latest = try #require(FinanceKitWalletStore.latestBalance([older, newer]))
 
         #expect(latest == newer)
+    }
+
+    @Test func newestBalanceWithoutAnAmountDoesNotFallBackToAnOlderSnapshot() throws {
+        let older = AppleWalletBalance(
+            accountId: Self.cardId,
+            cents: -50000,
+            asOfDate: Date(timeIntervalSince1970: 1_000),
+            includesPending: false
+        )
+        let newer = AppleWalletBalance(
+            accountId: Self.cardId,
+            cents: nil,
+            asOfDate: Date(timeIntervalSince1970: 2_000),
+            includesPending: true
+        )
+
+        let latest = try #require(FinanceKitWalletStore.latestBalance([older, newer]))
+
+        #expect(latest == newer)
+        #expect(latest.cents == nil)
     }
 
     @Test func downloadCoversOnlyAccountsTheWalletHas() async throws {
