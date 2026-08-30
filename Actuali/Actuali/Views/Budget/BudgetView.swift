@@ -47,18 +47,6 @@ enum BudgetColumn {
     }
 }
 
-/// One source of truth for the hide/show swipe action labels and icons used
-/// on rows and group headers throughout the budget table.
-enum HideShowAction {
-    static func title(isHidden: Bool) -> String {
-        isHidden ? "Show" : "Hide"
-    }
-
-    static func systemImage(isHidden: Bool) -> String {
-        isHidden ? "eye" : "eye.slash"
-    }
-}
-
 private extension BudgetStore {
     /// Masked variant of `BudgetColumn.text` for the budget table's cells.
     /// Lives here rather than on the store proper so the table's
@@ -237,8 +225,7 @@ struct BudgetView: View {
                     onSetHidden: {
                         setCategoryGroupHidden(group.id, hidden: $0)
                     },
-                    onToggleCollapse: { toggleCollapsed(group.id) },
-                    showsEllipsisMenu: true   // clean style uses ellipsis
+                    onToggleCollapse: { toggleCollapsed(group.id) }
                 )
                 .textCase(nil)
             }
@@ -256,8 +243,7 @@ struct BudgetView: View {
                     },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     onToggleCollapse: { toggleCollapsed(group.id) },
-                    reservesTwoLines: true,
-                    showsEllipsisMenu: false  // detailed style uses swipe
+                    reservesTwoLines: true
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
@@ -293,6 +279,9 @@ struct BudgetView: View {
         let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let categories = displayedIncomeCategories(in: budget)
         let name = group?.name ?? categories.first?.groupName ?? "Income"
+        let onSetHidden = group.flatMap { group -> ((Bool) -> Void)? in
+            group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
+        }
         if budgetStore.budgetDisplayStyle == .clean {
             Section {
                 if !isCollapsed {
@@ -311,25 +300,21 @@ struct BudgetView: View {
                     }
                 }
             } header: {
-                // The Income group can be swiped only to UNhide, never to
-                // hide: hiding it would drop the app's only income total
+                // The Income group can only be unhidden, never hidden:
+                // hiding it would drop the app's only income total
                 // from the budget table entirely. `onSetHidden` is passed
                 // only when the group is already hidden (e.g. leftover
-                // state from before this restriction existed), so the
-                // swipe button never offers "Hide" — only "Show" when
-                // needed. (GH #130's collapse control still applies.)
+                // state from before this restriction existed). GH #130's
+                // collapse control still applies.
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: BudgetView.incomeGroupHideAction(isHidden: group?.hidden == true) { hidden in
-                        if let group { setCategoryGroupHidden(group.id, hidden: hidden) }
-                    },
+                    onSetHidden: onSetHidden,
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
-                    },
-                    showsEllipsisMenu: true   // clean style uses ellipsis
+                    }
                 )
                 .textCase(nil)
             }
@@ -339,16 +324,13 @@ struct BudgetView: View {
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
-                    onSetHidden: BudgetView.incomeGroupHideAction(isHidden: group?.hidden == true) { hidden in
-                        if let group { setCategoryGroupHidden(group.id, hidden: hidden) }
-                    },
+                    onSetHidden: onSetHidden,
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     },
                     usesTableNumberFormat: true,
-                    reservesTwoLines: true,
-                    showsEllipsisMenu: false  // detailed style uses swipe
+                    reservesTwoLines: true
                 )
                 .listRowBackground(Color(.tertiarySystemFill))
                 .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
@@ -972,10 +954,7 @@ struct CategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(
-                        HideShowAction.title(isHidden: isHidden),
-                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
-                    )
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1079,10 +1058,7 @@ struct CleanCategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(
-                        HideShowAction.title(isHidden: isHidden),
-                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
-                    )
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1337,13 +1313,8 @@ struct BudgetGroupHeader: View {
     /// whether names wrap or not (GH #252); the clean style's plain section
     /// titles keep their natural height.
     var reservesTwoLines = false
-    /// If true, an ellipsis menu is shown for hide/show (clean style).
-    /// If false, swipe‑to‑hide is used instead (detailed style).
-    var showsEllipsisMenu: Bool = false
-
     var body: some View {
         HStack(spacing: 8) {
-            // Collapse button (chevron + name + totals)
             Button(action: onToggleCollapse) {
                 HStack(alignment: .top, spacing: BudgetColumn.spacing) {
                     // Nested so the chevron centers against the name (which can
@@ -1406,15 +1377,14 @@ struct BudgetGroupHeader: View {
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Toggles the group's categories")
 
-            // Ellipsis menu only in clean style
-            if showsEllipsisMenu, let onSetHidden {
+            if budgetStore.budgetDisplayStyle == .clean, let onSetHidden {
                 Menu {
                     Button {
                         onSetHidden(!isHidden)
                     } label: {
                         Label(
-                            HideShowAction.title(isHidden: isHidden),
-                            systemImage: HideShowAction.systemImage(isHidden: isHidden)
+                            isHidden ? "Show Group" : "Hide Group",
+                            systemImage: isHidden ? "eye" : "eye.slash"
                         )
                     }
                 } label: {
@@ -1425,16 +1395,12 @@ struct BudgetGroupHeader: View {
             }
         }
         .opacity(isHidden ? 0.5 : 1)
-        // Swipe‑to‑hide only in detailed style
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if !showsEllipsisMenu, let onSetHidden {
+            if budgetStore.budgetDisplayStyle == .detailed, let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(
-                        HideShowAction.title(isHidden: isHidden),
-                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
-                    )
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1473,15 +1439,6 @@ struct BudgetGroupHeader: View {
         usesTableNumberFormat
             ? budgetStore.displayBudgetCell(amount)
             : budgetStore.displayBalance(amount)
-    }
-}
-
-extension BudgetView {
-    nonisolated static func incomeGroupHideAction(
-        isHidden: Bool,
-        setter: @escaping (Bool) -> Void
-    ) -> ((Bool) -> Void)? {
-        isHidden ? setter : nil
     }
 }
 
@@ -1546,10 +1503,7 @@ struct IncomeCategoryRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(
-                        HideShowAction.title(isHidden: isHidden),
-                        systemImage: HideShowAction.systemImage(isHidden: isHidden)
-                    )
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
