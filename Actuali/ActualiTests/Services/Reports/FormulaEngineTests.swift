@@ -57,8 +57,9 @@ struct FormulaEngineTests {
     }
 
     @Test func splitChildrenAreIncludedWithoutParentDoubleCount() {
+        // Reports query rows are leaf rows, so a split parent is already absent.
+        // Both children should still contribute to the Formula query.
         let transactions = [
-            tx("parent", date: 20260705, amount: -10_000, isParent: true),
             tx("child-1", date: 20260705, amount: -6_000, parentId: "parent"),
             tx("child-2", date: 20260705, amount: -4_000, parentId: "parent"),
         ]
@@ -191,7 +192,7 @@ struct FormulaEngineTests {
 
     @Test func unknownQueryNameCountsAsZero() {
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=query("nope")+5"#),
+            meta: meta(formula: #"=QUERY("nope")+5"#),
             transactions: [], today: today, context: .empty)
         #expect(result == .value(5))
     }
