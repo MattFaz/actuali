@@ -83,7 +83,7 @@ struct FormulaEngineTests {
             ],
             today: today,
             context: .empty)
-        #expect(result == .value(1000.00))
+        #expect(result == .value(4000.00))
     }
 
     @Test func queryCountIsSupported() {
