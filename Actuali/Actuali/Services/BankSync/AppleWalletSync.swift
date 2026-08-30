@@ -16,7 +16,7 @@ enum AppleWalletAvailability: Sendable, Equatable {
 /// FinanceKit bridge stays unit-testable — the same seam as
 /// `WalletImportMapper` (GH #55, Tier 1); this is the Tier-2 automatic sync.
 struct AppleWalletAccount: Identifiable, Sendable, Equatable {
-    /// FinanceKit account UUID, lowercased — stored as `accounts.account_id`.
+    /// FinanceKit account UUID, lowercased and stored only on this device.
     let id: String
     let name: String
     /// What FinanceKit reports for the issuing institution ("Apple").
@@ -24,15 +24,31 @@ struct AppleWalletAccount: Identifiable, Sendable, Equatable {
     /// Signed like `Transaction.amount`: money owed is negative, so an Apple
     /// Card balance imports the way a credit card's should.
     let balanceCents: Int?
+    /// Available balances already include pending transactions; booked-only
+    /// balances need them folded in before deriving an opening balance.
+    let balanceIncludesPending: Bool
 
-    init(id: String, name: String, institutionName: String, balanceCents: Int?) {
-        // Lowercased here, at the one choke point, so the id always matches
-        // the `accounts.account_id` a link wrote regardless of who built it.
+    init(
+        id: String,
+        name: String,
+        institutionName: String,
+        balanceCents: Int?,
+        balanceIncludesPending: Bool = false
+    ) {
         self.id = id.lowercased()
         self.name = name
         self.institutionName = institutionName
         self.balanceCents = balanceCents
+        self.balanceIncludesPending = balanceIncludesPending
     }
+}
+
+/// A FinanceKit balance reduced to what selecting the latest snapshot needs.
+struct AppleWalletBalance: Sendable, Equatable {
+    let accountId: String
+    let cents: Int
+    let asOfDate: Date
+    let includesPending: Bool
 }
 
 /// A Wallet transaction as the bridge hands it over — raw enough that the
@@ -91,17 +107,21 @@ struct AppleWalletProvider: Sendable {
 
         var set = BankSyncDownloadSet()
         for target in targets {
-            // An account this Wallet doesn't have is left out so the caller
-            // says so — usually a link made from another device's Wallet.
+            // An account this Wallet doesn't have is left out for the caller
+            // to skip as a stale local link.
             guard let account = accounts.first(where: { $0.id == target.externalId })
             else { continue }
 
             let transactions = try await store.transactions(accountId: target.externalId)
+            let candidates = transactions
+                .compactMap(BankSyncCandidate.init(appleWallet:))
+                .filter { $0.date >= target.startDay }
+            let pending = candidates.lazy.filter { !$0.cleared }.reduce(0) { $0 + $1.amount }
             set.byAccount[target.externalId] = BankSyncDownload(
-                candidates: transactions
-                    .compactMap(BankSyncCandidate.init(appleWallet:))
-                    .filter { $0.date >= target.startDay },
-                currentBalanceCents: account.balanceCents
+                candidates: candidates,
+                currentBalanceCents: account.balanceCents.map {
+                    account.balanceIncludesPending ? $0 : $0 + pending
+                }
             )
         }
         return set
@@ -109,8 +129,6 @@ struct AppleWalletProvider: Sendable {
 }
 
 extension AppleWalletAccount {
-    /// FinanceKit has no institution id of its own, so the name doubles as
-    /// `banks.bank_id` — the same fallback SimpleFIN orgs without one use.
     var remoteAccount: BankSyncRemoteAccount {
         BankSyncRemoteAccount(
             id: id,

@@ -1,15 +1,11 @@
 import Foundation
 
-/// The provider an account's transactions are downloaded from. Actual stores
-/// this in `accounts.account_sync_source`; Actuali speaks SimpleFIN and
-/// Wallet (FinanceKit), but the column is shared with every other client, so
-/// a value it doesn't recognise has to survive a round trip untouched.
+/// The provider an account's transactions are downloaded from. Synced links
+/// use `accounts.account_sync_source`; FinanceKit links stay device-local.
 enum BankSyncSource: String, Sendable, Equatable {
     case simpleFin = "simpleFin"
-    /// Apple Card / Apple Cash / Savings via FinanceKit. Ours alone — no
-    /// upstream client can service it, since the data only exists in this
-    /// device's Wallet. The link still syncs (same columns as any other
-    /// provider), so the web UI shows the account as linked and can unlink it.
+    /// Apple Card / Apple Cash / Savings via FinanceKit. Ours alone because
+    /// the identifiers and data only exist in this device's Wallet.
     case financeKit = "financeKit"
 }
 
@@ -19,10 +15,11 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     /// The budget's account id.
     let id: String
     let name: String
-    /// `accounts.account_id` — the id the provider knows the account by.
+    /// The id the provider knows the account by. FinanceKit keeps it locally;
+    /// other providers read it from `accounts.account_id`.
     let externalAccountId: String
-    /// `accounts.account_sync_source`, verbatim. Not every value maps to a
-    /// provider Actuali can sync (see `source`).
+    /// The provider name. Database-backed links preserve
+    /// `accounts.account_sync_source` verbatim; FinanceKit supplies it locally.
     let syncSource: String
     let offBudget: Bool
     let closed: Bool
@@ -33,10 +30,10 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
 /// A provider-side account offered for linking, whichever provider it came
 /// from — what the link flow needs and nothing more.
 struct BankSyncRemoteAccount: Identifiable, Sendable, Equatable {
-    /// The provider's account id — becomes `accounts.account_id`.
+    /// The provider's account id.
     let id: String
     let name: String
-    /// The provider's institution id — becomes `banks.bank_id`.
+    /// The provider's institution id.
     let institutionId: String
     let institutionName: String
     let balanceCents: Int?

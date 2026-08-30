@@ -62,6 +62,12 @@ struct WalletImportMapperTests {
         #expect(mapped.payeeName == "Joes Diner")
     }
 
+    @Test func whitespaceMerchantFallsBackToDescription() throws {
+        let mapped = try #require(candidate(
+            merchantName: "   ", transactionDescription: "JOES DINER"))
+        #expect(mapped.payeeName == "Joes Diner")
+    }
+
     @Test func bookedIsCleared() throws {
         let mapped = try #require(candidate(status: .booked))
         #expect(mapped.cleared)

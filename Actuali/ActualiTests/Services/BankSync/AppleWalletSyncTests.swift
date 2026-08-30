@@ -97,6 +97,26 @@ struct AppleWalletSyncTests {
         Calendar.current.date(byAdding: .day, value: -days, to: Date())!
     }
 
+    @Test func latestBalanceSnapshotWins() throws {
+        let accountId = Self.cardId
+        let older = AppleWalletBalance(
+            accountId: accountId,
+            cents: -40000,
+            asOfDate: Date(timeIntervalSince1970: 1_000),
+            includesPending: false
+        )
+        let newer = AppleWalletBalance(
+            accountId: accountId,
+            cents: -50000,
+            asOfDate: Date(timeIntervalSince1970: 2_000),
+            includesPending: true
+        )
+
+        let latest = try #require(FinanceKitWalletStore.latestBalances([older, newer])[accountId])
+
+        #expect(latest == newer)
+    }
+
     @Test func downloadCoversOnlyAccountsTheWalletHas() async throws {
         let store = StubWalletStore(
             accountsValue: [AppleWalletAccount(
@@ -111,12 +131,43 @@ struct AppleWalletSyncTests {
             BankSyncTarget(externalId: "not-in-this-wallet", startDay: startDay)
         ])
 
-        // The unknown account is left out entirely, so the caller reports it.
+        // The unknown account is left out entirely for the caller to skip.
         #expect(set.byAccount.count == 1)
         let download = try #require(set.byAccount[Self.cardId])
         #expect(download.candidates.count == 1)
         #expect(download.currentBalanceCents == -50000)
         #expect(download.status == "ok")
+    }
+
+    @Test func bookedBalanceAddsPendingTransactionsButAvailableDoesNot() async throws {
+        let pending = transaction(amount: 12, status: .pending)
+        let bookedStore = StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.cardId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: -50000,
+                balanceIncludesPending: false
+            )],
+            transactionsByAccount: [Self.cardId: [pending]]
+        )
+        let availableStore = StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.cardId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: -51200,
+                balanceIncludesPending: true
+            )],
+            transactionsByAccount: [Self.cardId: [pending]]
+        )
+        let target = BankSyncTarget(externalId: Self.cardId, startDay: 0)
+
+        let booked = try await AppleWalletProvider(store: bookedStore).download([target])
+        let available = try await AppleWalletProvider(store: availableStore).download([target])
+
+        #expect(booked.byAccount[Self.cardId]?.currentBalanceCents == -51200)
+        #expect(available.byAccount[Self.cardId]?.currentBalanceCents == -51200)
     }
 
     /// The store hands over full history; the provider keeps only the sync

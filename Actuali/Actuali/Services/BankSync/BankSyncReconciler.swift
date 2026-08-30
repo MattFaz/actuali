@@ -234,19 +234,15 @@ extension BankSyncCandidate {
     /// cleanup as the Tier-1 picker import, so both routes file "SQ *Coffee"
     /// under the same payee; the raw description survives in the notes.
     init?(appleWallet transaction: AppleWalletTransaction) {
-        guard transaction.status != .rejected,
-              let cents = WalletImportMapper.cents(from: transaction.amount) else { return nil }
+        guard let imported = WalletImportMapper.candidate(from: transaction) else { return nil }
         self.init(
-            importedId: transaction.id,
-            date: Transaction.yyyymmdd(from: transaction.date),
-            amount: transaction.isCredit ? cents : -cents,
-            payeeName: Self.payeeName(from: [
-                transaction.merchantName.map(MerchantNormalizer.normalize),
-                MerchantNormalizer.normalize(transaction.description)
-            ]),
+            importedId: imported.id,
+            date: Transaction.yyyymmdd(from: imported.date),
+            amount: imported.amountCents,
+            payeeName: imported.payeeName,
             payeeId: nil,
             notes: Self.notes(from: transaction.description),
-            cleared: transaction.status == .booked
+            cleared: imported.cleared
         )
     }
 

@@ -43,7 +43,7 @@ struct BudgetStoreAppleWalletSyncTests {
         )
     }
 
-    private func makeDatabase(linked: Bool = true) throws -> (BudgetDatabase, URL) {
+    private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
@@ -109,32 +109,38 @@ struct BudgetStoreAppleWalletSyncTests {
                     value BLOB NOT NULL
                 )
                 """)
-            if linked {
-                try db.execute(sql: """
-                    INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
-                                          account_id, account_sync_source)
-                    VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1, ?, 'financeKit')
-                    """, arguments: [Self.accountId, Self.externalAccountId])
-            } else {
-                try db.execute(sql: """
-                    INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-                    VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1)
-                    """, arguments: [Self.accountId])
-            }
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1)
+                """, arguments: [Self.accountId])
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(
         database: BudgetDatabase,
-        walletStore: any AppleWalletReading
+        walletStore: any AppleWalletReading,
+        linked: Bool = true
     ) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        defaults.removePersistentDomain(forName: "BudgetStoreAppleWalletSyncTests")
+        store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "wallet-tests")
         store.setAppleWalletStoreForTesting(walletStore)
-        await store.loadBankSyncAccounts()
+        if linked {
+            let remote = AppleWalletAccount(
+                id: Self.externalAccountId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: nil
+            ).remoteAccount
+            try await store.linkBankAccount(accountId: Self.accountId, to: remote)
+        } else {
+            await store.loadBankSyncAccounts()
+        }
         return store
     }
 
@@ -187,11 +193,11 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(imported[1]["date"] == Self.expectedDay(1))
         #expect(imported[1]["imported_description"] == "Corner Store")
 
-        // The card owes $500 now, so what it opened with is that less the
-        // imported history: -50000 - -4545.
+        // The booked balance excludes the pending $12, so the current balance
+        // is -51200 and the opening balance is -51200 - -4545.
         let opening = try rows(path: url, where: "starting_balance_flag = 1")
         #expect(opening.count == 1)
-        #expect(opening[0]["amount"] == -45455)
+        #expect(opening[0]["amount"] == -46655)
 
         // The same status columns a SimpleFIN sync stamps for the web UI.
         let account = try #require(
@@ -214,10 +220,10 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
     }
 
-    @Test func linkingWritesTheColumnsTheWebUIReads() async throws {
-        let (database, url) = try makeDatabase(linked: false)
+    @Test func linkingStaysDeviceLocal() async throws {
+        let (database, url) = try makeDatabase()
         defer { cleanup(url) }
-        let store = try await makeStore(database: database, walletStore: appleCard())
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
         let remote = try #require(try await store.fetchAppleWalletAccounts().first)
 
         try await store.linkBankAccount(accountId: Self.accountId, to: remote.remoteAccount)
@@ -225,21 +231,29 @@ struct BudgetStoreAppleWalletSyncTests {
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
         )
-        #expect(account["account_id"] == Self.externalAccountId)
-        #expect(account["account_sync_source"] == "financeKit")
+        let externalId: String? = account["account_id"]
+        let source: String? = account["account_sync_source"]
         let bankRowId: String? = account["bank"]
-        #expect(bankRowId != nil)
-
-        let bank = try #require(
-            try row(path: url, sql: "SELECT * FROM banks WHERE id = ?", arguments: [bankRowId])
-        )
-        #expect(bank["bank_id"] == "Apple")
-        #expect(bank["name"] == "Apple")
+        #expect(externalId == nil)
+        #expect(source == nil)
+        #expect(bankRowId == nil)
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.source == .financeKit)
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == Self.externalAccountId)
     }
 
-    /// A Wallet link made on another device (or before an iPad restore) can't
-    /// be serviced where FinanceKit has nothing — that's a quiet skip, not an
-    /// error on every sync.
+    @Test func unlinkingRemovesTheDeviceLocalLink() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+    }
+
+    /// A device without FinanceKit can't service its local Wallet link. That
+    /// is a quiet skip, not an error on every sync.
     @Test func anUnsupportedDeviceSkipsWalletAccountsQuietly() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -268,7 +282,7 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(result.problems[0].contains("Wallet access"))
     }
 
-    @Test func anAccountThisWalletDoesntHaveIsReportedNotSilentlySkipped() async throws {
+    @Test func anAccountThisWalletDoesntHaveIsSkippedQuietly() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         var wallet = appleCard()
@@ -277,14 +291,10 @@ struct BudgetStoreAppleWalletSyncTests {
 
         let result = try await store.syncBankAccounts()
 
-        #expect(result.accountsSynced == 0)
-        #expect(result.problems.count == 1)
-        #expect(result.problems[0].contains("Apple Card"))
-        #expect(result.problems[0].contains("Wallet"))
+        #expect(result == BudgetStore.BankSyncResult())
 
-        // Missing-from-Wallet is this device's view, not the account's state:
-        // the same link can be serving fine on the device that made it, so no
-        // failure status may be stamped into the synced columns.
+        // Missing-from-Wallet is device-local state, so it must not stamp a
+        // failure into the budget's synced status columns.
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
         )

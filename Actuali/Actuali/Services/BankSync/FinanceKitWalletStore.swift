@@ -29,18 +29,15 @@ struct FinanceKitWalletStore: AppleWalletReading {
     func accounts() async throws -> [AppleWalletAccount] {
         let accounts = try await FinanceStore.shared.accounts(query: AccountQuery())
         let balances = try await FinanceStore.shared.accountBalances(query: AccountBalanceQuery())
-        let centsByAccount = Dictionary(
-            balances.compactMap { balance in
-                Self.cents(from: balance).map { (balance.accountID, $0) }
-            },
-            uniquingKeysWith: { first, _ in first }
-        )
+        let balancesByAccount = Self.latestBalances(balances.compactMap(Self.balance(from:)))
         return accounts.map { account in
-            AppleWalletAccount(
+            let balance = balancesByAccount[account.id.uuidString.lowercased()]
+            return AppleWalletAccount(
                 id: account.id.uuidString,
                 name: account.displayName,
                 institutionName: account.institutionName,
-                balanceCents: centsByAccount[account.id]
+                balanceCents: balance?.cents,
+                balanceIncludesPending: balance?.includesPending ?? false
             )
         }
     }
@@ -61,16 +58,26 @@ struct FinanceKitWalletStore: AppleWalletReading {
 
     /// Signed cents from a FinanceKit balance: credit is money there, debit is
     /// money owed — which is how an Apple Card's balance comes out negative.
-    private static func cents(from accountBalance: AccountBalance) -> Int? {
-        let balance: Balance? = switch accountBalance.currentBalance {
-        case .booked(let booked): booked
-        case .availableAndBooked(_, let booked): booked
-        case .available(let available): available
+    static func latestBalances(_ balances: [AppleWalletBalance]) -> [String: AppleWalletBalance] {
+        Dictionary(grouping: balances, by: \AppleWalletBalance.accountId)
+            .compactMapValues { $0.max { $0.asOfDate < $1.asOfDate } }
+    }
+
+    private static func balance(from accountBalance: AccountBalance) -> AppleWalletBalance? {
+        let selection: (balance: Balance, includesPending: Bool)? = switch accountBalance.currentBalance {
+        case .available(let available): (available, true)
+        case .booked(let booked): (booked, false)
+        case .availableAndBooked(let available, _): (available, true)
         @unknown default: nil
         }
-        guard let balance,
-              let cents = WalletImportMapper.cents(from: balance.amount.amount) else { return nil }
-        return balance.creditDebitIndicator == .credit ? cents : -cents
+        guard let (balance, includesPending) = selection else { return nil }
+        guard let cents = WalletImportMapper.cents(from: balance.amount.amount) else { return nil }
+        return AppleWalletBalance(
+            accountId: accountBalance.accountID.uuidString.lowercased(),
+            cents: balance.creditDebitIndicator == .credit ? cents : -cents,
+            asOfDate: balance.asOfDate,
+            includesPending: includesPending
+        )
     }
 }
 

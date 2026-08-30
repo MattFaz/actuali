@@ -1076,6 +1076,12 @@ final class BudgetStore: ObservableObject {
         appleWalletStore = store
     }
 
+    /// Test-only: isolate device-local Wallet links from the app's defaults.
+    func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
+        appleWalletLinkDefaults = defaults
+        _currentBudgetId = Published(initialValue: budgetId)
+    }
+
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -1467,6 +1473,7 @@ final class BudgetStore: ObservableObject {
                 }
                 try? fileManager.deleteBudget(local.id)
                 forgetCachedCurrencyCode(for: local.id)
+                forgetAppleWalletLinks(for: local.id)
             }
 
             // The SimpleFIN access key goes too, for the same reason the
@@ -2402,6 +2409,32 @@ final class BudgetStore: ObservableObject {
     /// out of the way.
     private var appleWalletStore: any AppleWalletReading = FinanceKitWalletStore()
 
+    /// FinanceKit identifiers are meaningful only on this device. Keeping the
+    /// links per budget in UserDefaults prevents unknown provider values from
+    /// reaching Actual's synced `accounts` rows.
+    private var appleWalletLinkDefaults = UserDefaults.standard
+
+    private func appleWalletLinksKey(for budgetId: String) -> String {
+        "appleWalletLinks_\(budgetId)"
+    }
+
+    private var appleWalletLinks: [String: String] {
+        get {
+            guard let budgetId = currentBudgetId else { return [:] }
+            return appleWalletLinkDefaults.dictionary(
+                forKey: appleWalletLinksKey(for: budgetId)
+            ) as? [String: String] ?? [:]
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            appleWalletLinkDefaults.set(newValue, forKey: appleWalletLinksKey(for: budgetId))
+        }
+    }
+
+    private func forgetAppleWalletLinks(for budgetId: String) {
+        appleWalletLinkDefaults.removeObject(forKey: appleWalletLinksKey(for: budgetId))
+    }
+
     /// Whether Wallet data can be read here, as of the last check. Drives
     /// which of the setup screen's Wallet states shows.
     @Published private(set) var appleWalletAvailability: AppleWalletAvailability = .unsupported
@@ -2562,7 +2595,26 @@ final class BudgetStore: ObservableObject {
             bankSyncAccounts = []
             return
         }
-        bankSyncAccounts = (try? await database.fetchBankSyncAccounts()) ?? []
+        let synced = (try? await database.fetchBankSyncAccounts()) ?? []
+        let walletLinks = appleWalletLinks
+        guard !walletLinks.isEmpty else {
+            bankSyncAccounts = synced
+            return
+        }
+        let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
+        let budgetAccounts = (try? await database.fetchAccounts()) ?? accounts
+        bankSyncAccounts = budgetAccounts.compactMap { account in
+            if let linked = syncedById[account.id] { return linked }
+            guard let externalId = walletLinks[account.id] else { return nil }
+            return BankSyncAccount(
+                id: account.id,
+                name: account.name,
+                externalAccountId: externalId,
+                syncSource: BankSyncSource.financeKit.rawValue,
+                offBudget: account.offBudget,
+                closed: account.closed
+            )
+        }
     }
 
     /// The bank feed an account is wired up to, if any.
@@ -2571,6 +2623,14 @@ final class BudgetStore: ObservableObject {
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
+        if remote.source == .financeKit {
+            guard currentBudgetId != nil else { throw BudgetStoreError.syncNotConfigured }
+            var links = appleWalletLinks
+            links[accountId] = remote.id
+            appleWalletLinks = links
+            await loadBankSyncAccounts()
+            return
+        }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.linkAccount(
             accountId: accountId,
@@ -2579,10 +2639,20 @@ final class BudgetStore: ObservableObject {
             institutionId: remote.institutionId,
             institutionName: remote.institutionName
         )
+        var links = appleWalletLinks
+        links.removeValue(forKey: accountId)
+        appleWalletLinks = links
         await refreshDataOnly()
     }
 
     func unlinkBankAccount(accountId: String) async throws {
+        if bankSyncAccount(forAccountId: accountId)?.source == .financeKit {
+            var links = appleWalletLinks
+            links.removeValue(forKey: accountId)
+            appleWalletLinks = links
+            await loadBankSyncAccounts()
+            return
+        }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.unlinkAccount(accountId: accountId)
         await refreshDataOnly()
@@ -2613,10 +2683,8 @@ final class BudgetStore: ObservableObject {
 
         var result = BankSyncResult()
 
-        // A Wallet link lives in the budget file, but its data only exists in
-        // the Wallet of the device that made it. Where this device can't
-        // possibly serve it — no FinanceKit data, or never asked — skip
-        // quietly; access someone turned off is theirs to turn back on.
+        // Wallet links and Wallet data both live only on this device. Where
+        // FinanceKit can't serve them, skip quietly unless access was revoked.
         if !walletTargets.isEmpty {
             switch await appleWalletStore.availability() {
             case .authorized:
@@ -2657,15 +2725,17 @@ final class BudgetStore: ObservableObject {
         // that source's problem, not the sync's — its targets fall through the
         // loop below as "failed" while the other source's still import.
         var downloaded = BankSyncDownloadSet()
+        var simpleFinProblems: [String] = []
+        var walletProblems: [String] = []
         if !simpleFinTargets.isEmpty {
             do {
                 let provider = try await makeBankSyncProvider()
                 let set = try await provider.download(downloadTargets(simpleFinTargets))
                 downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                downloaded.problems += set.problems
+                simpleFinProblems += set.problems
             } catch {
                 guard !walletTargets.isEmpty else { throw error }
-                downloaded.problems.append(error.localizedDescription)
+                simpleFinProblems.append(error.localizedDescription)
             }
         }
         if !walletTargets.isEmpty {
@@ -2673,14 +2743,14 @@ final class BudgetStore: ObservableObject {
                 let set = try await AppleWalletProvider(store: appleWalletStore)
                     .download(downloadTargets(walletTargets))
                 downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                downloaded.problems += set.problems
+                walletProblems += set.problems
             } catch {
                 guard !simpleFinTargets.isEmpty else { throw error }
-                downloaded.problems.append(error.localizedDescription)
+                walletProblems.append(error.localizedDescription)
             }
         }
 
-        result.problems += downloaded.problems
+        result.problems += simpleFinProblems + walletProblems
         // One rules/context fetch for the whole run, not one per row.
         let prepared = await syncClient.prepareRules()
         let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
@@ -2690,20 +2760,20 @@ final class BudgetStore: ObservableObject {
             guard let download = downloaded.byAccount[target.externalAccountId] else {
                 // A connection-level problem already explains why nothing came
                 // back; don't also tell them to relink an account that's fine.
-                if downloaded.problems.isEmpty {
-                    result.problems.append(target.source == .financeKit
-                        ? "\(target.name): this device's Wallet doesn't have this account — it was probably linked on another device. Unlink it and link it again here."
-                        : "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
+                let sourceHasProblems = target.source == .financeKit
+                    ? !walletProblems.isEmpty
+                    : !simpleFinProblems.isEmpty
+                if target.source == .simpleFin && !sourceHasProblems {
+                    result.problems.append(
+                        "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
                     )
                 }
-                // A Wallet account another device serves fine is only missing
-                // *here*, so this device-relative state must not be stamped
-                // into the synced status columns — it would paint an error
-                // badge on every client over a link that works where it was
-                // made. SimpleFIN is one shared feed, so there it's stamped.
+                // Missing Wallet data is device-local state, so don't stamp it
+                // into synced status columns. SimpleFIN is a shared feed, so
+                // its missing/failed state belongs there.
                 if target.source != .financeKit {
                     statuses.append((target.id, nil,
-                                     downloaded.problems.isEmpty ? "account-missing" : "failed"))
+                                     sourceHasProblems ? "failed" : "account-missing"))
                 }
                 continue
             }
