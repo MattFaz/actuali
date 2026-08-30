@@ -1069,6 +1069,11 @@ final class BudgetStore: ObservableObject {
         simpleFINClient = client
     }
 
+    /// Test-only: avoid sharing the app's Keychain credential across parallel suites.
+    func setSimpleFINAccessKeyForTesting(_ accessKey: SimpleFINAccessKey?) {
+        simpleFINAccessKeyProvider = { accessKey }
+    }
+
     /// Test-only: swap in a stub Wallet store so the FinanceKit sync path can
     /// be exercised off-device (the real store only answers on entitled
     /// iPhones).
@@ -2421,6 +2426,7 @@ final class BudgetStore: ObservableObject {
     /// device. Only used when the server has no SimpleFIN of its own — see
     /// `makeBankSyncProvider`.
     private var simpleFINClient = SimpleFINClient()
+    private var simpleFINAccessKeyProvider = { SimpleFINCredentials.accessKey }
 
     /// Reads Wallet (FinanceKit) accounts and transactions. Only answers on
     /// iPhones with Wallet data and the FinanceKit entitlement; everywhere
@@ -2551,7 +2557,7 @@ final class BudgetStore: ObservableObject {
     /// needs a second setup token, and a link made here is one the server can
     /// actually service.
     private func makeBankSyncProvider() async throws -> any BankSyncProvider {
-        let deviceKey = SimpleFINCredentials.accessKey
+        let deviceKey = simpleFINAccessKeyProvider()
         do {
             // nil means the route isn't served here — an older server, or a
             // proxy that strips it. Not a failure, just not an option.
