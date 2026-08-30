@@ -45,11 +45,10 @@ struct ReportsTabView: View {
                         // the selection re-creates the dashboard around the
                         // outgoing page's widgets, and DashboardView's load
                         // runs once per identity — so it would fetch the
-                        // inputs that widget set needs (budgets, schedules,
-                        // custom report configs) and never re-run for the
-                        // widgets that actually land.
+                        // inputs that widget set needs and never re-run for
+                        // the widgets that actually land.
                         DashboardView(widgets: widgets)
-                            .id(loadedPageId)
+                            .id("\(loadedPageId ?? "")|\(widgets.map(\.id).joined(separator: ","))")
                     }
                 }
             }
@@ -67,11 +66,14 @@ struct ReportsTabView: View {
             // setting has to switch the dashboard itself, or it appears to do
             // nothing until the next launch. Clearing it (nil) re-resolves to
             // the first page.
-            .onChange(of: budgetStore.dataVersion) { _, _ in
-                Task { await reload() }
-            }
             .onChange(of: budgetStore.defaultDashboardPageId) { _, newValue in
                 selectedPageId = newValue
+                Task { await reload() }
+            }
+            // Sync can replace the widget set while staying on the same page.
+            // Include widget IDs in DashboardView's identity so its input load
+            // restarts for the newly synced cards as well.
+            .onChange(of: budgetStore.dataVersion) { _, _ in
                 Task { await reload() }
             }
             .refreshable {
