@@ -132,13 +132,18 @@ struct FormulaEngineTests {
     }
 
     @Test func extremeResultsAreUnsupportedBeforeDisplayConversion() {
-        for formula in ["=POWER(10, 30)", "=100000000000000000000"] {
-            let result = FormulaEngine.compute(
-                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
-            guard case .unsupported = result else {
-                Issue.record("expected extreme result to be unsupported, got \(result)")
-                return
-            }
+        let plainNumber = FormulaEngine.compute(
+            meta: meta(formula: "=POWER(10, 30)"), transactions: [], today: today, context: .empty)
+        #expect(plainNumber == .number(1e30))
+
+        let currencyOverflow = FormulaEngine.compute(
+            meta: meta(formula: #"=QUERY("income") * POWER(10, 30)"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("income", date: 20260405, amount: 100),
+            ], today: today, context: .empty)
+        guard case .unsupported = currencyOverflow else {
+            Issue.record("expected currency overflow to be unsupported, got \(currencyOverflow)")
+            return
         }
     }
 
