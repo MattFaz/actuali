@@ -137,7 +137,8 @@ struct FormulaEngineTests {
         #expect(plainNumber == .number(1e30))
 
         let currencyOverflow = FormulaEngine.compute(
-            meta: meta(formula: #"=QUERY("income") * POWER(10, 30)"#, queries: savedThisMonthQueries),
+            meta: meta(formula: "=SUM(QUERY(\"income\"), POWER(10, 30))"),
+            queries: savedThisMonthQueries,
             transactions: [
                 tx("income", date: 20260405, amount: 100),
             ], today: today, context: .empty)
