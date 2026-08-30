@@ -49,7 +49,8 @@ struct BudgetStoreSaveTransactionTests {
                     id TEXT PRIMARY KEY,
                     targetId TEXT
                 )
-                """)
+                """
+            )
             try db.execute(sql: """
                 CREATE TABLE messages_crdt (
                     id INTEGER PRIMARY KEY,
@@ -208,18 +209,20 @@ struct BudgetStoreSaveTransactionTests {
 
     // MARK: - End-to-end save (create and edit)
 
-    @Test func savingANewTransactionPersistsRowWithImportedPayee() async throws {
+    @Test func savingANewTransactionPersistsRowAndReturnsCreatedID() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveTransaction(
+        let id = try await store.saveTransaction(
             form(type: .expense, amount: "10.50", payeeName: "Trader Joe's")
         )
 
+        let returnedID = try #require(id)
         let rows = try transactionRows(path: path)
         #expect(rows.count == 1)
         let row = try #require(rows.first)
+        #expect(row["id"] == returnedID)
         #expect(row["acct"] == "acct-1")
         #expect(row["amount"] == -1050)
         // New transactions record the typed payee name as imported_description
@@ -227,6 +230,24 @@ struct BudgetStoreSaveTransactionTests {
         // The payee was created and linked
         let createdPayee = try #require(store.payees.first { $0.name == "Trader Joe's" })
         #expect(row["description"] == createdPayee.id)
+        #expect(row["tombstone"] == 0)
+    }
+
+    @Test func zeroAmountExpenseIsPersistedAndReturnsCreatedID() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        let id = try await store.saveTransaction(
+            form(type: .expense, amount: "0")
+        )
+
+        let returnedID = try #require(id)
+        let rows = try transactionRows(path: path)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row["id"] == returnedID)
+        #expect(row["amount"] == 0)
         #expect(row["tombstone"] == 0)
     }
 
