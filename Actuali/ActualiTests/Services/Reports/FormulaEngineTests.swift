@@ -9,14 +9,8 @@ struct FormulaEngineTests {
         return c.date(from: DateComponents(year: 2026, month: 7, day: 11))!
     }()
 
-    private func tx(
-        _ id: String,
-        date: Int,
-        amount: Int,
-        isParent: Bool = false,
-        parentId: String? = nil,
-        tombstone: Bool = false
-    ) -> Transaction {
+    private func tx(_ id: String, date: Int, amount: Int,
+                    isParent: Bool = false, parentId: String? = nil, tombstone: Bool = false) -> Transaction {
         Transaction(id: id, accountId: "a1", date: date, amount: amount,
                     payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
                     notes: nil, cleared: true, reconciled: false, transferId: nil,
@@ -43,22 +37,18 @@ struct FormulaEngineTests {
     }
 
     @Test func sumsTwoQueriesOverSlidingWindow() {
-        // sliding-window Apr slides to July (today's month): only July rows count.
         let transactions = [
             tx("1", date: 20260705, amount: -300_000),
             tx("2", date: 20260702, amount: 100_000),
             tx("3", date: 20260405, amount: -999_900),
         ]
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=query("expenses")+query("income")"#,
-                       queries: savedThisMonthQueries),
+            meta: meta(formula: #"=query("expenses")+query("income")"#, queries: savedThisMonthQueries),
             transactions: transactions, today: today, context: .empty)
         #expect(result == .value(-2000.00))
     }
 
     @Test func splitChildrenAreIncludedWithoutParentDoubleCount() {
-        // Reports query rows are leaf rows, so a split parent is already absent.
-        // Both children should still contribute to the Formula query.
         let transactions = [
             tx("child-1", date: 20260705, amount: -6_000, parentId: "parent"),
             tx("child-2", date: 20260705, amount: -4_000, parentId: "parent"),
@@ -103,7 +93,6 @@ struct FormulaEngineTests {
             ],
             today: today,
             context: .empty)
-        // 1000 - (-3000) = 4000.
         #expect(result == .value(4000.00))
     }
 
@@ -116,7 +105,7 @@ struct FormulaEngineTests {
         let result2 = FormulaEngine.compute(
             meta: meta(formula: "=FLOOR(10.8, 1) + CEILING(10.2, 1)"),
             transactions: [], today: today, context: .empty)
-        #expect(result2 == .value(22))
+        #expect(result2 == .value(21))
 
         let result3 = FormulaEngine.compute(
             meta: meta(formula: "=PI()"),
