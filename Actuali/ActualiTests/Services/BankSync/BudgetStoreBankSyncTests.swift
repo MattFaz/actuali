@@ -100,6 +100,31 @@ struct BudgetStoreBankSyncTests {
         """
     }
 
+    private static let walletAccountId = "acct-wallet"
+    private static let walletExternalAccountId = "22222222-2222-2222-2222-222222222222"
+
+    private static func dateDaysAgo(_ days: Int) -> Date {
+        Calendar.current.date(byAdding: .day, value: -days, to: Date())!
+    }
+
+    /// An Apple Card with one booked purchase, for the mixed-source tests.
+    private func appleCardStub() -> StubWalletStore {
+        StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.walletExternalAccountId, name: "Apple Card",
+                institutionName: "Apple", balanceCents: -50000
+            )],
+            transactionsByAccount: [Self.walletExternalAccountId: [
+                AppleWalletTransaction(
+                    id: "11111111-1111-1111-1111-111111111111",
+                    amount: Decimal(string: "12.00")!, isCredit: false,
+                    merchantName: "Corner Store", description: "CORNER STORE",
+                    status: .booked, date: Self.dateDaysAgo(3)
+                )
+            ]]
+        )
+    }
+
     private func makeDatabase(seedTransactions: Bool = false) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -181,16 +206,47 @@ struct BudgetStoreBankSyncTests {
         return (try BudgetDatabase(path: tempURL), tempURL)
     }
 
-    private func makeStore(database: BudgetDatabase, responseBody: String) async throws -> BudgetStore {
+    private func makeStore(
+        database: BudgetDatabase,
+        responseBody: String,
+        walletStore: (any AppleWalletReading)? = nil
+    ) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreBankSyncTests"))
+        defaults.removePersistentDomain(forName: "BudgetStoreBankSyncTests")
+        store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "bank-sync-tests")
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: responseBody))
         )
+        if let walletStore {
+            store.setAppleWalletStoreForTesting(walletStore)
+        }
         await store.loadBankSyncAccounts()
+        if walletStore != nil {
+            let remote = AppleWalletAccount(
+                id: Self.walletExternalAccountId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: nil
+            ).remoteAccount
+            try await store.linkBankAccount(accountId: Self.walletAccountId, to: remote)
+        }
         return store
+    }
+
+    /// Adds the account that the mixed-source tests link to Wallet locally.
+    private func seedWalletAccount(at url: URL) throws {
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.walletAccountId
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 2)
+                """, arguments: [accountId])
+        }
     }
 
     private func rows(path: URL, where clause: String = "1=1") throws -> [Row] {
@@ -455,7 +511,7 @@ struct BudgetStoreBankSyncTests {
              "name": "Savings", "balance": "0.00"}
             """.utf8))
 
-        try await store.linkBankAccount(accountId: Self.accountId, to: remote)
+        try await store.linkBankAccount(accountId: Self.accountId, to: remote.remoteAccount)
 
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
@@ -669,5 +725,109 @@ struct BudgetStoreBankSyncTests {
         #expect(accounts[0].id == "sf-acct-1")
         #expect(accounts[0].org.bankId == "mybank.com")
         #expect(accounts[0].balanceCents == 10000)
+    }
+
+    // MARK: - Mixed sources (SimpleFIN + Apple Wallet)
+
+    @Test func mixedSourcesSyncInOneRun() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try seedWalletAccount(at: url)
+        let store = try await makeStore(
+            database: database,
+            responseBody: accountSet(transactions: """
+                {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+                """),
+            walletStore: appleCardStub()
+        )
+
+        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+
+        #expect(result.accountsSynced == 2)
+        #expect(result.problems.isEmpty)
+        #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
+        let walletRow = try rows(
+            path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'"
+        )
+        #expect(walletRow.count == 1)
+        #expect(walletRow[0]["acct"] == Self.walletAccountId)
+    }
+
+    /// A broken SimpleFIN setup is that source's problem: the Wallet half of
+    /// the run must still import, with the failure carried in the result.
+    @Test func aSimpleFINFailureDoesntBlockTheWalletImport() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try seedWalletAccount(at: url)
+        let store = try await makeStore(
+            database: database,
+            responseBody: accountSet(transactions: ""),
+            walletStore: appleCardStub()
+        )
+
+        // No device key and no reachable server: the SimpleFIN download can't
+        // even start. With only SimpleFIN linked this throws (see
+        // syncingWithoutAnAccessKeyIsRefused) — with Wallet in the run it
+        // must not.
+        let result = try await withoutStoredAccessKey { try await store.syncBankAccounts() }
+
+        #expect(result.accountsSynced == 1)
+        #expect(!result.problems.isEmpty)
+        #expect(try rows(
+            path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'"
+        ).count == 1)
+    }
+
+    /// And the mirror image: a Wallet read blowing up must not cost the
+    /// SimpleFIN accounts their sync.
+    @Test func aWalletFailureDoesntBlockTheSimpleFINImport() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try seedWalletAccount(at: url)
+        var wallet = appleCardStub()
+        wallet.throwsOnAccounts = true
+        let store = try await makeStore(
+            database: database,
+            responseBody: accountSet(transactions: """
+                {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+                """),
+            walletStore: wallet
+        )
+
+        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+
+        #expect(result.accountsSynced == 1)
+        #expect(!result.problems.isEmpty)
+        #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
+
+        // The Wallet failure is this device's, so the synced status columns
+        // stay untouched for that account.
+        let walletAccount = try #require(try row(
+            path: url, sql: "SELECT * FROM accounts WHERE id = ?",
+            arguments: [Self.walletAccountId]
+        ))
+        let status: String? = walletAccount["bank_sync_status"]
+        #expect(status == nil)
+    }
+
+    @Test func aWalletFailureDoesntMisclassifyAMissingSimpleFINAccount() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try seedWalletAccount(at: url)
+        var wallet = appleCardStub()
+        wallet.throwsOnAccounts = true
+        let store = try await makeStore(
+            database: database,
+            responseBody: #"{"errors":[],"accounts":[]}"#,
+            walletStore: wallet
+        )
+
+        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+
+        #expect(result.problems.contains { $0.contains("SimpleFIN didn't return this account") })
+        let simpleFinAccount = try #require(try row(
+            path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId]
+        ))
+        #expect(simpleFinAccount["bank_sync_status"] == "account-missing")
     }
 }
