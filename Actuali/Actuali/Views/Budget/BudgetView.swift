@@ -576,7 +576,7 @@ struct BudgetView: View {
             // a first group (GH #165).
             .contentMargins(
                 .top,
-                budgetStore.budgetDisplayStyle == .clean ? 20 : 16,
+                budgetStore.budgetDisplayStyle == .clean ? 20 : 6,
                 for: .scrollContent
             )
             // Let short rows (group headers) sit below the stock 44 pt
@@ -1252,6 +1252,7 @@ struct BudgetAmountPill: View {
             .animatedAmount(text)
             .padding(.vertical, 3)
             .frame(width: BudgetColumn.width, alignment: .trailing)
+            .contentShape(.rect)
     }
 }
 
