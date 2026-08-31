@@ -21,6 +21,9 @@ enum CategoryFundingDecision: Equatable {
 }
 
 private actor CategoryFundingProcessingQueue {
+    // ponytail: one serial tail is enough to prevent two saves from funding
+    // against the same stale category balance. A per-budget queue would only
+    // matter if multiple budgets could be edited concurrently in one process.
     private var pendingTask: Task<Void, Never>?
 
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
