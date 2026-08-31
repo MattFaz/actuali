@@ -3898,10 +3898,9 @@ final class BudgetStore: ObservableObject {
                 // A delete-transaction rule can remove the just-created row.
                 // Don't hand a non-existent id back to a caller that expects
                 // a real transaction (e.g. the category funding automation).
-                guard let database, (try? await database.fetchTransaction(id: transaction.id)) != nil else {
-                    return nil
-                }
-                return transaction.id
+try await database.saveTransaction(transaction)
+
+return transaction.id
             }
         }
     }
