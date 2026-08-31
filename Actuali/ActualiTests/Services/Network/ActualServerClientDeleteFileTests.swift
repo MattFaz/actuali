@@ -9,6 +9,7 @@ private final class DeleteFileTransport: URLProtocol {
     nonisolated(unsafe) static var capturedBodies: [Data] = []
     nonisolated(unsafe) static var status = 200
     nonisolated(unsafe) static var responseBody = Data(#"{"status":"ok"}"#.utf8)
+    nonisolated(unsafe) static var responseContentType = "application/json"
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -21,7 +22,7 @@ private final class DeleteFileTransport: URLProtocol {
             url: request.url!,
             statusCode: Self.status,
             httpVersion: "HTTP/1.1",
-            headerFields: ["Content-Type": "application/json"]
+            headerFields: ["Content-Type": Self.responseContentType]
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
         client?.urlProtocol(self, didLoad: Self.responseBody)
@@ -50,10 +51,16 @@ private final class DeleteFileTransport: URLProtocol {
 
 @Suite(.serialized)
 struct ActualServerClientDeleteFileTests {
-    private func makeClient(status: Int = 200) async throws -> ActualServerClient {
+    private func makeClient(
+        status: Int = 200,
+        responseBody: String = #"{"status":"ok"}"#,
+        responseContentType: String = "application/json"
+    ) async throws -> ActualServerClient {
         DeleteFileTransport.capturedRequests = []
         DeleteFileTransport.capturedBodies = []
         DeleteFileTransport.status = status
+        DeleteFileTransport.responseBody = Data(responseBody.utf8)
+        DeleteFileTransport.responseContentType = responseContentType
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [DeleteFileTransport.self]
         let client = ActualServerClient(session: URLSession(configuration: configuration))
@@ -105,18 +112,52 @@ struct ActualServerClientDeleteFileTests {
     }
 
     /// The server answers an unknown fileId with 400 file-not-found (its own
-    /// FIXME says it should be 404), so both map to `.fileNotFound`.
+    /// FIXME says it should be 404).
     @Test func mapsBadRequestToFileNotFound() async throws {
-        for status in [400, 404] {
-            let client = try await makeClient(status: status)
-            do {
-                try await client.deleteFile(fileId: "file-123")
-                Issue.record("Expected deleteFile to throw for \(status)")
-            } catch let error as ActualServerError {
-                guard case .fileNotFound = error else {
-                    Issue.record("Expected .fileNotFound for \(status), got \(error)")
-                    return
-                }
+        let client = try await makeClient(status: 400)
+        do {
+            try await client.deleteFile(fileId: "file-123")
+            Issue.record("Expected deleteFile to throw")
+        } catch let error as ActualServerError {
+            guard case .fileNotFound = error else {
+                Issue.record("Expected .fileNotFound, got \(error)")
+                return
+            }
+        }
+    }
+
+    /// The Actual server never answers a missing file with 404 — that status
+    /// means a proxy or a stripped route. It must NOT map to .fileNotFound,
+    /// which callers treat as "already deleted" before destroying local data.
+    @Test func keeps404AsAPlainHTTPError() async throws {
+        let client = try await makeClient(status: 404)
+        do {
+            try await client.deleteFile(fileId: "file-123")
+            Issue.record("Expected deleteFile to throw")
+        } catch let error as ActualServerError {
+            guard case .httpError(let statusCode, _) = error else {
+                Issue.record("Expected .httpError, got \(error)")
+                return
+            }
+            #expect(statusCode == 404)
+        }
+    }
+
+    /// An auth proxy's HTML login page is named as such rather than surfacing
+    /// as a decode failure — or worse, a status that callers act on.
+    @Test func namesAnAuthProxyAnswer() async throws {
+        let client = try await makeClient(
+            status: 200,
+            responseBody: "<html><body>Sign in</body></html>",
+            responseContentType: "text/html"
+        )
+        do {
+            try await client.deleteFile(fileId: "file-123")
+            Issue.record("Expected deleteFile to throw")
+        } catch let error as ActualServerError {
+            guard case .authProxyBlocked = error else {
+                Issue.record("Expected .authProxyBlocked, got \(error)")
+                return
             }
         }
     }

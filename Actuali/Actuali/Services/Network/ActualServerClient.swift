@@ -833,12 +833,17 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
-        // The server answers an unknown fileId with 400 (its own FIXME says it
-        // should be 404), so treat both as "no such file".
-        if httpResponse.statusCode == 400 || httpResponse.statusCode == 404 {
-            throw ActualServerError.fileNotFound
+        // Callers treat .fileNotFound as "already deleted" and destroy the
+        // local copy, so nothing that isn't the Actual server's own answer may
+        // map to it: an auth proxy's login page is named as such, and 404 —
+        // which the server never sends for a missing file (it answers 400, its
+        // own FIXME notwithstanding) — stays a plain HTTP error, since it
+        // usually means a proxy or a stripped route.
+        if looksLikeAuthProxy(httpResponse, data: data) {
+            throw ActualServerError.authProxyBlocked
         }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 400 { throw ActualServerError.fileNotFound }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(
                 statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)

@@ -1531,18 +1531,26 @@ final class BudgetStore: ObservableObject {
     /// any device-side state for it, leaving the server file untouched so it
     /// can be downloaded again. Deleting the currently open budget closes it
     /// and returns the app to the "select a budget" empty state.
-    func removeLocalBudget(cloudFileId: String) {
+    func removeLocalBudget(cloudFileId: String) async {
+        // The derived encryption key must not outlive the budget — removed
+        // even without a local directory (a failed download can leave a key
+        // behind with nothing to unlock).
+        try? EncryptionKeyManager.remove(fileId: cloudFileId)
+
         guard let local = fileManager.listLocalBudgets().first(
             where: { $0.cloudFileId == cloudFileId }
         ) else { return }
 
-        // Close before deleting files — same vnode-unlink hazard as logout.
         if local.id == currentBudgetId {
+            // Best-effort push of unsynced local edits before the database
+            // holding them is destroyed; offline they're still lost, which the
+            // confirmation dialog warns about. Only the open budget has a live
+            // sync client — a closed budget's pending messages can't be sent.
+            await flushPendingSync()
+            // Close before deleting files — same vnode-unlink hazard as logout.
             closeCurrentBudget()
         }
 
-        // The derived encryption key must not outlive the files it unlocks.
-        try? EncryptionKeyManager.remove(fileId: cloudFileId)
         try? fileManager.deleteBudget(local.id)
         forgetCachedCurrencyCode(for: local.id)
         forgetAppleWalletLinks(for: local.id)
@@ -1561,7 +1569,7 @@ final class BudgetStore: ObservableObject {
         } catch {
             return error.localizedDescription
         }
-        removeLocalBudget(cloudFileId: remoteBudget.id)
+        await removeLocalBudget(cloudFileId: remoteBudget.id)
         remoteBudgets.removeAll { $0.id == remoteBudget.id }
         return nil
     }

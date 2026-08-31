@@ -275,19 +275,17 @@ private struct BudgetSelectionSettingsSection: View {
 
     /// The open budget's server fileId — currentBudgetId is the internal id,
     /// so map through the local metadata.
-    private var currentCloudFileId: String? {
+    private func currentCloudFileId(in locals: [BudgetMetadata]) -> String? {
         guard let budgetId = budgetStore.currentBudgetId else { return nil }
-        return BudgetFileManager.shared.listLocalBudgets()
-            .first { $0.id == budgetId }?.cloudFileId
+        return locals.first { $0.id == budgetId }?.cloudFileId
     }
 
     /// The open budget when the server list doesn't include it (still loading,
     /// or the file was deleted from another client). It keeps a row so the
     /// selection stays visible and the local copy stays removable.
-    private var unlistedCurrentBudget: BudgetStore.RemoteBudget? {
+    private func unlistedCurrentBudget(in locals: [BudgetMetadata]) -> BudgetStore.RemoteBudget? {
         guard let budgetId = budgetStore.currentBudgetId,
-              let metadata = BudgetFileManager.shared.listLocalBudgets()
-                  .first(where: { $0.id == budgetId }),
+              let metadata = locals.first(where: { $0.id == budgetId }),
               let fileId = metadata.cloudFileId,
               !budgetStore.remoteBudgets.contains(where: { $0.id == fileId })
         else { return nil }
@@ -299,32 +297,17 @@ private struct BudgetSelectionSettingsSection: View {
         )
     }
 
-    private func hasLocalCopy(_ budget: BudgetStore.RemoteBudget) -> Bool {
-        BudgetFileManager.shared.listLocalBudgets().contains { $0.cloudFileId == budget.id }
-    }
-
     var body: some View {
+        // One directory read per render; every row check below shares it.
+        let localBudgets = BudgetFileManager.shared.listLocalBudgets()
+
         Section {
             ForEach(budgetStore.remoteBudgets) { budget in
-                budgetRow(budget)
+                budgetRow(budget, locals: localBudgets)
             }
 
-            if let unlisted = unlistedCurrentBudget {
-                HStack {
-                    if unlisted.isEncrypted {
-                        Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                    }
-                    Text(unlisted.name)
-                    Spacer()
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.tint)
-                        .accessibilityLabel("Selected")
-                }
-                .contextMenu {
-                    Button("Remove from This Device", systemImage: "iphone.slash") {
-                        budgetToRemoveLocally = unlisted
-                    }
-                }
+            if let unlisted = unlistedCurrentBudget(in: localBudgets) {
+                budgetRow(unlisted, locals: localBudgets)
             }
 
             if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
@@ -375,11 +358,11 @@ private struct BudgetSelectionSettingsSection: View {
             presenting: budgetToRemoveLocally
         ) { budget in
             Button("Remove from This Device", role: .destructive) {
-                budgetStore.removeLocalBudget(cloudFileId: budget.id)
+                Task { await budgetStore.removeLocalBudget(cloudFileId: budget.id) }
             }
             Button("Cancel", role: .cancel) {}
         } message: { budget in
-            Text("Removes “\(budget.name)” from this device, including its local backups. The budget stays on your server and can be downloaded again.")
+            Text("Removes “\(budget.name)” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again.")
         }
         .task {
             await budgetStore.fetchRemoteBudgets()
@@ -387,8 +370,11 @@ private struct BudgetSelectionSettingsSection: View {
         }
     }
 
-    private func budgetRow(_ budget: BudgetStore.RemoteBudget) -> some View {
-        Button {
+    private func budgetRow(
+        _ budget: BudgetStore.RemoteBudget, locals: [BudgetMetadata]
+    ) -> some View {
+        let hasLocalCopy = locals.contains { $0.cloudFileId == budget.id }
+        return Button {
             openBudget(budget)
         } label: {
             HStack {
@@ -399,7 +385,7 @@ private struct BudgetSelectionSettingsSection: View {
                 Spacer()
                 if budgetStore.downloadingBudgetId == budget.id {
                     ProgressView()
-                } else if budget.id == currentCloudFileId {
+                } else if budget.id == currentCloudFileId(in: locals) {
                     Image(systemName: "checkmark")
                         .foregroundStyle(.tint)
                         .accessibilityLabel("Selected")
@@ -414,7 +400,7 @@ private struct BudgetSelectionSettingsSection: View {
                 budgetToDeleteFromServer = budget
             }
             .tint(.red)
-            if hasLocalCopy(budget) {
+            if hasLocalCopy {
                 Button("Remove", systemImage: "iphone.slash") {
                     budgetToRemoveLocally = budget
                 }
@@ -422,7 +408,7 @@ private struct BudgetSelectionSettingsSection: View {
             }
         }
         .contextMenu {
-            if hasLocalCopy(budget) {
+            if hasLocalCopy {
                 Button("Remove from This Device", systemImage: "iphone.slash") {
                     budgetToRemoveLocally = budget
                 }

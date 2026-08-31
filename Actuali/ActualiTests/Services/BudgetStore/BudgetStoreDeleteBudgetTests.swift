@@ -92,14 +92,14 @@ struct BudgetStoreDeleteBudgetTests {
 
     // MARK: - Remove from this device
 
-    @Test func removesOnlyTheTargetedBudgetIncludingBackups() throws {
+    @Test func removesOnlyTheTargetedBudgetIncludingBackups() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try seedBudget(id: "budget-b", cloudFileId: "file-b", in: manager)
 
-        store.removeLocalBudget(cloudFileId: "file-a")
+        await store.removeLocalBudget(cloudFileId: "file-a")
 
         #expect(!manager.budgetExists("budget-a"))
         #expect(!FileManager.default.fileExists(atPath: manager.budgetDirectory(for: "budget-a").path))
@@ -110,7 +110,7 @@ struct BudgetStoreDeleteBudgetTests {
         ))
     }
 
-    @Test func removingTheOpenBudgetClosesItAndReturnsToEmptyState() throws {
+    @Test func removingTheOpenBudgetClosesItAndReturnsToEmptyState() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
@@ -125,7 +125,7 @@ struct BudgetStoreDeleteBudgetTests {
                     offBudget: false, closed: false, sortOrder: 0, balance: 100)
         ]
 
-        store.removeLocalBudget(cloudFileId: "file-a")
+        await store.removeLocalBudget(cloudFileId: "file-a")
 
         #expect(store.currentBudgetId == nil)
         #expect(store.databaseForLogger == nil)
@@ -133,7 +133,7 @@ struct BudgetStoreDeleteBudgetTests {
         #expect(!manager.budgetExists("budget-a"))
     }
 
-    @Test func removingAnotherBudgetLeavesTheOpenOneAlone() throws {
+    @Test func removingAnotherBudgetLeavesTheOpenOneAlone() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
@@ -145,7 +145,7 @@ struct BudgetStoreDeleteBudgetTests {
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
 
-        store.removeLocalBudget(cloudFileId: "file-b")
+        await store.removeLocalBudget(cloudFileId: "file-b")
 
         #expect(store.currentBudgetId == "budget-a")
         #expect(store.databaseForLogger != nil)
@@ -154,7 +154,7 @@ struct BudgetStoreDeleteBudgetTests {
     }
 
     /// The derived encryption key must not outlive the files it unlocks.
-    @Test func removalDeletesTheBudgetsEncryptionKey() throws {
+    @Test func removalDeletesTheBudgetsEncryptionKey() async throws {
         let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
@@ -166,7 +166,25 @@ struct BudgetStoreDeleteBudgetTests {
         )
         defer { try? EncryptionKeyManager.remove(fileId: fileId) }
 
-        store.removeLocalBudget(cloudFileId: fileId)
+        await store.removeLocalBudget(cloudFileId: fileId)
+
+        #expect(EncryptionKeyManager.load(fileId: fileId) == nil)
+    }
+
+    /// A failed download can leave a derived key with no budget directory;
+    /// deletion must still clear it rather than bailing on the missing copy.
+    @Test func removalDeletesTheKeyEvenWithoutALocalCopy() async throws {
+        let saved = UserDefaults.standard.string(forKey: "currentBudgetId")
+        defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
+        let (store, _) = try makeIsolatedStore()
+        let fileId = "cloud-file-\(UUID().uuidString)"
+        try EncryptionKeyManager.store(
+            LoadedKey(keyId: "key-1", key: SymmetricKey(size: .bits256)),
+            fileId: fileId
+        )
+        defer { try? EncryptionKeyManager.remove(fileId: fileId) }
+
+        await store.removeLocalBudget(cloudFileId: fileId)
 
         #expect(EncryptionKeyManager.load(fileId: fileId) == nil)
     }
