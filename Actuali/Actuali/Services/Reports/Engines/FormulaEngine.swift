@@ -47,9 +47,9 @@ enum FormulaEngine {
             }
             if case .currency = kind {
                 // FormulaWidgetView converts currency to cents before passing
-                // it to Int. Check the converted value rather than the Double
-                // currency value to keep every reachable Int conversion safe.
-                guard abs(result) * 100 < Double(Int.max) else {
+                // it to Int. Check the rounded cents value to keep every
+                // reachable Int conversion safe.
+                guard abs((result * 100).rounded()) < Double(Int.max) else {
                     return .unsupported("This formula returned an invalid number")
                 }
                 return .value(result)
