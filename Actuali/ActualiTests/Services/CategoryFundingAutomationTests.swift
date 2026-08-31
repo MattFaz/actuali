@@ -112,6 +112,26 @@ struct CategoryFundingAutomationTests {
         ) == .fund(50))
     }
 
+    @Test("To Budget is invalid for tracking budgets when a shortfall exists")
+    func toBudgetIsInvalidForTrackingBudget() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: -50,
+            fundingSource: .toBudget,
+            isTrackingBudget: true
+        ) == .invalidSource)
+    }
+
+    @Test("A tracking budget with no shortfall does not need a funding source")
+    func trackingBudgetWithNoShortfallNeedsNoFunding() {
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: -50,
+            availableAfterTransaction: 25,
+            fundingSource: .toBudget,
+            isTrackingBudget: true
+        ) == .none)
+    }
+
     @Test("Zero-amount expense remains a valid standard transaction")
     @MainActor
     func zeroAmountExpensePlan() throws {
@@ -266,15 +286,6 @@ struct CategoryFundingAutomationTests {
     @Test("Default funding source is To Budget")
     func defaultFundingSource() {
         #expect(CategoryFundingAutomationConfiguration().fundingSource == .toBudget)
-    }
-
-    @Test("Sufficient funds produce no funding even for a tracking budget source check")
-    func trackingBudgetWithNoShortfallNeedsNoFunding() {
-        #expect(CategoryFundingAutomation.fundingDecision(
-            transactionAmount: -50,
-            availableAfterTransaction: 25,
-            fundingSource: .toBudget
-        ) == .none)
     }
 
     private func makeTransaction(
