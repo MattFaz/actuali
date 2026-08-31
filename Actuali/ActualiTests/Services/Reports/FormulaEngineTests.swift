@@ -131,8 +131,8 @@ struct FormulaEngineTests {
         }
     }
 
-    @Test func unknownFunctionsAndEmptySumAreUnsupported() {
-        for formula in ["=SUM()", "=QUERY_COUNT(\"expenses\")", "=POWER(2, 3)"] {
+    @Test func unsupportedFunctionsAreRejected() {
+        for formula in ["=COUNT(1, 2, 3)", "=QUERY_COUNT(\"expenses\")", "=POWER(2, 3)"] {
             let result = FormulaEngine.compute(
                 meta: meta(formula: formula), transactions: [], today: today, context: .empty)
             guard case .unsupported = result else {
