@@ -61,6 +61,11 @@ struct CategoryFundingAutomationView: View {
             configuration = CategoryFundingAutomation.loadConfiguration(for: budgetStore.currentBudgetId)
                 ?? CategoryFundingAutomationConfiguration()
         }
+        .onChange(of: configuration.accountId) { _, accountId in
+            if accountId == nil {
+                configuration.isEnabled = false
+            }
+        }
         .onChange(of: configuration) { _, _ in
             save()
         }
