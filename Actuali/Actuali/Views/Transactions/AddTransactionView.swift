@@ -1003,7 +1003,18 @@ struct AmountInputField: UIViewRepresentable {
         ))
         toolbar.items = items
         toolbar.sizeToFit()
-        field.inputAccessoryView = toolbar
+        // inputAccessoryView sits flush on top of the keyboard, so to float the
+        // toolbar with a gap we host it in a taller, transparent container and
+        // pin the toolbar to the top — the leftover strip below is the space.
+        let gap: CGFloat = 4
+        let container = UIView(
+            frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
+        )
+        container.backgroundColor = .clear
+        toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
+        toolbar.autoresizingMask = [.flexibleWidth]
+        container.addSubview(toolbar)
+        field.inputAccessoryView = container
         context.coordinator.textField = field
         context.coordinator.sync(fromDisplay: text)
         return field

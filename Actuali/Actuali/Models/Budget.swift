@@ -108,7 +108,30 @@ struct CategoryBudget: Identifiable, Hashable {
     var hidden = false
     var groupHidden = false
 
+    /// Goal target written by budget templates (`goal` column, cents). nil
+    /// when no template has run for this month.
+    var goal: Int?
+    /// True when the goal came from a `#goal` directive (`long_goal` = 1):
+    /// progress is measured against the balance rather than this month's
+    /// budgeted amount, mirroring the web's BalanceWithCarryover.
+    var longGoal = false
+
     var isEffectivelyHidden: Bool { hidden || groupHidden }
+
+    /// The value a goal measures — balance for long-term goals, budgeted for
+    /// template automations.
+    var goalTrackedAmount: Int {
+        longGoal ? available : budgeted
+    }
+
+    /// Positive = overfunded, negative = underfunded; nil without a goal.
+    var differenceToGoal: Int? {
+        goal.map { goalTrackedAmount - $0 }
+    }
+
+    var isGoalUnderfunded: Bool {
+        (differenceToGoal ?? 0) < 0
+    }
 
     var isOverspent: Bool {
         available < 0

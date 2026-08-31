@@ -109,12 +109,7 @@ enum BackgroundRefresh {
 
     @MainActor
     private static func defaultSync() async -> Bool {
-        let store = BudgetStore.shared
-        let synced = await store.syncInBackground()
-        if synced {
-            await store.notifyAboutSyncedTransactions()
-        }
-        return synced
+        await BudgetStore.shared.syncInBackground()
     }
 }
 

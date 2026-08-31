@@ -14,7 +14,7 @@ enum DemoDataSeeder {
     /// Overwrites any existing demo budget. Does NOT connect to a server or
     /// start sync. `tracking` seeds a tracking (`reflect_budgets`) budget rather
     /// than the default envelope (`zero_budgets`) one.
-    static func seed(tracking: Bool = false) throws {
+    static func seed(tracking: Bool = false, now: Date = Date()) throws {
         let fileManager = BudgetFileManager.shared
         let budgetDir = fileManager.budgetDirectory(for: budgetId)
 
@@ -43,7 +43,7 @@ enum DemoDataSeeder {
 
         try dbQueue.write { db in
             try createSchema(db, tracking: tracking)
-            try insertSeedData(db, tracking: tracking)
+            try insertSeedData(db, tracking: tracking, now: now)
         }
 
         logger.info("Demo data seeded successfully at \(dbPath.path, privacy: .public)")
@@ -233,9 +233,8 @@ enum DemoDataSeeder {
 
     // MARK: - Seed Data
 
-    private static func insertSeedData(_ db: Database, tracking: Bool) throws {
+    private static func insertSeedData(_ db: Database, tracking: Bool, now: Date) throws {
         let cal = Calendar(identifier: .gregorian)
-        let now = Date()
         let comps = cal.dateComponents([.year, .month, .day], from: now)
         let year = comps.year ?? 2026
         let month = comps.month ?? 1
@@ -438,6 +437,8 @@ enum DemoDataSeeder {
             // Off-budget: monthly brokerage contribution
             (vanguardPayeeId, nil, vanguardId, 2, 50_000),
         ]
+        let pendingDayByAccount = Dictionary(grouping: monthly.filter { $0.day <= today }, by: \.account)
+            .mapValues { $0.map(\.day).max() ?? 1 }
 
         for monthsAgo in stride(from: historyMonths, through: 0, by: -1) {
             // Deterministic per-month wiggle so months aren't identical.
@@ -454,8 +455,8 @@ enum DemoDataSeeder {
                 } else {
                     varied = item.amount
                 }
-                // Older transactions are reconciled/cleared; the newest are still pending.
-                let cleared = !(monthsAgo == 0 && item.day > max(today - 3, 0))
+                // Older transactions are cleared; each account's newest are still pending.
+                let cleared = monthsAgo != 0 || item.day < pendingDayByAccount[item.account, default: item.day]
                 transactions.append((item.payee, item.category, varied,
                                      ymd(monthsAgo: monthsAgo, day: item.day),
                                      item.account, cleared, false))

@@ -42,6 +42,10 @@ struct BudgetOptionsMenu: View {
     /// groups to act on.
     var expandAllGroups: (() -> Void)?
     var collapseAllGroups: (() -> Void)?
+    /// Month-level goal-template actions (GH #371). nil hides the section —
+    /// no budget loaded, or the goalTemplatesEnabled flag is off, mirroring
+    /// the web's month menu behind its feature flag.
+    var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
 
     var body: some View {
         Menu {
@@ -63,6 +67,27 @@ struct BudgetOptionsMenu: View {
                         Label("Collapse Groups", systemImage: "chevron.right")
                     }
                     .accessibilityLabel("Collapse All Groups")
+                }
+            }
+
+            // The web month menu's three template actions, in its order.
+            if let onTemplateAction {
+                Section {
+                    Button {
+                        onTemplateAction(.check)
+                    } label: {
+                        Label("Check Templates", systemImage: "checkmark.seal")
+                    }
+                    Button {
+                        onTemplateAction(.apply)
+                    } label: {
+                        Label("Apply Budget Template", systemImage: "wand.and.stars")
+                    }
+                    Button {
+                        onTemplateAction(.overwrite)
+                    } label: {
+                        Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
+                    }
                 }
             }
 
