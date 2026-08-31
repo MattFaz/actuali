@@ -22,11 +22,8 @@ enum CategoryFundingDecision: Equatable {
 
 private actor CategoryFundingProcessingQueue {
     private var pendingTask: Task<Void, Never>?
-    private var generation = 0
 
     func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
-        generation += 1
-        let currentGeneration = generation
         let previousTask = pendingTask
         let task = Task { @MainActor in
             if let previousTask {
@@ -36,10 +33,6 @@ private actor CategoryFundingProcessingQueue {
         }
         pendingTask = task
         await task.value
-
-        if generation == currentGeneration {
-            pendingTask = nil
-        }
     }
 }
 
@@ -88,11 +81,9 @@ enum CategoryFundingAutomation {
     static func shouldProcess(
         _ transaction: Transaction,
         selectedAccountId: String,
-        isIncomeCategory: Bool,
-        isOffBudgetAccount: Bool = false
+        isIncomeCategory: Bool
     ) -> Bool {
         transaction.accountId == selectedAccountId
-            && !isOffBudgetAccount
             && transaction.amount < 0
             && transaction.categoryId != nil
             && !transaction.isParent
