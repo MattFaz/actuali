@@ -776,6 +776,63 @@ actor ActualServerClient {
         return data
     }
 
+    /// Upload a budget archive to `/sync/upload-user-file`, registering it on
+    /// the server. Returns the sync group id the server assigned (a fresh one
+    /// when no `X-ACTUAL-GROUP-ID` is sent, as for a newly created file).
+    /// Mirrors upstream's upload (loot-core cloud-storage.ts:289) minus the
+    /// encryption branch — Actuali only creates unencrypted files.
+    func uploadFile(zipData: Data, fileId: String, name: String) async throws -> String {
+        guard let serverURL else {
+            throw ActualServerError.invalidURL
+        }
+
+        guard let token else {
+            throw ActualServerError.unauthorized
+        }
+
+        let url = serverURL.appendingPathComponent("/sync/upload-user-file")
+        var request = makeRequest(url)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
+        // Upstream sends encodeURIComponent(budgetName), whose unreserved set
+        // is exactly this (ASCII only — CharacterSet.alphanumerics would leave
+        // non-ASCII letters unescaped and produce an invalid header value).
+        let unreserved = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+        )
+        let encodedName = name.addingPercentEncoding(withAllowedCharacters: unreserved) ?? name
+        request.setValue(encodedName, forHTTPHeaderField: "X-ACTUAL-NAME")
+        request.setValue("2", forHTTPHeaderField: "X-ACTUAL-FORMAT")
+        request.setValue("application/encrypted-file", forHTTPHeaderField: "Content-Type")
+        request.httpBody = zipData
+
+        let (data, response) = try await send(request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let message = String(data: data, encoding: .utf8)
+            throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        struct UploadResponse: Decodable {
+            let status: String
+            let groupId: String?
+        }
+        let decoded = try JSONDecoder().decode(UploadResponse.self, from: data)
+        guard decoded.status == "ok", let groupId = decoded.groupId else {
+            throw ActualServerError.invalidResponse
+        }
+        return groupId
+    }
+
     func getFileInfo(fileId: String) async throws -> FileInfoResponse.FileInfo {
         guard let serverURL else {
             throw ActualServerError.invalidURL

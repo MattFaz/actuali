@@ -263,6 +263,78 @@ final class BudgetFileManager: @unchecked Sendable {
         return fileManager.fileExists(atPath: dbPath.path)
     }
 
+    // MARK: - Create
+
+    /// Mirror of upstream's idFromBudgetName (util/budget-name.ts:41): every
+    /// space or non-alphanumeric becomes "-", plus the first 7 characters of
+    /// a fresh UUID.
+    static func budgetId(fromName name: String) -> String {
+        let sanitized = String(name.map { char in
+            char.isASCII && (char.isLetter || char.isNumber) ? char : "-"
+        })
+        return sanitized + "-" + String(UUID().uuidString.lowercased().prefix(7))
+    }
+
+    /// Create a new budget directory from the bundled blank template:
+    /// db.sqlite is a byte-copy of the template (upstream copies its
+    /// default-db.sqlite the same way, budgetfiles/app.ts:437) and
+    /// metadata.json starts as just {id, budgetName}, upstream's
+    /// getDefaultPrefs shape. Returns the new budget's metadata.
+    func createBudget(named name: String, templateURL: URL) throws -> BudgetMetadata {
+        let base = Self.budgetId(fromName: name)
+        var id = base
+        var index = 0
+        // Upstream's collision loop (idFromBudgetName): the 7 random chars
+        // make a clash vanishingly unlikely, but cheap to mirror exactly.
+        while fileManager.fileExists(atPath: budgetDirectory(for: id).path) {
+            index += 1
+            id = base + String(index)
+        }
+
+        let budgetDir = budgetDirectory(for: id)
+        try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+        try fileManager.copyItem(at: templateURL, to: databasePath(for: id))
+
+        let metadata = BudgetMetadata(
+            id: id, budgetName: name, cloudFileId: nil, groupId: nil,
+            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+        )
+        try JSONEncoder().encode(metadata).write(to: metadataPath(for: id))
+        return metadata
+    }
+
+    /// Zip a budget's live files for upload, with resetClock stamped true in
+    /// the archived metadata copy only, so whoever downloads the file mints a
+    /// fresh clock node id (upstream exportBuffer, cloud-storage.ts:181). The
+    /// live metadata on disk is untouched; JSONSerialization keeps any keys
+    /// this app doesn't model.
+    ///
+    /// ponytail: no cache stripping — this only serves newly created budgets,
+    /// whose database is the pristine template (empty kvcache, no Actuali-only
+    /// migration ids because BudgetDatabase hasn't opened it yet). A general
+    /// re-upload path would have to clear kvcache/kvcache_key and
+    /// actualiOnlyMigrationIds from a copy first, the way BackupService does.
+    func makeUploadArchive(for budgetId: String) throws -> Data {
+        let metadataData = try Data(contentsOf: metadataPath(for: budgetId))
+        guard var json = try JSONSerialization.jsonObject(with: metadataData) as? [String: Any] else {
+            throw BudgetFileError.metadataParsingFailed
+        }
+        json["resetClock"] = true
+
+        let tempDir = fileManager.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try fileManager.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? fileManager.removeItem(at: tempDir) }
+
+        let metadataURL = tempDir.appendingPathComponent("metadata.json")
+        try JSONSerialization.data(withJSONObject: json).write(to: metadataURL)
+        let archiveURL = tempDir.appendingPathComponent("upload.zip")
+        try makeBudgetArchive(
+            dbURL: databasePath(for: budgetId), metadataURL: metadataURL, to: archiveURL
+        )
+        return try Data(contentsOf: archiveURL)
+    }
+
     // MARK: - Import
 
     func importBudget(from zipData: Data, fileId: String, groupId: String?) async throws -> BudgetMetadata {
