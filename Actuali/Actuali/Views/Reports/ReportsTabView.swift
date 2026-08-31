@@ -48,7 +48,7 @@ struct ReportsTabView: View {
                         // inputs that widget set needs and never re-run for
                         // the widgets that actually land.
                         DashboardView(widgets: widgets)
-                            .id(Self.dashboardIdentity(pageId: loadedPageId, widgetIds: widgets.map(\.id)))
+                            .id([loadedPageId ?? ""] + widgets.map(\.id))
                     }
                 }
             }
@@ -71,8 +71,8 @@ struct ReportsTabView: View {
                 Task { await reload() }
             }
             // Sync can replace the widget set while staying on the same page.
-            // Include widget IDs in DashboardView's identity so its input load
-            // restarts for the newly synced cards as well.
+            // Changing the dashboard identity below recreates DashboardView so
+            // its input load restarts for the newly synced cards as well.
             .onChange(of: budgetStore.dataVersion) { _, _ in
                 Task { await reload() }
             }
@@ -146,12 +146,6 @@ struct ReportsTabView: View {
             return configuredDefault
         }
         return pages.first?.id
-    }
-
-    /// Stable identity for the dashboard view that cannot collide when a page
-    /// or widget ID contains delimiter characters.
-    nonisolated static func dashboardIdentity(pageId: String?, widgetIds: [String]) -> String {
-        ([pageId ?? ""] + widgetIds).joined(separator: "\u{1F}")
     }
 
     private func reload() async {
