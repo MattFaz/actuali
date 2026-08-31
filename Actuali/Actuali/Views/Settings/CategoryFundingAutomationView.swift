@@ -23,12 +23,6 @@ struct CategoryFundingAutomationView: View {
     var body: some View {
         Form {
             Section {
-                Toggle("Enable Automation", isOn: $configuration.isEnabled)
-            } footer: {
-                Text("When a new expense is manually entered from the selected account and would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
-            }
-
-            Section {
                 Picker("Account", selection: $configuration.accountId) {
                     Text("None").tag(String?.none)
                     ForEach(budgetStore.accounts.filter { !$0.closed && !$0.offBudget }, id: \.id) { account in
@@ -37,6 +31,13 @@ struct CategoryFundingAutomationView: View {
                 }
             } header: {
                 Text("Trigger")
+            }
+
+            Section {
+                Toggle("Enable Automation", isOn: $configuration.isEnabled)
+                    .disabled(configuration.accountId == nil)
+            } footer: {
+                Text("When a new expense is manually entered from the selected account and would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
             }
 
             Section {
@@ -52,13 +53,6 @@ struct CategoryFundingAutomationView: View {
                 Text("Funding")
             } footer: {
                 Text("To Budget is the default. You can also fund the category from another budget category that has available money.")
-            }
-
-            if configuration.isEnabled && configuration.accountId == nil {
-                Section {
-                    Label("Select an account to enable automatic funding.", systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.secondary)
-                }
             }
         }
         .navigationTitle("Category Funding")
