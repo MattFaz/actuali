@@ -83,22 +83,22 @@ struct FormulaEngineTests {
         let average = FormulaEngine.compute(
             meta: meta(formula: "=ROUND(AVERAGE(1, 2, 8), 1)"),
             transactions: [], today: today, context: .empty)
-        #expect(average == .number(3.7))
+        #expect(average == .value(3.7))
 
         let minMax = FormulaEngine.compute(
             meta: meta(formula: "=MAX(MIN(8, 2, 5), PRODUCT(2, 3))"),
             transactions: [], today: today, context: .empty)
-        #expect(minMax == .number(6))
+        #expect(minMax == .value(6))
 
         let math = FormulaEngine.compute(
             meta: meta(formula: "=ABS(-5) + SQRT(16) + POWER(2, 3)"),
             transactions: [], today: today, context: .empty)
-        #expect(math == .number(17))
+        #expect(math == .value(17))
 
         let rounded = FormulaEngine.compute(
             meta: meta(formula: "=FLOOR(10.8, 1) + CEILING(10.2, 1)"),
             transactions: [], today: today, context: .empty)
-        #expect(rounded == .number(21))
+        #expect(rounded == .value(21))
     }
 
     @Test func logicalAndCountFunctionsAreSupported() {
@@ -137,8 +137,7 @@ struct FormulaEngineTests {
         #expect(plainNumber == .number(1e30))
 
         let currencyOverflow = FormulaEngine.compute(
-            meta: meta(formula: "=SUM(QUERY(\"income\"), POWER(10, 30))"),
-            queries: savedThisMonthQueries,
+            meta: meta(formula: "=SUM(QUERY(\"income\"), POWER(10, 30))", queries: savedThisMonthQueries),
             transactions: [
                 tx("income", date: 20260405, amount: 100),
             ], today: today, context: .empty)
@@ -146,6 +145,23 @@ struct FormulaEngineTests {
             Issue.record("expected currency overflow to be unsupported, got \(currencyOverflow)")
             return
         }
+    }
+
+    @Test func roundRejectsInvalidDigitArguments() {
+        for formula in ["=ROUND(1, POWER(10, 30))", "=ROUND(1, SQRT(0-1))"] {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            guard case .unsupported = result else {
+                Issue.record("expected unsupported for \(formula), got \(result)")
+                return
+            }
+        }
+    }
+
+    @Test func dashboardIdentityCannotCollideOnDelimiterCharacters() {
+        let first = ReportsTabView.dashboardIdentity(pageId: "p", widgetIds: ["a", "b|c"])
+        let second = ReportsTabView.dashboardIdentity(pageId: "p|a", widgetIds: ["b", "c"])
+        #expect(first != second)
     }
 
     @Test func emptySumAndUnsupportedFunctionsAreRejected() {
@@ -168,10 +184,10 @@ struct FormulaEngineTests {
     @Test func honorsPrecedenceAndParens() {
         let result = FormulaEngine.compute(
             meta: meta(formula: "=2+3*4"), transactions: [], today: today, context: .empty)
-        #expect(result == .number(14))
+        #expect(result == .value(14))
         let result2 = FormulaEngine.compute(
             meta: meta(formula: "=(2+3)*-4"), transactions: [], today: today, context: .empty)
-        #expect(result2 == .number(-20))
+        #expect(result2 == .value(-20))
     }
 
     @Test func divisionByZeroIsUnsupported() {
@@ -186,10 +202,10 @@ struct FormulaEngineTests {
     @Test func decimalLiteralsParse() {
         let bareDot = FormulaEngine.compute(
             meta: meta(formula: "=.5+1.25"), transactions: [], today: today, context: .empty)
-        #expect(bareDot == .number(1.75))
+        #expect(bareDot == .value(1.75))
         let standard = FormulaEngine.compute(
             meta: meta(formula: "=0.5+1.25"), transactions: [], today: today, context: .empty)
-        #expect(standard == .number(1.75))
+        #expect(standard == .value(1.75))
     }
 
     @Test(arguments: [
