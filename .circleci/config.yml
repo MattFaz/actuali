@@ -1,24 +1,112 @@
-# CircleCI copy of .github/workflows/ui-tests.yml, kept side by side so the two
-# runs can be compared. The GitHub Actions workflow is still the real one.
-# Unlike the nightly Actions schedule this runs on every push to `circleci`,
-# which is the point: it's here to be exercised.
+# CircleCI copy of .github/workflows/ci.yml and ui-tests.yml, kept side by side
+# so the two providers can be compared. The GitHub Actions workflows are still
+# the real ones. Unlike Actions — where unit tests gate PRs and UI tests run
+# nightly — everything here runs on every push to `circleci`, which is the
+# point: it's here to be exercised.
 version: "2.1"
 
-jobs:
-  ui-test:
+executors:
+  macos:
     macos:
       xcode: 26.1.0
+    # Named for the old M1 hardware; CircleCI now serves it on M4 Pro.
     resource_class: macos.m1.medium.gen1
-    # Serial execution costs wall-clock (see the test step): budget for a
-    # ~90 min green run plus retries.
-    steps:
-      - checkout
 
-      # GitHub's macos runners preinstall xcbeautify; CircleCI's image does not.
+commands:
+  # GitHub's macos runners preinstall xcbeautify; CircleCI's image does not.
+  install_xcbeautify:
+    steps:
       - run:
           name: Install xcbeautify
           command: brew install xcbeautify
 
+  # Simulator builds are ad-hoc signed, so no certificate is needed — but
+  # don't pass CODE_SIGNING_ALLOWED=NO: an unsigned test host can't reach the
+  # simulator keychain (errSecMissingEntitlement in EncryptionKeyManager
+  # tests). --quiet drops passing-task noise but keeps warnings and errors;
+  # pipefail preserves xcodebuild's exit code through the pipe.
+  unit_test:
+    parameters:
+      os:
+        type: string
+    steps:
+      - run:
+          name: Build and run unit tests on iOS << parameters.os >>
+          no_output_timeout: 30m
+          command: |
+            set -o pipefail
+            xcodebuild test \
+              -project Actuali/Actuali.xcodeproj \
+              -scheme Actuali \
+              -destination "platform=iOS Simulator,id=$SIM_ID" \
+              -skip-testing:ActualiUITests \
+              | xcbeautify --quiet
+
+jobs:
+  # Pinned to iOS 26 rather than "first available iPhone": paired with the
+  # ios18 job, that names which runtime each leg actually covers. The image
+  # ships iOS 26, so this never needs a runtime download.
+  unit-test-ios26:
+    executor: macos
+    steps:
+      - checkout
+      - install_xcbeautify
+      - run:
+          name: Select iOS 26 simulator
+          command: |
+            SIM_ID=$(xcrun simctl list devices available --json \
+              | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+            if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+              echo "No available iOS 26 iPhone simulator on this image" >&2
+              exit 1
+            fi
+            echo "export SIM_ID=$SIM_ID" >> "$BASH_ENV"
+      - unit_test:
+          os: "26"
+
+  # IPHONEOS_DEPLOYMENT_TARGET is 18.0, so the floor needs a runtime of its
+  # own: the compiler rejects an unavailable API, but a missing SF Symbol or a
+  # behaviour difference only shows up when the tests actually run there. A
+  # separate job so the runtime download (the image ships iOS 26 only) and this
+  # leg's test run overlap the iOS 26 leg instead of serializing behind it.
+  unit-test-ios18:
+    executor: macos
+    steps:
+      - checkout
+      - install_xcbeautify
+      - run:
+          name: Select iOS 18 simulator
+          no_output_timeout: 30m
+          command: |
+            runtime() {
+              xcrun simctl list runtimes --json \
+                | jq -r '[.runtimes[] | select(.isAvailable) | select(.identifier | contains("iOS-18"))][0].identifier'
+            }
+            RT=$(runtime)
+            if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+              xcodebuild -downloadPlatform iOS -buildVersion 18.5
+              RT=$(runtime)
+            fi
+            if [ -z "$RT" ] || [ "$RT" = "null" ]; then
+              echo "No iOS 18 runtime available and the download did not provide one" >&2
+              exit 1
+            fi
+            SIM_ID=$(xcrun simctl list devices available --json \
+              | jq -r --arg rt "$RT" '[.devices[$rt][]? | select(.name | startswith("iPhone"))][0].udid')
+            if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+              DEVICE_TYPE=$(xcrun simctl list devicetypes --json \
+                | jq -r '[.devicetypes[] | select(.productFamily == "iPhone")][-1].identifier')
+              SIM_ID=$(xcrun simctl create ci-ios18 "$DEVICE_TYPE" "$RT")
+            fi
+            echo "export SIM_ID=$SIM_ID" >> "$BASH_ENV"
+      - unit_test:
+          os: "18"
+
+  ui-test:
+    executor: macos
+    steps:
+      - checkout
+      - install_xcbeautify
       - run:
           name: Select iOS 26 simulator
           command: |
@@ -46,12 +134,13 @@ jobs:
               "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
 
       # Runs serially on the one simulator. Two parallel workers halved the
-      # test phase but ran two sim clones on a 3-core runner, and the
+      # test phase but ran two sim clones on a 3-core GitHub runner, and the
       # contention timed out XCTest's own machinery rather than the tests:
       # kAXErrorIPCTimeout listing apps at `launch()`, background-assertion
       # timeouts, "Timed out while evaluating UI query", single taps waiting
       # 35s for the app to idle. Retries still cover a genuine one-off, but
-      # they can't rescue a host that's out of CPU.
+      # they can't rescue a host that's out of CPU. The M4 Pro box here has
+      # more cores, so this is worth re-testing once there's a green baseline.
       - run:
           name: Build and run UI tests on iOS 26
           no_output_timeout: 60m
@@ -75,11 +164,19 @@ jobs:
           when: on_fail
 
 workflows:
-  ui-tests:
+  ci:
+    # Branch-gated on purpose: the trigger is all-pushes, and three macOS jobs
+    # (one of them ~90 minutes) firing on every push to main is not what this
+    # experiment is for. Widen the filters once the comparison is done.
     jobs:
-      # Branch-gated on purpose: the trigger is all-pushes, and a 90-minute
-      # macOS job firing on every push to main is not what this experiment is
-      # for. Widen the filter once the comparison is done.
+      - unit-test-ios26:
+          filters:
+            branches:
+              only: circleci
+      - unit-test-ios18:
+          filters:
+            branches:
+              only: circleci
       - ui-test:
           filters:
             branches:
