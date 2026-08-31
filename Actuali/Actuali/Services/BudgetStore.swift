@@ -1461,10 +1461,7 @@ final class BudgetStore: ObservableObject {
         // "vnode unlinked" hazard downloadBudget also guards against), and a
         // live sync client would let the next foreground refresh republish
         // the wiped budget's data from that orphaned connection.
-        syncStateCancellable?.cancel()
-        syncStateCancellable = nil
-        syncClient = nil
-        database = nil
+        closeCurrentBudget()
 
         if clearLocalData {
             // Wipe every locally-synced budget's database and metadata from
@@ -1494,13 +1491,22 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
-        
+    }
+
+    /// Close whatever budget is open and return to the "select a budget" empty
+    /// state, leaving the server session alone. Tears down the database and
+    /// sync client first (see logout's vnode-unlink comment) and then clears
+    /// everything loaded in memory, so nothing from the old budget lingers in
+    /// the UI. The dataVersion bump makes views that cache their own fetches
+    /// drop them.
+    private func closeCurrentBudget() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
         backups = []
         syncDetachedByRestore = false
-
-        // Clear everything currently loaded in memory too, so nothing from
-        // the old budget lingers in the UI post-disconnect. The dataVersion
-        // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
         requestedBudgetMonth = nil
         currentBudgetMonth = nil
@@ -1517,6 +1523,47 @@ final class BudgetStore: ObservableObject {
         isInitialSyncing = false
         dataVersion += 1
         clearWidgetSnapshot()
+    }
+
+    // MARK: - Budget Deletion
+
+    /// Delete a budget's local copy — database, metadata, and backups — and
+    /// any device-side state for it, leaving the server file untouched so it
+    /// can be downloaded again. Deleting the currently open budget closes it
+    /// and returns the app to the "select a budget" empty state.
+    func removeLocalBudget(cloudFileId: String) {
+        guard let local = fileManager.listLocalBudgets().first(
+            where: { $0.cloudFileId == cloudFileId }
+        ) else { return }
+
+        // Close before deleting files — same vnode-unlink hazard as logout.
+        if local.id == currentBudgetId {
+            closeCurrentBudget()
+        }
+
+        // The derived encryption key must not outlive the files it unlocks.
+        try? EncryptionKeyManager.remove(fileId: cloudFileId)
+        try? fileManager.deleteBudget(local.id)
+        forgetCachedCurrencyCode(for: local.id)
+        forgetAppleWalletLinks(for: local.id)
+    }
+
+    /// Delete a budget's file on the Actual server — for every client — then
+    /// remove this device's copy and its list row. Returns nil on success, or
+    /// a user-facing message so the confirmation sheet can stay open (see
+    /// `error`: form-local failures stay in the presenting view).
+    func deleteServerBudget(_ remoteBudget: RemoteBudget) async -> String? {
+        do {
+            try await serverClient.deleteFile(fileId: remoteBudget.id)
+        } catch ActualServerError.fileNotFound {
+            // Already gone on the server (deleted from another client) —
+            // finish the local half below so the stale row heals.
+        } catch {
+            return error.localizedDescription
+        }
+        removeLocalBudget(cloudFileId: remoteBudget.id)
+        remoteBudgets.removeAll { $0.id == remoteBudget.id }
+        return nil
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.

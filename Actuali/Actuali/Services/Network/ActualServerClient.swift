@@ -815,6 +815,37 @@ actor ActualServerClient {
         return fileInfo
     }
 
+    /// `POST /sync/delete-user-file` — marks the file deleted on the server for
+    /// every client. Mirrors upstream's `removeFile` (cloud-storage.ts), which
+    /// sends the token in the body; the header is our usual transport for it.
+    func deleteFile(fileId: String) async throws {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        let url = serverURL.appendingPathComponent("/sync/delete-user-file")
+        var request = makeRequest(url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(["token": token, "fileId": fileId])
+
+        let (data, response) = try await send(request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        // The server answers an unknown fileId with 400 (its own FIXME says it
+        // should be 404), so treat both as "no such file".
+        if httpResponse.statusCode == 400 || httpResponse.statusCode == 404 {
+            throw ActualServerError.fileNotFound
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
+            )
+        }
+    }
+
     func getKeyInfo(fileId: String) async throws -> ServerKeyInfo {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }

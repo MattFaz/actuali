@@ -270,67 +270,61 @@ private struct BudgetSelectionSettingsSection: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var budgetToUnlock: BudgetStore.RemoteBudget?
     @State private var showingBudgetSelectPrompt = false
+    @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
+    @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
 
-    private var selection: Binding<String?> {
-        Binding(
-            get: {
-                // The picker matches on the server fileId, but currentBudgetId
-                // is the internal id — map through the local metadata.
-                guard let budgetId = budgetStore.currentBudgetId,
-                      let metadata = BudgetFileManager.shared.listLocalBudgets().first(
-                        where: { $0.id == budgetId }
-                      ) else {
-                    return nil
-                }
-                return metadata.cloudFileId
-            },
-            set: { newId in
-                if let id = newId,
-                   let budget = budgetStore.remoteBudgets.first(where: { $0.id == id }) {
-                    Task { await budgetStore.downloadBudget(budget) }
-                }
-            }
+    /// The open budget's server fileId — currentBudgetId is the internal id,
+    /// so map through the local metadata.
+    private var currentCloudFileId: String? {
+        guard let budgetId = budgetStore.currentBudgetId else { return nil }
+        return BudgetFileManager.shared.listLocalBudgets()
+            .first { $0.id == budgetId }?.cloudFileId
+    }
+
+    /// The open budget when the server list doesn't include it (still loading,
+    /// or the file was deleted from another client). It keeps a row so the
+    /// selection stays visible and the local copy stays removable.
+    private var unlistedCurrentBudget: BudgetStore.RemoteBudget? {
+        guard let budgetId = budgetStore.currentBudgetId,
+              let metadata = BudgetFileManager.shared.listLocalBudgets()
+                  .first(where: { $0.id == budgetId }),
+              let fileId = metadata.cloudFileId,
+              !budgetStore.remoteBudgets.contains(where: { $0.id == fileId })
+        else { return nil }
+        return BudgetStore.RemoteBudget(
+            id: fileId,
+            name: metadata.budgetName ?? "Unknown",
+            groupId: metadata.groupId,
+            isEncrypted: metadata.encryptKeyId != nil
         )
+    }
+
+    private func hasLocalCopy(_ budget: BudgetStore.RemoteBudget) -> Bool {
+        BudgetFileManager.shared.listLocalBudgets().contains { $0.cloudFileId == budget.id }
     }
 
     var body: some View {
         Section {
-            Picker("Budget", selection: selection) {
-                // Placeholder until a budget is chosen — deliberately
-                // not offered again afterwards, so "None" can't be
-                // (re)selected.
-                if selection.wrappedValue == nil {
-                    Text("Select a Budget").tag(nil as String?)
-                }
-                // Render a placeholder tag for the current cloudFileId
-                // when remoteBudgets hasn't loaded yet (or doesn't
-                // include it), so SwiftUI can match the selection
-                // and we don't get an "invalid selection" warning.
-                if let currentId = selection.wrappedValue,
-                   !budgetStore.remoteBudgets.contains(where: { $0.id == currentId }) {
-                    Text(budgetStore.remoteBudgets.isEmpty ? "Loading…" : "Unknown")
-                        .tag(currentId as String?)
-                }
-                ForEach(budgetStore.remoteBudgets.filter { !$0.isEncrypted }) { budget in
-                    Text(budget.name).tag(budget.id as String?)
-                }
+            ForEach(budgetStore.remoteBudgets) { budget in
+                budgetRow(budget)
             }
-            .disabled(budgetStore.downloadingBudgetId != nil)
 
-            ForEach(budgetStore.remoteBudgets.filter(\.isEncrypted)) { budget in
-                Button {
-                    openBudget(budget)
-                } label: {
-                    HStack {
+            if let unlisted = unlistedCurrentBudget {
+                HStack {
+                    if unlisted.isEncrypted {
                         Image(systemName: "lock.fill").foregroundStyle(.secondary)
-                        Text(budget.name)
-                        Spacer()
-                        if budgetStore.downloadingBudgetId == budget.id {
-                            ProgressView()
-                        }
+                    }
+                    Text(unlisted.name)
+                    Spacer()
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Selected")
+                }
+                .contextMenu {
+                    Button("Remove from This Device", systemImage: "iphone.slash") {
+                        budgetToRemoveLocally = unlisted
                     }
                 }
-                .disabled(budgetStore.downloadingBudgetId != nil)
             }
 
             if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
@@ -345,12 +339,17 @@ private struct BudgetSelectionSettingsSection: View {
                 if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
                     Text("No budgets were found on your server. Create one in Actual Budget, then tap Refresh Budgets.")
                 } else {
-                    Text("Select a budget to load it onto this device. The app stays empty until one is chosen.")
+                    Text("Select a budget to load it onto this device. The app stays empty until one is chosen.\n\nTouch and hold a budget for options to remove it from this device or delete it from the server.")
                 }
+            } else if !budgetStore.remoteBudgets.isEmpty {
+                Text("Touch and hold a budget for options to remove it from this device or delete it from the server.")
             }
         }
         .sheet(item: $budgetToUnlock) { budget in
             EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)
+        }
+        .sheet(item: $budgetToDeleteFromServer) { budget in
+            DeleteServerBudgetSheet(budget: budget, budgetStore: budgetStore)
         }
         .confirmationDialog(
             "Select a Budget",
@@ -366,9 +365,71 @@ private struct BudgetSelectionSettingsSection: View {
         } message: {
             Text("You're connected! Choose which budget to load onto this device.")
         }
+        .confirmationDialog(
+            "Remove from this device?",
+            isPresented: Binding(
+                get: { budgetToRemoveLocally != nil },
+                set: { if !$0 { budgetToRemoveLocally = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: budgetToRemoveLocally
+        ) { budget in
+            Button("Remove from This Device", role: .destructive) {
+                budgetStore.removeLocalBudget(cloudFileId: budget.id)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { budget in
+            Text("Removes “\(budget.name)” from this device, including its local backups. The budget stays on your server and can be downloaded again.")
+        }
         .task {
             await budgetStore.fetchRemoteBudgets()
             promptBudgetSelectionIfNeeded()
+        }
+    }
+
+    private func budgetRow(_ budget: BudgetStore.RemoteBudget) -> some View {
+        Button {
+            openBudget(budget)
+        } label: {
+            HStack {
+                if budget.isEncrypted {
+                    Image(systemName: "lock.fill").foregroundStyle(.secondary)
+                }
+                Text(budget.name)
+                Spacer()
+                if budgetStore.downloadingBudgetId == budget.id {
+                    ProgressView()
+                } else if budget.id == currentCloudFileId {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(.tint)
+                        .accessibilityLabel("Selected")
+                }
+            }
+        }
+        .disabled(budgetStore.downloadingBudgetId != nil)
+        // No .destructive role on the swipe buttons: that animates the row
+        // away on tap, before the confirmation has run.
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button("Delete", systemImage: "trash") {
+                budgetToDeleteFromServer = budget
+            }
+            .tint(.red)
+            if hasLocalCopy(budget) {
+                Button("Remove", systemImage: "iphone.slash") {
+                    budgetToRemoveLocally = budget
+                }
+                .tint(.orange)
+            }
+        }
+        .contextMenu {
+            if hasLocalCopy(budget) {
+                Button("Remove from This Device", systemImage: "iphone.slash") {
+                    budgetToRemoveLocally = budget
+                }
+            }
+            Button("Delete from Server…", systemImage: "trash", role: .destructive) {
+                budgetToDeleteFromServer = budget
+            }
         }
     }
 
@@ -385,6 +446,68 @@ private struct BudgetSelectionSettingsSection: View {
     private func promptBudgetSelectionIfNeeded() {
         if budgetStore.currentBudgetId == nil && !budgetStore.remoteBudgets.isEmpty {
             showingBudgetSelectPrompt = true
+        }
+    }
+}
+
+/// Retype-to-confirm sheet for the irreversible half of budget deletion.
+/// A sheet rather than an alert so the Delete button can stay disabled until
+/// the typed name matches (mirrors EncryptionPasswordSheet).
+private struct DeleteServerBudgetSheet: View {
+    let budget: BudgetStore.RemoteBudget
+    @ObservedObject var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var typedName = ""
+    @State private var errorText: String?
+    @State private var isWorking = false
+
+    private var nameMatches: Bool {
+        typedName.trimmingCharacters(in: .whitespacesAndNewlines) == budget.name
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Budget name", text: $typedName)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .disabled(isWorking)
+                } header: {
+                    Text("Delete from Server")
+                } footer: {
+                    Text("This permanently deletes “\(budget.name)” from your Actual server for every device that uses it, along with this device's copy and its local backups. This cannot be undone.\n\nType the budget's name to confirm.")
+                }
+
+                if let errorText {
+                    Text(errorText).foregroundStyle(.red).font(.callout)
+                }
+            }
+            .navigationTitle("Delete Budget")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(isWorking)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Delete", role: .destructive) { Task { await deleteBudget() } }
+                        .disabled(!nameMatches || isWorking)
+                }
+            }
+            .interactiveDismissDisabled(isWorking)
+        }
+    }
+
+    private func deleteBudget() async {
+        isWorking = true
+        errorText = nil
+        let failure = await budgetStore.deleteServerBudget(budget)
+        isWorking = false
+        if let failure {
+            errorText = failure
+        } else {
+            dismiss()
         }
     }
 }
