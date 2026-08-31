@@ -3895,10 +3895,6 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
-                // A delete-transaction rule can remove the just-created row.
-                // Don't hand a non-existent id back to a caller that expects
-                // a real transaction (e.g. the category funding automation).
-try await database.saveTransaction(transaction)
 return transaction.id
             }
         }
