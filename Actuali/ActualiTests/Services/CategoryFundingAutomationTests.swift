@@ -156,19 +156,7 @@ struct CategoryFundingAutomationTests {
         #expect(CategoryFundingAutomation.shouldProcess(
             transaction,
             selectedAccountId: "account-1",
-            isIncomeCategory: false,
-            isOffBudgetAccount: false
-        ))
-    }
-
-    @Test("Off-budget account transactions are ignored")
-    func offBudgetAccount() {
-        let transaction = makeTransaction(categoryId: "groceries")
-        #expect(!CategoryFundingAutomation.shouldProcess(
-            transaction,
-            selectedAccountId: "account-1",
-            isIncomeCategory: false,
-            isOffBudgetAccount: true
+            isIncomeCategory: false
         ))
     }
 
