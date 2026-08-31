@@ -131,6 +131,23 @@ struct FormulaEngineTests {
         #expect(abs(value - Double.pi) < 0.0000001)
     }
 
+    @Test func countCountsScalarArguments() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=COUNT(1, 2, 3)"),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .number(3))
+
+        // QUERY_COUNT is the transaction-count function; COUNT sees the
+        // query result as one scalar value.
+        let queryResult = FormulaEngine.compute(
+            meta: meta(formula: #"=COUNT(QUERY("expenses"))"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("1", date: 20260705, amount: -300_000),
+                tx("2", date: 20260702, amount: -50_000),
+            ], today: today, context: .empty)
+        #expect(queryResult == .number(1))
+    }
+
     @Test func currencyDivisionProducesPlainNumber() {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=QUERY("expenses") / QUERY("income")"#, queries: savedThisMonthQueries),
