@@ -29,20 +29,6 @@ final class BudgetViewSettingsUITests: XCTestCase {
         return app
     }
 
-    @MainActor
-    private func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["More"].tap()
-        if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
-            return
-        }
-
-        let row = app.buttons["Budget View"]
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "Budget View settings row not found")
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
-    }
-
-    @MainActor
     private func selectViewStyle(_ style: String, in app: XCUIApplication) {
         let picker = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'View Style'")
