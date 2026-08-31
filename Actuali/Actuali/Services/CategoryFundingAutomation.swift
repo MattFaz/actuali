@@ -20,7 +20,33 @@ enum CategoryFundingDecision: Equatable {
     case sameSourceAndTarget
 }
 
+@MainActor
+private final class CategoryFundingProcessingQueue {
+    private var pendingTask: Task<Void, Never>?
+    private var generation = 0
+
+    func enqueue(_ operation: @escaping @MainActor () async -> Void) async {
+        generation += 1
+        let currentGeneration = generation
+        let previousTask = pendingTask
+        let task = Task { @MainActor in
+            if let previousTask {
+                await previousTask.value
+            }
+            await operation()
+        }
+        pendingTask = task
+        await task.value
+
+        if generation == currentGeneration {
+            pendingTask = nil
+        }
+    }
+}
+
 enum CategoryFundingAutomation {
+    private static let processingQueue = CategoryFundingProcessingQueue()
+
     /// Existing overspending is intentionally preserved. The calculation only
     /// considers positive money that was available before the new expense.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
@@ -40,7 +66,8 @@ enum CategoryFundingAutomation {
         availableAfterTransaction: Int,
         targetCategoryId: String? = nil,
         fundingSource: CategoryFundingSource,
-        sourceAvailable: Int? = nil
+        sourceAvailable: Int? = nil,
+        isTrackingBudget: Bool = false
     ) -> CategoryFundingDecision {
         let amount = shortfall(
             transactionAmount: transactionAmount,
@@ -50,6 +77,7 @@ enum CategoryFundingAutomation {
 
         switch fundingSource {
         case .toBudget:
+            guard !isTrackingBudget else { return .invalidSource }
             return .fund(amount)
         case .category(let sourceId):
             guard sourceId != targetCategoryId else { return .sameSourceAndTarget }
@@ -75,46 +103,22 @@ enum CategoryFundingAutomation {
             && !transaction.tombstone
     }
 
-    /// Funding operations are serialized because the category balance used for
-    /// the decision is a snapshot. Without serialization, two manual entries
-    /// saved in quick succession could both calculate a shortfall against the
-    /// same pre-transfer balance and move too much money.
-    @MainActor
-    private static var pendingProcessingTask: Task<Void, Never>?
-    @MainActor
-    private static var pendingProcessingGeneration = 0
-
     /// Runs only after a successful manual Add Transaction save. The id is the
     /// exact row created by the form, so backdated transactions, rows on other
     /// accounts, and newer rows elsewhere in the budget cannot be mistaken for
-    /// the triggering transaction. Rules have already run before this point,
-    /// so the stored transaction is authoritative.
+    /// the triggering transaction.
     @MainActor
     static func process(
         savedTransactionId: String,
         using budgetStore: BudgetStore,
         defaults: UserDefaults = .standard
     ) async {
-        pendingProcessingGeneration += 1
-        let generation = pendingProcessingGeneration
-        let previousTask = pendingProcessingTask
-        let currentTask = Task { @MainActor in
-            if let previousTask {
-                await previousTask.value
-            }
+        await processingQueue.enqueue {
             await processNow(
                 savedTransactionId: savedTransactionId,
                 using: budgetStore,
                 defaults: defaults
             )
-        }
-        pendingProcessingTask = currentTask
-        await currentTask.value
-
-        // A newer call may already have installed its own task. Only the
-        // latest completed call is allowed to clear the shared reference.
-        if pendingProcessingGeneration == generation {
-            pendingProcessingTask = nil
         }
     }
 
@@ -130,6 +134,12 @@ enum CategoryFundingAutomation {
         ), configuration.isEnabled,
               let selectedAccountId = configuration.accountId,
               let database = budgetStore.databaseForLogger else {
+            return
+        }
+
+        guard let selectedAccount = budgetStore.accounts.first(where: {
+            $0.id == selectedAccountId
+        }), !selectedAccount.closed, !selectedAccount.offBudget else {
             return
         }
 
@@ -149,15 +159,11 @@ enum CategoryFundingAutomation {
             .flatMap(\.categories)
             .first(where: { $0.id == transaction.categoryId })?
             .isIncome ?? false
-        let isOffBudgetAccount = budgetStore.accounts
-            .first(where: { $0.id == selectedAccountId })?
-            .offBudget ?? false
 
         guard shouldProcess(
             transaction,
             selectedAccountId: selectedAccountId,
-            isIncomeCategory: isIncomeCategory,
-            isOffBudgetAccount: isOffBudgetAccount
+            isIncomeCategory: isIncomeCategory
         ) else { return }
 
         let month = String(
@@ -180,17 +186,27 @@ enum CategoryFundingAutomation {
             return
         }
 
-        let sourceAvailable: Int?
         let sourceCategoryId: String?
+        let sourceAvailable: Int?
         switch configuration.fundingSource {
         case .toBudget:
-            sourceAvailable = nil
             sourceCategoryId = nil
+            sourceAvailable = nil
         case .category(let sourceId):
-            sourceCategoryId = sourceId
-            sourceAvailable = budgetMonth.allCategoryBudgets.first(where: {
+            guard let sourceCategory = budgetMonth.allCategoryBudgets.first(where: {
                 $0.categoryId == sourceId
-            })?.available
+            }) else {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): the selected funding category is unavailable."
+                return
+            }
+
+            guard sourceCategory.categoryId != category.categoryId else {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose a different funding category."
+                return
+            }
+
+            sourceCategoryId = sourceCategory.categoryId
+            sourceAvailable = sourceCategory.available
         }
 
         switch fundingDecision(
@@ -198,22 +214,18 @@ enum CategoryFundingAutomation {
             availableAfterTransaction: category.available,
             targetCategoryId: category.categoryId,
             fundingSource: configuration.fundingSource,
-            sourceAvailable: sourceAvailable
+            sourceAvailable: sourceAvailable,
+            isTrackingBudget: budgetMonth.isTrackingBudget
         ) {
         case .none:
             return
         case .invalidSource:
-            budgetStore.error = "Couldn't fund \(category.categoryName): the selected funding category is unavailable."
+            budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose a funding category."
         case .insufficientSource:
-            budgetStore.error = "Couldn't fund \(category.categoryName): the funding category doesn't have enough available."
+            budgetStore.error = "Couldn't automatically fund \(category.categoryName): the funding category doesn't have enough available."
         case .sameSourceAndTarget:
-            budgetStore.error = "Couldn't fund \(category.categoryName): choose a different funding category."
+            budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose a different funding category."
         case .fund(let amountToFund):
-            if case .toBudget = configuration.fundingSource, budgetMonth.isTrackingBudget {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose another funding category."
-                return
-            }
-
             let displayedMonth = budgetStore.currentBudgetMonth?.month
             do {
                 try await budgetStore.transferBudget(
