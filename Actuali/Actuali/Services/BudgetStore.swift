@@ -1098,6 +1098,17 @@ final class BudgetStore: ObservableObject {
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
+
+    /// Test-only: release the open database and sync client the way the app's
+    /// file-mutating paths (disconnect, downloadBudget) do, so a test can
+    /// delete a budget's temp directory without unlinking db.sqlite out from
+    /// under a live SQLite connection ("vnode unlinked while in use").
+    func closeDatabaseForTesting() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+    }
     #endif
 
     private init() {

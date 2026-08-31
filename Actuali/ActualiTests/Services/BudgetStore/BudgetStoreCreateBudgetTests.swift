@@ -99,7 +99,13 @@ struct BudgetStoreCreateBudgetTests {
     /// persisted, and the budget opened with upstream's default categories.
     @Test func createBudgetRegistersAndOpens() async throws {
         let (store, manager, root) = try await makeStore()
-        defer { try? FileManager.default.removeItem(at: root) }
+        defer {
+            // Close the DB before deleting its directory — createBudget opens a
+            // live GRDB connection, and unlinking db.sqlite underneath it trips
+            // "vnode unlinked while in use".
+            store.closeDatabaseForTesting()
+            try? FileManager.default.removeItem(at: root)
+        }
 
         await store.createBudget(named: "Fresh Start")
 
