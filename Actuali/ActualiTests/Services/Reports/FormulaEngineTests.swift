@@ -135,8 +135,8 @@ struct FormulaEngineTests {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=QUERY("expenses") / QUERY("income")"#, queries: savedThisMonthQueries),
             transactions: [
-                tx("expense", date: 20260405, amount: -10_000),
-                tx("income", date: 20260405, amount: 20_000),
+                tx("expense", date: 20260705, amount: -10_000),
+                tx("income", date: 20260705, amount: 20_000),
             ], today: today, context: .empty)
         #expect(result == .number(-0.5))
     }
@@ -149,7 +149,7 @@ struct FormulaEngineTests {
         let currencyOverflow = FormulaEngine.compute(
             meta: meta(formula: "=SUM(QUERY(\"income\"), POWER(10, 30))", queries: savedThisMonthQueries),
             transactions: [
-                tx("income", date: 20260405, amount: 100),
+                tx("income", date: 20260705, amount: 100),
             ], today: today, context: .empty)
         guard case .unsupported = currencyOverflow else {
             Issue.record("expected currency overflow to be unsupported, got \(currencyOverflow)")
