@@ -191,6 +191,12 @@ struct FormulaEngineTests {
         #expect(first != second)
     }
 
+    @Test func dashboardIdentityChangesWhenWidgetsChange() {
+        let withoutFormula = ReportsTabView.dashboardIdentity(pageId: "reports", widgetIds: ["summary"])
+        let withFormula = ReportsTabView.dashboardIdentity(pageId: "reports", widgetIds: ["summary", "formula"])
+        #expect(withoutFormula != withFormula)
+    }
+
     @Test func emptySumAndUnsupportedFunctionsAreRejected() {
         for formula in ["=SUM()", "=BUDGET_QUERY(\"spent\", \"all\", \"2026-01\", \"2026-07\")"] {
             let result = FormulaEngine.compute(
