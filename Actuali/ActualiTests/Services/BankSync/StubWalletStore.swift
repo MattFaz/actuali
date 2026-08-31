@@ -19,7 +19,9 @@ struct StubWalletStore: AppleWalletReading {
         if throwsOnAccounts { throw ReadFailed() }
         return accountsValue
     }
-    func transactions(accountId: String) async throws -> [AppleWalletTransaction] {
+    // sinceDay is deliberately ignored: the provider must hold its own window
+    // filter even when a store over-serves, which these tests exercise.
+    func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
         transactionsByAccount[accountId] ?? []
     }
 }

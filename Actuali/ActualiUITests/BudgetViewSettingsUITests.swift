@@ -83,7 +83,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
         app.tabBars.buttons["Budget"].tap()
         let headerWithTotals = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Essentials, expanded, spent '")
+            NSPredicate(format: "label BEGINSWITH 'Essentials, expanded, budgeted '")
         ).firstMatch
         XCTAssertTrue(
             headerWithTotals.waitForExistence(timeout: 10),
