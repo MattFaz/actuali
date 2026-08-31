@@ -3899,7 +3899,6 @@ final class BudgetStore: ObservableObject {
                 // Don't hand a non-existent id back to a caller that expects
                 // a real transaction (e.g. the category funding automation).
 try await database.saveTransaction(transaction)
-
 return transaction.id
             }
         }
