@@ -1,0 +1,75 @@
+# CircleCI copy of .github/workflows/ui-tests.yml, kept side by side so the two
+# runs can be compared. The GitHub Actions workflow is still the real one.
+# Unlike the nightly Actions schedule this runs on every push to `circleci`,
+# which is the point: it's here to be exercised.
+version: "2.1"
+
+jobs:
+  ui-test:
+    macos:
+      xcode: 26.1.0
+    resource_class: macos.m1.medium.gen1
+    # Serial execution costs wall-clock (see the test step): budget for a
+    # ~90 min green run plus retries.
+    steps:
+      - checkout
+
+      - run:
+          name: Select iOS 26 simulator
+          command: |
+            SIM_ID=$(xcrun simctl list devices available --json \
+              | jq -r '[.devices | to_entries[] | select(.key | contains("iOS-26")) | .value[] | select(.name | startswith("iPhone"))][0].udid')
+            if [ -z "$SIM_ID" ] || [ "$SIM_ID" = "null" ]; then
+              echo "No available iOS 26 iPhone simulator on this image" >&2
+              exit 1
+            fi
+            echo "export SIM_ID=$SIM_ID" >> "$BASH_ENV"
+
+      # A connected hardware keyboard makes the simulator minimize the
+      # software keyboard, so keypad taps land on off-screen keys; the tests
+      # drive budget amounts through the keypad. This host-side pref only
+      # protects a device that has never seen a hardware keyboard (true for
+      # fresh CI sims) — a device that already remembers one needs its
+      # device-side com.apple.keyboard.preferences reset instead. It is keyed
+      # by UDID, so it only reaches the device the tests actually run on now
+      # that parallel testing (which clones the device under new UDIDs) is off.
+      - run:
+          name: Disable simulator hardware keyboard
+          command: |
+            defaults write com.apple.iphonesimulator DevicePreferences \
+              -dict-add "$SIM_ID" \
+              "<dict><key>ConnectHardwareKeyboard</key><false/></dict>"
+
+      # Runs serially on the one simulator. Two parallel workers halved the
+      # test phase but ran two sim clones on a 3-core runner, and the
+      # contention timed out XCTest's own machinery rather than the tests:
+      # kAXErrorIPCTimeout listing apps at `launch()`, background-assertion
+      # timeouts, "Timed out while evaluating UI query", single taps waiting
+      # 35s for the app to idle. Retries still cover a genuine one-off, but
+      # they can't rescue a host that's out of CPU.
+      - run:
+          name: Build and run UI tests on iOS 26
+          no_output_timeout: 60m
+          command: |
+            set -o pipefail
+            xcodebuild test \
+              -project Actuali/Actuali.xcodeproj \
+              -scheme Actuali \
+              -destination "platform=iOS Simulator,id=$SIM_ID" \
+              -only-testing:ActualiUITests \
+              -retry-tests-on-failure \
+              -test-iterations 3 \
+              -parallel-testing-enabled NO \
+              -resultBundlePath TestResults/ActualiUITests.xcresult \
+              | xcbeautify --quiet
+
+      # The tests attach screenshots at each checkpoint; keep them (and the
+      # full activity log) when a run fails on CI but not locally.
+      - store_artifacts:
+          path: TestResults
+          when: on_fail
+
+workflows:
+  ui-tests:
+    jobs:
+      - ui-test
