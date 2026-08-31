@@ -131,6 +131,16 @@ struct FormulaEngineTests {
         #expect(abs(value - Double.pi) < 0.0000001)
     }
 
+    @Test func currencyDivisionProducesPlainNumber() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=QUERY("expenses") / QUERY("income")"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("expense", date: 20260405, amount: -10_000),
+                tx("income", date: 20260405, amount: 20_000),
+            ], today: today, context: .empty)
+        #expect(result == .number(-0.5))
+    }
+
     @Test func extremeResultsAreUnsupportedBeforeDisplayConversion() {
         let plainNumber = FormulaEngine.compute(
             meta: meta(formula: "=POWER(10, 30)"), transactions: [], today: today, context: .empty)
