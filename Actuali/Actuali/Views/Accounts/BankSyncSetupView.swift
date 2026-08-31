@@ -23,6 +23,10 @@ struct BankSyncSetupView: View {
     @State private var errorMessage: String?
     @State private var linkTarget: BankSyncRemoteAccount?
     @State private var showingDisconnectConfirmation = false
+    @State private var importStartDate = Date()
+    /// Nil until the stored day is loaded, which is what keeps the picker's
+    /// initial assignment from being written back (or from kicking a sync).
+    @State private var savedImportStartDay: Int?
 
     var body: some View {
         List {
@@ -34,10 +38,14 @@ struct BankSyncSetupView: View {
             } else {
                 setupSection
             }
+            importStartSection
         }
         .navigationTitle("Bank Sync")
         .navigationBarTitleDisplayMode(.inline)
         .task {
+            let day = await budgetStore.resolvedBankSyncImportStartDay()
+            importStartDate = Transaction.date(fromYYYYMMDD: day)
+            savedImportStartDay = day
             await budgetStore.refreshAppleWalletAvailability()
             if budgetStore.appleWalletAvailability == .authorized {
                 await loadWalletAccounts()
@@ -125,6 +133,35 @@ struct BankSyncSetupView: View {
             default:
                 Text("Link Apple Card, Apple Cash and Savings so their transactions and balances import automatically when you sync. Apple asks once which data Actuali may read.")
             }
+        }
+    }
+
+    // MARK: - Import start
+
+    private var importStartSection: some View {
+        Section {
+            DatePicker(
+                "Import transactions since",
+                selection: $importStartDate,
+                in: ...Date(),
+                displayedComponents: .date
+            )
+            .datePickerStyle(.graphical)
+            .disabled(savedImportStartDay == nil)
+            .onChange(of: importStartDate) { _, newDate in
+                let day = Transaction.yyyymmdd(from: newDate)
+                guard let saved = savedImportStartDay, day != saved else { return }
+                savedImportStartDay = day
+                budgetStore.setBankSyncImportStartDay(day)
+                // Reach the chosen day right away, so picking an earlier one
+                // visibly fills in the older history. Dedup keeps re-covered
+                // ground safe, so a later pick costs nothing either.
+                Task { await budgetStore.runBankSync(fromImportStart: true) }
+            }
+        } header: {
+            Text("Import Start Date")
+        } footer: {
+            Text("Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay.")
         }
     }
 

@@ -209,6 +209,78 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
     }
 
+    // MARK: - Import start day
+
+    /// With no chosen day, imports reach back to the day the budget file
+    /// began — the day of its earliest CRDT message, which travels with the
+    /// file to every device.
+    @Test func importStartDefaultsToTheDayTheBudgetBegan() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+                VALUES ('2024-03-05T12:00:00.000Z-0000-abcdef1234567890',
+                        'accounts', 'acct-card', 'name', X'00')
+                """)
+        }
+        let store = try await makeStore(
+            database: database, walletStore: appleCard(), linked: false
+        )
+
+        #expect(await store.resolvedBankSyncImportStartDay() == 20240305)
+    }
+
+    /// A budget with no messages yet falls back to the shared 90-day lookback.
+    @Test func importStartFallsBackToTheLookbackWindow() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(
+            database: database, walletStore: appleCard(), linked: false
+        )
+
+        let resolved = await store.resolvedBankSyncImportStartDay()
+        #expect(resolved == DayDate.today().adding(days: -89).yyyymmdd)
+    }
+
+    /// The chosen day bounds the first import: anything older stays out, and
+    /// what it did to the balance lands in the opening balance instead.
+    @Test func aChosenDayLimitsTheFirstImport() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
+
+        let result = try await store.syncBankAccounts()
+
+        // Only the day-1 pending purchase is in the window; the day-5 booked
+        // one stays out.
+        let imported = try rows(path: url, where: "financial_id IS NOT NULL")
+        #expect(imported.count == 1)
+        #expect(imported[0]["financial_id"] == "33333333-3333-3333-3333-333333333333")
+        #expect(result.accountsSynced == 1)
+    }
+
+    /// Moving the day earlier and running the backfill pass reaches past the
+    /// account's existing history and pulls the older transactions in.
+    @Test func aBackfillRunReachesPastExistingHistory() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
+        _ = try await store.syncBankAccounts()
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 1)
+
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        let backfill = try await store.syncBankAccounts(fromImportStart: true)
+
+        #expect(backfill.added == 1)
+        let imported = try rows(path: url, where: "financial_id IS NOT NULL")
+        #expect(imported.count == 2)
+        #expect(imported[0]["financial_id"] == "11111111-1111-1111-1111-111111111111")
+    }
+
     /// What a run inserts comes back on the result, so the automatic sync
     /// can post the new-transaction notification — the detector path only
     /// sees rows authored by other devices, which these are not. The opening

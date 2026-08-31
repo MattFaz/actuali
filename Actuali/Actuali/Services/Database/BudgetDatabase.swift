@@ -2741,6 +2741,20 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Bank Sync
 
+    /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
+    /// the budget file began, wherever it began: the messages travel with the
+    /// file, so every device answers the same. Nil for a budget with no
+    /// messages yet. HLC timestamps sort lexically and start with the ISO
+    /// date, so MIN gives the earliest and its first ten characters the day.
+    func earliestMessageDay() async throws -> Int? {
+        try await dbQueue.read { db in
+            guard let timestamp = try String.fetchOne(
+                db, sql: "SELECT MIN(timestamp) FROM messages_crdt"
+            ), timestamp.count >= 10 else { return nil }
+            return Int(timestamp.prefix(10).replacingOccurrences(of: "-", with: ""))
+        }
+    }
+
     /// Every account wired up to a bank feed, in the order the accounts tab
     /// lists them. Empty (rather than an error) on a budget file old enough
     /// to predate the columns — nothing can be linked in that case anyway.
