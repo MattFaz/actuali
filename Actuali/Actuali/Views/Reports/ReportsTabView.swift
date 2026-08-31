@@ -48,7 +48,7 @@ struct ReportsTabView: View {
                         // inputs that widget set needs and never re-run for
                         // the widgets that actually land.
                         DashboardView(widgets: widgets)
-                            .id("\(loadedPageId ?? "")|\(widgets.map(\.id).joined(separator: ","))")
+                            .id(Self.dashboardIdentity(pageId: loadedPageId, widgetIds: widgets.map(\.id)))
                     }
                 }
             }
@@ -64,8 +64,8 @@ struct ReportsTabView: View {
             // Settings, and `reload` has already written the resolved page into
             // `selectedPageId` — which outranks the new default. So changing the
             // setting has to switch the dashboard itself, or it appears to do
-            // nothing until the next launch. Clearing it (nil) re-resolves to
-            // the first page.
+            // nothing until the next launch. Clearing it (nil) re-resolves to the
+            // first page.
             .onChange(of: budgetStore.defaultDashboardPageId) { _, newValue in
                 selectedPageId = newValue
                 Task { await reload() }
@@ -146,6 +146,12 @@ struct ReportsTabView: View {
             return configuredDefault
         }
         return pages.first?.id
+    }
+
+    /// Stable identity for the dashboard view that cannot collide when a page
+    /// or widget ID contains delimiter characters.
+    nonisolated static func dashboardIdentity(pageId: String?, widgetIds: [String]) -> String {
+        ([pageId ?? ""] + widgetIds).joined(separator: "\u{1F}")
     }
 
     private func reload() async {
