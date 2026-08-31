@@ -20,8 +20,7 @@ enum CategoryFundingDecision: Equatable {
     case sameSourceAndTarget
 }
 
-@MainActor
-private final class CategoryFundingProcessingQueue {
+private actor CategoryFundingProcessingQueue {
     private var pendingTask: Task<Void, Never>?
     private var generation = 0
 
@@ -155,15 +154,14 @@ enum CategoryFundingAutomation {
             return
         }
 
-        let isIncomeCategory = budgetStore.categoryGroups
+        let targetCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
-            .first(where: { $0.id == transaction.categoryId })?
-            .isIncome ?? false
+            .first(where: { $0.id == transaction.categoryId })
 
         guard shouldProcess(
             transaction,
             selectedAccountId: selectedAccountId,
-            isIncomeCategory: isIncomeCategory
+            isIncomeCategory: targetCategory?.isIncome ?? false
         ) else { return }
 
         let month = String(
@@ -200,8 +198,12 @@ enum CategoryFundingAutomation {
                 return
             }
 
-            guard sourceCategory.categoryId != category.categoryId else {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose a different funding category."
+            let sourceIsIncome = budgetStore.categoryGroups
+                .flatMap(\.categories)
+                .first(where: { $0.id == sourceId })?
+                .isIncome ?? false
+            guard !sourceIsIncome else {
+                budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose an expense category as the funding source."
                 return
             }
 
