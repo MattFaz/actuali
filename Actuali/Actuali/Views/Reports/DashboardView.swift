@@ -81,7 +81,7 @@ struct DashboardView: View {
             // Keyed to dataVersion so widgets recompute when transactions
             // change anywhere in the app (edits on other tabs, sync,
             // scheduled posts) — not just on first appearance.
-            .task(id: budgetStore.dataVersion) { await loadTransactions() }
+            .task(id: [String(budgetStore.dataVersion)] + widgets.map(\.id)) { await loadTransactions() }
         }
     }
 
