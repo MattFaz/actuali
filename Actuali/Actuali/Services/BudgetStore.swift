@@ -1757,6 +1757,11 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         error = nil
 
+        // Whether /sync/upload-user-file completed: past that point the server
+        // durably has the file, so a later local failure must not read as "the
+        // create failed" — the budget exists and can simply be downloaded.
+        var registeredOnServer = false
+
         do {
             let metadata = try fileManager.createBudget(named: name, templateURL: templateURL)
             do {
@@ -1765,6 +1770,7 @@ final class BudgetStore: ObservableObject {
                 let groupId = try await serverClient.uploadFile(
                     zipData: zipData, fileId: cloudFileId, name: name
                 )
+                registeredOnServer = true
                 let registered = BudgetMetadata(
                     id: metadata.id,
                     budgetName: name,
@@ -1777,6 +1783,11 @@ final class BudgetStore: ObservableObject {
                 try JSONEncoder().encode(registered)
                     .write(to: fileManager.metadataPath(for: metadata.id))
             } catch {
+                // Roll back the local half in either case: a directory without
+                // the server registration in its metadata would load as a
+                // detached, unsyncable budget. When the upload already went
+                // through, the server copy stays the source of truth and the
+                // catch below points the user at it.
                 try? fileManager.deleteBudget(metadata.id)
                 throw error
             }
@@ -1791,7 +1802,18 @@ final class BudgetStore: ObservableObject {
             await loadLocalBudget(metadata.id)
             await fetchRemoteBudgets()
         } catch {
-            self.error = error.localizedDescription
+            if registeredOnServer {
+                // The file exists server-side; surface it in the picker so one
+                // tap downloads it instead of leaving an invisible orphan.
+                await fetchRemoteBudgets()
+                self.error = """
+                    \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
+                    finished on this device: \(error.localizedDescription) \
+                    Select it in Budget Selection to download it.
+                    """
+            } else {
+                self.error = error.localizedDescription
+            }
         }
 
         isLoading = false

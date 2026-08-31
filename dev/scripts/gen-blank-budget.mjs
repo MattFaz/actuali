@@ -24,9 +24,9 @@
 //
 // Run from the repo root, with an actualbudget/actual checkout in ./actual:
 //   node dev/scripts/gen-blank-budget.mjs [path-to-actual] [output-path]
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { copyFileSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
-import { createRequire } from 'node:module';
+import { registerHooks } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -42,24 +42,22 @@ if (!existsSync(path.join(lootCore, 'default-db.sqlite'))) {
   process.exit(1);
 }
 
-// The JS migrations `import { v4 } from 'uuid'`. If the checkout has no
-// node_modules (no yarn install), provide a minimal stub at the workspace
-// root, where yarn would hoist the real package. Probed with createRequire
-// rather than a trial import — a failed ESM resolution is cached for the
-// process, so the real import later would fail even after writing the stub.
-const migrationRequire = createRequire(path.join(migrationsDir, 'probe.js'));
-try {
-  migrationRequire.resolve('uuid');
-} catch {
-  const stubDir = path.join(actualRepo, 'node_modules', 'uuid');
-  mkdirSync(stubDir, { recursive: true });
-  writeFileSync(path.join(stubDir, 'package.json'), JSON.stringify({
-    name: 'uuid', version: '0.0.0-stub', type: 'module', exports: { '.': './index.js' },
-  }));
-  writeFileSync(path.join(stubDir, 'index.js'),
-    "import { randomUUID } from 'node:crypto';\nexport const v4 = () => randomUUID();\n");
-  console.log('Wrote uuid stub to', stubDir);
-}
+// The JS migrations `import { v4 } from 'uuid'`, which a plain checkout (no
+// yarn install) can't resolve. Route the specifier to a stub in a temp dir
+// via an in-process resolution hook — never by writing into the checkout's
+// node_modules. randomUUID is a v4 UUID, so the stub is behavior-identical.
+const stubDir = mkdtempSync(path.join(tmpdir(), 'uuid-stub-'));
+const uuidStubPath = path.join(stubDir, 'uuid.mjs');
+writeFileSync(uuidStubPath,
+  "import { randomUUID } from 'node:crypto';\nexport const v4 = () => randomUUID();\n");
+registerHooks({
+  resolve(specifier, context, nextResolve) {
+    if (specifier === 'uuid') {
+      return { url: pathToFileURL(uuidStubPath).href, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  },
+});
 
 // Mirror of loot-core migrations.ts getMigrationId/getMigrationList.
 const migrationId = name => parseInt(name.match(/^(\d)+/)[0]);
