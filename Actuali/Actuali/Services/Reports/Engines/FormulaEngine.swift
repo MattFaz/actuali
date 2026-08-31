@@ -45,9 +45,6 @@ enum FormulaEngine {
             guard result.isFinite else {
                 return .unsupported("This formula returned an invalid number")
             }
-            guard kind == .currency || abs(result) <= Double(Int.max) else {
-                return .unsupported("This formula returned an invalid number")
-            }
             if case .currency = kind {
                 // FormulaWidgetView converts currency to cents before passing
                 // it to Int. Check the converted value rather than the Double
