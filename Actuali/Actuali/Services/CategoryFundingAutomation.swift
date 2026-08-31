@@ -154,14 +154,16 @@ enum CategoryFundingAutomation {
             return
         }
 
-        let targetCategory = budgetStore.categoryGroups
+        guard let targetCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
-            .first(where: { $0.id == transaction.categoryId })
+            .first(where: { $0.id == transaction.categoryId }) else {
+            return
+        }
 
         guard shouldProcess(
             transaction,
             selectedAccountId: selectedAccountId,
-            isIncomeCategory: targetCategory?.isIncome ?? false
+            isIncomeCategory: targetCategory.isIncome
         ) else { return }
 
         let month = String(
@@ -200,8 +202,7 @@ enum CategoryFundingAutomation {
 
             let sourceIsIncome = budgetStore.categoryGroups
                 .flatMap(\.categories)
-                .first(where: { $0.id == sourceId })?
-                .isIncome ?? false
+                .first(where: { $0.id == sourceId })?.isIncome ?? false
             guard !sourceIsIncome else {
                 budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose an expense category as the funding source."
                 return
