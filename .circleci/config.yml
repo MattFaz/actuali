@@ -72,4 +72,10 @@ jobs:
 workflows:
   ui-tests:
     jobs:
-      - ui-test
+      # Branch-gated on purpose: the trigger is all-pushes, and a 90-minute
+      # macOS job firing on every push to main is not what this experiment is
+      # for. Widen the filter once the comparison is done.
+      - ui-test:
+          filters:
+            branches:
+              only: circleci
