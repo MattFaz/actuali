@@ -2,17 +2,13 @@ import Foundation
 
 /// Native evaluator for formula-card widgets. Actual evaluates Formula cards
 /// with HyperFormula; Actuali keeps this evaluator native and read-only.
-///
-/// The evaluator intentionally supports the formula syntax currently needed
-/// by Actuali's read-only Formula cards, including common HyperFormula-style
-/// functions that may be present in synced cards.
 enum FormulaEngine {
 
     enum Result: Equatable {
         /// Currency units. FormulaWidgetView renders these using the budget's
         /// normal currency formatting.
         case value(Double)
-        /// A plain numeric result, such as a count or mathematical constant.
+        /// A plain numeric result, such as a comparison result.
         case number(Double)
         case unsupported(String)
     }
@@ -47,6 +43,9 @@ enum FormulaEngine {
                 context: context
             ))
             guard result.isFinite else {
+                return .unsupported("This formula returned an invalid number")
+            }
+            guard kind == .currency || abs(result) <= Double(Int.max) else {
                 return .unsupported("This formula returned an invalid number")
             }
             if case .currency = kind {
@@ -108,10 +107,6 @@ enum FormulaEngine {
         Double(queryMatches(named: name, env).reduce(0) { $0 + $1.amount }) / 100
     }
 
-    private static func queryCount(named name: String, _ env: Env) -> Double {
-        Double(queryMatches(named: name, env).count)
-    }
-
     private static func ymdInt(from date: Date) -> Int {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: "UTC")!
@@ -147,10 +142,9 @@ enum FormulaEngine {
     private static func evaluate(_ expression: Expr, _ env: Env) throws -> (Double, ValueKind) {
         switch expression {
         case .number(let value):
-            // Preserve the pre-FormulaEngine behavior: literal arithmetic is
-            // rendered as currency unless a function explicitly produces a
-            // dimensionless result such as a count or constant.
-            return (value, .currency)
+            // Numeric literals have no unit. Arithmetic adopts the unit of
+            // the operand it combines with, preserving currency QUERY results.
+            return (value, .number)
         case .string:
             throw EvalError.invalidArgument
         case .add(let left, let right):
@@ -163,7 +157,10 @@ enum FormulaEngine {
             let lhs = try evaluate(left, env)
             let rhs = try evaluate(right, env)
             guard abs(rhs.0) > .ulpOfOne else { throw EvalError.divisionByZero }
-            let kind: ValueKind = lhs.1 == .currency && rhs.1 != .currency ? .currency : .number
+            let bothCurrency = lhs.1 == .currency && rhs.1 == .currency
+            let kind: ValueKind = bothCurrency
+                ? .number
+                : (lhs.1 == .currency || rhs.1 == .currency ? .currency : .number)
             return (lhs.0 / rhs.0, kind)
         case .neg(let value):
             let result = try evaluate(value, env)
@@ -206,25 +203,12 @@ enum FormulaEngine {
             }
             return (querySum(named: queryName, env), .currency)
 
-        case "QUERY_COUNT":
-            guard args.count == 1, let queryName = stringArgument(args[0]) else {
-                throw EvalError.invalidArgument
-            }
-            return (queryCount(named: queryName, env), .number)
-
         case "SUM":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
             return try numericArguments(args, env).reduce((0, .number)) { total, next in
                 let kind: ValueKind = total.1 == .currency || next.1 == .currency ? .currency : .number
                 return (total.0 + next.0, kind)
             }
-
-        case "AVERAGE":
-            let values = try numericArguments(args, env)
-            guard !values.isEmpty else { throw EvalError.invalidArgument }
-            let total = values.reduce(0) { $0 + $1.0 }
-            let hasCurrency = values.contains { $0.1 == .currency }
-            return (total / Double(values.count), hasCurrency ? .currency : .number)
 
         case "MIN":
             let values = try numericArguments(args, env)
@@ -238,92 +222,15 @@ enum FormulaEngine {
             let result = values.dropFirst().reduce(first.0) { Swift.max($0, $1.0) }
             return (result, values.contains { $0.1 == .currency } ? .currency : .number)
 
-        case "PRODUCT":
-            let values = try numericArguments(args, env)
-            guard !values.isEmpty else { throw EvalError.invalidArgument }
-            let result = values.reduce(1) { $0 * $1.0 }
-            return (result, values.contains { $0.1 == .currency } ? .currency : .number)
-
-        case "COUNT":
-            // With this grammar, COUNT receives scalar arguments rather than
-            // cell ranges. Counting numeric arguments matches that model;
-            // QUERY_COUNT is available when transaction count is required.
-            return (Double(try numericArguments(args, env).count), .number)
-
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
             let value = try evaluate(args[0], env)
             return (abs(value.0), value.1)
 
-        case "SQRT":
-            guard args.count == 1 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], env)
-            return (sqrt(value.0), .number)
-
-        case "POWER":
-            guard args.count == 2 else { throw EvalError.invalidArgument }
-            let base = try evaluate(args[0], env)
-            let exponent = try evaluate(args[1], env)
-            return (pow(base.0, exponent.0), .number)
-
-        case "ROUND":
-            guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], env)
-            var digits = 0
-            if args.count == 2 {
-                let raw = try evaluate(args[1], env).0
-                let truncated = raw.rounded(.towardZero)
-                guard truncated.isFinite, let exact = Int(exactly: truncated) else {
-                    throw EvalError.invalidArgument
-                }
-                digits = exact
-            }
-            let factor = pow(10, Double(digits))
-            guard factor.isFinite, abs(factor) > .ulpOfOne else {
-                throw EvalError.invalidArgument
-            }
-            return ((value.0 * factor).rounded() / factor, value.1)
-
-        case "FLOOR":
-            guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], env)
-            let significance = args.count == 2 ? try evaluate(args[1], env).0 : 1
-            guard significance.isFinite, significance != 0 else { throw EvalError.invalidArgument }
-            return (floor(value.0 / significance) * significance, value.1)
-
-        case "CEILING":
-            guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], env)
-            let significance = args.count == 2 ? try evaluate(args[1], env).0 : 1
-            guard significance.isFinite, significance != 0 else { throw EvalError.invalidArgument }
-            return (ceil(value.0 / significance) * significance, value.1)
-
         case "IF":
             guard args.count == 3 else { throw EvalError.invalidArgument }
             let condition = try evaluate(args[0], env).0
             return try evaluate(condition != 0 ? args[1] : args[2], env)
-
-        case "AND":
-            guard !args.isEmpty else { throw EvalError.invalidArgument }
-            for arg in args where try evaluate(arg, env).0 == 0 {
-                return (0, .number)
-            }
-            return (1, .number)
-
-        case "OR":
-            guard !args.isEmpty else { throw EvalError.invalidArgument }
-            for arg in args where try evaluate(arg, env).0 != 0 {
-                return (1, .number)
-            }
-            return (0, .number)
-
-        case "NOT":
-            guard args.count == 1 else { throw EvalError.invalidArgument }
-            return (try evaluate(args[0], env).0 == 0 ? 1 : 0, .number)
-
-        case "PI":
-            guard args.isEmpty else { throw EvalError.invalidArgument }
-            return (Double.pi, .number)
 
         default:
             throw EvalError.invalidFunction
@@ -470,7 +377,7 @@ enum FormulaEngine {
             skipWhitespace()
             if match(["<", "="]) { return .lessOrEqual }
             if match([">", "="]) { return .greaterOrEqual }
-            if match(["<", ">"] ) { return .notEqual }
+            if match(["<", ">"]) { return .notEqual }
             if match(["="]) { return .equal }
             if match(["<"]) { return .less }
             if match([">"]) { return .greater }
