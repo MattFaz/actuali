@@ -18,7 +18,7 @@ struct FormulaWidgetView: View {
                     .foregroundStyle(units < 0 ? Color.red : Color.green)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             case .number(let value):
-                Text(Self.numberFormatter.string(from: NSNumber(value: value)) ?? String(value))
+                Text(value, format: .number.precision(.fractionLength(0...2)))
                     .font(.system(size: 34, weight: .bold))
                     .monospacedDigit()
                     .minimumScaleFactor(0.5)
@@ -36,11 +36,4 @@ struct FormulaWidgetView: View {
         .background(Color(.secondarySystemBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
     }
-
-    private static let numberFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.maximumFractionDigits = 2
-        formatter.minimumFractionDigits = 0
-        return formatter
-    }()
 }
