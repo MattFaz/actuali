@@ -27,6 +27,7 @@ struct BankSyncSetupView: View {
     /// Nil until the stored day is loaded, which is what keeps the picker's
     /// initial assignment from being written back (or from kicking a sync).
     @State private var savedImportStartDay: Int?
+    @State private var isBackfilling = false
 
     var body: some View {
         List {
@@ -138,30 +139,58 @@ struct BankSyncSetupView: View {
 
     // MARK: - Import start
 
+    @ViewBuilder
     private var importStartSection: some View {
-        Section {
-            DatePicker(
-                "Import transactions since",
-                selection: $importStartDate,
-                in: ...Date(),
-                displayedComponents: .date
-            )
-            .datePickerStyle(.graphical)
-            .disabled(savedImportStartDay == nil)
-            .onChange(of: importStartDate) { _, newDate in
-                let day = Transaction.yyyymmdd(from: newDate)
-                guard let saved = savedImportStartDay, day != saved else { return }
-                savedImportStartDay = day
-                budgetStore.setBankSyncImportStartDay(day)
-                // Reach the chosen day right away, so picking an earlier one
-                // visibly fills in the older history. Dedup keeps re-covered
-                // ground safe, so a later pick costs nothing either.
-                Task { await budgetStore.runBankSync(fromImportStart: true) }
+        // Nothing to import from means nothing to date, so the calendar only
+        // shows where one of the two providers is actually on offer.
+        if budgetStore.canSyncBanks || budgetStore.appleWalletAvailability != .unsupported {
+            Section {
+                DatePicker(
+                    "Import transactions since",
+                    selection: $importStartDate,
+                    in: ...Date(),
+                    displayedComponents: .date
+                )
+                .datePickerStyle(.graphical)
+                .disabled(savedImportStartDay == nil || isBackfilling)
+                .onChange(of: importStartDate) { _, newDate in
+                    let day = Transaction.yyyymmdd(from: newDate)
+                    guard let saved = savedImportStartDay, day != saved else { return }
+                    savedImportStartDay = day
+                    Task { await applyImportStart(day) }
+                }
+
+                if isBackfilling {
+                    HStack {
+                        ProgressView()
+                        Text("Importing older transactions…")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            } header: {
+                Text("Import Start Date")
+            } footer: {
+                Text("Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay.")
             }
-        } header: {
-            Text("Import Start Date")
-        } footer: {
-            Text("Linked accounts import transactions from this day on. It starts out as the day this budget began; pick an earlier day to pull in older history. Transactions already imported always stay.")
+        }
+    }
+
+    /// Store the day, then reach it. The store holds the day as a debt until a
+    /// sync honours it, so a run that fails here is retried by the next one —
+    /// this is only what makes the import visible while the screen is open.
+    private func applyImportStart(_ day: Int) async {
+        await budgetStore.setBankSyncImportStartDay(day)
+        isBackfilling = true
+        defer { isBackfilling = false }
+        do {
+            // The throwing entry point, not `runBankSync`: its summary alert
+            // lives on the accounts tab, which this screen may not be inside.
+            let result = try await budgetStore.syncBankAccounts()
+            if !result.problems.isEmpty {
+                errorMessage = result.problems.joined(separator: "\n\n")
+            }
+        } catch {
+            errorMessage = error.localizedDescription
         }
     }
 

@@ -2459,14 +2459,40 @@ final class BudgetStore: ObservableObject {
             .object(forKey: bankSyncImportStartKey(for: budgetId)) as? Int
     }
 
-    func setBankSyncImportStartDay(_ day: Int?) {
-        guard let budgetId = currentBudgetId else { return }
-        let key = bankSyncImportStartKey(for: budgetId)
-        if let day {
-            appleWalletLinkDefaults.set(day, forKey: key)
-        } else {
-            appleWalletLinkDefaults.removeObject(forKey: key)
+    /// A day the linked accounts owe a reach back to, but haven't made yet.
+    ///
+    /// Held in defaults rather than in memory because the run that would
+    /// honour it can not happen: `runBankSync` drops a request while another
+    /// sync is in flight, the download can fail, and the app can be killed
+    /// mid-import. The chosen day is persisted either way, and the ongoing
+    /// window never reaches below an account's existing history — so without
+    /// this the setting would be quietly unreachable. Any later sync clears
+    /// the debt.
+    private var pendingBankSyncBackfillDay: Int? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return appleWalletLinkDefaults
+                .object(forKey: "bankSyncBackfill_\(budgetId)") as? Int
         }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            let key = "bankSyncBackfill_\(budgetId)"
+            if let newValue {
+                appleWalletLinkDefaults.set(newValue, forKey: key)
+            } else {
+                appleWalletLinkDefaults.removeObject(forKey: key)
+            }
+        }
+    }
+
+    func setBankSyncImportStartDay(_ day: Int) async {
+        guard let budgetId = currentBudgetId else { return }
+        let previous = await resolvedBankSyncImportStartDay()
+        appleWalletLinkDefaults.set(day, forKey: bankSyncImportStartKey(for: budgetId))
+        // Only reaching further back is work: moving the day later imports
+        // nothing new (and removes nothing either).
+        guard day < previous else { return }
+        pendingBankSyncBackfillDay = min(day, pendingBankSyncBackfillDay ?? day)
     }
 
     /// The day imports reach back to for an account with no history of its
@@ -2474,7 +2500,7 @@ final class BudgetStore: ObservableObject {
     /// the 90-day lookback several bank integrations won't serve more than.
     func resolvedBankSyncImportStartDay() async -> Int {
         if let chosen = storedBankSyncImportStartDay { return chosen }
-        if let began = try? await database?.earliestMessageDay(), let began { return began }
+        if let began = try? await database?.earliestMessageDay() { return began }
         return DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
     }
 
@@ -2622,15 +2648,13 @@ final class BudgetStore: ObservableObject {
 
     /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
     /// entry point — `syncBankAccounts` is the one that throws.
-    func runBankSync(accountIds: [String] = [], fromImportStart: Bool = false) async {
+    func runBankSync(accountIds: [String] = []) async {
         // A tap that lands while a sync is already running does nothing — the
         // running sync posts its own summary, which would otherwise be
         // clobbered by this call's empty one.
         guard !isBankSyncing else { return }
         do {
-            bankSyncSummary = try await syncBankAccounts(
-                accountIds: accountIds, fromImportStart: fromImportStart
-            ).summary
+            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
         } catch {
             bankSyncSummary = error.localizedDescription
         }
@@ -2771,14 +2795,10 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Download and import transactions for the linked accounts.
-    /// - Parameters:
-    ///   - accountIds: which accounts to sync; empty syncs every linked one,
-    ///     which is what the accounts tab's sync button does.
-    ///   - fromImportStart: reach the chosen import start day even for
-    ///     accounts that already have history — the backfill run after the
-    ///     settings day moves earlier.
+    /// - Parameter accountIds: which accounts to sync; empty syncs every
+    ///   linked one, which is what the accounts tab's sync button does.
     @discardableResult
-    func syncBankAccounts(accountIds: [String] = [], fromImportStart: Bool = false) async throws -> BankSyncResult {
+    func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
         // A second run on top of the first would re-download the same window
         // and race the first one's writes.
@@ -2819,13 +2839,14 @@ final class BudgetStore: ObservableObject {
         guard !targets.isEmpty else { return result }
 
         // Three windows. A first import (no history) starts where the person
-        // chose — by default, the day the budget file began. A backfill run
-        // (the settings screen, after the day moves earlier) reaches the
-        // chosen day regardless of history; dedup keeps the overlap safe.
-        // Ongoing syncs only need the stretch since the account's earliest
-        // transaction, still capped at the rolling 90-day floor — history
-        // already covers everything older, so re-scanning it buys nothing.
+        // chose — by default, the day the budget file began. A run carrying an
+        // unhonoured backfill reaches that day regardless of history; dedup
+        // keeps the overlap safe. Ongoing syncs only need the stretch since
+        // the account's earliest transaction, still capped at the rolling
+        // 90-day floor — history already covers everything older, so
+        // re-scanning it buys nothing.
         let importStart = await resolvedBankSyncImportStartDay()
+        let backfillDay = pendingBankSyncBackfillDay
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
@@ -2836,11 +2857,15 @@ final class BudgetStore: ObservableObject {
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
-                BankSyncTarget(
+                guard let oldest = oldestDates[$0.id] else {
+                    return BankSyncTarget(externalId: $0.externalAccountId, startDay: importStart)
+                }
+                let incremental = max(lookbackFloor, oldest)
+                // A pending backfill only ever widens the window; one aimed
+                // later than the account already reaches is a no-op.
+                return BankSyncTarget(
                     externalId: $0.externalAccountId,
-                    startDay: fromImportStart
-                        ? importStart
-                        : oldestDates[$0.id].map { max(lookbackFloor, $0) } ?? importStart
+                    startDay: min(backfillDay ?? incremental, incremental)
                 )
             }
         }
@@ -2910,7 +2935,7 @@ final class BudgetStore: ObservableObject {
                 let outcome = try await importBankSync(
                     download,
                     into: target,
-                    isFirstSync: oldestDates[target.id] == nil,
+                    existingOldestDay: oldestDates[target.id],
                     prepared: prepared
                 )
                 result.added += outcome.added
@@ -2922,6 +2947,13 @@ final class BudgetStore: ObservableObject {
                 result.problems.append("\(target.name): \(error.localizedDescription)")
                 statuses.append((target.id, nil, "failed"))
             }
+        }
+
+        // The backfill is only paid off once every linked account came back
+        // clean in one run: a partial or per-account sync leaves the ones it
+        // skipped still owing the reach.
+        if accountIds.isEmpty, result.problems.isEmpty, result.accountsSynced == targets.count {
+            pendingBankSyncBackfillDay = nil
         }
 
         // The same two columns every other Actual client stamps, so the web
@@ -2938,7 +2970,7 @@ final class BudgetStore: ObservableObject {
     private func importBankSync(
         _ download: BankSyncDownload,
         into target: BankSyncAccount,
-        isFirstSync: Bool,
+        existingOldestDay: Int?,
         prepared: SyncClient.PreparedRules
     ) async throws -> (added: Int, updated: Int, inserted: [Transaction]) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
@@ -2951,7 +2983,7 @@ final class BudgetStore: ObservableObject {
         // The opening balance counts as an import too (upstream folds its id
         // into `added`), so a first sync never reports one fewer than it wrote.
         var added = 0
-        if isFirstSync {
+        if existingOldestDay == nil {
             added += try await insertStartingBalance(
                 for: target,
                 currentBalanceCents: download.currentBalanceCents,
@@ -3019,7 +3051,46 @@ final class BudgetStore: ObservableObject {
             inserted.append(transaction)
         }
 
+        // Anything older than the history this account already had was folded
+        // into its opening balance when that was worked out. Importing those
+        // rows now would count them twice, so the opening gives back exactly
+        // what they carry: a backfill moves no balance, only detail.
+        if let existingOldestDay {
+            try await absorbIntoStartingBalance(
+                for: target,
+                backfilled: inserted.filter { $0.date < existingOldestDay }
+            )
+        }
+
         return (added + plan.inserts.count, plan.updates.count, inserted)
+    }
+
+    /// Keep a backfill balance-neutral. Without this the account drifts from
+    /// the bank by the sum of everything the backfill reached, permanently —
+    /// the opening balance was already standing in for those rows.
+    private func absorbIntoStartingBalance(
+        for target: BankSyncAccount, backfilled: [Transaction]
+    ) async throws {
+        guard let database, let syncClient,
+              let earliest = backfilled.map(\.date).min() else { return }
+        let carried = backfilled.reduce(0) { $0 + $1.amount }
+
+        guard let openingId = try await database.startingBalanceTransactionId(
+            accountId: target.id
+        ) else {
+            // No opening balance to correct means nothing was ever folded into
+            // one — but the account still can't move, so write the one the
+            // first sync worked out as zero and skipped. Rows that net to
+            // nothing need no row of their own.
+            guard carried != 0 else { return }
+            try await writeStartingBalance(for: target, amount: -carried, date: earliest)
+            return
+        }
+        guard var opening = try await database.fetchTransaction(id: openingId) else { return }
+        opening.amount -= carried
+        // The opening has to sit at or before the history it opens.
+        opening.date = min(opening.date, earliest)
+        try await syncClient.updateTransaction(opening, changedFields: ["amount", "date"])
     }
 
     /// Give a freshly linked account the opening balance its imported history
@@ -3033,20 +3104,34 @@ final class BudgetStore: ObservableObject {
         currentBalanceCents: Int?,
         candidates: [BankSyncCandidate]
     ) async throws -> Bool {
-        guard let syncClient, let balance = currentBalanceCents else { return false }
+        guard let balance = currentBalanceCents else { return false }
         // The balance is as of now, so what the account opened with is what's
         // left once everything about to be imported is taken back off it.
         let opening = balance - candidates.reduce(0) { $0 + $1.amount }
         guard opening != 0 else { return false }
 
+        try await writeStartingBalance(
+            for: target,
+            amount: opening,
+            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date())
+        )
+        return true
+    }
+
+    /// Write an account's opening-balance row. Shared by the first sync and by
+    /// a backfill that finds none to correct.
+    private func writeStartingBalance(
+        for target: BankSyncAccount, amount: Int, date: Int
+    ) async throws {
+        guard let syncClient else { return }
         let payee = try await findOrCreatePayee(name: "Starting Balance")
         let category = target.offBudget ? nil : startingBalanceCategory()
 
         let transaction = Transaction(
             id: UUID().uuidString,
             accountId: target.id,
-            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
-            amount: opening,
+            date: date,
+            amount: amount,
             payeeId: payee.id,
             payeeName: payee.name,
             categoryId: category?.id,
@@ -3064,7 +3149,6 @@ final class BudgetStore: ObservableObject {
         )
         // Rules never see an opening balance, same as account creation's.
         try await syncClient.createTransaction(transaction, applyRules: false)
-        return true
     }
 
     /// Create a paired transfer between two accounts. Writes both legs with linked

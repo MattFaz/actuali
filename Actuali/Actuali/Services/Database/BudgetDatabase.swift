@@ -2746,12 +2746,33 @@ final class BudgetDatabase: Sendable {
     /// file, so every device answers the same. Nil for a budget with no
     /// messages yet. HLC timestamps sort lexically and start with the ISO
     /// date, so MIN gives the earliest and its first ten characters the day.
+    ///
+    /// That day is UTC, unlike every other `YYYYMMDD` here, which comes from
+    /// `Calendar.current`. Deliberate: agreeing across devices is the whole
+    /// point, and a local reading would have two phones in different zones
+    /// answer differently for the same file. Worst case it names the day
+    /// after the one the file was really made on, which only shifts an import
+    /// floor by a day.
     func earliestMessageDay() async throws -> Int? {
         try await dbQueue.read { db in
             guard let timestamp = try String.fetchOne(
                 db, sql: "SELECT MIN(timestamp) FROM messages_crdt"
             ), timestamp.count >= 10 else { return nil }
             return Int(timestamp.prefix(10).replacingOccurrences(of: "-", with: ""))
+        }
+    }
+
+    /// The id of an account's opening-balance row, if it has one. A backfill
+    /// needs it to hand back what the rows it imports were already counted
+    /// for (see `absorbIntoStartingBalance`).
+    func startingBalanceTransactionId(accountId: String) async throws -> String? {
+        try await dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE acct = ? AND starting_balance_flag = 1
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY date
+                """, arguments: [accountId])
         }
     }
 
