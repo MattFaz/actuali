@@ -82,10 +82,7 @@ struct TransactionBulkActionBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(.regularMaterial, in: Capsule())
-        .overlay {
-            Capsule().strokeBorder(.quaternary, lineWidth: 0.5)
-        }
-        .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
+        .shadow(radius: 4)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .onChange(of: transactions) {
