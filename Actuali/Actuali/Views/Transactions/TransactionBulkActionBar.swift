@@ -81,7 +81,7 @@ struct TransactionBulkActionBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(.regularMaterial, in: Capsule())
+        .background(.ultraThinMaterial, in: Capsule())
         .shadow(radius: 4)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
