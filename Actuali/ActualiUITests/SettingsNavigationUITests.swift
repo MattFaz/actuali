@@ -31,7 +31,9 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Scheduled Transactions":
             content = app.searchFields["Search schedules"]
         case "Rules":
-            content = app.navigationBars["Rules"].buttons["Add Rule"]
+            // The demo budget does not include a rules table, so RulesListView
+            // shows its unavailable placeholder instead of the Add Rule button.
+            content = app.staticTexts["Rules Unavailable"]
         case "Bank Sync (SimpleFIN & Wallet)":
             content = app.navigationBars["Bank Sync"]
         case "About":
