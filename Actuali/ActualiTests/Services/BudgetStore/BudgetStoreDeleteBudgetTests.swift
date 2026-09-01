@@ -21,7 +21,8 @@ private final class DeleteBudgetTransport: URLProtocol {
             headerFields: ["Content-Type": "application/json"]
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(#"{"status":"ok"}"#.utf8))
+        let body = Self.status == 400 ? "file-not-found" : #"{"status":"ok"}"#
+        client?.urlProtocol(self, didLoad: Data(body.utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 

@@ -843,7 +843,9 @@ actor ActualServerClient {
             throw ActualServerError.authProxyBlocked
         }
         if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
-        if httpResponse.statusCode == 400 { throw ActualServerError.fileNotFound }
+        if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
+            throw ActualServerError.fileNotFound
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(
                 statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)

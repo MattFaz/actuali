@@ -114,7 +114,7 @@ struct ActualServerClientDeleteFileTests {
     /// The server answers an unknown fileId with 400 file-not-found (its own
     /// FIXME says it should be 404).
     @Test func mapsBadRequestToFileNotFound() async throws {
-        let client = try await makeClient(status: 400)
+        let client = try await makeClient(status: 400, responseBody: "file-not-found")
         do {
             try await client.deleteFile(fileId: "file-123")
             Issue.record("Expected deleteFile to throw")
@@ -123,6 +123,20 @@ struct ActualServerClientDeleteFileTests {
                 Issue.record("Expected .fileNotFound, got \(error)")
                 return
             }
+        }
+    }
+
+    @Test func keepsOtherBadRequestsAsHTTPErrors() async throws {
+        let client = try await makeClient(status: 400, responseBody: "invalid fileId")
+        do {
+            try await client.deleteFile(fileId: "budget@2026")
+            Issue.record("Expected deleteFile to throw")
+        } catch let error as ActualServerError {
+            guard case .httpError(let statusCode, _) = error else {
+                Issue.record("Expected .httpError, got \(error)")
+                return
+            }
+            #expect(statusCode == 400)
         }
     }
 
