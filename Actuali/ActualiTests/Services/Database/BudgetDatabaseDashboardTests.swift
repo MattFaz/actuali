@@ -228,4 +228,18 @@ struct ReportsPageSelectionTests {
             pages: []
         ) == nil)
     }
+
+    @Test func widgetRevisionBumpsWhenMetaChangesUnderSameId() {
+        let before: [DashboardWidget] = [
+            .formula(id: "w1", meta: FormulaMeta(
+                name: "Net", formula: #"=QUERY("a")"#, queries: nil))
+        ]
+        let after: [DashboardWidget] = [
+            .formula(id: "w1", meta: FormulaMeta(
+                name: "Net", formula: #"=QUERY("b")"#, queries: nil))
+        ]
+
+        #expect(ReportsTabView.widgetsRevision(0, old: before, new: before) == 0)
+        #expect(ReportsTabView.widgetsRevision(0, old: before, new: after) == 1)
+    }
 }
