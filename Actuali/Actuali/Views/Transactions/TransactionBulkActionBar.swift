@@ -85,6 +85,7 @@ struct TransactionBulkActionBar: View {
         .shadow(radius: 4)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
+        .contentShape(Rectangle())
         .onChange(of: transactions) {
             // Drop ids the list no longer holds (refilter, search, account
             // switch), so the counts match what the actions will touch.
