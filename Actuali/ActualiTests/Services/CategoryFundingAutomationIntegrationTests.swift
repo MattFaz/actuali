@@ -355,6 +355,51 @@ struct CategoryFundingAutomationIntegrationTests {
         #expect(store.error?.contains("funding category is unavailable") == true)
     }
 
+    @Test("Missing funding category is ignored when there is no shortfall")
+    func missingFundingCategoryWithNoShortfallDoesNotError() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        _ = try insertTransaction(in: database, amount: -500)
+
+        let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        saveConfiguration(.category("missing-category"), defaults: defaults)
+
+        await CategoryFundingAutomation.process(
+            savedTransactionId: "tx-1",
+            using: store,
+            defaults: defaults
+        )
+
+        #expect(store.error == nil)
+    }
+
+    @Test("A category cannot fund itself")
+    func sameCategoryFundingDoesNotError() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        _ = try insertTransaction(in: database)
+
+        let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        saveConfiguration(.category("cat-dining"), defaults: defaults)
+
+        await CategoryFundingAutomation.process(
+            savedTransactionId: "tx-1",
+            using: store,
+            defaults: defaults
+        )
+
+        #expect(store.error == nil)
+        let month = try await database.fetchBudgetMonth(month: "2026-07")
+        let dining = try #require(month.categoryBudgets.first { $0.categoryId == "cat-dining" })
+        #expect(dining.budgeted == 1000)
+    }
+
     @Test("Income category cannot be used as a funding source")
     func incomeFundingCategoryIsRejected() async throws {
         let (database, path) = try makeDatabase()
@@ -373,6 +418,6 @@ struct CategoryFundingAutomationIntegrationTests {
             defaults: defaults
         )
 
-        #expect(store.error?.contains("choose an expense category") == true)
+        #expect(store.error?.contains("funding category is unavailable") == true)
     }
 }
