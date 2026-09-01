@@ -47,6 +47,15 @@ struct FormulaEngineTests {
         #expect(result == .value(-2000.00))
     }
 
+    @Test func queryNamesAreCaseInsensitive() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=QUERY("Income")"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("income", date: 20260705, amount: 100_000),
+            ], today: today, context: .empty)
+        #expect(result == .value(1000.00))
+    }
+
     @Test func splitParentsAndTombstonesAreExcluded() {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=QUERY("expenses")"#, queries: savedThisMonthQueries),
