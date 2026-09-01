@@ -1,6 +1,15 @@
 import XCTest
 
 final class SettingsNavigationUITests: XCTestCase {
+    private func navigationBarTitle(for destination: String) -> String {
+        switch destination {
+        case "Bank Sync (SimpleFIN)":
+            return "Bank Sync"
+        default:
+            return destination
+        }
+    }
+
     @MainActor
     private func assertExpectedContent(for destination: String, in app: XCUIApplication) {
         let content: XCUIElement
@@ -20,11 +29,11 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Privacy":
             content = app.switches["Hide Balances"]
         case "Scheduled Transactions":
-            content = app.navigationBars["Scheduled Transactions"]
+            content = app.searchFields["Search schedules"]
         case "Rules":
-            content = app.navigationBars["Rules"]
+            content = app.navigationBars["Rules"].buttons["Add Rule"]
         case "Bank Sync (SimpleFIN)":
-            content = app.navigationBars["Bank Sync (SimpleFIN)"]
+            content = app.textFields["Setup token"]
         case "About":
             content = app.staticTexts["Version"]
         default:
@@ -59,7 +68,7 @@ final class SettingsNavigationUITests: XCTestCase {
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
-            let navigationBar = app.navigationBars[destination]
+            let navigationBar = app.navigationBars[navigationBarTitle(for: destination)]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
                 "\(destination) screen did not open"
