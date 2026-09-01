@@ -1303,9 +1303,9 @@ struct CleanCategoryBudgetRow: View {
     }
 }
 
-/// Shared long-press/right-click menu for both category row styles — the same
+/// Shared long-press/right-click menu for all category row styles — the same
 /// actions as the row's tappable cells plus the hide/show swipe action.
-private struct CategoryRowContextMenu: ViewModifier {
+struct CategoryRowContextMenu: ViewModifier {
     let category: CategoryBudget
     let isHidden: Bool
     let onSetHidden: ((Bool) -> Void)?
@@ -1350,7 +1350,7 @@ private struct CategoryRowContextMenu: ViewModifier {
 /// `makeBalanceAmountStyle`: negative is always red; with goal templates
 /// enabled and a goal on the row, orange marks an underfunded goal and green
 /// a funded one; otherwise the caller's zero-balance color applies.
-private func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -> Color {
+func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -> Color {
     if category.isOverspent { return .red }
     if goalsEnabled, category.goal != nil {
         return category.isGoalUnderfunded ? .orange : .green

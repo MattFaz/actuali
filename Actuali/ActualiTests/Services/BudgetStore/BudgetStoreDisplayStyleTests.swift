@@ -30,6 +30,12 @@ struct BudgetStoreDisplayStyleTests {
         body()
     }
 
+    @Test func defaultsToClean() {
+        withSavedDefaults(for: [styleKey]) {
+            #expect(BudgetStore.previewInstance().budgetDisplayStyle == .clean)
+        }
+    }
+
     @Test func selectionPersistsToUserDefaults() {
         withSavedDefaults(for: [styleKey]) {
             let store = BudgetStore.previewInstance()

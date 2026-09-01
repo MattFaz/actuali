@@ -300,6 +300,15 @@ struct CompactCategoryBudgetRow: View {
                 .tint(isHidden ? .accentColor : .secondary)
             }
         }
+        .modifier(CategoryRowContextMenu(
+            category: category,
+            isHidden: isHidden,
+            onSetHidden: onSetHidden,
+            onShowDetails: onShowDetails,
+            onEditBudget: onEditBudget,
+            onShowTransactions: onShowTransactions,
+            onMoveMoney: onMoveMoney
+        ))
     }
 
     private var compactContent: some View {
@@ -334,7 +343,11 @@ struct CompactCategoryBudgetRow: View {
                 Button {
                     onMoveMoney(category)
                 } label: {
-                    CompactAmountText(amount: category.available, isBalance: true)
+                    CompactAmountText(
+                        amount: category.available,
+                        isBalance: true,
+                        balanceColor: categoryBalanceColor
+                    )
                         .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
@@ -402,9 +415,21 @@ struct CompactCategoryBudgetRow: View {
             Text(label)
                 .foregroundStyle(.secondary)
             Spacer()
-            CompactAmountText(amount: amount, isBalance: isBalance)
+            CompactAmountText(
+                amount: amount,
+                isBalance: isBalance,
+                balanceColor: isBalance ? categoryBalanceColor : nil
+            )
         }
         .contentShape(Rectangle())
+    }
+
+    private var categoryBalanceColor: Color {
+        balanceColor(
+            category,
+            goalsEnabled: budgetStore.goalTemplatesEnabled,
+            zero: .secondary
+        )
     }
 
     private var monthTransactionsLabel: String {
@@ -699,6 +724,7 @@ private struct CompactAmountText: View {
 
     let amount: Int
     var isBalance = false
+    var balanceColor: Color? = nil
 
     var body: some View {
         Text(budgetStore.displayBudgetCell(amount))
@@ -724,6 +750,8 @@ private struct CompactAmountText: View {
         guard isBalance else {
             return amount == 0 ? .secondary : .primary
         }
+        if budgetStore.hideBalances { return .primary }
+        if let balanceColor { return balanceColor }
         switch CompactBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary

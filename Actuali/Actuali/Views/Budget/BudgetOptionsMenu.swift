@@ -54,7 +54,7 @@ struct BudgetOptionsMenu: View {
                     .tag(BudgetDisplayStyle.clean)
                 Label("Detailed", systemImage: "rectangle.grid.1x2")
                     .tag(BudgetDisplayStyle.detailed)
-                Label("Compact", systemImage: "rectangle.grid.1x3")
+                Label("Compact", systemImage: "list.bullet")
                     .tag(BudgetDisplayStyle.compact)
             }
             .pickerStyle(.inline)

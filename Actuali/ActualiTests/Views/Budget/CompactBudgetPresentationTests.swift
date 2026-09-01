@@ -143,6 +143,14 @@ struct CompactBudgetPresentationTests {
         #expect(CompactBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
     }
 
+    @Test @MainActor func balanceColorUsesGoalStateWhenEnabled() {
+        var underfunded = category(budgeted: 5_000, spent: 0, available: 5_000)
+        underfunded.goal = 10_000
+
+        #expect(balanceColor(underfunded, goalsEnabled: true, zero: .secondary) == .orange)
+        #expect(balanceColor(underfunded, goalsEnabled: false, zero: .secondary) == .green)
+    }
+
     private func category(budgeted: Int, spent: Int, available: Int) -> CategoryBudget {
         CategoryBudget(
             month: "2026-08",

@@ -55,7 +55,7 @@ struct CurrencyAmountFormatTests {
                         locale: enUS) ==
                     CurrencyAmountFormat.string(
                         cents: cents, currencyCode: "", narrowSymbol: false,
-                        wholeUnits: true))
+                        wholeUnits: true, locale: enUS))
         }
     }
 
