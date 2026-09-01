@@ -193,7 +193,7 @@ enum FormulaEngine {
         case "SUM":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
             return try args.reduce(0) { total, expression in
-                total + evaluate(expression, env)
+                total + (try evaluate(expression, env))
             }
 
         case "MIN":
