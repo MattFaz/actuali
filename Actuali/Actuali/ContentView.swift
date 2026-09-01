@@ -53,8 +53,7 @@ struct ContentView: View {
                         notes: prefill.notes,
                         categoryId: prefill.categoryId,
                         isIncome: prefill.isIncome,
-                        cleared: prefill.cleared,
-                        onSaved: { CategoryFundingAutomation.processIfNeeded($0, using: budgetStore) }
+                        cleared: prefill.cleared
                     )
                 } else {
                     ContentUnavailableView(
