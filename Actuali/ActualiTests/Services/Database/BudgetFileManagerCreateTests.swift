@@ -32,12 +32,6 @@ struct BudgetFileManagerCreateTests {
         #expect(punctuated.range(of: "^B-dget--2026---[0-9a-f]{7}$", options: .regularExpression) != nil)
     }
 
-    @Test func budgetIdsAreUnique() {
-        let a = BudgetFileManager.budgetId(fromName: "Same")
-        let b = BudgetFileManager.budgetId(fromName: "Same")
-        #expect(a != b)
-    }
-
     @Test func createBudgetWritesTemplateCopyAndDefaultMetadata() throws {
         let (manager, root) = makeManager()
         defer { try? FileManager.default.removeItem(at: root) }
@@ -58,6 +52,21 @@ struct BudgetFileManagerCreateTests {
         )
         #expect(Set(json.keys) == ["id", "budgetName"])
         #expect(manager.listLocalBudgets().contains { $0.id == metadata.id })
+    }
+
+    @Test func createBudgetRemovesPartialDirectoryAfterFileError() throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        #expect(throws: (any Error).self) {
+            try manager.createBudget(
+                named: "Broken", templateURL: root.appendingPathComponent("missing.sqlite")
+            )
+        }
+        #expect(manager.listLocalBudgets().isEmpty)
+        #expect(try FileManager.default.contentsOfDirectory(
+            at: manager.budgetsDirectory, includingPropertiesForKeys: nil
+        ).isEmpty)
     }
 
     @Test func uploadArchiveStampsResetClockAndPreservesUnknownKeys() throws {

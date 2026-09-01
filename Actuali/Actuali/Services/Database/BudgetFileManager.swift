@@ -292,15 +292,20 @@ final class BudgetFileManager: @unchecked Sendable {
         }
 
         let budgetDir = budgetDirectory(for: id)
-        try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
-        try fileManager.copyItem(at: templateURL, to: databasePath(for: id))
+        do {
+            try fileManager.createDirectory(at: budgetDir, withIntermediateDirectories: true)
+            try fileManager.copyItem(at: templateURL, to: databasePath(for: id))
 
-        let metadata = BudgetMetadata(
-            id: id, budgetName: name, cloudFileId: nil, groupId: nil,
-            resetClock: nil, lastUploaded: nil, encryptKeyId: nil
-        )
-        try JSONEncoder().encode(metadata).write(to: metadataPath(for: id))
-        return metadata
+            let metadata = BudgetMetadata(
+                id: id, budgetName: name, cloudFileId: nil, groupId: nil,
+                resetClock: nil, lastUploaded: nil, encryptKeyId: nil
+            )
+            try JSONEncoder().encode(metadata).write(to: metadataPath(for: id))
+            return metadata
+        } catch {
+            try? fileManager.removeItem(at: budgetDir)
+            throw error
+        }
     }
 
     /// Zip a budget's live files for upload, with resetClock stamped true in

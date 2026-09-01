@@ -1772,16 +1772,13 @@ final class BudgetStore: ObservableObject {
         // durably has the file, so a later local failure must not read as "the
         // create failed" — the budget exists and can simply be downloaded.
         var registeredOnServer = false
+        var uploadOutcomeUnknown = false
 
         do {
             let metadata = try fileManager.createBudget(named: name, templateURL: templateURL)
-            do {
-                let cloudFileId = UUID().uuidString.lowercased()
-                let zipData = try fileManager.makeUploadArchive(for: metadata.id)
-                let groupId = try await serverClient.uploadFile(
-                    zipData: zipData, fileId: cloudFileId, name: name
-                )
-                registeredOnServer = true
+            let cloudFileId = UUID().uuidString.lowercased()
+            var uploadStarted = false
+            func saveRegistration(groupId: String) throws {
                 let registered = BudgetMetadata(
                     id: metadata.id,
                     budgetName: name,
@@ -1793,14 +1790,38 @@ final class BudgetStore: ObservableObject {
                 )
                 try JSONEncoder().encode(registered)
                     .write(to: fileManager.metadataPath(for: metadata.id))
+            }
+            do {
+                let zipData = try fileManager.makeUploadArchive(for: metadata.id)
+                uploadStarted = true
+                let groupId = try await serverClient.uploadFile(
+                    zipData: zipData, fileId: cloudFileId, name: name
+                )
+                registeredOnServer = true
+                try saveRegistration(groupId: groupId)
             } catch {
-                // Roll back the local half in either case: a directory without
-                // the server registration in its metadata would load as a
-                // detached, unsyncable budget. When the upload already went
-                // through, the server copy stays the source of truth and the
-                // catch below points the user at it.
-                try? fileManager.deleteBudget(metadata.id)
-                throw error
+                let uploadError = error
+                let files: [ListFilesResponse.RemoteFile]?
+                if uploadStarted {
+                    files = try? await serverClient.listFiles()
+                } else {
+                    files = []
+                }
+                if let remote = files?.first(where: { $0.fileId == cloudFileId }) {
+                    registeredOnServer = true
+                    guard let groupId = remote.groupId else { throw uploadError }
+                    try saveRegistration(groupId: groupId)
+                } else {
+                    // A successful list proves that the server did not commit
+                    // the upload. A failed list leaves the result unknown, so
+                    // keep the local copy to prevent a duplicate retry.
+                    if files != nil {
+                        try? fileManager.deleteBudget(metadata.id)
+                    } else {
+                        uploadOutcomeUnknown = true
+                    }
+                    throw uploadError
+                }
             }
 
             // Close the previous budget before switching, same as downloadBudget.
@@ -1811,7 +1832,9 @@ final class BudgetStore: ObservableObject {
 
             currentBudgetId = metadata.id
             await loadLocalBudget(metadata.id)
+            let loadError = error
             await fetchRemoteBudgets()
+            if let loadError { self.error = loadError }
         } catch {
             if registeredOnServer {
                 // The file exists server-side; surface it in the picker so one
@@ -1821,6 +1844,10 @@ final class BudgetStore: ObservableObject {
                     \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
                     finished on this device: \(error.localizedDescription) \
                     Select it in Budget Selection to download it.
+                    """
+            } else if uploadOutcomeUnknown {
+                self.error = """
+                    The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.
                     """
             } else {
                 self.error = error.localizedDescription
@@ -1966,6 +1993,19 @@ final class BudgetStore: ObservableObject {
             // failure belongs to a stale load — don't clobber the winner's
             // error or clear its spinner.
             guard db == nil || database === db else { return }
+            syncStateCancellable?.cancel()
+            syncStateCancellable = nil
+            syncClient = nil
+            requestedBudgetMonth = nil
+            currentBudgetMonth = nil
+            widgetBudgetMonth = nil
+            accounts = []
+            transactions = []
+            uncategorizedCount = 0
+            categoryGroups = []
+            payees = []
+            dataVersion += 1
+            clearWidgetSnapshot()
             self.error = "Failed to load budget: \(error.localizedDescription)"
         }
 

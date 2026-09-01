@@ -9,6 +9,11 @@ import Testing
 private final class CreateBudgetTransport: URLProtocol {
     nonisolated(unsafe) static var uploadRequests: [URLRequest] = []
     nonisolated(unsafe) static var uploadStatus = 200
+    nonisolated(unsafe) static var dropUploadResponse = false
+    nonisolated(unsafe) static var failFileList = false
+    nonisolated(unsafe) static var committedFileId: String?
+    nonisolated(unsafe) static var committedName: String?
+    nonisolated(unsafe) static var afterUpload: (@Sendable () -> Void)?
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -23,8 +28,26 @@ private final class CreateBudgetTransport: URLProtocol {
             Self.uploadRequests.append(request)
             status = Self.uploadStatus
             body = #"{"status":"ok","groupId":"group-fresh-1"}"#
+            if status == 200 {
+                Self.committedFileId = request.value(forHTTPHeaderField: "X-ACTUAL-FILE-ID")
+                Self.committedName = request.value(forHTTPHeaderField: "X-ACTUAL-NAME")?
+                    .removingPercentEncoding
+                Self.afterUpload?()
+                if Self.dropUploadResponse {
+                    client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                    return
+                }
+            }
         case let p where p.hasSuffix("/sync/list-user-files"):
-            body = #"{"status":"ok","data":[]}"#
+            if Self.failFileList {
+                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                return
+            }
+            if let fileId = Self.committedFileId, let name = Self.committedName {
+                body = #"{"status":"ok","data":[{"fileId":"\#(fileId)","groupId":"group-fresh-1","name":"\#(name)","deleted":0}]}"#
+            } else {
+                body = #"{"status":"ok","data":[]}"#
+            }
         default:
             break
         }
@@ -77,6 +100,11 @@ struct BudgetStoreCreateBudgetTests {
     private func makeStore() async throws -> (BudgetStore, BudgetFileManager, URL) {
         CreateBudgetTransport.uploadRequests = []
         CreateBudgetTransport.uploadStatus = 200
+        CreateBudgetTransport.dropUploadResponse = false
+        CreateBudgetTransport.failFileList = false
+        CreateBudgetTransport.committedFileId = nil
+        CreateBudgetTransport.committedName = nil
+        CreateBudgetTransport.afterUpload = nil
 
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -143,5 +171,57 @@ struct BudgetStoreCreateBudgetTests {
         #expect(store.error != nil)
         #expect(store.currentBudgetId == nil)
         #expect(manager.listLocalBudgets().isEmpty)
+    }
+
+    @Test func committedUploadSurvivesLostResponse() async throws {
+        let (store, manager, root) = try await makeStore()
+        defer {
+            store.closeDatabaseForTesting()
+            try? FileManager.default.removeItem(at: root)
+        }
+        CreateBudgetTransport.dropUploadResponse = true
+
+        await store.createBudget(named: "Recovered")
+
+        #expect(store.error == nil)
+        let committedFileId = try #require(CreateBudgetTransport.committedFileId)
+        let metadata = try #require(manager.listLocalBudgets().first)
+        #expect(metadata.cloudFileId == committedFileId)
+        #expect(metadata.groupId == "group-fresh-1")
+        #expect(store.currentBudgetId == metadata.id)
+    }
+
+    @Test func unknownUploadOutcomeKeepsLocalCopy() async throws {
+        let (store, manager, root) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        CreateBudgetTransport.dropUploadResponse = true
+        CreateBudgetTransport.failFileList = true
+
+        await store.createBudget(named: "Uncertain")
+
+        #expect(store.error?.contains("Reopen Connection & Data") == true)
+        #expect(manager.listLocalBudgets().count == 1)
+        #expect(store.currentBudgetId == nil)
+    }
+
+    @Test func localOpenErrorIsNotClearedByRemoteRefresh() async throws {
+        let (store, manager, root) = try await makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+        store.accounts = [
+            .init(
+                id: "old", name: "Old", type: .checking, offBudget: false,
+                closed: false, sortOrder: 0, balance: 0
+            )
+        ]
+        CreateBudgetTransport.afterUpload = {
+            guard let budgetId = manager.listLocalBudgets().first?.id else { return }
+            try? Data("not sqlite".utf8).write(to: manager.databasePath(for: budgetId))
+        }
+
+        await store.createBudget(named: "Broken Local Copy")
+
+        #expect(store.error?.hasPrefix("Failed to load budget:") == true)
+        #expect(store.accounts.isEmpty)
+        #expect(!store.isSyncConfiguredForTesting)
     }
 }
