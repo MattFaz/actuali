@@ -175,14 +175,8 @@ struct AddTransactionView: View {
             }
     }
 
-    nonisolated static func showsStandardCategoryFields(accountIsOffBudget: Bool?) -> Bool {
-        accountIsOffBudget != true
-    }
-
     private var showsStandardCategoryFields: Bool {
-        isEditing || Self.showsStandardCategoryFields(
-            accountIsOffBudget: budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget
-        )
+        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
 
     /// Converting keeps the edited row on its own side of the transfer, so
@@ -427,8 +421,7 @@ struct AddTransactionView: View {
                             }
                         }
 
-                        if showsStandardCategoryFields,
-                           isEditingSplitParent && !isSplitting && !unsplitRequested {
+                        if isEditingSplitParent && !isSplitting && !unsplitRequested {
                             // Placeholder while the children load into the
                             // editable split lines below.
                             HStack {
@@ -714,7 +707,8 @@ struct AddTransactionView: View {
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if isSplitting && !isTransfer && showsStandardCategoryFields
+            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -723,19 +717,17 @@ struct AddTransactionView: View {
         errorMessage = nil
         defer { isLoading = false }
 
-        let hidesStandardCategories = !isTransfer && !showsStandardCategoryFields
-
         let form = BudgetStore.TransactionForm(
             accountId: selectedAccountId,
             type: txType,
             amount: amount,
             payeeName: payeeName,
             transferToAccountId: transferToAccountId,
-            categoryId: hidesStandardCategories ? nil : selectedCategoryId,
+            categoryId: selectedCategoryId,
             notes: notes,
             date: date,
             cleared: cleared,
-            splits: isTransfer || hidesStandardCategories ? [] : (unsplitRequested ? [] : splitLines),
+            splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation
         )
