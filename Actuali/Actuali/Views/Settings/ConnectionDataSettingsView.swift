@@ -272,6 +272,8 @@ private struct BudgetSelectionSettingsSection: View {
     @State private var showingBudgetSelectPrompt = false
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
+    @State private var showingCreateBudgetPrompt = false
+    @State private var newBudgetName = ""
 
     /// The open budget's server fileId — currentBudgetId is the internal id,
     /// so map through the local metadata.
@@ -315,18 +317,33 @@ private struct BudgetSelectionSettingsSection: View {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
             }
+
+            Button("Create New Budget") {
+                newBudgetName = ""
+                showingCreateBudgetPrompt = true
+            }
+            .disabled(budgetStore.isLoading || budgetStore.downloadingBudgetId != nil)
         } header: {
             Text("Budget Selection")
         } footer: {
             if budgetStore.currentBudgetId == nil {
                 if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
-                    Text("No budgets were found on your server. Create one in Actual Budget, then tap Refresh Budgets.")
+                    Text("No budgets were found on your server. Tap Create New Budget to make one, or Refresh Budgets if you've created one elsewhere.")
                 } else {
                     Text("Select a budget to load it onto this device. The app stays empty until one is chosen.\n\nTouch and hold a budget for options to remove it from this device or delete it from the server.")
                 }
             } else if !budgetStore.remoteBudgets.isEmpty {
                 Text("Touch and hold a budget for options to remove it from this device or delete it from the server.")
             }
+        }
+        .alert("New Budget", isPresented: $showingCreateBudgetPrompt) {
+            TextField("Name", text: $newBudgetName)
+            Button("Create") {
+                Task { await budgetStore.createBudget(named: newBudgetName) }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Creates an empty budget file on your server and opens it on this device.")
         }
         .sheet(item: $budgetToUnlock) { budget in
             EncryptionPasswordSheet(budget: budget, budgetStore: budgetStore)

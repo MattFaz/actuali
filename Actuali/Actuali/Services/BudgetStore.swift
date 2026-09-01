@@ -1098,6 +1098,17 @@ final class BudgetStore: ObservableObject {
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
+
+    /// Test-only: release the open database and sync client the way the app's
+    /// file-mutating paths (disconnect, downloadBudget) do, so a test can
+    /// delete a budget's temp directory without unlinking db.sqlite out from
+    /// under a live SQLite connection ("vnode unlinked while in use").
+    func closeDatabaseForTesting() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+    }
     #endif
 
     private init() {
@@ -1719,10 +1730,136 @@ final class BudgetStore: ObservableObject {
         return error   // any download error surfaced by downloadBudget
     }
 
+    /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
+    /// checked against the names already on the server (and local files).
+    nonisolated static func budgetNameError(_ name: String, existingNames: [String]) -> String? {
+        if name.isEmpty { return "Budget name cannot be blank" }
+        if name.count > 100 { return "Budget name is too long (max length 100)" }
+        if existingNames.contains(name) { return "\u{201C}\(name)\u{201D} already exists" }
+        return nil
+    }
+
+    /// Create a new empty budget file from the bundled blank template,
+    /// register it on the server, and open it. Mirrors upstream's
+    /// createBudget followed by cloudStorage.upload (budgetfiles/app.ts:400,
+    /// cloud-storage.ts:289): the upload's fresh cloudFileId plus the groupId
+    /// the server assigns is what makes desktop and web treat the file as one
+    /// of their own.
+    ///
+    /// ponytail: creation requires the server to be reachable. Upstream
+    /// tolerates a failed upload because possiblyUpload retries later, but
+    /// Actuali has no re-upload path yet, so a local-only file would be
+    /// stranded unsyncable — instead a failed registration fails the whole
+    /// create and removes the local files. The upgrade path is a general
+    /// upload-on-sync retry.
+    func createBudget(named rawName: String) async {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingNames = remoteBudgets.map(\.name)
+            + fileManager.listLocalBudgets().compactMap(\.budgetName)
+        if let message = Self.budgetNameError(name, existingNames: existingNames) {
+            error = message
+            return
+        }
+        guard let templateURL = Bundle.main.url(forResource: "blank-budget", withExtension: "sqlite") else {
+            error = "The blank budget template is missing from the app bundle."
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        // Whether /sync/upload-user-file completed: past that point the server
+        // durably has the file, so a later local failure must not read as "the
+        // create failed" — the budget exists and can simply be downloaded.
+        var registeredOnServer = false
+        var uploadOutcomeUnknown = false
+
+        do {
+            let metadata = try fileManager.createBudget(named: name, templateURL: templateURL)
+            let cloudFileId = UUID().uuidString.lowercased()
+            var uploadStarted = false
+            func saveRegistration(groupId: String) throws {
+                let registered = BudgetMetadata(
+                    id: metadata.id,
+                    budgetName: name,
+                    cloudFileId: cloudFileId,
+                    groupId: groupId,
+                    resetClock: nil,
+                    lastUploaded: Self.yearMonthDayFormatter.string(from: Date()),
+                    encryptKeyId: nil
+                )
+                try JSONEncoder().encode(registered)
+                    .write(to: fileManager.metadataPath(for: metadata.id))
+            }
+            do {
+                let zipData = try fileManager.makeUploadArchive(for: metadata.id)
+                uploadStarted = true
+                let groupId = try await serverClient.uploadFile(
+                    zipData: zipData, fileId: cloudFileId, name: name
+                )
+                registeredOnServer = true
+                try saveRegistration(groupId: groupId)
+            } catch {
+                let uploadError = error
+                let files: [ListFilesResponse.RemoteFile]?
+                if uploadStarted {
+                    files = try? await serverClient.listFiles()
+                } else {
+                    files = []
+                }
+                if let remote = files?.first(where: { $0.fileId == cloudFileId }) {
+                    registeredOnServer = true
+                    guard let groupId = remote.groupId else { throw uploadError }
+                    try saveRegistration(groupId: groupId)
+                } else {
+                    // The local copy is still blank. Remove it even when the
+                    // server result is unknown: a committed copy can be
+                    // downloaded later, while an unregistered local copy is
+                    // invisible and permanently blocks this budget name.
+                    uploadOutcomeUnknown = files == nil
+                    try? fileManager.deleteBudget(metadata.id)
+                    throw uploadError
+                }
+            }
+
+            // Close the previous budget before switching, same as downloadBudget.
+            syncStateCancellable?.cancel()
+            syncStateCancellable = nil
+            syncClient = nil
+            database = nil
+
+            currentBudgetId = metadata.id
+            await loadLocalBudget(metadata.id)
+            let loadError = error
+            await fetchRemoteBudgets()
+            if let loadError { self.error = loadError }
+        } catch {
+            if registeredOnServer {
+                // The file exists server-side; surface it in the picker so one
+                // tap downloads it instead of leaving an invisible orphan.
+                await fetchRemoteBudgets()
+                self.error = """
+                    \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
+                    finished on this device: \(error.localizedDescription) \
+                    Select it in Budget Selection to download it.
+                    """
+            } else if uploadOutcomeUnknown {
+                self.error = """
+                    The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.
+                    """
+            } else {
+                self.error = error.localizedDescription
+            }
+        }
+
+        isLoading = false
+    }
+
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
         let requestedMonthBeforeLoad = requestedBudgetMonth
+        var published = false
 
         var db: BudgetDatabase?
         do {
@@ -1788,6 +1925,7 @@ final class BudgetStore: ObservableObject {
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
             publishWidgetSnapshot()
+            published = true
 
             // Linked feeds drive the sync buttons in the accounts UI. Without
             // this, a fresh launch hides them until something else happens to
@@ -1855,6 +1993,21 @@ final class BudgetStore: ObservableObject {
             // failure belongs to a stale load — don't clobber the winner's
             // error or clear its spinner.
             guard db == nil || database === db else { return }
+            if !published {
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                requestedBudgetMonth = nil
+                currentBudgetMonth = nil
+                widgetBudgetMonth = nil
+                accounts = []
+                transactions = []
+                uncategorizedCount = 0
+                categoryGroups = []
+                payees = []
+                dataVersion += 1
+                clearWidgetSnapshot()
+            }
             self.error = "Failed to load budget: \(error.localizedDescription)"
         }
 
@@ -5579,6 +5732,14 @@ final class BudgetStore: ObservableObject {
     private static let yearMonthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+
+    /// Upstream's currentDay() format, used for metadata.json's lastUploaded.
+    private static let yearMonthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 
