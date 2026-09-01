@@ -58,7 +58,7 @@ struct SettingsView: View {
                     NavigationLink {
                         BankSyncSetupView()
                     } label: {
-                        Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
+                        Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
                     }
                 }
 
