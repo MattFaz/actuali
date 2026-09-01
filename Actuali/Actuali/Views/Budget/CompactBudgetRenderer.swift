@@ -208,28 +208,21 @@ struct CompactBudgetGroupHeader: View {
             .accessibilityIdentifier("compactBudgetGroup.\(name)")
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Toggles the group's categories")
-
-            if let onSetHidden {
-                Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            isHidden ? "Show Group" : "Hide Group",
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(minWidth: 32, minHeight: 44)
-                }
-                .accessibilityLabel("Options for \(name)")
-            }
         }
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
         .opacity(isHidden ? 0.5 : 1)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 
     private var title: some View {
@@ -540,28 +533,21 @@ struct CompactIncomeGroupHeader: View {
             .accessibilityIdentifier("compactIncomeSection")
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint("Toggles the income categories")
-
-            if let onSetHidden {
-                Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            isHidden ? "Show Group" : "Hide Group",
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
-                    }
-                } label: {
-                    Image(systemName: "ellipsis")
-                        .frame(minWidth: 32, minHeight: 44)
-                }
-                .accessibilityLabel("Options for \(name)")
-            }
         }
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
         .opacity(isHidden ? 0.5 : 1)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 
     private var title: some View {
