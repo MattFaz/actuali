@@ -815,6 +815,44 @@ actor ActualServerClient {
         return fileInfo
     }
 
+    /// `POST /sync/delete-user-file` — marks the file deleted on the server for
+    /// every client. Mirrors upstream's `removeFile` (cloud-storage.ts), which
+    /// sends the token in the body; the header is our usual transport for it.
+    func deleteFile(fileId: String) async throws {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        let url = serverURL.appendingPathComponent("/sync/delete-user-file")
+        var request = makeRequest(url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(["token": token, "fileId": fileId])
+
+        let (data, response) = try await send(request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        // Callers treat .fileNotFound as "already deleted" and destroy the
+        // local copy, so nothing that isn't the Actual server's own answer may
+        // map to it: an auth proxy's login page is named as such, and 404 —
+        // which the server never sends for a missing file (it answers 400, its
+        // own FIXME notwithstanding) — stays a plain HTTP error, since it
+        // usually means a proxy or a stripped route.
+        if looksLikeAuthProxy(httpResponse, data: data) {
+            throw ActualServerError.authProxyBlocked
+        }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
+            throw ActualServerError.fileNotFound
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
+            )
+        }
+    }
+
     func getKeyInfo(fileId: String) async throws -> ServerKeyInfo {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
