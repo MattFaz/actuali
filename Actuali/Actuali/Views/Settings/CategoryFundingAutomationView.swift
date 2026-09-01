@@ -41,8 +41,8 @@ struct CategoryFundingAutomationView: View {
                     Text("To Budget").tag(CategoryFundingSource.toBudget)
 
                     ForEach(fundingCategories, id: \.id) { category in
-                        Text(category.categoryName)
-                            .tag(CategoryFundingSource.category(category.categoryId))
+                        Text(category.name)
+                            .tag(CategoryFundingSource.category(category.id))
                     }
                 }
             } header: {
