@@ -3,7 +3,7 @@ import XCTest
 final class SettingsNavigationUITests: XCTestCase {
     private func navigationBarTitle(for destination: String) -> String {
         switch destination {
-        case "Bank Sync (SimpleFIN)":
+        case "Bank Sync (SimpleFIN & Wallet)":
             return "Bank Sync"
         default:
             return destination
@@ -32,8 +32,8 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.searchFields["Search schedules"]
         case "Rules":
             content = app.navigationBars["Rules"].buttons["Add Rule"]
-        case "Bank Sync (SimpleFIN)":
-            content = app.textFields["Setup token"]
+        case "Bank Sync (SimpleFIN & Wallet)":
+            content = app.navigationBars["Bank Sync"]
         case "About":
             content = app.staticTexts["Version"]
         default:
@@ -61,7 +61,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Privacy",
             "Scheduled Transactions",
             "Rules",
-            "Bank Sync (SimpleFIN)",
+            "Bank Sync (SimpleFIN & Wallet)",
             "About"
         ] {
             let row = app.buttons[destination]
