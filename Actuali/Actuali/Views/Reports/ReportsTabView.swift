@@ -5,6 +5,7 @@ struct ReportsTabView: View {
     @State private var pages: [DashboardPage] = []
     @State private var selectedPageId: String?
     @State private var widgets: [DashboardWidget] = []
+    @State private var widgetsRevision = 0
     /// The page `widgets` actually came from, which is not `selectedPageId`:
     /// that one flips the instant the picker is tapped, while the widgets
     /// arrive a fetch later. See the dashboard's `.id` for what goes wrong
@@ -48,7 +49,7 @@ struct ReportsTabView: View {
                         // inputs that widget set needs and never re-run for
                         // the widgets that actually land.
                         DashboardView(widgets: widgets)
-                            .id([loadedPageId ?? ""] + widgets.map(\.id))
+                            .id("\(loadedPageId ?? "")-\(widgetsRevision)")
                     }
                 }
             }
@@ -71,8 +72,8 @@ struct ReportsTabView: View {
                 Task { await reload() }
             }
             // Sync can replace the widget set while staying on the same page.
-            // Changing the dashboard identity below recreates DashboardView so
-            // its input load restarts for the newly synced cards as well.
+            // Changing the dashboard revision recreates DashboardView so its
+            // input load restarts for a new widget set or changed widget meta.
             .onChange(of: budgetStore.dataVersion) { _, _ in
                 Task { await reload() }
             }
@@ -148,6 +149,14 @@ struct ReportsTabView: View {
         return pages.first?.id
     }
 
+    nonisolated static func widgetsRevision(
+        _ current: Int,
+        old: [DashboardWidget],
+        new: [DashboardWidget]
+    ) -> Int {
+        old == new ? current : current + 1
+    }
+
     private func reload() async {
         guard let database = budgetStore.databaseForLogger else {
             self.hasLoaded = true
@@ -163,6 +172,11 @@ struct ReportsTabView: View {
             let fetched = try await database.fetchWidgets(pageId: pageId)
             self.pages = fetchedPages
             self.selectedPageId = pageId
+            self.widgetsRevision = Self.widgetsRevision(
+                widgetsRevision,
+                old: self.widgets,
+                new: fetched
+            )
             self.widgets = fetched
             // Same render pass as the widgets it identifies, so the dashboard
             // is re-created around them rather than around their predecessor.
