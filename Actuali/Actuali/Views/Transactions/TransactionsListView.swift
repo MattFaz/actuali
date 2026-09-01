@@ -33,6 +33,15 @@ struct TransactionsListView: View {
         await currentPager().loadFirstPage(search: searchQuery)
     }
 
+    /// Enters selection mode and pre-selects the long-pressed row, mirroring
+    /// what tapping "Select" then tapping a row would produce.
+    private func beginSelection(with transaction: Transaction) {
+        withAnimation {
+            isSelecting = true
+            selectedTransactionIds = [transaction.id]
+        }
+    }
+
     var body: some View {
         Group {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
@@ -66,7 +75,8 @@ struct TransactionsListView: View {
                                         editing: $editingTransaction,
                                         onToggleSelect: {
                                             selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                        }
+                                        },
+                                        onLongPress: { beginSelection(with: transaction) }
                                     )
                                 }
                                 // The sentinel rides in the last date section
@@ -86,7 +96,8 @@ struct TransactionsListView: View {
                                 editing: $editingTransaction,
                                 onToggleSelect: {
                                     selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                }
+                                },
+                                onLongPress: { beginSelection(with: transaction) }
                             )
                         }
                         if pager.hasMore {
@@ -183,6 +194,9 @@ struct TransactionListRow: View {
     var isSelected: Bool = false
     @Binding var editing: Transaction?
     var onToggleSelect: (() -> Void)? = nil
+    /// Fires on a long press while not already in selection mode. The
+    /// caller is expected to enter selection mode and select this row.
+    var onLongPress: (() -> Void)? = nil
 
     var body: some View {
         Button {
@@ -205,6 +219,17 @@ struct TransactionListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // `simultaneousGesture` lets long-press coexist with the row's own
+        // tap (Button action) and its swipeActions below: a quick tap still
+        // opens the edit sheet, holding fires the long-press instead.
+        .simultaneousGesture(
+            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                guard !isSelectionMode else { return }
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.impactOccurred()
+                onLongPress?()
+            }
+        )
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(role: .destructive) {
