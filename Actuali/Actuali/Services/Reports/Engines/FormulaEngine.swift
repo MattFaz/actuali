@@ -198,24 +198,24 @@ enum FormulaEngine {
             }
 
         case "MIN":
-            guard let first = args.first else { throw EvalError.invalidArgument }
+            guard !args.isEmpty else { throw EvalError.invalidArgument }
             let values = try args.map { expression in
                 guard case .string = expression else {
                     return try evaluate(expression, env)
                 }
                 throw EvalError.invalidArgument
             }
-            return values.dropFirst().reduce(firstValue(values: values, fallback: first)) { Swift.min($0, $1) }
+            return values.dropFirst().reduce(values[0], Swift.min)
 
         case "MAX":
-            guard let first = args.first else { throw EvalError.invalidArgument }
+            guard !args.isEmpty else { throw EvalError.invalidArgument }
             let values = try args.map { expression in
                 guard case .string = expression else {
                     return try evaluate(expression, env)
                 }
                 throw EvalError.invalidArgument
             }
-            return values.dropFirst().reduce(firstValue(values: values, fallback: first)) { Swift.max($0, $1) }
+            return values.dropFirst().reduce(values[0], Swift.max)
 
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
@@ -229,10 +229,6 @@ enum FormulaEngine {
         default:
             throw EvalError.invalidFunction
         }
-    }
-
-    private static func firstValue(values: [Double], fallback: Expr) -> Double {
-        values.first ?? 0
     }
 
     // MARK: - Recursive-descent parser
