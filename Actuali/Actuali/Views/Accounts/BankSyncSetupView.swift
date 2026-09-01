@@ -175,11 +175,11 @@ struct BankSyncSetupView: View {
         }
     }
 
-    /// Store the day, then reach it. The store holds the day as a debt until a
-    /// sync honours it, so a run that fails here is retried by the next one —
-    /// this is only what makes the import visible while the screen is open.
+    /// Store the day, then reach it. The window is derived from the day, so a
+    /// run that fails here costs nothing — the next sync reaches just as far.
+    /// This is only what makes the import visible while the screen is open.
     private func applyImportStart(_ day: Int) async {
-        await budgetStore.setBankSyncImportStartDay(day)
+        budgetStore.setBankSyncImportStartDay(day)
         isBackfilling = true
         defer { isBackfilling = false }
         do {

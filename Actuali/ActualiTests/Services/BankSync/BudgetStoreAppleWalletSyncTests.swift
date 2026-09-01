@@ -272,7 +272,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(2))
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
 
         let result = try await store.syncBankAccounts()
 
@@ -293,11 +293,11 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(2))
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
         _ = try await store.syncBankAccounts()
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 1)
 
-        await store.setBankSyncImportStartDay(Self.expectedDay(30))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
         let backfill = try await store.syncBankAccounts()
 
         #expect(backfill.added == 1)
@@ -314,11 +314,11 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(2))
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
         _ = try await store.syncBankAccounts()
         #expect(try accountBalance(path: url) == -51200)
 
-        await store.setBankSyncImportStartDay(Self.expectedDay(30))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
 
         #expect(try accountBalance(path: url) == -51200)
@@ -326,28 +326,55 @@ struct BudgetStoreAppleWalletSyncTests {
         let opening = try rows(path: url, where: "starting_balance_flag = 1")
         #expect(opening.count == 1)
         #expect(opening[0]["amount"] == -46655)
-        // …and moved back to sit at or before the history it opens.
-        #expect(opening[0]["date"] == Self.expectedDay(5))
+        // …and stayed in its own month. It carries income for an on-budget
+        // account, so moving it would rewrite a past budget month.
+        #expect(opening[0]["date"] == Self.expectedDay(1))
     }
 
-    /// The chosen day is a debt the store keeps until some sync pays it. A run
-    /// that never happens — dropped because another sync was in flight, failed,
-    /// or killed — must not strand the setting: the next sync still reaches it.
-    @Test func anUnhonouredBackfillIsHeldForTheNextSync() async throws {
+    /// The reach is derived from the chosen day and the account's history, so
+    /// no single run has to be the one that lands it. A tap whose sync never
+    /// happens — dropped because another was in flight, failed, or killed —
+    /// leaves the next sync reaching just as far, whichever path kicks it.
+    @Test func theReachSurvivesARunThatNeverHappens() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(2))
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
         _ = try await store.syncBankAccounts()
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 1)
 
-        // Choose an earlier day and run nothing at all, the way a dropped tap
-        // leaves it. A later automatic pass is what picks the debt up.
-        await store.setBankSyncImportStartDay(Self.expectedDay(30))
+        // Choose an earlier day and run nothing at all. The automatic Wallet
+        // pass syncs by account id, which is the path a debt would miss.
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
         await store.autoSyncAppleWalletAccounts()
 
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
         #expect(try accountBalance(path: url) == -51200)
+    }
+
+    /// An account whose first sync got no balance has no opening balance, so
+    /// nothing ever stood in for its older rows. Backfilling them is money the
+    /// account never counted, and the balance is right to move — inventing an
+    /// opening to hold it still would push a made-up row to every device.
+    @Test func aBackfillMovesAnAccountThatHasNoOpeningBalance() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        var wallet = appleCard()
+        wallet.accountsValue = [AppleWalletAccount(
+            id: Self.externalAccountId, name: "Apple Card",
+            institutionName: "Apple", balanceCents: nil
+        )]
+        let store = try await makeStore(database: database, walletStore: wallet)
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
+        _ = try await store.syncBankAccounts()
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").isEmpty)
+        #expect(try accountBalance(path: url) == -1200)
+
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        _ = try await store.syncBankAccounts()
+
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").isEmpty)
+        #expect(try accountBalance(path: url) == -4545)
     }
 
     /// Once the reach has landed, ordinary syncs stop asking for it — and
@@ -356,7 +383,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(30))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
 
         let again = try await store.syncBankAccounts()
@@ -372,11 +399,11 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database, walletStore: appleCard())
-        await store.setBankSyncImportStartDay(Self.expectedDay(30))
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
         _ = try await store.syncBankAccounts()
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
 
-        await store.setBankSyncImportStartDay(Self.expectedDay(2))
+        store.setBankSyncImportStartDay(Self.expectedDay(2))
         _ = try await store.syncBankAccounts()
 
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
