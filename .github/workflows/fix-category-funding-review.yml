@@ -1,0 +1,96 @@
+name: Fix category funding review findings
+
+on:
+  push:
+    branches: [New-Category-Funding-Automation-Fixed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.ref == 'refs/heads/New-Category-Funding-Automation-Fixed'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply review fixes
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          root = Path('.')
+
+          def replace(path, old, new, count=1):
+              p = root / path
+              s = p.read_text()
+              if s.count(old) != count:
+                  raise SystemExit(f'{path}: expected {count} occurrence(s), found {s.count(old)}')
+              p.write_text(s.replace(old, new, count))
+
+          # BudgetStore: format the attribute/function pair and add explicit
+          # testable non-create nil semantics only through the existing return.
+          bs = root / 'Actuali/Actuali/Services/BudgetStore.swift'
+          text = bs.read_text()
+          text = text.replace('      @discardableResult\nfunc saveTransaction(', '    @discardableResult\n    func saveTransaction(', 1)
+          bs.write_text(text)
+
+          # Serialize automation in the store, not in a global queue. The task
+          # is owned by the same @MainActor store and weakly captures it, so the
+          # queue cannot outlive the store merely because a save was scheduled.
+          ca = root / 'Actuali/Actuali/Services/CategoryFundingAutomation.swift'
+          text = ca.read_text()
+          old = '''    @MainActor\n    static func processIfNeeded(\n        _ savedTransactionId: String?,\n        using budgetStore: BudgetStore,\n        defaults: UserDefaults = .standard\n    ) {\n        guard let savedTransactionId else { return }\n        Task { @MainActor in\n            await process(\n                savedTransactionId: savedTransactionId,\n                using: budgetStore,\n                defaults: defaults\n            )\n        }\n    }'''
+          new = '''    @MainActor\n    static func processIfNeeded(\n        _ savedTransactionId: String?,\n        using budgetStore: BudgetStore,\n        defaults: UserDefaults = .standard\n    ) {\n        guard let savedTransactionId else { return }\n        budgetStore.enqueueCategoryFunding(\n            savedTransactionId: savedTransactionId,\n            defaults: defaults\n        )\n    }'''
+          replace('Actuali/Actuali/Services/CategoryFundingAutomation.swift', old, new)
+
+          # Budget switch guard: capture the budget identity at scheduling time\n          # and refuse to mutate after the user changes budgets.\n          old = '''        guard let configuration = loadConfiguration(\n            for: budgetStore.currentBudgetId,\n            defaults: defaults\n        ), configuration.isEnabled,'''
+          new = '''        let processingBudgetId = budgetStore.currentBudgetId\n        guard let processingBudgetId,\n              let configuration = loadConfiguration(\n            for: processingBudgetId,\n            defaults: defaults\n        ), configuration.isEnabled,'''
+          replace('Actuali/Actuali/Services/CategoryFundingAutomation.swift', old, new)
+          old = '''        case .fund(let amountToFund):\n            let displayedMonth = budgetStore.currentBudgetMonth?.month\n            do {'''
+          new = '''        case .fund(let amountToFund):\n            guard budgetStore.currentBudgetId == processingBudgetId else { return }\n            let displayedMonth = budgetStore.currentBudgetMonth?.month\n            do {'''
+          replace('Actuali/Actuali/Services/CategoryFundingAutomation.swift', old, new)
+
+          # Settings: source choices must not depend on whichever month the\n          # Budget tab happens to be displaying. Runtime processing validates\n          # the source balance for the transaction's actual month.\n          old = '''    /// Categories with money, plus the saved source so a drained source is\n    /// not silently replaced with To Budget. The automation re-checks the\n    /// source balance when it actually runs.\n    private var fundingCategories: [CategoryBudget] {\n        var savedId: String?\n        if case .category(let id) = configuration.fundingSource {\n            savedId = id\n        }\n\n        return (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])\n            .filter { $0.available > 0 || $0.categoryId == savedId }\n            .sorted {\n                $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending\n            }\n    }'''
+          new = '''    /// Every non-income category is a valid configured source. The automation\n    /// checks the source balance again for the transaction's own month, so the\n    /// settings screen must not depend on the month the Budget tab is viewing.\n    private var fundingCategories: [Category] {\n        budgetStore.categoryGroups\n            .flatMap(\\.categories)\n            .filter { !$0.isIncome && !$0.hidden }\n            .sorted {\n                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending\n            }\n    }'''
+          replace('Actuali/Actuali/Views/Settings/CategoryFundingAutomationView.swift', old, new)
+          # Category is not Identifiable through the same property wrapper in\n          # all compiler modes; ForEach can still use the stable id explicitly.\n          replace('Actuali/Actuali/Views/Settings/CategoryFundingAutomationView.swift', 'ForEach(fundingCategories, id: \\.categoryId) { category in', 'ForEach(fundingCategories, id: \\.id) { category in') if False else None
+          text = (root / 'Actuali/Actuali/Views/Settings/CategoryFundingAutomationView.swift').read_text()
+          text = text.replace('ForEach(fundingCategories, id: \\.categoryId) { category in', 'ForEach(fundingCategories, id: \\.id) { category in')
+          (root / 'Actuali/Actuali/Views/Settings/CategoryFundingAutomationView.swift').write_text(text)
+
+          # AddTransaction tests: child split rows must never trigger automation.\n          tests = root / 'Actuali/ActualiTests/Services/CategoryFundingAutomationTests.swift'\n          text = tests.read_text()
+          anchor = '''    @Test("Deleted transactions are ignored")\n    func deletedTransaction() {'''
+          insert = '''    @Test("Split children are ignored")\n    func splitChild() {\n        var transaction = makeTransaction(categoryId: "groceries")\n        transaction.parentId = "split-parent"\n        #expect(!CategoryFundingAutomation.shouldProcess(\n            transaction,\n            selectedAccountId: "account-1",\n            isIncomeCategory: false\n        ))\n    }\n\n'''
+          if text.count(anchor) != 1: raise SystemExit('test anchor missing')
+          text = text.replace(anchor, insert + anchor, 1)
+          tests.write_text(text)
+
+          # AddTransaction save contract: explicitly cover every non-create path.\n          save_tests = root / 'Actuali/ActualiTests/Services/BudgetStore/BudgetStoreSaveTransactionTests.swift'\n          text = save_tests.read_text()
+          anchor = '''    @Test func savingANewOffBudgetTransactionDropsCategoriesAndSplits() async throws {'''
+          insert = '''    @Test func editingATransactionReturnsNoCreatedID() async throws {\n        let (database, path) = try makeDatabase()\n        defer { cleanup(path) }\n        let store = try await makeStore(database: database)\n        let original = transaction(payeeId: nil, payeeName: nil)\n        try database.insertTransaction(original)\n\n        let id = try await store.saveTransaction(\n            form(type: .expense, amount: "10.50", payeeName: "Updated"),\n            editing: original\n        )\n        #expect(id == nil)\n    }\n\n    @Test func savingATransferReturnsNoCreatedID() async throws {\n        let (database, path) = try makeDatabase()\n        defer { cleanup(path) }\n        let store = try await makeStore(database: database)\n        store.accounts = [\n            Account(id: "acct-1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),\n            Account(id: "acct-2", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0)\n        ]\n        let id = try await store.saveTransaction(\n            form(type: .transfer, amount: "25.00", transferToAccountId: "acct-2")\n        )\n        #expect(id == nil)\n    }\n\n'''
+          if text.count(anchor) != 1: raise SystemExit('save test anchor missing')
+          text = text.replace(anchor, insert + anchor, 1)
+          save_tests.write_text(text)
+
+          # New UI coverage for opening Category Funding settings and choosing\n          # the trigger account. Keep this narrow; CI does not run UI tests.\n          ui = root / 'Actuali/ActualiUITests/CategoryFundingAutomationUITests.swift'
+          ui.write_text('''import XCTest\n\nfinal class CategoryFundingAutomationUITests: XCTestCase {\n    @MainActor\n    func testCategoryFundingSettingsCanBeConfigured() throws {\n        let app = XCUIApplication()\n        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]\n        app.launch()\n\n        let automation = app.staticTexts["Category Funding Settings"]\n        XCTAssertTrue(automation.waitForExistence(timeout: 10), "Category Funding Settings row not found")\n        automation.tap()\n\n        let title = app.navigationBars["Category Funding"]\n        XCTAssertTrue(title.waitForExistence(timeout: 5), "Category Funding screen did not open")\n\n        let accountPicker = app.buttons["Account"]\n        XCTAssertTrue(accountPicker.waitForExistence(timeout: 5), "Account picker not found")\n        accountPicker.tap()\n\n        let checking = app.buttons["Chase Checking"]\n        XCTAssertTrue(checking.waitForExistence(timeout: 5), "Demo account not available in picker")\n        checking.tap()\n\n        let enable = app.switches["Enable Automation"]\n        XCTAssertTrue(enable.waitForExistence(timeout: 5), "Enable Automation toggle not found")\n        XCTAssertFalse(enable.isEnabled == false, "Enable Automation should be available after choosing an account")\n    }\n}\n''')
+          PY
+
+          # Insert the store-owned queue by editing BudgetStore and the service
+          # call site. Keep the state private to the existing @MainActor model.\n          python3 <<'PY'
+          from pathlib import Path
+          p = Path('Actuali/Actuali/Services/BudgetStore.swift')
+          s = p.read_text()
+          anchor = 'final class BudgetStore: ObservableObject {\n'
+          addition = '''final class BudgetStore: ObservableObject {\n    private var categoryFundingTask: Task<Void, Never>?\n\n    func enqueueCategoryFunding(\n        savedTransactionId: String,\n        defaults: UserDefaults\n    ) {\n        let previousTask = categoryFundingTask\n        categoryFundingTask = Task { @MainActor [weak self] in\n            _ = await previousTask?.result\n            guard let self else { return }\n            await CategoryFundingAutomation.process(\n                savedTransactionId: savedTransactionId,\n                using: self,\n                defaults: defaults\n            )\n        }\n    }\n'''
+          if s.count(anchor) != 1: raise SystemExit('BudgetStore class anchor missing')
+          s = s.replace(anchor, addition, 1)
+          p.write_text(s)
+          PY
+
+          # The UI test belongs in the UI target via filesystem synchronization.\n          # No pbxproj entry is required.\n\n          git add Actuali .github/workflows/fix-category-funding-review.yml\n          git config user.name 'github-actions[bot]'\n          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'\n          git commit -m 'fix: address category funding review findings'\n          git push\n
+          # Remove this temporary workflow in a separate commit, leaving only\n          # product/test changes on the feature branch.\n          git rm .github/workflows/fix-category-funding-review.yml\n          git commit -m 'chore: remove temporary review fix workflow'\n          git push
