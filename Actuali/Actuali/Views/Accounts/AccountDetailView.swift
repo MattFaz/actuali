@@ -248,7 +248,7 @@ struct AccountDetailView: View {
                                     transaction: transaction,
                                     showAccount: false,
                                     showDate: false,
-                                    isSelectionMode: isSelecting,
+                                    isSelectionMode: $isSelecting,
                                     isSelected: selectedTransactionIds.contains(transaction.id),
                                     editing: $editingTransaction,
                                     onToggleSelect: {
@@ -270,7 +270,7 @@ struct AccountDetailView: View {
                             TransactionListRow(
                                 transaction: transaction,
                                 showAccount: false,
-                                isSelectionMode: isSelecting,
+                                isSelectionMode: $isSelecting,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {

@@ -13,6 +13,25 @@ struct TransactionsListView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Wraps `isSelecting` so every path that leaves selection mode — the
+    /// toolbar's Done button, or a row's long-press-to-exit — clears the
+    /// selected set the same way. Passed to rows instead of `$isSelecting`
+    /// directly so a long press while already selecting can safely toggle
+    /// off without leaving stale selected IDs behind.
+    private var selectionModeBinding: Binding<Bool> {
+        Binding(
+            get: { isSelecting },
+            set: { newValue in
+                withAnimation {
+                    isSelecting = newValue
+                    if !newValue {
+                        selectedTransactionIds.removeAll()
+                    }
+                }
+            }
+        )
+    }
+
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time.
@@ -61,7 +80,7 @@ struct TransactionsListView: View {
                                     TransactionListRow(
                                         transaction: transaction,
                                         showDate: false,
-                                        isSelectionMode: isSelecting,
+                                        isSelectionMode: selectionModeBinding,
                                         isSelected: selectedTransactionIds.contains(transaction.id),
                                         editing: $editingTransaction,
                                         onToggleSelect: {
@@ -81,7 +100,7 @@ struct TransactionsListView: View {
                         ForEach(pager.transactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
-                                isSelectionMode: isSelecting,
+                                isSelectionMode: selectionModeBinding,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
@@ -103,12 +122,7 @@ struct TransactionsListView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {
-                    withAnimation {
-                        isSelecting.toggle()
-                        if !isSelecting {
-                            selectedTransactionIds.removeAll()
-                        }
-                    }
+                    selectionModeBinding.wrappedValue.toggle()
                 }
             }
             ToolbarItem(placement: .secondaryAction) {
@@ -179,10 +193,16 @@ struct TransactionListRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
-    var isSelectionMode: Bool = false
+    /// A binding, so a long press on the row opens selection mode for every
+    /// caller with no extra callback.
+    @Binding var isSelectionMode: Bool
     var isSelected: Bool = false
     @Binding var editing: Transaction?
     var onToggleSelect: (() -> Void)? = nil
+
+    /// A counter, not a Bool: `.sensoryFeedback` needs a value that changes
+    /// on every long press, and the toolbar Select button must not fire it.
+    @State private var longPressCount = 0
 
     var body: some View {
         Button {
@@ -205,6 +225,35 @@ struct TransactionListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        // `highPriorityGesture`, not `simultaneousGesture`: this row's label
+        // contains its own nested Button (the cleared-status dot), and a
+        // merely-simultaneous long press doesn't stop that button's tap from
+        // also firing on release — a held cleared dot would toggle cleared
+        // status (or open its unlock confirmation) as a side effect of
+        // entering selection mode. High priority wins the touch outright
+        // once 0.5s is reached, so neither the nested button nor this row's
+        // own Button action fires; a tap shorter than that still passes
+        // through untouched. Because the row's own release action no longer
+        // fires either, this handler selects the row directly.
+        //
+        // A long press while already in selection mode exits it instead:
+        // `isSelectionMode` is bound to the shared selection-mode binding,
+        // so setting it false here clears the whole selected set the same
+        // way the toolbar's Done button does.
+        .highPriorityGesture(
+            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                longPressCount += 1
+                withAnimation {
+                    if isSelectionMode {
+                        isSelectionMode = false
+                    } else {
+                        isSelectionMode = true
+                        onToggleSelect?()
+                    }
+                }
+            }
+        )
+        .sensoryFeedback(.impact(weight: .medium), trigger: longPressCount)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(role: .destructive) {
@@ -406,6 +455,15 @@ struct TransactionRow: View {
             }
         }
         .padding(.vertical, 2)
+        .onChange(of: isSelectionMode) { _, active in
+            // The row's long-press gesture spans the cleared-status button
+            // too, so a hold on the dot can flip this row into selection
+            // mode while that button's own action is still landing. Selection
+            // mode removes the button and its confirmationDialog, so a
+            // pending confirmingUnlock would otherwise surface later with no
+            // toggle behind it.
+            if active { confirmingUnlock = false }
+        }
     }
 }
 
