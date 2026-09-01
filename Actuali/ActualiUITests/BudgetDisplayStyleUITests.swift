@@ -155,7 +155,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
 
         let optionsMenu = app.buttons["Budget options"]
         optionsMenu.tap()
-        let spentToggle = app.buttons["Show Spent"]
+        let spentToggle = app.buttons["Show Spent Column"]
         XCTAssertTrue(spentToggle.waitForExistence(timeout: 5))
         spentToggle.tap()
 

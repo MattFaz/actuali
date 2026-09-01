@@ -67,6 +67,7 @@ struct BudgetOptionsMenu: View {
                     Toggle(isOn: $budgetStore.showCompactSpentColumn) {
                         Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
                     }
+                    .accessibilityLabel("Show Spent Column")
                 }
             }
 
@@ -122,6 +123,7 @@ struct BudgetOptionsMenu: View {
                 Toggle(isOn: $budgetStore.showHiddenCategories) {
                     Label("Hidden Categories", systemImage: "eye")
                 }
+                .accessibilityLabel("Show Hidden Categories")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
