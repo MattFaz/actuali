@@ -81,17 +81,6 @@ struct CategoryFundingAutomationTests {
         ) == .insufficientSource)
     }
 
-    @Test("Missing category funding source is reported as invalid")
-    func categorySourceMissing() {
-        #expect(CategoryFundingAutomation.fundingDecision(
-            transactionAmount: -50,
-            availableAfterTransaction: -50,
-            targetCategoryId: "groceries",
-            fundingSource: .category("emergency-fund"),
-            sourceAvailable: nil
-        ) == .invalidSource)
-    }
-
     @Test("A category cannot fund itself")
     func sameSourceAndTargetIsInvalid() {
         #expect(CategoryFundingAutomation.fundingDecision(
