@@ -7,8 +7,12 @@ final class CategoryFundingAutomationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
+        let automationSettings = app.buttons["Transactions & Automation"]
+        XCTAssertTrue(automationSettings.waitForExistence(timeout: 10), "Settings row not found")
+        automationSettings.tap()
+
         let automation = app.buttons["Category Funding Settings"]
-        XCTAssertTrue(automation.waitForExistence(timeout: 10), "Category Funding Settings row not found")
+        XCTAssertTrue(automation.waitForExistence(timeout: 5), "Category Funding Settings row not found")
         automation.tap()
 
         XCTAssertTrue(app.navigationBars["Category Funding"].waitForExistence(timeout: 5), "Category Funding screen did not open")
