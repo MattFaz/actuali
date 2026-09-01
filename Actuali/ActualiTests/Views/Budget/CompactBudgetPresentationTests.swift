@@ -58,6 +58,10 @@ struct CompactBudgetPresentationTests {
             .budgeted,
             .balance,
         ])
+        #expect(CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: false).incomeColumns == [
+            nil,
+            .received,
+        ])
     }
 
     @Test func groupHeaderPresentationOmitsEveryTotalWhenDisabled() {
@@ -103,6 +107,7 @@ struct CompactBudgetPresentationTests {
         ])
         #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
             .budgeted,
+            nil,
             .received,
         ])
     }

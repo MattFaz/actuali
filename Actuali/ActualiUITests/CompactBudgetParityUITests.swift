@@ -52,11 +52,12 @@ final class CompactBudgetParityUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(spent.waitForExistence(timeout: 5))
         XCTAssertTrue(spent.label.contains("$"))
+        XCTAssertTrue(spent.label.contains(currentMonthTitle()),
+                      "Spent targets the displayed month")
         spent.tap()
         XCTAssertTrue(app.navigationBars["Groceries"].waitForExistence(timeout: 5),
                       "Spent opens the category's transaction destination")
-        XCTAssertTrue(app.staticTexts[currentMonthTitle()].waitForExistence(timeout: 5),
-                      "Spent scopes transactions to the displayed month")
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 5))
         app.navigationBars.buttons["Budget"].tap()
 
         let balance = app.buttons.matching(

@@ -42,15 +42,20 @@ struct CompactBudgetTableLayout: Equatable {
     static let categoryRowMinimumHeight: CGFloat = 44
 
     let expenseColumns: [CompactBudgetColumn]
-    let incomeColumns: [CompactBudgetColumn]
+    let incomeColumns: [CompactBudgetColumn?]
 
     init(isTrackingBudget: Bool, showsSpent: Bool) {
         expenseColumns = showsSpent
             ? [.budgeted, .spent, .balance]
             : [.budgeted, .balance]
-        incomeColumns = isTrackingBudget
-            ? [.budgeted, .received]
-            : [.received]
+        incomeColumns = expenseColumns.map { column in
+            switch column {
+            case .budgeted: isTrackingBudget ? .budgeted : nil
+            case .spent: nil
+            case .balance: .received
+            case .received: nil
+            }
+        }
     }
 }
 

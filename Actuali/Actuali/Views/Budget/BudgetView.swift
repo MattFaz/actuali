@@ -360,6 +360,11 @@ struct BudgetView: View {
                     ForEach(group.categories) { category in
                         CompactCategoryBudgetRow(
                             category: category,
+                            isHidden: category.hidden,
+                            isDimmed: category.isEffectivelyHidden,
+                            onSetHidden: {
+                                setCategoryHidden(category.categoryId, hidden: $0)
+                            },
                             showsSpent: budgetStore.showCompactSpentColumn,
                             showsProgressBars: budgetStore.showBudgetProgressBars,
                             showsStatusDots: budgetStore.showCategoryStatusDots,
@@ -374,6 +379,10 @@ struct BudgetView: View {
                 CompactBudgetGroupHeader(
                     name: group.name,
                     isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     showsSpent: budgetStore.showCompactSpentColumn,
                     onToggleCollapse: { toggleCollapsed(group.id) }
@@ -466,10 +475,16 @@ struct BudgetView: View {
         case .compact:
             Section {
                 if !isCollapsed {
-                    ForEach(budget.incomeCategories) { income in
+                    ForEach(categories) { income in
                         CompactIncomeCategoryRow(
                             income: income,
+                            isHidden: income.hidden,
+                            isDimmed: income.isEffectivelyHidden,
+                            onSetHidden: {
+                                setCategoryHidden(income.categoryId, hidden: $0)
+                            },
                             showsBudgeted: budget.isTrackingBudget,
+                            showsSpent: budgetStore.showCompactSpentColumn,
                             onShowTransactions: showTransactions
                         )
                     }
@@ -478,9 +493,12 @@ struct BudgetView: View {
                 CompactIncomeGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: onSetHidden,
                     totalBudgeted: budget.totalBudgetedIncome,
                     totalReceived: budget.totalIncome,
                     showsBudgeted: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
                     }

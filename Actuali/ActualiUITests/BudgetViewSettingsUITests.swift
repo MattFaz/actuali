@@ -101,7 +101,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Status Filters"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             allFilter.waitForExistence(timeout: 5),
@@ -125,7 +125,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Hide Spent Categories"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             spentCategory.waitForNonExistence(timeout: 5),
@@ -133,7 +133,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Hide Spent Categories"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             spentCategory.waitForExistence(timeout: 5),
@@ -157,7 +157,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Budget Progress Bars"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             progressBar.waitForNonExistence(timeout: 5),
@@ -165,7 +165,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Budget Progress Bars"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             firstBudgetProgressBar(in: app).waitForExistence(timeout: 5),

@@ -131,6 +131,8 @@ struct CompactBudgetGroupHeader: View {
 
     let name: String
     let isCollapsed: Bool
+    var isHidden = false
+    var onSetHidden: ((Bool) -> Void)? = nil
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
@@ -149,65 +151,85 @@ struct CompactBudgetGroupHeader: View {
     }
 
     var body: some View {
-        Button(action: onToggleCollapse) {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 8) {
-                        title
-                        ForEach(columnsForLayout, id: \.type) { column in
-                            HStack {
-                                Text(column.type.rawValue)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                CompactAmountText(
-                                    amount: column.amount,
-                                    isBalance: column.type == .balance
-                                )
-                            }
-                        }
-                        .opacity(totals == nil ? 0 : 1)
-                        .accessibilityHidden(totals == nil)
-                    }
-                } else {
-                    HStack(spacing: 0) {
-                        title
-                            .frame(
-                                width: CompactBudgetTableLayout.titleColumnWidth,
-                                alignment: .leading
-                            )
-                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
+        HStack(spacing: 0) {
+            Button(action: onToggleCollapse) {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            title
                             ForEach(columnsForLayout, id: \.type) { column in
-                                VStack(alignment: .trailing, spacing: 2) {
+                                HStack {
                                     Text(column.type.rawValue)
-                                        .font(.caption2)
-                                        .lineLimit(1)
-                                        .minimumScaleFactor(0.65)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
                                     CompactAmountText(
                                         amount: column.amount,
                                         isBalance: column.type == .balance
                                     )
                                 }
-                                .frame(maxWidth: .infinity, alignment: .trailing)
                             }
+                            .opacity(totals == nil ? 0 : 1)
+                            .accessibilityHidden(totals == nil)
                         }
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .layoutPriority(1)
-                        .opacity(totals == nil ? 0 : 1)
-                        .accessibilityHidden(totals == nil)
+                    } else {
+                        HStack(spacing: 0) {
+                            title
+                                .frame(
+                                    width: CompactBudgetTableLayout.titleColumnWidth,
+                                    alignment: .leading
+                                )
+                            HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
+                                ForEach(columnsForLayout, id: \.type) { column in
+                                    VStack(alignment: .trailing, spacing: 2) {
+                                        Text(column.type.rawValue)
+                                            .font(.caption2)
+                                            .lineLimit(1)
+                                            .minimumScaleFactor(0.65)
+                                        CompactAmountText(
+                                            amount: column.amount,
+                                            isBalance: column.type == .balance
+                                        )
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .layoutPriority(1)
+                            .opacity(totals == nil ? 0 : 1)
+                            .accessibilityHidden(totals == nil)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("compactBudgetGroup.\(name)")
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Toggles the group's categories")
+
+            if let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show Group" : "Hide Group",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityLabel("Options for \(name)")
+            }
         }
-        .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("compactBudgetGroup.\(name)")
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
+        .opacity(isHidden ? 0.5 : 1)
     }
 
     private var title: some View {
@@ -237,6 +259,9 @@ struct CompactCategoryBudgetRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let category: CategoryBudget
+    var isHidden = false
+    var isDimmed = false
+    var onSetHidden: ((Bool) -> Void)? = nil
     let showsSpent: Bool
     let showsProgressBars: Bool
     let showsStatusDots: Bool
@@ -244,14 +269,6 @@ struct CompactCategoryBudgetRow: View {
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
-
-    private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
-    }
-
-    private var includesSpentColumn: Bool {
-        layout.expenseColumns.contains(.spent)
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -272,6 +289,17 @@ struct CompactCategoryBudgetRow: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
         .accessibilityIdentifier("compactBudgetCategory.\(category.categoryId)")
+        .opacity(isDimmed ? 0.5 : 1)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 
     private var compactContent: some View {
@@ -292,7 +320,7 @@ struct CompactCategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .accessibilityLabel(editBudgetAccessibilityLabel)
 
-                if includesSpentColumn {
+                if showsSpent {
                     Button {
                         onShowTransactions(category, category.month)
                     } label: {
@@ -329,7 +357,7 @@ struct CompactCategoryBudgetRow: View {
             .buttonStyle(.plain)
             .accessibilityLabel(editBudgetAccessibilityLabel)
 
-            if includesSpentColumn {
+            if showsSpent {
                 Button {
                     onShowTransactions(category, category.month)
                 } label: {
@@ -412,73 +440,103 @@ struct CompactIncomeGroupHeader: View {
 
     let name: String
     var isCollapsed = false
+    var isHidden = false
+    var onSetHidden: ((Bool) -> Void)? = nil
     let totalBudgeted: Int
     let totalReceived: Int
     let showsBudgeted: Bool
+    let showsSpent: Bool
     var onToggleCollapse: () -> Void = {}
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
+        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent)
     }
 
     private var columns: [(CompactBudgetColumn, Int)] {
-        layout.incomeColumns.compactMap { column in
+        layout.incomeColumns.compactMap { optionalColumn -> (CompactBudgetColumn, Int)? in
+            guard let column = optionalColumn else { return nil }
             switch column {
-            case .budgeted: (column, totalBudgeted)
-            case .received: (column, totalReceived)
-            case .spent, .balance: nil
+            case .budgeted: return (column, totalBudgeted)
+            case .received: return (column, totalReceived)
+            case .spent, .balance: return nil
             }
         }
     }
 
     var body: some View {
-        Button(action: onToggleCollapse) {
-            Group {
-                if dynamicTypeSize.isAccessibilitySize {
-                    VStack(alignment: .leading, spacing: 8) {
-                        title
-                        ForEach(columns, id: \.0) { column, amount in
-                            HStack {
-                                Text(column.rawValue)
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                CompactAmountText(amount: amount)
-                            }
-                        }
-                    }
-                } else {
-                    HStack(spacing: 0) {
-                        title
-                            .frame(
-                                width: CompactBudgetTableLayout.titleColumnWidth,
-                                alignment: .leading
-                            )
-                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
+        HStack(spacing: 0) {
+            Button(action: onToggleCollapse) {
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 8) {
+                            title
                             ForEach(columns, id: \.0) { column, amount in
-                                VStack(alignment: .trailing, spacing: 2) {
+                                HStack {
                                     Text(column.rawValue)
-                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
                                     CompactAmountText(amount: amount)
                                 }
-                                .frame(maxWidth: .infinity, alignment: .trailing)
                             }
                         }
-                        .frame(maxWidth: .infinity, alignment: .trailing)
-                        .layoutPriority(1)
+                    } else {
+                        HStack(spacing: 0) {
+                            title
+                                .frame(
+                                    width: CompactBudgetTableLayout.titleColumnWidth,
+                                    alignment: .leading
+                                )
+                            HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
+                                ForEach(Array(layout.incomeColumns.enumerated()), id: \.offset) { _, column in
+                                    Group {
+                                        if let column {
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text(column.rawValue)
+                                                    .font(.caption2)
+                                                CompactAmountText(amount: amount(for: column))
+                                            }
+                                        } else {
+                                            Color.clear
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .trailing)
+                                }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                            .layoutPriority(1)
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("compactIncomeSection")
+            .accessibilityLabel(accessibilityLabel)
+            .accessibilityHint("Toggles the income categories")
+
+            if let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show Group" : "Hide Group",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .frame(minWidth: 32, minHeight: 44)
+                }
+                .accessibilityLabel("Options for \(name)")
+            }
         }
-        .buttonStyle(.plain)
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
-        .accessibilityIdentifier("compactIncomeSection")
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the income categories")
+        .opacity(isHidden ? 0.5 : 1)
     }
 
     private var title: some View {
@@ -500,6 +558,10 @@ struct CompactIncomeGroupHeader: View {
         amounts.append("received \(budgetStore.displayBalance(totalReceived))")
         return "\(name), \(state), \(amounts.joined(separator: ", "))"
     }
+
+    private func amount(for column: CompactBudgetColumn) -> Int {
+        column == .budgeted ? totalBudgeted : totalReceived
+    }
 }
 
 struct CompactIncomeCategoryRow: View {
@@ -507,15 +569,15 @@ struct CompactIncomeCategoryRow: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let income: IncomeCategory
+    var isHidden = false
+    var isDimmed = false
+    var onSetHidden: ((Bool) -> Void)? = nil
     let showsBudgeted: Bool
+    let showsSpent: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     private var layout: CompactBudgetTableLayout {
-        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: false)
-    }
-
-    private var includesBudgetedColumn: Bool {
-        layout.incomeColumns.contains(.budgeted)
+        CompactBudgetTableLayout(isTrackingBudget: showsBudgeted, showsSpent: showsSpent)
     }
 
     var body: some View {
@@ -523,7 +585,7 @@ struct CompactIncomeCategoryRow: View {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
                     nameButton
-                    if includesBudgetedColumn {
+                    if showsBudgeted {
                         stackedReadOnlyAmount(label: "Budgeted", amount: income.budgeted)
                     }
                     Button {
@@ -548,20 +610,10 @@ struct CompactIncomeCategoryRow: View {
                             alignment: .leading
                         )
                     HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
-                        if includesBudgetedColumn {
-                            CompactAmountText(amount: income.budgeted)
-                                .frame(maxWidth: .infinity, alignment: .trailing)
-                                .accessibilityLabel(budgetedAccessibilityLabel)
-                                .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
-                        }
-                        Button {
-                            onShowTransactions(income, income.month)
-                        } label: {
-                            CompactAmountText(amount: income.received)
+                        ForEach(Array(layout.incomeColumns.enumerated()), id: \.offset) { _, column in
+                            compactColumn(column)
                                 .frame(maxWidth: .infinity, alignment: .trailing)
                         }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(monthTransactionsLabel)
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
                     .layoutPriority(1)
@@ -573,6 +625,17 @@ struct CompactIncomeCategoryRow: View {
         .listRowInsets(EdgeInsets(top: 0, leading: 16, bottom: 0, trailing: 16))
         .listRowBackground(Color(.systemBackground))
         .accessibilityIdentifier("compactIncomeCategory.\(income.categoryId)")
+        .opacity(isDimmed ? 0.5 : 1)
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if let onSetHidden {
+                Button {
+                    onSetHidden(!isHidden)
+                } label: {
+                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                }
+                .tint(isHidden ? .accentColor : .secondary)
+            }
+        }
     }
 
     private var nameButton: some View {
@@ -599,6 +662,26 @@ struct CompactIncomeCategoryRow: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(budgetedAccessibilityLabel)
         .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
+    }
+
+    @ViewBuilder
+    private func compactColumn(_ column: CompactBudgetColumn?) -> some View {
+        switch column {
+        case .budgeted:
+            CompactAmountText(amount: income.budgeted)
+                .accessibilityLabel(budgetedAccessibilityLabel)
+                .accessibilityIdentifier("compactIncomeBudgeted.\(income.categoryId)")
+        case .received:
+            Button {
+                onShowTransactions(income, income.month)
+            } label: {
+                CompactAmountText(amount: income.received)
+            }
+            .buttonStyle(.borderless)
+            .accessibilityLabel(monthTransactionsLabel)
+        case .none, .spent, .balance:
+            Color.clear
+        }
     }
 
     private var budgetedAccessibilityLabel: String {

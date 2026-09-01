@@ -27,7 +27,10 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     @MainActor
     func testCleanStyleShowsCaptions() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean",
+            "-showBudgetCheckInStrip", "YES",
+        ]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -108,6 +111,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
             "-showBudgetProgressBars", "NO",
             "-showCategoryStatusDots", "NO",
             "-showGroupTotals", "YES",
+            "-showBudgetCheckInStrip", "YES",
             "-initialTab", "1",
         ]
         app.launch()
@@ -240,7 +244,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
                       "the progress assertions require an expanded fixture group")
         XCTAssertEqual(groceries.label, "Details for Groceries")
         let progressBar = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label BEGINSWITH 'Partially spent, spent '")
+            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent'")
         ).firstMatch
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
@@ -363,7 +367,9 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     @MainActor
     func testCheckInStripFiltersUnassignedCategoriesInPlace() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = [
+            "-loadDemoData", "-showBudgetCheckInStrip", "YES", "-initialTab", "1",
+        ]
         app.launch()
 
         // Parking has no activity in the demo. Clearing its budget makes it

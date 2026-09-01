@@ -28,7 +28,7 @@ struct BudgetViewSettingsView: View {
                 Text("Presentation")
             } footer: {
                 if budgetStore.budgetDisplayStyle == .clean {
-                    Text("Group Totals are available in Detailed view.")
+                    Text("Group Totals are available in Detailed and Compact views.")
                 }
             }
 
