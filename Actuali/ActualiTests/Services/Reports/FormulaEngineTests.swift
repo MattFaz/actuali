@@ -73,6 +73,15 @@ struct FormulaEngineTests {
         #expect(comparison == .number(1))
     }
 
+    @Test func ifKeepsCurrencyUnitAcrossBranches() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=IF(QUERY("income") > 0, QUERY("income") - QUERY("expenses"), 0)"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("expense", date: 20260705, amount: -300_000),
+            ], today: today, context: .empty)
+        #expect(result == .value(0))
+    }
+
     @Test func supportedFunctionsPreserveUnits() {
         let sum = FormulaEngine.compute(
             meta: meta(formula: #"=SUM(QUERY("expenses"), QUERY("income"))"#, queries: savedThisMonthQueries),
@@ -165,7 +174,7 @@ struct FormulaEngineTests {
         let result = FormulaEngine.compute(
             meta: meta(formula: formula), transactions: [], today: today, context: .empty)
         guard case .unsupported = result else {
-            Issue.record("expected unsupported for \(formula), got \(result)")
+            Issue.record("expected .unsupported for \(formula), got \(result)")
             return
         }
     }
