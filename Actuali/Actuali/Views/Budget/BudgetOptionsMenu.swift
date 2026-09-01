@@ -52,10 +52,24 @@ struct BudgetOptionsMenu: View {
             Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
                 Label("Clean", systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
-                Label("Detailed", systemImage: "tablecells")
+                Label("Detailed", systemImage: "rectangle.grid.1x2")
                     .tag(BudgetDisplayStyle.detailed)
+                Label("Compact", systemImage: "list.bullet")
+                    .tag(BudgetDisplayStyle.compact)
             }
             .pickerStyle(.inline)
+
+            if budgetStore.budgetDisplayStyle == .compact {
+                Section {
+                    Toggle(isOn: $budgetStore.showCompactBudgetOverview) {
+                        Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
+                    }
+                    Toggle(isOn: $budgetStore.showCompactSpentColumn) {
+                        Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
+                    }
+                    .accessibilityLabel("Show Spent Column")
+                }
+            }
 
             if let expandAllGroups, let collapseAllGroups {
                 Section {
@@ -94,9 +108,7 @@ struct BudgetOptionsMenu: View {
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
-                // Only the detailed style has columns for a group header to
-                // total, so the clean style doesn't offer the switch.
-                if budgetStore.budgetDisplayStyle == .detailed {
+                if budgetStore.budgetDisplayStyle != .clean {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
                         Label("Group Totals", systemImage: "sum")
                     }
@@ -109,8 +121,9 @@ struct BudgetOptionsMenu: View {
                 }
                 .accessibilityLabel("Hide Spent Categories")
                 Toggle(isOn: $budgetStore.showHiddenCategories) {
-                    Label("Show Hidden Categories", systemImage: "eye")
+                    Label("Hidden Categories", systemImage: "eye")
                 }
+                .accessibilityLabel("Show Hidden Categories")
             }
         } label: {
             Image(systemName: "ellipsis.circle")
