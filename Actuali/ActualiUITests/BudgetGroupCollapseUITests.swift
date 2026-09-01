@@ -104,7 +104,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
         let optionsMenu = app.buttons["Budget options"]
         optionsMenu.tap()
-        let showHidden = app.buttons["Show Hidden Categories"]
+        let showHidden = app.buttons["Hidden Categories"]
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
         showHidden.tap()
         XCTAssertTrue(essentials.waitForExistence(timeout: 5))

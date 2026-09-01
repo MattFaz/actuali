@@ -34,11 +34,11 @@ final class BudgetOptionsMenuUITests: XCTestCase {
 
         for option in ["Clean", "Detailed", "Compact", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
-                       "Hide Spent Categories"] {
+                       "Hide Spent Categories", "Hidden Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
-        for compactOption in ["Show Overview", "Show Spent Column"] {
+        for compactOption in ["Show Overview", "Show Spent"] {
             XCTAssertFalse(app.buttons[compactOption].exists,
                            "Clean should not offer the Compact-only '\(compactOption)' control")
         }
@@ -58,12 +58,12 @@ final class BudgetOptionsMenuUITests: XCTestCase {
 
         optionsMenu.tap()
         let overview = app.buttons["Show Overview"]
-        let spent = app.buttons["Show Spent Column"]
+        let spent = app.buttons["Show Spent"]
         XCTAssertTrue(overview.waitForExistence(timeout: 5))
         XCTAssertTrue(spent.exists)
         XCTAssertTrue(overview.isSelected, "Show Overview defaults on")
         XCTAssertTrue(app.buttons["Group Totals"].exists)
-        XCTAssertFalse(spent.isSelected, "Show Spent Column defaults off")
+        XCTAssertFalse(spent.isSelected, "Show Spent defaults off")
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
                        "Compact uses the shared Budget Progress Bars setting")
 
@@ -72,7 +72,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Group Totals"].waitForExistence(timeout: 5),
                       "Detailed keeps its existing Group Totals control")
         XCTAssertFalse(app.buttons["Show Overview"].exists)
-        XCTAssertFalse(app.buttons["Show Spent Column"].exists)
+        XCTAssertFalse(app.buttons["Show Spent"].exists)
         XCTAssertFalse(app.buttons["Progress Indicators"].exists)
     }
 
