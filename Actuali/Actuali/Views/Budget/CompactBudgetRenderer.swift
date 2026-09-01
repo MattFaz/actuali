@@ -151,64 +151,62 @@ struct CompactBudgetGroupHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onToggleCollapse) {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            title
+        Button(action: onToggleCollapse) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        title
+                        ForEach(columnsForLayout, id: \.type) { column in
+                            HStack {
+                                Text(column.type.rawValue)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                CompactAmountText(
+                                    amount: column.amount,
+                                    isBalance: column.type == .balance
+                                )
+                            }
+                        }
+                        .opacity(totals == nil ? 0 : 1)
+                        .accessibilityHidden(totals == nil)
+                    }
+                } else {
+                    HStack(spacing: 0) {
+                        title
+                            .frame(
+                                width: CompactBudgetTableLayout.titleColumnWidth,
+                                alignment: .leading
+                            )
+                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                             ForEach(columnsForLayout, id: \.type) { column in
-                                HStack {
+                                VStack(alignment: .trailing, spacing: 2) {
                                     Text(column.type.rawValue)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
+                                        .font(.caption2)
+                                        .lineLimit(1)
+                                        .minimumScaleFactor(0.65)
                                     CompactAmountText(
                                         amount: column.amount,
                                         isBalance: column.type == .balance
                                     )
                                 }
+                                .frame(maxWidth: .infinity, alignment: .trailing)
                             }
-                            .opacity(totals == nil ? 0 : 1)
-                            .accessibilityHidden(totals == nil)
                         }
-                    } else {
-                        HStack(spacing: 0) {
-                            title
-                                .frame(
-                                    width: CompactBudgetTableLayout.titleColumnWidth,
-                                    alignment: .leading
-                                )
-                            HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
-                                ForEach(columnsForLayout, id: \.type) { column in
-                                    VStack(alignment: .trailing, spacing: 2) {
-                                        Text(column.type.rawValue)
-                                            .font(.caption2)
-                                            .lineLimit(1)
-                                            .minimumScaleFactor(0.65)
-                                        CompactAmountText(
-                                            amount: column.amount,
-                                            isBalance: column.type == .balance
-                                        )
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .layoutPriority(1)
-                            .opacity(totals == nil ? 0 : 1)
-                            .accessibilityHidden(totals == nil)
-                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .layoutPriority(1)
+                        .opacity(totals == nil ? 0 : 1)
+                        .accessibilityHidden(totals == nil)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("compactBudgetGroup.\(name)")
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Toggles the group's categories")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("compactBudgetGroup.\(name)")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Toggles the group's categories")
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
@@ -482,58 +480,56 @@ struct CompactIncomeGroupHeader: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onToggleCollapse) {
-                Group {
-                    if dynamicTypeSize.isAccessibilitySize {
-                        VStack(alignment: .leading, spacing: 8) {
-                            title
-                            ForEach(columns, id: \.0) { column, amount in
-                                HStack {
-                                    Text(column.rawValue)
-                                        .foregroundStyle(.secondary)
-                                    Spacer()
-                                    CompactAmountText(amount: amount)
-                                }
+        Button(action: onToggleCollapse) {
+            Group {
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 8) {
+                        title
+                        ForEach(columns, id: \.0) { column, amount in
+                            HStack {
+                                Text(column.rawValue)
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                CompactAmountText(amount: amount)
                             }
-                        }
-                    } else {
-                        HStack(spacing: 0) {
-                            title
-                                .frame(
-                                    width: CompactBudgetTableLayout.titleColumnWidth,
-                                    alignment: .leading
-                                )
-                            HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
-                                ForEach(Array(layout.incomeColumns.enumerated()), id: \.offset) { _, column in
-                                    Group {
-                                        if let column {
-                                            VStack(alignment: .trailing, spacing: 2) {
-                                                Text(column.rawValue)
-                                                    .font(.caption2)
-                                                CompactAmountText(amount: amount(for: column))
-                                            }
-                                        } else {
-                                            Color.clear
-                                        }
-                                    }
-                                    .frame(maxWidth: .infinity, alignment: .trailing)
-                                }
-                            }
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                            .layoutPriority(1)
                         }
                     }
+                } else {
+                    HStack(spacing: 0) {
+                        title
+                            .frame(
+                                width: CompactBudgetTableLayout.titleColumnWidth,
+                                alignment: .leading
+                            )
+                        HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
+                            ForEach(Array(layout.incomeColumns.enumerated()), id: \.offset) { _, column in
+                                Group {
+                                    if let column {
+                                        VStack(alignment: .trailing, spacing: 2) {
+                                            Text(column.rawValue)
+                                                .font(.caption2)
+                                            CompactAmountText(amount: amount(for: column))
+                                        }
+                                    } else {
+                                        Color.clear
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .trailing)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                        .layoutPriority(1)
+                    }
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
-            .accessibilityIdentifier("compactIncomeSection")
-            .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Toggles the income categories")
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .contentShape(Rectangle())
         }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("compactIncomeSection")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint("Toggles the income categories")
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
