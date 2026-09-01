@@ -149,7 +149,7 @@ enum FormulaEngine {
             guard abs(rhs) > .ulpOfOne else { throw EvalError.divisionByZero }
             return lhs / rhs
         case .neg(let value):
-            return -try evaluate(value, env)
+            return -(try evaluate(value, env))
         case .compare(let op, let left, let right):
             let lhs = try evaluate(left, env)
             let rhs = try evaluate(right, env)
@@ -173,7 +173,7 @@ enum FormulaEngine {
         case .number, .string, .compare:
             return false
         case .function(let name, let args):
-            return name.uppercased() == "QUERY" || args.contains(where: isCurrency)
+            return name.uppercased() == "QUERY" || args.contains { isCurrency($0) }
         case .add(let left, let right), .sub(let left, let right), .mul(let left, let right):
             return isCurrency(left) || isCurrency(right)
         case .div(let left, let right):
@@ -205,7 +205,7 @@ enum FormulaEngine {
                 }
                 throw EvalError.invalidArgument
             }
-            return values.dropFirst().reduce(values[0], Swift.min)
+            return values.dropFirst().reduce(values[0]) { Swift.min($0, $1) }
 
         case "MAX":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
@@ -215,7 +215,7 @@ enum FormulaEngine {
                 }
                 throw EvalError.invalidArgument
             }
-            return values.dropFirst().reduce(values[0], Swift.max)
+            return values.dropFirst().reduce(values[0]) { Swift.max($0, $1) }
 
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
