@@ -32,6 +32,19 @@ struct CategoryFundingAutomationIntegrationTests {
                     parent_id TEXT
                 );
 
+                CREATE TABLE payees (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    category TEXT,
+                    tombstone INTEGER DEFAULT 0,
+                    transfer_acct TEXT
+                );
+
+                CREATE TABLE payee_mapping (
+                    id TEXT PRIMARY KEY,
+                    targetId TEXT
+                );
+
                 CREATE TABLE categories (
                     id TEXT PRIMARY KEY,
                     name TEXT,
@@ -93,7 +106,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9")
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
         store.currentBudgetId = "budget-1"
