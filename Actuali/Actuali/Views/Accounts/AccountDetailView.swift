@@ -85,15 +85,6 @@ struct AccountDetailView: View {
         note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
     }
 
-    /// Enters selection mode and pre-selects the long-pressed row, mirroring
-    /// what tapping "Select Transactions" then tapping a row would produce.
-    private func beginSelection(with transaction: Transaction) {
-        withAnimation {
-            isSelecting = true
-            selectedTransactionIds = [transaction.id]
-        }
-    }
-
     /// The account's note (GH #198), presented exactly as a category's is (see
     /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
     /// while searching — a search is about finding transactions, not reading
@@ -250,13 +241,12 @@ struct AccountDetailView: View {
                                     transaction: transaction,
                                     showAccount: false,
                                     showDate: false,
-                                    isSelectionMode: isSelecting,
+                                    isSelectionMode: $isSelecting,
                                     isSelected: selectedTransactionIds.contains(transaction.id),
                                     editing: $editingTransaction,
                                     onToggleSelect: {
                                         selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                    },
-                                    onLongPress: { beginSelection(with: transaction) }
+                                    }
                                 )
                             }
                             // The sentinel rides in the last date section so
@@ -273,13 +263,12 @@ struct AccountDetailView: View {
                             TransactionListRow(
                                 transaction: transaction,
                                 showAccount: false,
-                                isSelectionMode: isSelecting,
+                                isSelectionMode: $isSelecting,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
                                     selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                },
-                                onLongPress: { beginSelection(with: transaction) }
+                                }
                             )
                         }
                         if pager.hasMore {
