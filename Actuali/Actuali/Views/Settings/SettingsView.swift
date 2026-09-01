@@ -46,24 +46,32 @@ struct SettingsView: View {
                     } label: {
                         Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
                     }
+                } header: {
+                    Text("Manage")
+                } footer: {
+                    Text("Due schedules are posted automatically when the app opens, the same as opening the Actual web app. Transactions are created on your server.")
+                }
 
-                    if budgetStore.currentBudgetId != nil {
+                if budgetStore.currentBudgetId != nil {
+                    Section {
                         NavigationLink {
                             RulesListView()
                         } label: {
                             Label("Rules", systemImage: "list.bullet.rectangle")
                         }
+                    } footer: {
+                        Text("Create rules to automatically update transactions as they are added.")
                     }
+                }
 
+                Section {
                     NavigationLink {
                         BankSyncSetupView()
                     } label: {
                         Label("Bank Sync (SimpleFIN)", systemImage: "building.columns")
                     }
-                } header: {
-                    Text("Manage")
                 } footer: {
-                    Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server. Connect SimpleFIN to import transactions straight from your bank.")
+                    Text("Connect SimpleFIN to import transactions straight from your bank.")
                 }
 
                 Section("Information") {
