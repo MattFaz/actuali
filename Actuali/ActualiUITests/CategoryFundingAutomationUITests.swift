@@ -7,7 +7,7 @@ final class CategoryFundingAutomationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
-        let automation = app.staticTexts["Category Funding Settings"]
+        let automation = app.buttons["Category Funding Settings"]
         XCTAssertTrue(automation.waitForExistence(timeout: 10), "Category Funding Settings row not found")
         automation.tap()
 
