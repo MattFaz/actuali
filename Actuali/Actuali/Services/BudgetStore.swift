@@ -657,20 +657,20 @@ final class BudgetStore: ObservableObject {
         limit: Int?
     ) async {
         guard currentBudgetId != nil else { return }
-        let previous = creditCardConfigs
+        let previous = creditCardConfigs[accountId]
         let config: CreditCardConfig? = statementDay.map {
             CreditCardConfig(statementDay: $0, dueOffsetDays: dueOffsetDays, limit: limit)
         }
         creditCardConfigs[accountId] = config
         guard let syncClient else {
-            creditCardConfigs = previous
+            creditCardConfigs[accountId] = previous
             error = "Credit card settings need sync configured for this budget."
             return
         }
         do {
             try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
         } catch {
-            creditCardConfigs = previous
+            creditCardConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
     }
@@ -1937,7 +1937,6 @@ final class BudgetStore: ObservableObject {
                 )
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
-            let legacyCardsToMigrate = legacyConfigs.isEmpty ? nil : legacyConfigs
             
             accounts = fetchedAccounts
             transactions = fetchedTransactions
@@ -2016,9 +2015,9 @@ final class BudgetStore: ObservableObject {
 
                 subscribeToSyncState()
 
-                if let legacyCardsToMigrate, let syncClient {
+                if let syncClient {
                     var allWritten = true
-                    for (accountId, config) in legacyCardsToMigrate {
+                    for (accountId, config) in legacyConfigs {
                         do {
                             try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
                         } catch {
@@ -2026,8 +2025,10 @@ final class BudgetStore: ObservableObject {
                             logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
                         }
                     }
-                    // Erase the legacy keys only after every write lands, so a failed
-                    // migration retries on the next load and a removed card stays removed.
+                    // Erase the legacy keys once the synced table holds every card,
+                    // even when there was nothing to write. A card deleted on another
+                    // device leaves a NULL preference row, and stale defaults here
+                    // would re-create it on the next load.
                     if allWritten {
                         for prefix in ["creditCardStatementDays_", "creditCardDueOffsets_", "creditCardLimits_"] {
                             UserDefaults.standard.removeObject(forKey: prefix + budgetId)
@@ -2119,6 +2120,7 @@ final class BudgetStore: ObservableObject {
         guard let database else { return }
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
+        let creditCardsBefore = creditCardConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2159,7 +2161,11 @@ final class BudgetStore: ObservableObject {
             // snapshot belongs to the old database — drop it.
             guard self.database === database, self.currentBudgetId == budgetId else { return }
 
-            creditCardConfigs = fetchedCreditCards
+            // A card saved while these reads were in flight is newer than
+            // this snapshot; its write comes back on the next refresh.
+            if creditCardConfigs == creditCardsBefore {
+                creditCardConfigs = fetchedCreditCards
+            }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions

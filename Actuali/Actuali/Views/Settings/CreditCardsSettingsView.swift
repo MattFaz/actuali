@@ -56,6 +56,7 @@ struct CreditCardsSettingsView: View {
                     // recomputing it inside the closure could reorder the list
                     // out from under a swipe that started before midnight.
                     let cards = configuredCards
+                    let detached = budgetStore.syncDetachedByRestore
                     ForEach(cards, id: \.account.id) { item in
                         Button {
                             selectedAccountId = item.account.id
@@ -67,6 +68,7 @@ struct CreditCardsSettingsView: View {
                             CreditCardCycleRow(account: item.account, cycle: item.cycle)
                         }
                         .buttonStyle(.plain)
+                        .disabled(detached)
                         .listRowBackground(
                             CreditCardCycleRow.cardBackground(
                                 daysUntilDue: item.cycle.daysUntilDue()
@@ -75,6 +77,7 @@ struct CreditCardsSettingsView: View {
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                     }
+                    .deleteDisabled(detached)
                     .onDelete { offsets in
                         for accountId in offsets.map({ cards[$0].account.id }) {
                             Task {
@@ -89,7 +92,13 @@ struct CreditCardsSettingsView: View {
                 }
             }
 
-            if !unconfiguredAccounts.isEmpty {
+            if budgetStore.syncDetachedByRestore {
+                Section {
+                    Text("Credit card settings sync with your budget. Re-download this budget to change them.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !unconfiguredAccounts.isEmpty {
                 Section {
                     Button {
                         if let first = unconfiguredAccounts.first {
