@@ -87,13 +87,10 @@ enum CategoryFundingAutomation {
         defaults: UserDefaults = .standard
     ) {
         guard let savedTransactionId else { return }
-        Task { @MainActor in
-            await process(
-                savedTransactionId: savedTransactionId,
-                using: budgetStore,
-                defaults: defaults
-            )
-        }
+        budgetStore.enqueueCategoryFunding(
+            savedTransactionId: savedTransactionId,
+            defaults: defaults
+        )
     }
 
     @MainActor
@@ -102,8 +99,10 @@ enum CategoryFundingAutomation {
         using budgetStore: BudgetStore,
         defaults: UserDefaults = .standard
     ) async {
-        guard let configuration = loadConfiguration(
-            for: budgetStore.currentBudgetId,
+        let processingBudgetId = budgetStore.currentBudgetId
+        guard let processingBudgetId,
+              let configuration = loadConfiguration(
+            for: processingBudgetId,
             defaults: defaults
         ), configuration.isEnabled,
               let selectedAccountId = configuration.accountId,
@@ -204,6 +203,7 @@ enum CategoryFundingAutomation {
         case .sameSourceAndTarget:
             budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose a different funding category."
         case .fund(let amountToFund):
+            guard budgetStore.currentBudgetId == processingBudgetId else { return }
             let displayedMonth = budgetStore.currentBudgetMonth?.month
             do {
                 try await budgetStore.transferBudget(

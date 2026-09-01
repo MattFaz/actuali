@@ -116,6 +116,23 @@ struct CustomHeader: Codable, Identifiable, Equatable {
 
 @MainActor
 final class BudgetStore: ObservableObject {
+    private var categoryFundingTask: Task<Void, Never>?
+
+    func enqueueCategoryFunding(
+        savedTransactionId: String,
+        defaults: UserDefaults
+    ) {
+        let previousTask = categoryFundingTask
+        categoryFundingTask = Task { @MainActor [weak self] in
+            _ = await previousTask?.result
+            guard let self else { return }
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: self,
+                defaults: defaults
+            )
+        }
+    }
     // MARK: - Published State
 
     @Published var isLoading = false
@@ -4020,8 +4037,8 @@ final class BudgetStore: ObservableObject {
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
-        @discardableResult
-func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
+      @discardableResult
+    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
         var form = form
         // The add form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.

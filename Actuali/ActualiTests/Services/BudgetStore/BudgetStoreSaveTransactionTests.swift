@@ -233,6 +233,34 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["tombstone"] == 0)
     }
 
+    @Test func editingATransactionReturnsNoCreatedID() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let original = transaction(payeeId: nil, payeeName: nil)
+        try database.insertTransaction(original)
+
+        let id = try await store.saveTransaction(
+            form(type: .expense, amount: "10.50", payeeName: "Updated"),
+            editing: original
+        )
+        #expect(id == nil)
+    }
+
+    @Test func savingATransferReturnsNoCreatedID() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-2", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0)
+        ]
+        let id = try await store.saveTransaction(
+            form(type: .transfer, amount: "25.00", transferToAccountId: "acct-2")
+        )
+        #expect(id == nil)
+    }
+
     @Test func savingANewOffBudgetTransactionDropsCategoriesAndSplits() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

@@ -4,19 +4,15 @@ struct CategoryFundingAutomationView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var configuration = CategoryFundingAutomationConfiguration()
 
-    /// Categories with money, plus the saved source so a drained source is
-    /// not silently replaced with To Budget. The automation re-checks the
-    /// source balance when it actually runs.
-    private var fundingCategories: [CategoryBudget] {
-        var savedId: String?
-        if case .category(let id) = configuration.fundingSource {
-            savedId = id
-        }
-
-        return (budgetStore.currentBudgetMonth?.allCategoryBudgets ?? [])
-            .filter { $0.available > 0 || $0.categoryId == savedId }
+    /// Every non-income category is a valid configured source. The automation
+    /// checks the source balance again for the transaction's own month, so the
+    /// settings screen must not depend on the month the Budget tab is viewing.
+    private var fundingCategories: [Category] {
+        budgetStore.categoryGroups
+            .flatMap(\.categories)
+            .filter { !$0.isIncome && !$0.hidden }
             .sorted {
-                $0.categoryName.localizedCaseInsensitiveCompare($1.categoryName) == .orderedAscending
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
             }
     }
 
@@ -44,7 +40,7 @@ struct CategoryFundingAutomationView: View {
                 Picker("Funding Source", selection: $configuration.fundingSource) {
                     Text("To Budget").tag(CategoryFundingSource.toBudget)
 
-                    ForEach(fundingCategories, id: \.categoryId) { category in
+                    ForEach(fundingCategories, id: \.id) { category in
                         Text(category.categoryName)
                             .tag(CategoryFundingSource.category(category.categoryId))
                     }

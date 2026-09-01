@@ -220,6 +220,17 @@ struct CategoryFundingAutomationTests {
         ))
     }
 
+    @Test("Split children are ignored")
+    func splitChild() {
+        var transaction = makeTransaction(categoryId: "groceries")
+        transaction.parentId = "split-parent"
+        #expect(!CategoryFundingAutomation.shouldProcess(
+            transaction,
+            selectedAccountId: "account-1",
+            isIncomeCategory: false
+        ))
+    }
+
     @Test("Deleted transactions are ignored")
     func deletedTransaction() {
         var transaction = makeTransaction(categoryId: "groceries")
