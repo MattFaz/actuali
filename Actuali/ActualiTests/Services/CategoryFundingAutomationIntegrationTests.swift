@@ -95,7 +95,7 @@ struct CategoryFundingAutomationIntegrationTests {
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
-        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
         store.currentBudgetId = "budget-1"
@@ -183,7 +183,11 @@ struct CategoryFundingAutomationIntegrationTests {
             defaults: defaults
         )
 
-        let month = try #require(store.currentBudgetMonth)
+        // Assert against the database, not the store's published cache. The
+        // automation refreshes the changed month, but this integration test is
+        // specifically verifying the persisted result and does not need the
+        // UI cache to have been initialized beforehand.
+        let month = try await database.fetchBudgetMonth(month: "2026-07")
         let dining = try #require(month.categoryBudgets.first { $0.categoryId == "cat-dining" })
 
         // $10 was budgeted and the new $15 expense leaves a $5 shortfall.
