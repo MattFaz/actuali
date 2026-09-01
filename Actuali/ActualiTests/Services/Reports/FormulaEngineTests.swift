@@ -110,6 +110,13 @@ struct FormulaEngineTests {
                 tx("income", date: 20260705, amount: 20_000),
             ], today: today, context: .empty)
         #expect(currencyRatio == .number(-0.5))
+
+        let numberOverCurrency = FormulaEngine.compute(
+            meta: meta(formula: #"=1000 / QUERY("expenses")"#, queries: savedThisMonthQueries),
+            transactions: [
+                tx("expense", date: 20260705, amount: -200_000),
+            ], today: today, context: .empty)
+        #expect(numberOverCurrency == .number(-0.5))
     }
 
     @Test func subtractionIsLeftAssociative() {
