@@ -188,20 +188,18 @@ struct TransactionListRow: View {
     @Binding var editing: Transaction?
     var onToggleSelect: (() -> Void)? = nil
 
-    /// Set by the long-press gesture and cleared by the row's own Button
-    /// action. A SwiftUI Button has no press-duration limit and isn't
-    /// cancelled by a sibling `simultaneousGesture`, so it still fires when
-    /// the long-pressing finger lifts. Without this flag that release tap
-    /// runs the selection-mode branch below and immediately toggles the row
-    /// back off, leaving selection mode open with nothing selected.
-    @State private var didLongPress = false
+    /// Bumped by the long-press gesture, never reset. A counter can't go
+    /// stale the way a Bool flag could: the finger lifting after the gesture
+    /// fires the row's own Button action, which — now that isSelectionMode
+    /// is already true — takes the selection branch below and selects this
+    /// row itself, so no separate flag is needed to swallow that tap. If the
+    /// finger instead drags off the row before lifting, the Button action
+    /// never runs and this row is left unselected; selection mode is still
+    /// open, which beats leaving the row looking dead to the next tap.
+    @State private var longPressCount = 0
 
     var body: some View {
         Button {
-            if didLongPress {
-                didLongPress = false
-                return
-            }
             if isSelectionMode {
                 onToggleSelect?()
             } else {
@@ -228,17 +226,18 @@ struct TransactionListRow: View {
         .simultaneousGesture(
             LongPressGesture(minimumDuration: 0.5).onEnded { _ in
                 guard !isSelectionMode else { return }
-                didLongPress = true
+                longPressCount += 1
+                // The finger lift then runs the Button action above, which
+                // takes the selection branch and selects this row.
                 withAnimation { isSelectionMode = true }
-                onToggleSelect?()
             }
         )
         // The app's existing idiom for this feedback (see ContentView.swift)
         // rather than an imperative UIImpactFeedbackGenerator — same haptic,
         // and no risk of the first tap arriving late from a missing
-        // prepare(). Fires only on the false -> true edge, i.e. once per
-        // long press.
-        .sensoryFeedback(.impact(weight: .medium), trigger: didLongPress) { _, new in new }
+        // prepare(). A counter, not a Bool, so every long press fires this
+        // and no condition closure is needed to detect an edge.
+        .sensoryFeedback(.impact(weight: .medium), trigger: longPressCount)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(role: .destructive) {
