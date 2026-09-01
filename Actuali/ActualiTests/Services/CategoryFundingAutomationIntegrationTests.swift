@@ -38,8 +38,8 @@ struct CategoryFundingAutomationIntegrationTests {
                     is_income INTEGER DEFAULT 0,
                     cat_group TEXT,
                     sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
+                    tombstone INTEGER DEFAULT 0,
+                    hidden INTEGER DEFAULT 0
                 );
 
                 CREATE TABLE category_groups (
@@ -81,12 +81,10 @@ struct CategoryFundingAutomationIntegrationTests {
                     value BLOB NOT NULL
                 );
 
-                INSERT INTO category_groups (id, name) VALUES ('grp-1', 'Daily');
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-groceries', 'Groceries', 'grp-1');
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-dining', 'Dining Out', 'grp-1');
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-groceries', 'cat-groceries');
+                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-1', 'Daily', 0);
+                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-dining', 'Dining Out', 'grp-1', 0);
                 INSERT INTO category_mapping (id, transferId) VALUES ('cat-dining', 'cat-dining');
-                INSERT INTO accounts (id, name, offbudget) VALUES ('acct-1', 'Checking', 0);
+                INSERT INTO accounts (id, name, offbudget, tombstone) VALUES ('acct-1', 'Checking', 0, 0);
                 INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-dining', 202607, 'cat-dining', 1000);
             """)
         }
@@ -177,21 +175,33 @@ struct CategoryFundingAutomationIntegrationTests {
             defaults: defaults
         )
 
+        let before = try await database.fetchBudgetMonth(month: "2026-07")
+        #expect(!before.isTrackingBudget)
+        let beforeDining = try #require(before.categoryBudgets.first { $0.categoryId == "cat-dining" })
+        #expect(beforeDining.budgeted == 1000)
+        #expect(beforeDining.spent == -1500)
+        #expect(beforeDining.available == -500)
+        #expect(CategoryFundingAutomation.fundingDecision(
+            transactionAmount: transaction.amount,
+            availableAfterTransaction: beforeDining.available,
+            targetCategoryId: beforeDining.categoryId,
+            fundingSource: .toBudget,
+            isTrackingBudget: before.isTrackingBudget
+        ) == .fund(500))
+
+        await store.fetchBudgetMonth("2026-07")
+
         await CategoryFundingAutomation.process(
             savedTransactionId: transaction.id,
             using: store,
             defaults: defaults
         )
 
-        // Assert against the database, not the store's published cache. The
-        // automation refreshes the changed month, but this integration test is
-        // specifically verifying the persisted result and does not need the
-        // UI cache to have been initialized beforehand.
+        #expect(store.error == nil)
+
         let month = try await database.fetchBudgetMonth(month: "2026-07")
         let dining = try #require(month.categoryBudgets.first { $0.categoryId == "cat-dining" })
 
-        // $10 was budgeted and the new $15 expense leaves a $5 shortfall.
-        // Existing overspending, if any, is never re-funded as part of this run.
         #expect(dining.budgeted == 1500)
         #expect(dining.spent == -1500)
         #expect(dining.available == 0)
