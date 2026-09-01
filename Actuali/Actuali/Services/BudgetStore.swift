@@ -313,7 +313,32 @@ final class BudgetStore: ObservableObject {
     /// card look from the App Store screenshots.
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
-            UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+            UserDefaults.standard.set(
+                budgetDisplayStyle.rawValue,
+                forKey: "budgetDisplayStyle"
+            )
+        }
+    }
+
+    /// Whether the Compact Budget view style shows its pinned monthly overview.
+    /// This is independent of the Clean and Detailed summaries and defaults on.
+    @Published var showCompactBudgetOverview: Bool = true {
+        didSet {
+            UserDefaults.standard.set(
+                showCompactBudgetOverview,
+                forKey: "showCompactBudgetOverview"
+            )
+        }
+    }
+
+    /// Whether the Compact Budget view style includes the Spent column.
+    /// The narrower two-amount layout is the default.
+    @Published var showCompactSpentColumn: Bool = false {
+        didSet {
+            UserDefaults.standard.set(
+                showCompactSpentColumn,
+                forKey: "showCompactSpentColumn"
+            )
         }
     }
 
@@ -359,7 +384,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the detailed style's group headers total their columns.
+    /// Whether the Detailed and Compact styles' group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -1098,9 +1123,28 @@ final class BudgetStore: ObservableObject {
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
+
+    /// Test-only: release the open database and sync client the way the app's
+    /// file-mutating paths (disconnect, downloadBudget) do, so a test can
+    /// delete a budget's temp directory without unlinking db.sqlite out from
+    /// under a live SQLite connection ("vnode unlinked while in use").
+    func closeDatabaseForTesting() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+    }
     #endif
 
     private init() {
+        let defaults = UserDefaults.standard
+        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        // overrides as strings; checking for existence first preserves non-false defaults.
+        func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
+            defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
+        }
+
         // Restore saved state. Preferences restore through the Published
         // backing storage (`_x = Published(initialValue:)`) rather than the
         // properties themselves: didSet DOES fire for wrapper-backed
@@ -1109,57 +1153,60 @@ final class BudgetStore: ObservableObject {
         // launch-argument (NSArgumentDomain) overrides like
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
-            initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
+            initialValue: defaults.string(forKey: "serverURL") ?? "")
         _fallbackServerURL = Published(
-            initialValue: UserDefaults.standard.string(forKey: "fallbackServerURL") ?? "")
+            initialValue: defaults.string(forKey: "fallbackServerURL") ?? "")
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
         _currentBudgetId = Published(
-            initialValue: UserDefaults.standard.string(forKey: "currentBudgetId"))
+            initialValue: defaults.string(forKey: "currentBudgetId"))
         _currencyCode = Published(
-            initialValue: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD")
-        _useNarrowCurrencySymbol = Published(initialValue: UserDefaults.standard
-            .object(forKey: "useNarrowCurrencySymbol") as? Bool ?? false)
-        if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
+            initialValue: defaults.string(forKey: "currencyCode") ?? "USD")
+        _useNarrowCurrencySymbol = Published(
+            initialValue: persistedBool("useNarrowCurrencySymbol", default: false))
+        if let raw = defaults.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        if let raw = UserDefaults.standard.string(forKey: "budgetDisplayStyle"),
-           let style = BudgetDisplayStyle(rawValue: raw) {
-            _budgetDisplayStyle = Published(initialValue: style)
-        }
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle(
+            rawValue: defaults.string(forKey: "budgetDisplayStyle") ?? ""
+        ) ?? .clean)
+        _showCompactBudgetOverview = Published(
+            initialValue: persistedBool("showCompactBudgetOverview", default: true))
+        _showCompactSpentColumn = Published(
+            initialValue: persistedBool("showCompactSpentColumn", default: false))
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
-        _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
-        _showCategoryStatusDots = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showCategoryStatusDots") as? Bool ?? true)
-        _showGroupTotals = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showGroupTotals") as? Bool ?? true)
-        _showBudgetCheckInStrip = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showBudgetCheckInStrip") as? Bool ?? true)
-        _showOverspentBadge = Published(initialValue: UserDefaults.standard
-            .object(forKey: "showOverspentBadge") as? Bool ?? true)
-        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
-            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
-        _hideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "hideBalances") as? Bool ?? false)
-        _shakeToHideBalances = Published(initialValue: UserDefaults.standard
-            .object(forKey: "shakeToHideBalances") as? Bool ?? false)
-        _hideDecimalPlaces = Published(initialValue: UserDefaults.standard
-            .object(forKey: "hideDecimalPlaces") as? Bool ?? false)
-        _recordPayeeLocations = Published(initialValue: UserDefaults.standard
-            .object(forKey: "recordPayeeLocations") as? Bool ?? true)
+        _showBudgetProgressBars = Published(
+            initialValue: persistedBool("showBudgetProgressBars", default: true))
+        _showCategoryStatusDots = Published(
+            initialValue: persistedBool("showCategoryStatusDots", default: true))
+        _showGroupTotals = Published(
+            initialValue: persistedBool("showGroupTotals", default: true))
+        _showBudgetCheckInStrip = Published(
+            initialValue: persistedBool("showBudgetCheckInStrip", default: true))
+        _showOverspentBadge = Published(
+            initialValue: persistedBool("showOverspentBadge", default: true))
+        _conventionalAmountEntry = Published(
+            initialValue: persistedBool("conventionalAmountEntry", default: false))
+        _hideBalances = Published(
+            initialValue: persistedBool("hideBalances", default: false))
+        _shakeToHideBalances = Published(
+            initialValue: persistedBool("shakeToHideBalances", default: false))
+        _hideDecimalPlaces = Published(
+            initialValue: persistedBool("hideDecimalPlaces", default: false))
+        _recordPayeeLocations = Published(
+            initialValue: persistedBool("recordPayeeLocations", default: true))
         // bool(forKey:) defaults to false — the correct opt-in default.
-        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
+        _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
-        _showHiddenCategories = Published(initialValue: UserDefaults.standard
+        _showHiddenCategories = Published(initialValue: defaults
             .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: UserDefaults.standard
+        _hideClearedTransactions = Published(initialValue: defaults
             .bool(forKey: "hideClearedTransactions"))
-        _hideClosedAccounts = Published(initialValue: UserDefaults.standard
+        _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
         let token = loadAndMigrateAuthToken()
@@ -1461,10 +1508,7 @@ final class BudgetStore: ObservableObject {
         // "vnode unlinked" hazard downloadBudget also guards against), and a
         // live sync client would let the next foreground refresh republish
         // the wiped budget's data from that orphaned connection.
-        syncStateCancellable?.cancel()
-        syncStateCancellable = nil
-        syncClient = nil
-        database = nil
+        closeCurrentBudget()
 
         if clearLocalData {
             // Wipe every locally-synced budget's database and metadata from
@@ -1494,13 +1538,22 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
-        
+    }
+
+    /// Close whatever budget is open and return to the "select a budget" empty
+    /// state, leaving the server session alone. Tears down the database and
+    /// sync client first (see logout's vnode-unlink comment) and then clears
+    /// everything loaded in memory, so nothing from the old budget lingers in
+    /// the UI. The dataVersion bump makes views that cache their own fetches
+    /// drop them.
+    private func closeCurrentBudget() {
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
+
         backups = []
         syncDetachedByRestore = false
-
-        // Clear everything currently loaded in memory too, so nothing from
-        // the old budget lingers in the UI post-disconnect. The dataVersion
-        // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
         requestedBudgetMonth = nil
         currentBudgetMonth = nil
@@ -1517,6 +1570,55 @@ final class BudgetStore: ObservableObject {
         isInitialSyncing = false
         dataVersion += 1
         clearWidgetSnapshot()
+    }
+
+    // MARK: - Budget Deletion
+
+    /// Delete a budget's local copy — database, metadata, and backups — and
+    /// any device-side state for it, leaving the server file untouched so it
+    /// can be downloaded again. Deleting the currently open budget closes it
+    /// and returns the app to the "select a budget" empty state.
+    func removeLocalBudget(cloudFileId: String) async {
+        // The derived encryption key must not outlive the budget — removed
+        // even without a local directory (a failed download can leave a key
+        // behind with nothing to unlock).
+        try? EncryptionKeyManager.remove(fileId: cloudFileId)
+
+        guard let local = fileManager.listLocalBudgets().first(
+            where: { $0.cloudFileId == cloudFileId }
+        ) else { return }
+
+        if local.id == currentBudgetId {
+            // Best-effort push of unsynced local edits before the database
+            // holding them is destroyed; offline they're still lost, which the
+            // confirmation dialog warns about. Only the open budget has a live
+            // sync client — a closed budget's pending messages can't be sent.
+            await flushPendingSync()
+            // Close before deleting files — same vnode-unlink hazard as logout.
+            closeCurrentBudget()
+        }
+
+        try? fileManager.deleteBudget(local.id)
+        forgetCachedCurrencyCode(for: local.id)
+        forgetAppleWalletLinks(for: local.id)
+    }
+
+    /// Delete a budget's file on the Actual server — for every client — then
+    /// remove this device's copy and its list row. Returns nil on success, or
+    /// a user-facing message so the confirmation sheet can stay open (see
+    /// `error`: form-local failures stay in the presenting view).
+    func deleteServerBudget(_ remoteBudget: RemoteBudget) async -> String? {
+        do {
+            try await serverClient.deleteFile(fileId: remoteBudget.id)
+        } catch ActualServerError.fileNotFound {
+            // Already gone on the server (deleted from another client) —
+            // finish the local half below so the stale row heals.
+        } catch {
+            return error.localizedDescription
+        }
+        await removeLocalBudget(cloudFileId: remoteBudget.id)
+        remoteBudgets.removeAll { $0.id == remoteBudget.id }
+        return nil
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1664,10 +1766,136 @@ final class BudgetStore: ObservableObject {
         return error   // any download error surfaced by downloadBudget
     }
 
+    /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
+    /// checked against the names already on the server (and local files).
+    nonisolated static func budgetNameError(_ name: String, existingNames: [String]) -> String? {
+        if name.isEmpty { return "Budget name cannot be blank" }
+        if name.count > 100 { return "Budget name is too long (max length 100)" }
+        if existingNames.contains(name) { return "\u{201C}\(name)\u{201D} already exists" }
+        return nil
+    }
+
+    /// Create a new empty budget file from the bundled blank template,
+    /// register it on the server, and open it. Mirrors upstream's
+    /// createBudget followed by cloudStorage.upload (budgetfiles/app.ts:400,
+    /// cloud-storage.ts:289): the upload's fresh cloudFileId plus the groupId
+    /// the server assigns is what makes desktop and web treat the file as one
+    /// of their own.
+    ///
+    /// ponytail: creation requires the server to be reachable. Upstream
+    /// tolerates a failed upload because possiblyUpload retries later, but
+    /// Actuali has no re-upload path yet, so a local-only file would be
+    /// stranded unsyncable — instead a failed registration fails the whole
+    /// create and removes the local files. The upgrade path is a general
+    /// upload-on-sync retry.
+    func createBudget(named rawName: String) async {
+        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let existingNames = remoteBudgets.map(\.name)
+            + fileManager.listLocalBudgets().compactMap(\.budgetName)
+        if let message = Self.budgetNameError(name, existingNames: existingNames) {
+            error = message
+            return
+        }
+        guard let templateURL = Bundle.main.url(forResource: "blank-budget", withExtension: "sqlite") else {
+            error = "The blank budget template is missing from the app bundle."
+            return
+        }
+
+        isLoading = true
+        error = nil
+
+        // Whether /sync/upload-user-file completed: past that point the server
+        // durably has the file, so a later local failure must not read as "the
+        // create failed" — the budget exists and can simply be downloaded.
+        var registeredOnServer = false
+        var uploadOutcomeUnknown = false
+
+        do {
+            let metadata = try fileManager.createBudget(named: name, templateURL: templateURL)
+            let cloudFileId = UUID().uuidString.lowercased()
+            var uploadStarted = false
+            func saveRegistration(groupId: String) throws {
+                let registered = BudgetMetadata(
+                    id: metadata.id,
+                    budgetName: name,
+                    cloudFileId: cloudFileId,
+                    groupId: groupId,
+                    resetClock: nil,
+                    lastUploaded: Self.yearMonthDayFormatter.string(from: Date()),
+                    encryptKeyId: nil
+                )
+                try JSONEncoder().encode(registered)
+                    .write(to: fileManager.metadataPath(for: metadata.id))
+            }
+            do {
+                let zipData = try fileManager.makeUploadArchive(for: metadata.id)
+                uploadStarted = true
+                let groupId = try await serverClient.uploadFile(
+                    zipData: zipData, fileId: cloudFileId, name: name
+                )
+                registeredOnServer = true
+                try saveRegistration(groupId: groupId)
+            } catch {
+                let uploadError = error
+                let files: [ListFilesResponse.RemoteFile]?
+                if uploadStarted {
+                    files = try? await serverClient.listFiles()
+                } else {
+                    files = []
+                }
+                if let remote = files?.first(where: { $0.fileId == cloudFileId }) {
+                    registeredOnServer = true
+                    guard let groupId = remote.groupId else { throw uploadError }
+                    try saveRegistration(groupId: groupId)
+                } else {
+                    // The local copy is still blank. Remove it even when the
+                    // server result is unknown: a committed copy can be
+                    // downloaded later, while an unregistered local copy is
+                    // invisible and permanently blocks this budget name.
+                    uploadOutcomeUnknown = files == nil
+                    try? fileManager.deleteBudget(metadata.id)
+                    throw uploadError
+                }
+            }
+
+            // Close the previous budget before switching, same as downloadBudget.
+            syncStateCancellable?.cancel()
+            syncStateCancellable = nil
+            syncClient = nil
+            database = nil
+
+            currentBudgetId = metadata.id
+            await loadLocalBudget(metadata.id)
+            let loadError = error
+            await fetchRemoteBudgets()
+            if let loadError { self.error = loadError }
+        } catch {
+            if registeredOnServer {
+                // The file exists server-side; surface it in the picker so one
+                // tap downloads it instead of leaving an invisible orphan.
+                await fetchRemoteBudgets()
+                self.error = """
+                    \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
+                    finished on this device: \(error.localizedDescription) \
+                    Select it in Budget Selection to download it.
+                    """
+            } else if uploadOutcomeUnknown {
+                self.error = """
+                    The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.
+                    """
+            } else {
+                self.error = error.localizedDescription
+            }
+        }
+
+        isLoading = false
+    }
+
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
         let requestedMonthBeforeLoad = requestedBudgetMonth
+        var published = false
 
         var db: BudgetDatabase?
         do {
@@ -1733,6 +1961,7 @@ final class BudgetStore: ObservableObject {
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
             publishWidgetSnapshot()
+            published = true
 
             // Linked feeds drive the sync buttons in the accounts UI. Without
             // this, a fresh launch hides them until something else happens to
@@ -1800,6 +2029,21 @@ final class BudgetStore: ObservableObject {
             // failure belongs to a stale load — don't clobber the winner's
             // error or clear its spinner.
             guard db == nil || database === db else { return }
+            if !published {
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                requestedBudgetMonth = nil
+                currentBudgetMonth = nil
+                widgetBudgetMonth = nil
+                accounts = []
+                transactions = []
+                uncategorizedCount = 0
+                categoryGroups = []
+                payees = []
+                dataVersion += 1
+                clearWidgetSnapshot()
+            }
             self.error = "Failed to load budget: \(error.localizedDescription)"
         }
 
@@ -2443,6 +2687,36 @@ final class BudgetStore: ObservableObject {
         "appleWalletLinks_\(budgetId)"
     }
 
+    // MARK: - Import start day
+
+    /// The setting shares the wallet links' defaults store — both are
+    /// per-budget, device-local state that must not reach the synced file.
+    private func bankSyncImportStartKey(for budgetId: String) -> String {
+        "bankSyncImportStart_\(budgetId)"
+    }
+
+    /// The person's chosen import start day (`YYYYMMDD`), or nil to follow
+    /// the default.
+    private var storedBankSyncImportStartDay: Int? {
+        guard let budgetId = currentBudgetId else { return nil }
+        return appleWalletLinkDefaults
+            .object(forKey: bankSyncImportStartKey(for: budgetId)) as? Int
+    }
+
+    func setBankSyncImportStartDay(_ day: Int) {
+        guard let budgetId = currentBudgetId else { return }
+        appleWalletLinkDefaults.set(day, forKey: bankSyncImportStartKey(for: budgetId))
+    }
+
+    /// The day imports reach back to for an account with no history of its
+    /// own: the person's chosen day, else the day the budget file began, else
+    /// the 90-day lookback several bank integrations won't serve more than.
+    func resolvedBankSyncImportStartDay() async -> Int {
+        if let chosen = storedBankSyncImportStartDay { return chosen }
+        if let began = try? await database?.earliestMessageDay() { return began }
+        return DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
+    }
+
     private var appleWalletLinks: [String: String] {
         get {
             guard let budgetId = currentBudgetId else { return [:] }
@@ -2484,9 +2758,10 @@ final class BudgetStore: ObservableObject {
         try await appleWalletStore.accounts()
     }
 
-    /// How far back a sync reaches when an account has nothing to anchor to.
-    /// 89 days ago through today inclusive is 90 days, the window upstream
-    /// settled on because several bank integrations won't serve more.
+    /// The last-resort import lookback, when no day was chosen and the budget
+    /// has no messages to date it by. 89 days ago through today inclusive is
+    /// 90 days, the window upstream settled on because several bank
+    /// integrations won't serve more.
     private static let bankSyncMaxLookbackDays = 89
 
     /// What one run of `syncBankAccounts` did.
@@ -2776,21 +3051,37 @@ final class BudgetStore: ObservableObject {
         let targets = simpleFinTargets + walletTargets
         guard !targets.isEmpty else { return result }
 
-        // An account that already has history only needs the window since its
-        // earliest transaction; one that has none takes the full lookback.
+        // Three windows. A first import (no history) starts where the person
+        // chose — by default, the day the budget file began. An account whose
+        // history doesn't reach that day yet asks for it again every run until
+        // it does; dedup keeps the overlap safe, and deriving the reach this
+        // way means no run has to be the one that lands it. Ongoing syncs only
+        // need the stretch since the account's earliest transaction, still
+        // capped at the rolling 90-day floor — history already covers
+        // everything older, so re-scanning it buys nothing.
+        let importStart = await resolvedBankSyncImportStartDay()
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
         for target in targets {
             // Both "the read failed" and "the account has no transactions"
-            // mean the same thing here: take the full lookback.
+            // mean the same thing here: start at the chosen day.
             oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
-                BankSyncTarget(
+                guard let oldest = oldestDates[$0.id] else {
+                    return BankSyncTarget(externalId: $0.externalAccountId, startDay: importStart)
+                }
+                let incremental = max(lookbackFloor, oldest)
+                // Reach past existing history only while the chosen day sits
+                // below it. Note this is not `min(importStart, incremental)`:
+                // the default day is older than the 90-day floor for any
+                // budget past its first quarter, and that form would widen
+                // every ongoing sync to it.
+                return BankSyncTarget(
                     externalId: $0.externalAccountId,
-                    startDay: max(lookbackFloor, oldestDates[$0.id] ?? lookbackFloor)
+                    startDay: importStart < oldest ? importStart : incremental
                 )
             }
         }
@@ -2860,7 +3151,7 @@ final class BudgetStore: ObservableObject {
                 let outcome = try await importBankSync(
                     download,
                     into: target,
-                    isFirstSync: oldestDates[target.id] == nil,
+                    existingOldestDay: oldestDates[target.id],
                     prepared: prepared
                 )
                 result.added += outcome.added
@@ -2888,7 +3179,7 @@ final class BudgetStore: ObservableObject {
     private func importBankSync(
         _ download: BankSyncDownload,
         into target: BankSyncAccount,
-        isFirstSync: Bool,
+        existingOldestDay: Int?,
         prepared: SyncClient.PreparedRules
     ) async throws -> (added: Int, updated: Int, inserted: [Transaction]) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
@@ -2901,7 +3192,7 @@ final class BudgetStore: ObservableObject {
         // The opening balance counts as an import too (upstream folds its id
         // into `added`), so a first sync never reports one fewer than it wrote.
         var added = 0
-        if isFirstSync {
+        if existingOldestDay == nil {
             added += try await insertStartingBalance(
                 for: target,
                 currentBalanceCents: download.currentBalanceCents,
@@ -2969,7 +3260,41 @@ final class BudgetStore: ObservableObject {
             inserted.append(transaction)
         }
 
+        // Anything older than the history this account already had was folded
+        // into its opening balance when that was worked out. Importing those
+        // rows now would count them twice, so the opening gives back exactly
+        // what they carry: a backfill moves no balance, only detail.
+        if let existingOldestDay {
+            try await absorbIntoStartingBalance(
+                for: target,
+                backfilled: inserted.filter { $0.date < existingOldestDay }
+            )
+        }
+
         return (added + plan.inserts.count, plan.updates.count, inserted)
+    }
+
+    /// Keep a backfill balance-neutral. Without this the account drifts from
+    /// the bank by the sum of everything the backfill reached, permanently —
+    /// the opening balance was already standing in for those rows.
+    ///
+    /// Only an opening balance can have absorbed them, so an account without
+    /// one is left alone: there, the older rows are money nothing ever counted
+    /// and the balance is right to move. Nor does the opening's date change —
+    /// it carries income for an on-budget account, and moving it would rewrite
+    /// a past budget month to tidy up a running balance.
+    private func absorbIntoStartingBalance(
+        for target: BankSyncAccount, backfilled: [Transaction]
+    ) async throws {
+        guard let database, let syncClient else { return }
+        let carried = backfilled.reduce(0) { $0 + $1.amount }
+        guard carried != 0 else { return }
+        guard let openingId = try await database.startingBalanceTransactionId(
+            accountId: target.id
+        ), var opening = try await database.fetchTransaction(id: openingId) else { return }
+
+        opening.amount -= carried
+        try await syncClient.updateTransaction(opening, changedFields: ["amount"])
     }
 
     /// Give a freshly linked account the opening balance its imported history
@@ -3696,6 +4021,14 @@ final class BudgetStore: ObservableObject {
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws {
+        var form = form
+        // The add form hides categories for off-budget accounts; normalize
+        // here too so stale picker or split state cannot bypass that rule.
+        if original == nil, form.type != .transfer,
+           offBudgetAccountIds.contains(form.accountId) {
+            form.categoryId = nil
+            form.splits = []
+        }
         let date = Transaction.yyyymmdd(from: form.date)
         let notes = form.notes.isEmpty ? nil : form.notes
 
@@ -5443,6 +5776,14 @@ final class BudgetStore: ObservableObject {
     private static let yearMonthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
+        return formatter
+    }()
+
+    /// Upstream's currentDay() format, used for metadata.json's lastUploaded.
+    private static let yearMonthDayFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 

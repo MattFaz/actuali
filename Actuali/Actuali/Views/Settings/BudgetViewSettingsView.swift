@@ -13,10 +13,11 @@ struct BudgetViewSettingsView: View {
                 Picker("View Style", selection: $budgetStore.budgetDisplayStyle) {
                     Text("Clean").tag(BudgetDisplayStyle.clean)
                     Text("Detailed").tag(BudgetDisplayStyle.detailed)
+                    Text("Compact").tag(BudgetDisplayStyle.compact)
                 }
 
                 Toggle("Group Totals", isOn: $budgetStore.showGroupTotals)
-                    .disabled(budgetStore.budgetDisplayStyle != .detailed)
+                    .disabled(budgetStore.budgetDisplayStyle == .clean)
 
                 Toggle("Status Filters", isOn: $budgetStore.showBudgetCheckInStrip)
                 Toggle("Hide Spent Categories", isOn: $budgetStore.hideZeroBudgetCategories)
@@ -27,7 +28,7 @@ struct BudgetViewSettingsView: View {
                 Text("Presentation")
             } footer: {
                 if budgetStore.budgetDisplayStyle == .clean {
-                    Text("Group Totals are available in Detailed view.")
+                    Text("Group Totals are available in Detailed and Compact views.")
                 }
             }
 
