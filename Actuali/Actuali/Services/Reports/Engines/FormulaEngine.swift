@@ -70,8 +70,8 @@ enum FormulaEngine {
 
     // MARK: - Queries
 
-    private static func queryMatches(named name: String, _ env: Env) -> [Transaction] {
-        guard let query = env.meta?.queries?[name] else { return [] }
+    private static func querySum(named name: String, _ env: Env) -> Double {
+        guard let query = env.meta?.queries?[name] else { return 0 }
 
         // Keep the same safety boundary as the other report engines. Report
         // callers normally provide leaf rows already, but QUERY still ignores
@@ -85,18 +85,17 @@ enum FormulaEngine {
             pool = pool.filter { $0.date >= startYMD && $0.date <= endYMD }
         }
 
-        return pool.filter {
-            ConditionsFilter.matches(
-                transaction: $0,
-                conditions: query.conditions,
-                op: query.conditionsOp,
-                context: env.context
-            )
-        }
-    }
-
-    private static func querySum(named name: String, _ env: Env) -> Double {
-        Double(queryMatches(named: name, env).reduce(0) { $0 + $1.amount }) / 100
+        let cents = pool
+            .filter {
+                ConditionsFilter.matches(
+                    transaction: $0,
+                    conditions: query.conditions,
+                    op: query.conditionsOp,
+                    context: env.context
+                )
+            }
+            .reduce(0) { $0 + $1.amount }
+        return Double(cents) / 100
     }
 
     private static func ymdInt(from date: Date) -> Int {
@@ -199,22 +198,12 @@ enum FormulaEngine {
 
         case "MIN":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            let values = try args.map { expression in
-                guard case .string = expression else {
-                    return try evaluate(expression, env)
-                }
-                throw EvalError.invalidArgument
-            }
+            let values = try args.map { try evaluate($0, env) }
             return values.dropFirst().reduce(values[0]) { Swift.min($0, $1) }
 
         case "MAX":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            let values = try args.map { expression in
-                guard case .string = expression else {
-                    return try evaluate(expression, env)
-                }
-                throw EvalError.invalidArgument
-            }
+            let values = try args.map { try evaluate($0, env) }
             return values.dropFirst().reduce(values[0]) { Swift.max($0, $1) }
 
         case "ABS":
@@ -357,7 +346,7 @@ enum FormulaEngine {
             skipWhitespace()
             if match(["<", "="]) { return .lessOrEqual }
             if match([">", "="]) { return .greaterOrEqual }
-            if match(["<", ">"] ) { return .notEqual }
+            if match(["<", ">"]) { return .notEqual }
             if match(["="]) { return .equal }
             if match(["<"]) { return .less }
             if match([">"]) { return .greater }
