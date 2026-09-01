@@ -36,7 +36,7 @@ enum FormulaEngine {
         }
 
         do {
-            let (result, kind) = try evaluate(expression, Env(
+            let result = try evaluate(expression, Env(
                 meta: meta,
                 transactions: transactions,
                 today: today,
@@ -45,7 +45,7 @@ enum FormulaEngine {
             guard result.isFinite else {
                 return .unsupported("This formula returned an invalid number")
             }
-            if case .currency = kind {
+            if isCurrency(expression) {
                 // FormulaWidgetView converts currency to cents before passing
                 // it to Int. Check the rounded cents value to keep every
                 // reachable Int conversion safe.
@@ -60,11 +60,6 @@ enum FormulaEngine {
         } catch {
             return .unsupported("This formula isn't supported yet")
         }
-    }
-
-    private enum ValueKind {
-        case currency
-        case number
     }
 
     private enum EvalError: Error {
@@ -136,97 +131,99 @@ enum FormulaEngine {
         case greaterOrEqual
     }
 
-    private static func evaluate(_ expression: Expr, _ env: Env) throws -> (Double, ValueKind) {
+    private static func evaluate(_ expression: Expr, _ env: Env) throws -> Double {
         switch expression {
         case .number(let value):
-            // Numeric literals have no unit. Arithmetic adopts the unit of
-            // the operand it combines with, preserving currency QUERY results.
-            return (value, .number)
+            return value
         case .string:
             throw EvalError.invalidArgument
         case .add(let left, let right):
-            return try arithmetic(left, right, env) { $0 + $1 }
+            return try evaluate(left, env) + evaluate(right, env)
         case .sub(let left, let right):
-            return try arithmetic(left, right, env) { $0 - $1 }
+            return try evaluate(left, env) - evaluate(right, env)
         case .mul(let left, let right):
-            return try arithmetic(left, right, env) { $0 * $1 }
+            return try evaluate(left, env) * evaluate(right, env)
         case .div(let left, let right):
             let lhs = try evaluate(left, env)
             let rhs = try evaluate(right, env)
-            guard abs(rhs.0) > .ulpOfOne else { throw EvalError.divisionByZero }
-            let bothCurrency = lhs.1 == .currency && rhs.1 == .currency
-            let kind: ValueKind = bothCurrency
-                ? .number
-                : (lhs.1 == .currency || rhs.1 == .currency ? .currency : .number)
-            return (lhs.0 / rhs.0, kind)
+            guard abs(rhs) > .ulpOfOne else { throw EvalError.divisionByZero }
+            return lhs / rhs
         case .neg(let value):
-            let result = try evaluate(value, env)
-            return (-result.0, result.1)
+            return -try evaluate(value, env)
         case .compare(let op, let left, let right):
-            let lhs = try evaluate(left, env).0
-            let rhs = try evaluate(right, env).0
-            let result: Bool
+            let lhs = try evaluate(left, env)
+            let rhs = try evaluate(right, env)
             switch op {
-            case .equal: result = lhs == rhs
-            case .notEqual: result = lhs != rhs
-            case .less: result = lhs < rhs
-            case .lessOrEqual: result = lhs <= rhs
-            case .greater: result = lhs > rhs
-            case .greaterOrEqual: result = lhs >= rhs
+            case .equal: return lhs == rhs ? 1 : 0
+            case .notEqual: return lhs != rhs ? 1 : 0
+            case .less: return lhs < rhs ? 1 : 0
+            case .lessOrEqual: return lhs <= rhs ? 1 : 0
+            case .greater: return lhs > rhs ? 1 : 0
+            case .greaterOrEqual: return lhs >= rhs ? 1 : 0
             }
-            return (result ? 1 : 0, .number)
         case .function(let name, let args):
             return try evaluateFunction(name: name.uppercased(), args: args, env)
         }
     }
 
-    private static func arithmetic(
-        _ left: Expr,
-        _ right: Expr,
-        _ env: Env,
-        operation: (Double, Double) -> Double
-    ) throws -> (Double, ValueKind) {
-        let lhs = try evaluate(left, env)
-        let rhs = try evaluate(right, env)
-        let kind: ValueKind = lhs.1 == .currency || rhs.1 == .currency ? .currency : .number
-        return (operation(lhs.0, rhs.0), kind)
+    /// Determines the display unit from the complete parsed expression rather
+    /// than from whichever conditional branch happens to execute.
+    private static func isCurrency(_ expression: Expr) -> Bool {
+        switch expression {
+        case .number, .string, .compare:
+            return false
+        case .function(let name, let args):
+            return name.uppercased() == "QUERY" || args.contains(where: isCurrency)
+        case .add(let left, let right), .sub(let left, let right), .mul(let left, let right):
+            return isCurrency(left) || isCurrency(right)
+        case .div(let left, let right):
+            return isCurrency(left) && !isCurrency(right)
+        case .neg(let inner):
+            return isCurrency(inner)
+        }
     }
 
-    private static func evaluateFunction(name: String, args: [Expr], _ env: Env) throws -> (Double, ValueKind) {
+    private static func evaluateFunction(name: String, args: [Expr], _ env: Env) throws -> Double {
         switch name {
         case "QUERY":
-            guard args.count == 1, let queryName = stringArgument(args[0]) else {
+            guard args.count == 1, case .string(let queryName) = args[0] else {
                 throw EvalError.invalidArgument
             }
-            return (querySum(named: queryName, env), .currency)
+            return querySum(named: queryName, env)
 
         case "SUM":
             guard !args.isEmpty else { throw EvalError.invalidArgument }
-            return try numericArguments(args, env).reduce((0, .number)) { total, next in
-                let kind: ValueKind = total.1 == .currency || next.1 == .currency ? .currency : .number
-                return (total.0 + next.0, kind)
+            return try args.reduce(0) { total, expression in
+                total + evaluate(expression, env)
             }
 
         case "MIN":
-            let values = try numericArguments(args, env)
-            guard let first = values.first else { throw EvalError.invalidArgument }
-            let result = values.dropFirst().reduce(first.0) { Swift.min($0, $1.0) }
-            return (result, values.contains { $0.1 == .currency } ? .currency : .number)
+            guard let first = args.first else { throw EvalError.invalidArgument }
+            let values = try args.map { expression in
+                guard case .string = expression else {
+                    return try evaluate(expression, env)
+                }
+                throw EvalError.invalidArgument
+            }
+            return values.dropFirst().reduce(firstValue(values: values, fallback: first)) { Swift.min($0, $1) }
 
         case "MAX":
-            let values = try numericArguments(args, env)
-            guard let first = values.first else { throw EvalError.invalidArgument }
-            let result = values.dropFirst().reduce(first.0) { Swift.max($0, $1.0) }
-            return (result, values.contains { $0.1 == .currency } ? .currency : .number)
+            guard let first = args.first else { throw EvalError.invalidArgument }
+            let values = try args.map { expression in
+                guard case .string = expression else {
+                    return try evaluate(expression, env)
+                }
+                throw EvalError.invalidArgument
+            }
+            return values.dropFirst().reduce(firstValue(values: values, fallback: first)) { Swift.max($0, $1) }
 
         case "ABS":
             guard args.count == 1 else { throw EvalError.invalidArgument }
-            let value = try evaluate(args[0], env)
-            return (abs(value.0), value.1)
+            return abs(try evaluate(args[0], env))
 
         case "IF":
             guard args.count == 3 else { throw EvalError.invalidArgument }
-            let condition = try evaluate(args[0], env).0
+            let condition = try evaluate(args[0], env)
             return try evaluate(condition != 0 ? args[1] : args[2], env)
 
         default:
@@ -234,18 +231,8 @@ enum FormulaEngine {
         }
     }
 
-    private static func stringArgument(_ expression: Expr) -> String? {
-        guard case .string(let value) = expression else { return nil }
-        return value
-    }
-
-    private static func numericArguments(_ args: [Expr], _ env: Env) throws -> [(Double, ValueKind)] {
-        try args.map { expression in
-            guard case .string = expression else {
-                return try evaluate(expression, env)
-            }
-            throw EvalError.invalidArgument
-        }
+    private static func firstValue(values: [Double], fallback: Expr) -> Double {
+        values.first ?? 0
     }
 
     // MARK: - Recursive-descent parser
@@ -374,7 +361,7 @@ enum FormulaEngine {
             skipWhitespace()
             if match(["<", "="]) { return .lessOrEqual }
             if match([">", "="]) { return .greaterOrEqual }
-            if match(["<", ">"]) { return .notEqual }
+            if match(["<", ">"] ) { return .notEqual }
             if match(["="]) { return .equal }
             if match(["<"]) { return .less }
             if match([">"]) { return .greater }
