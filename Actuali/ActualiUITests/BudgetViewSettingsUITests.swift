@@ -29,20 +29,6 @@ final class BudgetViewSettingsUITests: XCTestCase {
         return app
     }
 
-    @MainActor
-    private func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["More"].tap()
-        if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
-            return
-        }
-
-        let row = app.buttons["Budget View"]
-        XCTAssertTrue(row.waitForExistence(timeout: 5), "Budget View settings row not found")
-        row.tap()
-        XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
-    }
-
-    @MainActor
     private func selectViewStyle(_ style: String, in app: XCUIApplication) {
         let picker = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'View Style'")
@@ -115,7 +101,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Status Filters"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             allFilter.waitForExistence(timeout: 5),
@@ -139,7 +125,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Hide Spent Categories"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             spentCategory.waitForNonExistence(timeout: 5),
@@ -147,7 +133,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Hide Spent Categories"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             spentCategory.waitForExistence(timeout: 5),
@@ -171,7 +157,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Budget Progress Bars"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             progressBar.waitForNonExistence(timeout: 5),
@@ -179,7 +165,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         )
 
         openBudgetViewSettings(in: app)
-        tapSwitch(toggle)
+        tapSwitch(app.switches["Budget Progress Bars"])
         app.tabBars.buttons["Budget"].tap()
         XCTAssertTrue(
             firstBudgetProgressBar(in: app).waitForExistence(timeout: 5),
