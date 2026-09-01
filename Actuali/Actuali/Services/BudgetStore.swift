@@ -4021,6 +4021,14 @@ final class BudgetStore: ObservableObject {
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws {
+        var form = form
+        // The add form hides categories for off-budget accounts; normalize
+        // here too so stale picker or split state cannot bypass that rule.
+        if original == nil, form.type != .transfer,
+           offBudgetAccountIds.contains(form.accountId) {
+            form.categoryId = nil
+            form.splits = []
+        }
         let date = Transaction.yyyymmdd(from: form.date)
         let notes = form.notes.isEmpty ? nil : form.notes
 
