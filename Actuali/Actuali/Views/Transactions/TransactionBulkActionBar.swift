@@ -81,19 +81,16 @@ struct TransactionBulkActionBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background {
-            Capsule()
-                .fill(.ultraThinMaterial)
-        }
+        .background(.regularMaterial, in: Capsule())
         .overlay {
-            Capsule()
-                .strokeBorder(.white.opacity(0.15), lineWidth: 0.5)
+            Capsule().strokeBorder(.quaternary, lineWidth: 0.5)
         }
-        .clipShape(Capsule())
         .shadow(color: .black.opacity(0.15), radius: 12, y: 6)
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
         .onChange(of: transactions) {
+            // Drop ids the list no longer holds (refilter, search, account
+            // switch), so the counts match what the actions will touch.
             selectedIds.formIntersection(transactions.map(\.id))
         }
         .confirmationDialog(
