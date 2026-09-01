@@ -65,8 +65,9 @@ struct BudgetOptionsMenu: View {
                         Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
                     }
                     Toggle(isOn: $budgetStore.showCompactSpentColumn) {
-                        Label("Show Spent Column", systemImage: "tablecells.badge.ellipsis")
+                        Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
                     }
+                    .accessibilityLabel("Show Spent Column")
                 }
             }
 
@@ -120,8 +121,9 @@ struct BudgetOptionsMenu: View {
                 }
                 .accessibilityLabel("Hide Spent Categories")
                 Toggle(isOn: $budgetStore.showHiddenCategories) {
-                    Label("Show Hidden Categories", systemImage: "eye")
+                    Label("Hidden Categories", systemImage: "eye")
                 }
+                .accessibilityLabel("Show Hidden Categories")
             }
         } label: {
             Image(systemName: "ellipsis.circle")

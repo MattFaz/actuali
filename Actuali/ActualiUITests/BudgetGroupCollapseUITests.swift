@@ -98,8 +98,11 @@ final class BudgetGroupCollapseUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
         ).firstMatch
         XCTAssertTrue(essentials.waitForExistence(timeout: 10))
+        if displayStyle == "compact" {
+            XCTAssertFalse(app.buttons["Options for Essentials"].exists)
+        }
 
-        setGroupHidden(true, displayStyle: displayStyle, app: app, group: essentials)
+        setGroupHidden(true, app: app, group: essentials)
         XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
 
         let optionsMenu = app.buttons["Budget options"]
@@ -109,7 +112,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         showHidden.tap()
         XCTAssertTrue(essentials.waitForExistence(timeout: 5))
 
-        setGroupHidden(false, displayStyle: displayStyle, app: app, group: essentials)
+        setGroupHidden(false, app: app, group: essentials)
 
         optionsMenu.tap()
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
@@ -118,19 +121,14 @@ final class BudgetGroupCollapseUITests: XCTestCase {
                       "the group should remain visible after hidden categories are turned off")
     }
 
+    @MainActor
     private func setGroupHidden(
         _ hidden: Bool,
-        displayStyle: String,
         app: XCUIApplication,
         group: XCUIElement
     ) {
-        if displayStyle == "compact" {
-            app.buttons["Options for Essentials"].tap()
-            app.buttons[hidden ? "Hide Group" : "Show Group"].tap()
-        } else {
-            group.swipeLeft()
-            app.buttons[hidden ? "Hide" : "Show"].tap()
-        }
+        group.swipeLeft()
+        app.buttons[hidden ? "Hide" : "Show"].tap()
     }
 
     @MainActor

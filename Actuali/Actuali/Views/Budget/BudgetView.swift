@@ -356,6 +356,17 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
+                CompactBudgetGroupHeader(
+                    name: group.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: { toggleCollapsed(group.id) }
+                )
                 if !isCollapsed {
                     ForEach(group.categories) { category in
                         CompactCategoryBudgetRow(
@@ -375,19 +386,6 @@ struct BudgetView: View {
                         )
                     }
                 }
-            } header: {
-                CompactBudgetGroupHeader(
-                    name: group.name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
-                    totals: budgetStore.showGroupTotals ? group.totals : nil,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: { toggleCollapsed(group.id) }
-                )
-                .textCase(nil)
             }
         }
     }
@@ -474,6 +472,19 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
+                CompactIncomeGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: onSetHidden,
+                    totalBudgeted: budget.totalBudgetedIncome,
+                    totalReceived: budget.totalIncome,
+                    showsBudgeted: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    }
+                )
                 if !isCollapsed {
                     ForEach(categories) { income in
                         CompactIncomeCategoryRow(
@@ -489,21 +500,6 @@ struct BudgetView: View {
                         )
                     }
                 }
-            } header: {
-                CompactIncomeGroupHeader(
-                    name: name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: onSetHidden,
-                    totalBudgeted: budget.totalBudgetedIncome,
-                    totalReceived: budget.totalIncome,
-                    showsBudgeted: budget.isTrackingBudget,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: {
-                        toggleCollapsed(Self.incomeGroupCollapseID)
-                    }
-                )
-                .textCase(nil)
             }
         }
     }

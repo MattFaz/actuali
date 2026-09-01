@@ -34,7 +34,7 @@ final class BudgetOptionsMenuUITests: XCTestCase {
 
         for option in ["Clean", "Detailed", "Compact", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
-                       "Hide Spent Categories"] {
+                       "Hide Spent Categories", "Show Hidden Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
