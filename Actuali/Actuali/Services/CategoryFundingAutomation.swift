@@ -41,7 +41,7 @@ enum CategoryFundingAutomation {
         availableAfterTransaction: Int,
         targetCategoryId: String? = nil,
         fundingSource: CategoryFundingSource,
-        sourceAvailable: Int? = nil,
+        sourceAvailable: Int = 0,
         isTrackingBudget: Bool = false
     ) -> CategoryFundingDecision {
         let amount = shortfall(
@@ -56,7 +56,6 @@ enum CategoryFundingAutomation {
             return .fund(amount)
         case .category(let sourceId):
             guard sourceId != targetCategoryId else { return .sameSourceAndTarget }
-            guard let sourceAvailable else { return .invalidSource }
             return sourceAvailable >= amount ? .fund(amount) : .insufficientSource
         }
     }
@@ -160,25 +159,23 @@ enum CategoryFundingAutomation {
             return
         }
 
+        let amountToFund = shortfall(
+            transactionAmount: transaction.amount,
+            availableAfterTransaction: category.available
+        )
+        guard amountToFund > 0 else { return }
+
         let sourceCategoryId: String?
-        let sourceAvailable: Int?
+        let sourceAvailable: Int
         switch configuration.fundingSource {
         case .toBudget:
             sourceCategoryId = nil
-            sourceAvailable = nil
+            sourceAvailable = 0
         case .category(let sourceId):
             guard let sourceCategory = budgetMonth.allCategoryBudgets.first(where: {
                 $0.categoryId == sourceId
             }) else {
                 budgetStore.error = "Couldn't automatically fund \(category.categoryName): the selected funding category is unavailable."
-                return
-            }
-
-            let sourceIsIncome = budgetStore.categoryGroups
-                .flatMap(\.categories)
-                .first(where: { $0.id == sourceId })?.isIncome ?? false
-            guard !sourceIsIncome else {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose an expense category as the funding source."
                 return
             }
 
@@ -201,7 +198,7 @@ enum CategoryFundingAutomation {
         case .insufficientSource:
             budgetStore.error = "Couldn't automatically fund \(category.categoryName): the funding category doesn't have enough available."
         case .sameSourceAndTarget:
-            budgetStore.error = "Couldn't automatically fund \(category.categoryName): choose a different funding category."
+            return
         case .fund(let amountToFund):
             guard budgetStore.currentBudgetId == processingBudgetId else { return }
             let displayedMonth = budgetStore.currentBudgetMonth?.month
