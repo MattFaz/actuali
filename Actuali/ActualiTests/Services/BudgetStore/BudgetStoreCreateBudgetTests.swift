@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 import Testing
 
 @testable import Actuali
@@ -191,7 +192,7 @@ struct BudgetStoreCreateBudgetTests {
         #expect(store.currentBudgetId == metadata.id)
     }
 
-    @Test func unknownUploadOutcomeKeepsLocalCopy() async throws {
+    @Test func unknownUploadOutcomeRemovesLocalCopy() async throws {
         let (store, manager, root) = try await makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         CreateBudgetTransport.dropUploadResponse = true
@@ -200,7 +201,7 @@ struct BudgetStoreCreateBudgetTests {
         await store.createBudget(named: "Uncertain")
 
         #expect(store.error?.contains("Reopen Connection & Data") == true)
-        #expect(manager.listLocalBudgets().count == 1)
+        #expect(manager.listLocalBudgets().isEmpty)
         #expect(store.currentBudgetId == nil)
     }
 
@@ -223,5 +224,30 @@ struct BudgetStoreCreateBudgetTests {
         #expect(store.error?.hasPrefix("Failed to load budget:") == true)
         #expect(store.accounts.isEmpty)
         #expect(!store.isSyncConfiguredForTesting)
+    }
+
+    @Test func syncSetupErrorKeepsPublishedBudgetVisible() async throws {
+        let (store, manager, root) = try await makeStore()
+        defer {
+            store.closeDatabaseForTesting()
+            try? FileManager.default.removeItem(at: root)
+        }
+        CreateBudgetTransport.afterUpload = {
+            guard let budgetId = manager.listLocalBudgets().first?.id,
+                  let queue = try? DatabaseQueue(path: manager.databasePath(for: budgetId).path)
+            else { return }
+            try? queue.write { db in
+                try db.execute(sql: """
+                    DROP TABLE messages_clock;
+                    CREATE TABLE messages_clock (bad TEXT);
+                    """)
+            }
+        }
+
+        await store.createBudget(named: "Broken Sync State")
+
+        #expect(store.error?.hasPrefix("Failed to load budget:") == true)
+        #expect(store.categoryGroups.map(\.name).contains("Usual Expenses"))
+        #expect(store.isSyncConfiguredForTesting)
     }
 }

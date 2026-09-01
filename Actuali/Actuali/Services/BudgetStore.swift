@@ -1812,14 +1812,12 @@ final class BudgetStore: ObservableObject {
                     guard let groupId = remote.groupId else { throw uploadError }
                     try saveRegistration(groupId: groupId)
                 } else {
-                    // A successful list proves that the server did not commit
-                    // the upload. A failed list leaves the result unknown, so
-                    // keep the local copy to prevent a duplicate retry.
-                    if files != nil {
-                        try? fileManager.deleteBudget(metadata.id)
-                    } else {
-                        uploadOutcomeUnknown = true
-                    }
+                    // The local copy is still blank. Remove it even when the
+                    // server result is unknown: a committed copy can be
+                    // downloaded later, while an unregistered local copy is
+                    // invisible and permanently blocks this budget name.
+                    uploadOutcomeUnknown = files == nil
+                    try? fileManager.deleteBudget(metadata.id)
                     throw uploadError
                 }
             }
@@ -1861,6 +1859,7 @@ final class BudgetStore: ObservableObject {
         isLoading = true
         error = nil
         let requestedMonthBeforeLoad = requestedBudgetMonth
+        var published = false
 
         var db: BudgetDatabase?
         do {
@@ -1926,6 +1925,7 @@ final class BudgetStore: ObservableObject {
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
             publishWidgetSnapshot()
+            published = true
 
             // Linked feeds drive the sync buttons in the accounts UI. Without
             // this, a fresh launch hides them until something else happens to
@@ -1993,19 +1993,21 @@ final class BudgetStore: ObservableObject {
             // failure belongs to a stale load — don't clobber the winner's
             // error or clear its spinner.
             guard db == nil || database === db else { return }
-            syncStateCancellable?.cancel()
-            syncStateCancellable = nil
-            syncClient = nil
-            requestedBudgetMonth = nil
-            currentBudgetMonth = nil
-            widgetBudgetMonth = nil
-            accounts = []
-            transactions = []
-            uncategorizedCount = 0
-            categoryGroups = []
-            payees = []
-            dataVersion += 1
-            clearWidgetSnapshot()
+            if !published {
+                syncStateCancellable?.cancel()
+                syncStateCancellable = nil
+                syncClient = nil
+                requestedBudgetMonth = nil
+                currentBudgetMonth = nil
+                widgetBudgetMonth = nil
+                accounts = []
+                transactions = []
+                uncategorizedCount = 0
+                categoryGroups = []
+                payees = []
+                dataVersion += 1
+                clearWidgetSnapshot()
+            }
             self.error = "Failed to load budget: \(error.localizedDescription)"
         }
 
