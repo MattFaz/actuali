@@ -71,7 +71,9 @@ enum FormulaEngine {
     // MARK: - Queries
 
     private static func querySum(named name: String, _ env: Env) -> Double {
-        guard let query = env.meta?.queries?[name] else { return 0 }
+        guard let query = env.meta?.queries?.first(where: {
+            $0.key.caseInsensitiveCompare(name) == .orderedSame
+        })?.value else { return 0 }
 
         // Keep the same safety boundary as the other report engines. Report
         // callers normally provide leaf rows already, but QUERY still ignores
