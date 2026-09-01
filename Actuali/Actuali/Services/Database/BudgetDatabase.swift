@@ -195,6 +195,25 @@ final class BudgetDatabase: Sendable {
         // messages can land instead of being skipped.
         (1765518577216, "dashboard", "dashboard_page_id", [],
          "ALTER TABLE dashboard ADD COLUMN dashboard_page_id TEXT"),
+        // Upstream 1694438752000 (goal templates) alters three tables; split
+        // here so each waits for its own table, with the upstream id on the
+        // first half and locally minted ids on the rest.
+        (1694438752000, "zero_budgets", "goal", [],
+         "ALTER TABLE zero_budgets ADD COLUMN goal INTEGER DEFAULT null"),
+        (1694438752001, "reflect_budgets", "goal", [],
+         "ALTER TABLE reflect_budgets ADD COLUMN goal INTEGER DEFAULT null"),
+        (1694438752002, "categories", "goal_def", [],
+         "ALTER TABLE categories ADD COLUMN goal_def TEXT DEFAULT null"),
+        // Upstream 1720665000000 (long goal context), same split.
+        (1720665000000, "zero_budgets", "long_goal", [],
+         "ALTER TABLE zero_budgets ADD COLUMN long_goal INTEGER DEFAULT null"),
+        (1720665000001, "reflect_budgets", "long_goal", [],
+         "ALTER TABLE reflect_budgets ADD COLUMN long_goal INTEGER DEFAULT null"),
+        // Upstream 1754611200000 also rewrites NULL template_settings to
+        // '{"source": "ui"}', but no row can be NULL right after the ALTER's
+        // default applies, so only the schema half is mirrored.
+        (1754611200000, "categories", "template_settings", [],
+         "ALTER TABLE categories ADD COLUMN template_settings JSON DEFAULT '{\"source\": \"notes\"}'"),
         (1769000000000, "schedules", "custom_upcoming_length", [],
          "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL"),
         // Upstream 1778510362740 also creates cleanup_groups (see createTableMigrations).
@@ -330,6 +349,9 @@ final class BudgetDatabase: Sendable {
     /// directory MUST also be listed here.
     static let actualiOnlyMigrationIds: [Int64] = [
         1765518577216, // ALTER half of upstream 1765518577215 (dashboard_page_id)
+        1694438752001, // second ALTER of upstream 1694438752000 (reflect goal)
+        1694438752002, // third ALTER of upstream 1694438752000 (goal_def)
+        1720665000001, // second ALTER of upstream 1720665000000 (reflect long_goal)
         1770000000001, // defensive CREATE dashboard
         1770000000002, // defensive CREATE custom_reports
         1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
@@ -1395,10 +1417,34 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Budget Data
 
-    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
-        try await dbQueue.read { db in
-            let targetMonthInt = Self.monthStringToInt(month)
+    /// Everything the month-by-month budget walk produces — shared by
+    /// `fetchBudgetMonth` (the Budget tab) and `fetchGoalTemplateSheet` (the
+    /// goal-template engine), so the two can never disagree about balances.
+    struct BudgetWalkResult {
+        struct BudgetRow {
+            let amount: Int
+            let flag: Bool
+            let goal: Int?
+            let longGoal: Int?
+        }
 
+        let isEnvelope: Bool
+        /// Budget rows keyed by YYYYMM month int, then category id.
+        let budgetByMonthCat: [Int: [String: BudgetRow]]
+        /// Net activity per (YYYYMM, category).
+        let spentByMonthCat: [Int: [String: Int]]
+        /// End-of-month category balances per (YYYYMM, category).
+        let leftoverByMonthCat: [Int: [String: Int]]
+        /// Envelope "To Budget" at the target month (0 for tracking).
+        let toBudget: Int
+        let incomeCatIds: Set<String>
+        let categories: [CategoryRecord]
+        let groups: [CategoryGroupRecord]
+    }
+
+    /// The month-by-month walk `fetchBudgetMonth` documents below, extracted
+    /// so goal templates can read any prior month's leftover/carryover.
+    static func budgetWalk(_ db: Database, targetMonthInt: Int) throws -> BudgetWalkResult {
             // Detect which budget table the budget uses.
             // Envelope (zero_budgets) clamps negative leftover to 0 unless
             // the carryover flag is set. Tracking (reflect_budgets) drops
@@ -1408,11 +1454,11 @@ final class BudgetDatabase: Sendable {
 
             // Bulk-load all budget rows up to and including the target month.
             // months are YYYYMM ints in the budgets tables.
-            // (budgeted, carryFlag) keyed by (monthInt, categoryId).
-            var budgetByMonthCat: [Int: [String: (amount: Int, flag: Bool)]] = [:]
+            // (budgeted, carryFlag, goal) keyed by (monthInt, categoryId).
+            var budgetByMonthCat: [Int: [String: BudgetWalkResult.BudgetRow]] = [:]
             if let budgetsTable {
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT month, category, amount, carryover
+                    SELECT month, category, amount, carryover, goal, long_goal
                     FROM \(budgetsTable)
                     WHERE month <= ?
                     """, arguments: [targetMonthInt])
@@ -1421,7 +1467,9 @@ final class BudgetDatabase: Sendable {
                     guard m > 0, let categoryId: String = row["category"] else { continue }
                     let amount: Int = row["amount"] ?? 0
                     let flagInt: Int = row["carryover"] ?? 0
-                    budgetByMonthCat[m, default: [:]][categoryId] = (amount, flagInt == 1)
+                    budgetByMonthCat[m, default: [:]][categoryId] = .init(
+                        amount: amount, flag: flagInt == 1,
+                        goal: row["goal"], longGoal: row["long_goal"])
                 }
             }
 
@@ -1531,6 +1579,7 @@ final class BudgetDatabase: Sendable {
             // unallocated funds instead.
             var runningToBudget = 0
             var priorBuffered = 0
+            var leftoverByMonthCat: [Int: [String: Int]] = [:]
 
             var m = earliestMonth
             while m <= targetMonthInt {
@@ -1591,21 +1640,42 @@ final class BudgetDatabase: Sendable {
                 }
                 runningLeftover = nextLeftover
                 lastFlag = nextFlag
+                leftoverByMonthCat[m] = nextLeftover
 
                 m = Self.nextMonth(from: m)
             }
 
+            let groups = try CategoryGroupRecord
+                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
+                .fetchAll(db)
+
+            return BudgetWalkResult(
+                isEnvelope: isEnvelope,
+                budgetByMonthCat: budgetByMonthCat,
+                spentByMonthCat: spentByMonthCat,
+                leftoverByMonthCat: leftoverByMonthCat,
+                toBudget: runningToBudget,
+                incomeCatIds: incomeCatIds,
+                categories: categories,
+                groups: groups)
+    }
+
+    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
+        try await dbQueue.read { db in
+            let targetMonthInt = Self.monthStringToInt(month)
+            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
+            let isEnvelope = walk.isEnvelope
+            let categories = walk.categories
+
             // Surface the values for the target month.
-            let targetBudgets = budgetByMonthCat[targetMonthInt] ?? [:]
-            let targetSpent = spentByMonthCat[targetMonthInt] ?? [:]
+            let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
+            let targetSpent = walk.spentByMonthCat[targetMonthInt] ?? [:]
+            let runningLeftover = walk.leftoverByMonthCat[targetMonthInt] ?? [:]
             // The "carryover into target month" is the prior month's leftover
             // contribution (post clamp / flag). Reverse-derive by recomputing
             // available - budgeted - spent for each category we touched.
 
-            let groups = try CategoryGroupRecord
-                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
-                .fetchAll(db)
-            let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
+            let groupsById = Dictionary(uniqueKeysWithValues: walk.groups.map { ($0.id, $0) })
 
             let allCategoryBudgets = categories.compactMap { cat -> CategoryBudget? in
                 guard cat.isIncome != 1 else { return nil }
@@ -1628,7 +1698,9 @@ final class BudgetDatabase: Sendable {
                     available: available,
                     carryover: priorContribution,
                     hidden: cat.hidden == 1,
-                    groupHidden: group.hidden == 1
+                    groupHidden: group.hidden == 1,
+                    goal: targetBudgets[cat.id]?.goal,
+                    longGoal: targetBudgets[cat.id]?.longGoal == 1
                 )
             }
 
@@ -1657,7 +1729,7 @@ final class BudgetDatabase: Sendable {
                 month: month,
                 categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
                 incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
-                toBudget: isEnvelope ? runningToBudget : nil,
+                toBudget: isEnvelope ? walk.toBudget : nil,
                 hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
                 hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )
@@ -1777,6 +1849,216 @@ final class BudgetDatabase: Sendable {
             return (year + 1) * 100 + 1
         }
         return year * 100 + month + 1
+    }
+
+    // MARK: - Goal Templates
+
+    /// One category as the goal-template pipeline sees it: identity, whether
+    /// its templates are UI-managed (web's template editor) or notes-managed,
+    /// the stored `goal_def`, and its note text for the notes → goal_def sync.
+    struct GoalTemplateCategoryRow: Sendable {
+        let id: String
+        let name: String
+        let isIncome: Bool
+        let hidden: Bool
+        let groupHidden: Bool
+        let sourceIsUI: Bool
+        let goalDef: String?
+        let cleanupDef: String?
+        let note: String?
+    }
+
+    func fetchGoalTemplateCategories() async throws -> [GoalTemplateCategoryRow] {
+        try await dbQueue.read { db in
+            let hasNotes = try db.tableExists("notes")
+            let noteSelect = hasNotes ? ", n.note AS note" : ""
+            let noteJoin = hasNotes ? "LEFT JOIN notes n ON n.id = c.id" : ""
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def, c.cleanup_def,
+                       c.template_settings, g.hidden AS group_hidden\(noteSelect)
+                FROM categories c
+                LEFT JOIN category_groups g ON g.id = c.cat_group
+                \(noteJoin)
+                WHERE (c.tombstone = 0 OR c.tombstone IS NULL)
+                """)
+            return rows.compactMap { row -> GoalTemplateCategoryRow? in
+                guard let id: String = row["id"] else { return nil }
+                // template_settings is a JSON blob; upstream treats anything
+                // that isn't explicitly source:'ui' as notes-managed.
+                let settings: String? = row["template_settings"]
+                let sourceIsUI = settings
+                    .flatMap { $0.data(using: .utf8) }
+                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+                    .flatMap { $0["source"] as? String } == "ui"
+                return GoalTemplateCategoryRow(
+                    id: id,
+                    name: row["name"] ?? "Unknown",
+                    isIncome: (row["is_income"] ?? 0) == 1,
+                    hidden: (row["hidden"] ?? 0) == 1,
+                    groupHidden: (row["group_hidden"] ?? 0) == 1,
+                    sourceIsUI: sourceIsUI,
+                    goalDef: row["goal_def"],
+                    cleanupDef: row["cleanup_def"],
+                    note: hasNotes ? row["note"] : nil)
+            }
+        }
+    }
+
+    /// Live cleanup pools (`cleanup_groups`), for the automation editor.
+    func fetchCleanupGroups() async throws -> [(id: String, name: String)] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("cleanup_groups") else { return [] }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name FROM cleanup_groups
+                WHERE (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY name
+                """)
+            return rows.compactMap { row in
+                guard let id: String = row["id"], let name: String = row["name"] else {
+                    return nil
+                }
+                return (id, name)
+            }
+        }
+    }
+
+    /// Find a pool by name, including tombstoned rows so an editor save can
+    /// revive the existing id instead of creating a duplicate.
+    func findCleanupGroupId(named name: String) async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("cleanup_groups") else { return nil }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, name FROM cleanup_groups
+                ORDER BY tombstone, name
+                """)
+            let target = name.lowercased()
+            return rows.compactMap { row -> (id: String, name: String)? in
+                guard let id: String = row["id"], let name: String = row["name"] else {
+                    return nil
+                }
+                return (id, name)
+            }.first { $0.name.lowercased() == target }?.id
+        }
+    }
+
+    /// Tombstone cleanup pools no live category references any more.
+    /// Local-only like upstream's `tombstoneOrphanCleanupGroups` (a plain
+    /// UPDATE, no CRDT messages) — every client re-derives it from the
+    /// synced cleanup_defs.
+    func tombstoneOrphanCleanupGroups() async throws {
+        try await dbQueue.write { db in
+            guard try db.tableExists("cleanup_groups") else { return }
+            let defs = try String.fetchAll(db, sql: """
+                SELECT cleanup_def FROM categories
+                WHERE (tombstone = 0 OR tombstone IS NULL) AND cleanup_def IS NOT NULL
+                """)
+            var referenced: Set<String> = []
+            for def in defs {
+                for row in CleanupTemplate.decodeArray(fromJSON: def) ?? [] {
+                    if let groupId = row.groupId { referenced.insert(groupId) }
+                }
+            }
+            if referenced.isEmpty {
+                try db.execute(sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0")
+            } else {
+                let placeholders = referenced.map { _ in "?" }.joined(separator: ",")
+                try db.execute(
+                    sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0 AND id NOT IN (\(placeholders))",
+                    arguments: StatementArguments(Array(referenced)))
+            }
+        }
+    }
+
+    /// The sheet-value snapshot the goal-template engine runs against: every
+    /// cell it can read, for all months up to and including `month`.
+    func fetchGoalTemplateSheet(month: String) async throws -> GoalTemplateSheet {
+        try await dbQueue.read { db in
+            let targetMonthInt = Self.monthStringToInt(month)
+            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
+
+            var sheet = GoalTemplateSheet()
+            sheet.isTracking = !walk.isEnvelope
+
+            if walk.isEnvelope {
+                sheet.availableStart = walk.toBudget
+            } else {
+                // tracking `total-saved`: budgeted income minus budgeted
+                // expenses for the month (loot-core tracking.ts).
+                let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
+                var saved = 0
+                for (categoryId, budgetRow) in targetBudgets {
+                    saved += walk.incomeCatIds.contains(categoryId)
+                        ? budgetRow.amount : -budgetRow.amount
+                }
+                sheet.availableStart = saved
+            }
+
+            if try db.tableExists("preferences") {
+                let hideFraction = try String.fetchOne(
+                    db, sql: "SELECT value FROM preferences WHERE id = 'hideFraction'")
+                sheet.hideFraction = hideFraction == "true"
+            }
+
+            for (monthInt, rowsByCategory) in walk.budgetByMonthCat {
+                for (categoryId, budgetRow) in rowsByCategory {
+                    let key = GoalTemplateSheet.MonthCat(monthInt, categoryId)
+                    sheet.budgeted[key] = budgetRow.amount
+                    if budgetRow.flag { sheet.carryover.insert(key) }
+                    if let goal = budgetRow.goal { sheet.goals[key] = goal }
+                    if budgetRow.goal != nil || budgetRow.longGoal != nil {
+                        sheet.goalRows.insert(key)
+                    }
+                    if let existing = sheet.firstActivityMonth[categoryId] {
+                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
+                    } else {
+                        sheet.firstActivityMonth[categoryId] = monthInt
+                    }
+                }
+            }
+            for (monthInt, spentByCategory) in walk.spentByMonthCat {
+                var income = 0
+                for (categoryId, amount) in spentByCategory {
+                    sheet.spent[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
+                    if walk.incomeCatIds.contains(categoryId) { income += amount }
+                    if let existing = sheet.firstActivityMonth[categoryId] {
+                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
+                    } else {
+                        sheet.firstActivityMonth[categoryId] = monthInt
+                    }
+                }
+                sheet.totalIncome[monthInt] = income
+            }
+            for (monthInt, leftoverByCategory) in walk.leftoverByMonthCat {
+                for (categoryId, amount) in leftoverByCategory {
+                    sheet.leftover[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
+                }
+            }
+            return sheet
+        }
+    }
+
+    /// Clear `goal_def` on categories whose notes no longer hold templates.
+    /// Deliberately not CRDT-synced: upstream's
+    /// `resetCategoryGoalDefsWithNoTemplates` is a plain UPDATE too — every
+    /// client re-derives the reset from the synced notes.
+    func resetGoalDefs(categoryIds: [String]) async throws {
+        guard !categoryIds.isEmpty else { return }
+        try await dbQueue.write { db in
+            let placeholders = categoryIds.map { _ in "?" }.joined(separator: ",")
+            try db.execute(
+                sql: "UPDATE categories SET goal_def = NULL WHERE id IN (\(placeholders))",
+                arguments: StatementArguments(categoryIds))
+        }
+    }
+
+    /// A synced preference value (`preferences` table), nil when unset or the
+    /// table is missing.
+    func fetchPreference(id: String) async throws -> String? {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return nil }
+            return try String.fetchOne(
+                db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: [id])
+        }
     }
 
     // MARK: - Clock Storage
@@ -2458,6 +2740,41 @@ final class BudgetDatabase: Sendable {
     }
 
     // MARK: - Bank Sync
+
+    /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
+    /// the budget file began, wherever it began: the messages travel with the
+    /// file, so every device answers the same. Nil for a budget with no
+    /// messages yet. HLC timestamps sort lexically and start with the ISO
+    /// date, so MIN gives the earliest and its first ten characters the day.
+    ///
+    /// That day is UTC, unlike every other `YYYYMMDD` here, which comes from
+    /// `Calendar.current`. Deliberate: agreeing across devices is the whole
+    /// point, and a local reading would have two phones in different zones
+    /// answer differently for the same file. Worst case it names the day
+    /// after the one the file was really made on, which only shifts an import
+    /// floor by a day.
+    func earliestMessageDay() async throws -> Int? {
+        try await dbQueue.read { db in
+            guard let timestamp = try String.fetchOne(
+                db, sql: "SELECT MIN(timestamp) FROM messages_crdt"
+            ), timestamp.count >= 10 else { return nil }
+            return Int(timestamp.prefix(10).replacingOccurrences(of: "-", with: ""))
+        }
+    }
+
+    /// The id of an account's opening-balance row, if it has one. A backfill
+    /// needs it to hand back what the rows it imports were already counted
+    /// for (see `absorbIntoStartingBalance`).
+    func startingBalanceTransactionId(accountId: String) async throws -> String? {
+        try await dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE acct = ? AND starting_balance_flag = 1
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY date
+                """, arguments: [accountId])
+        }
+    }
 
     /// Every account wired up to a bank feed, in the order the accounts tab
     /// lists them. Empty (rather than an error) on a budget file old enough

@@ -1,8 +1,6 @@
 import XCTest
 
-/// Budget layout preference (actios-96wa): the clean App Store-screenshot
-/// look is the default, and the persisted preference switches the table to
-/// the detailed PWA-style pills.
+/// Budget layout preferences exercised through the user-visible Budget tab.
 final class BudgetDisplayStyleUITests: XCTestCase {
 
     @MainActor private func budgetedCaption(in app: XCUIApplication) -> XCUIElement {
@@ -12,9 +10,27 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
-    func testCleanStyleIsDefaultAndShowsCaptions() throws {
+    private func tapSwitch(_ toggle: XCUIElement) {
+        let control = toggle.switches.firstMatch
+        (control.exists ? control : toggle).tap()
+    }
+
+    @MainActor
+    private func scrollToSettingsControl(_ control: XCUIElement, in app: XCUIApplication) {
+        var swipesLeft = 8
+        while !control.exists && swipesLeft > 0 {
+            app.swipeUp()
+            swipesLeft -= 1
+        }
+    }
+
+    @MainActor
+    func testCleanStyleShowsCaptions() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean",
+            "-showBudgetCheckInStrip", "YES",
+        ]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -35,7 +51,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         // init write-back was removed in actios-96wa), so this can't leak
         // into other tests, but a live tap below persists for real — start
         // from a known state regardless of what earlier runs left behind.
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "clean",
+            "-showCompactBudgetOverview", "YES",
+        ]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -45,6 +65,14 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         let optionsMenu = app.buttons["Budget options"]
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
                       "the budget toolbar should offer the options menu")
+        optionsMenu.tap()
+        app.buttons["Compact"].tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["compactBudgetOverview"]
+                .waitForExistence(timeout: 5),
+            "switching to Compact replaces the Clean presentation live"
+        )
+
         optionsMenu.tap()
         app.buttons["Detailed"].tap()
         XCTAssertFalse(budgetedCaption(in: app).waitForExistence(timeout: 5),
@@ -73,6 +101,249 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     }
 
     @MainActor
+    func testCompactStyleShowsDistinctOverviewAndAddsSpentColumnLive() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
+            "-showCompactSpentColumn", "NO",
+            "-showBudgetProgressBars", "NO",
+            "-showCategoryStatusDots", "NO",
+            "-showGroupTotals", "YES",
+            "-showBudgetCheckInStrip", "YES",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let overview = app.descendants(matching: .any)["compactBudgetOverview"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10),
+                      "Compact should render its source-style pinned overview")
+        let checkInStrip = app.buttons["budgetFilter-all"]
+        XCTAssertTrue(checkInStrip.waitForExistence(timeout: 5))
+        XCTAssertLessThan(
+            checkInStrip.frame.maxY,
+            overview.frame.minY,
+            "the check-in strip should sit above the Compact overview"
+        )
+        let essentials = app.buttons["compactBudgetGroup.Essentials"]
+        XCTAssertTrue(essentials.exists,
+                      "Compact should render a dedicated group header with totals")
+        let groceriesDetails = app.buttons["Details for Groceries"].firstMatch
+        if essentials.label.contains("collapsed") {
+            essentials.tap()
+        }
+        XCTAssertTrue(groceriesDetails.waitForExistence(timeout: 5))
+        XCTAssertFalse(budgetedCaption(in: app).exists,
+                       "Compact rows should not fall through to Clean")
+
+        XCTAssertTrue(essentials.label.contains("budgeted"))
+        XCTAssertTrue(essentials.label.contains("balance"))
+        essentials.tap()
+        XCTAssertTrue(groceriesDetails.waitForNonExistence(timeout: 5),
+                       "collapsing the header hides only its category rows")
+        XCTAssertTrue(essentials.exists,
+                      "a collapsed group keeps its totals header visible")
+        essentials.tap()
+        XCTAssertTrue(groceriesDetails.waitForExistence(timeout: 5))
+
+        let groceriesSpent = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Transactions for Groceries in '")
+        ).firstMatch
+        XCTAssertFalse(groceriesSpent.exists,
+                       "the Spent column defaults to absent, not an empty placeholder")
+
+        let optionsMenu = app.buttons["Budget options"]
+        optionsMenu.tap()
+        let spentToggle = app.buttons["Show Spent Column"]
+        XCTAssertTrue(spentToggle.waitForExistence(timeout: 5))
+        spentToggle.tap()
+
+        XCTAssertTrue(groceriesSpent.waitForExistence(timeout: 5),
+                      "turning on Spent should add the existing month-transactions action live")
+    }
+
+    @MainActor
+    func testCompactTrackingStyleUsesNativeSummaryAndIncomeColumns() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-loadTrackingDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
+            "-showCompactSpentColumn", "NO",
+            "-hideBalances", "NO",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let overview = app.descendants(matching: .any)["compactBudgetOverview"]
+        XCTAssertTrue(overview.waitForExistence(timeout: 10))
+        XCTAssertTrue(overview.staticTexts["Income"].exists)
+        XCTAssertTrue(overview.staticTexts["Projected"].exists)
+        XCTAssertFalse(overview.staticTexts["To Budget"].exists,
+                       "tracking budgets have no To Budget value")
+
+        let incomeSection = app.descendants(matching: .any)["compactIncomeSection"]
+        var scrollsLeft = 12
+        while !incomeSection.exists && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(incomeSection.exists)
+        XCTAssertTrue(incomeSection.staticTexts["Budgeted"].exists)
+        XCTAssertTrue(incomeSection.staticTexts["Received"].exists)
+        XCTAssertFalse(incomeSection.staticTexts["Balance"].exists,
+                       "Income must not fabricate a Balance column")
+        let salary = app.buttons["All transactions for Salary"]
+        if !salary.exists {
+            app.swipeUp()
+        }
+        XCTAssertTrue(salary.waitForExistence(timeout: 5),
+                      "Income remains expanded")
+        let salaryBudget = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label BEGINSWITH 'Budgeted for Salary, '")
+        ).firstMatch
+        XCTAssertTrue(
+            salaryBudget.exists,
+            "tracking Income's read-only budget needs its own currency-aware VoiceOver context"
+        )
+        XCTAssertTrue(salaryBudget.label.contains("$"))
+        XCTAssertFalse(
+            salaryBudget.elementType == .button,
+            "tracking Income budget remains read-only in Compact"
+        )
+    }
+
+    @MainActor
+    func testCompactOptionalOverviewAndProgressBarsAffectPresentation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "NO",
+            "-showBudgetProgressBars", "NO",
+            "-showCategoryStatusDots", "NO",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let essentials = app.buttons["compactBudgetGroup.Essentials"]
+        XCTAssertTrue(essentials.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.descendants(matching: .any)["compactBudgetOverview"].exists,
+                       "the optional overview must leave no placeholder")
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Details for Groceries'")
+        ).firstMatch
+        if essentials.label.contains("collapsed") {
+            essentials.tap()
+        }
+        XCTAssertTrue(groceries.waitForExistence(timeout: 5),
+                      "the progress assertions require an expanded fixture group")
+        XCTAssertEqual(groceries.label, "Details for Groceries")
+        let progressBar = app.descendants(matching: .any).matching(
+            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent'")
+        ).firstMatch
+        XCTAssertFalse(progressBar.exists,
+                       "disabled progress mode displays no progress bar")
+
+        openBudgetViewSettings(in: app)
+        let sharedProgressBars = app.switches["Budget Progress Bars"]
+        scrollToSettingsControl(sharedProgressBars, in: app)
+        XCTAssertTrue(sharedProgressBars.waitForExistence(timeout: 5))
+        tapSwitch(sharedProgressBars)
+        app.tabBars.buttons["Budget"].tap()
+        XCTAssertEqual(groceries.label, "Details for Groceries",
+                       "progress bars do not turn on the independent status-dot setting")
+        XCTAssertTrue(
+            progressBar.waitForExistence(timeout: 5),
+            "progress mode adds a bar for an active category"
+        )
+
+        openBudgetViewSettings(in: app)
+        tapSwitch(sharedProgressBars)
+        app.tabBars.buttons["Budget"].tap()
+        XCTAssertTrue(progressBar.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Details for Groceries"].exists)
+    }
+
+    @MainActor
+    func testCompactAccessibilityDynamicTypeUsesStackedPresentation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-showCompactBudgetOverview", "YES",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+            "-UIPreferredContentSizeCategoryName",
+            "UICTContentSizeCategoryAccessibilityXXXL",
+        ]
+        app.launch()
+
+        XCTAssertTrue(
+            app.descendants(matching: .any)["compactBudgetOverview.stacked"]
+                .waitForExistence(timeout: 10),
+            "accessibility text sizes select the stacked overview"
+        )
+        let editGroceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
+        ).firstMatch
+        var scrollsLeft = 8
+        while !editGroceries.exists && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(
+            editGroceries.waitForExistence(timeout: 5),
+            "stacking keeps category amount actions available without compact-cell shrinking"
+        )
+    }
+
+    @MainActor
+    func testCompactLongNamesRemainDiscoverableWhileAmountsArePrivate() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-hideBalances", "YES",
+            "-showGroupTotals", "YES",
+            "-collapsedBudgetGroups", "",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let groceriesBudget = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Edit budgeted amount for Groceries'")
+        ).firstMatch
+        XCTAssertTrue(groceriesBudget.waitForExistence(timeout: 10))
+        XCTAssertTrue(groceriesBudget.label.contains("••••"),
+                      "privacy masking also covers action accessibility values")
+
+        let longGroup = app.buttons["compactBudgetGroup.Health & Wellness"]
+        var scrollsLeft = 10
+        while !longGroup.exists && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(longGroup.exists,
+                      "long group names remain exposed without truncating their identity")
+        XCTAssertTrue(longGroup.label.contains("••••"),
+                      "group totals respect global privacy masking")
+
+        let longCategory = app.buttons["All transactions for Starting Balances"]
+        scrollsLeft = 10
+        while !longCategory.exists && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(longCategory.exists,
+                      "long category names remain exposed in the fixed title column")
+    }
+
+    @MainActor
     func testCategoryNameOpensCompactEditor() throws {
         let app = XCUIApplication()
         app.launchArguments = [
@@ -96,7 +367,9 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     @MainActor
     func testCheckInStripFiltersUnassignedCategoriesInPlace() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = [
+            "-loadDemoData", "-showBudgetCheckInStrip", "YES", "-initialTab", "1",
+        ]
         app.launch()
 
         // Parking has no activity in the demo. Clearing its budget makes it

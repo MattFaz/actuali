@@ -209,7 +209,8 @@ struct BudgetStoreBankSyncTests {
     private func makeStore(
         database: BudgetDatabase,
         responseBody: String,
-        walletStore: (any AppleWalletReading)? = nil
+        walletStore: (any AppleWalletReading)? = nil,
+        hasAccessKey: Bool = true
     ) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
@@ -221,6 +222,9 @@ struct BudgetStoreBankSyncTests {
         store.setSimpleFINClientForTesting(
             SimpleFINClient(session: BridgeTransport.makeSession(body: responseBody))
         )
+        store.setSimpleFINAccessKeyForTesting(hasAccessKey
+            ? try SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
+            : nil)
         if let walletStore {
             store.setAppleWalletStoreForTesting(walletStore)
         }
@@ -265,34 +269,6 @@ struct BudgetStoreBankSyncTests {
         }
     }
 
-    private func withStoredAccessKey<T>(_ body: () async throws -> T) async throws -> T {
-        // Put back whatever the app container's Keychain held before, so a key
-        // someone genuinely configured in this simulator survives a test run.
-        let previous = SimpleFINCredentials.accessKey
-        try SimpleFINCredentials.save(
-            SimpleFINAccessKey.parse("https://demo:demo@bridge.example.com/simplefin")
-        )
-        defer {
-            if let previous {
-                try? SimpleFINCredentials.save(previous)
-            } else {
-                try? SimpleFINCredentials.clear()
-            }
-        }
-        return try await body()
-    }
-
-    /// The inverse: run with no key stored, putting back whatever was there.
-    @discardableResult
-    private func withoutStoredAccessKey<T>(_ body: () async throws -> T) async throws -> T {
-        let previous = SimpleFINCredentials.accessKey
-        try? SimpleFINCredentials.clear()
-        defer {
-            if let previous { try? SimpleFINCredentials.save(previous) }
-        }
-        return try await body()
-    }
-
     private func cleanup(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
@@ -321,9 +297,7 @@ struct BudgetStoreBankSyncTests {
              "amount": "-12.00", "description": "Corner Store"}
             """))
 
-        let result = try await withStoredAccessKey {
-            try await store.syncBankAccounts()
-        }
+        let result = try await store.syncBankAccounts()
 
         // Two downloads plus the opening balance, which counts as an import
         // too (upstream folds its id into `added`).
@@ -363,8 +337,8 @@ struct BudgetStoreBankSyncTests {
             """)
         let store = try await makeStore(database: database, responseBody: body)
 
-        let first = try await withStoredAccessKey { try await store.syncBankAccounts() }
-        let second = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let first = try await store.syncBankAccounts()
+        let second = try await store.syncBankAccounts()
 
         #expect(first.added == 2)  // the download and the opening balance
         #expect(second.added == 0)
@@ -381,7 +355,7 @@ struct BudgetStoreBankSyncTests {
             {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
             """))
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.added == 0)
         #expect(result.updated == 1)
@@ -420,7 +394,7 @@ struct BudgetStoreBankSyncTests {
             {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "BLUE BOTTLE"}
             """))
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.added == 0)
         #expect(result.updated == 1)
@@ -436,7 +410,7 @@ struct BudgetStoreBankSyncTests {
             {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
             """))
 
-        _ = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        _ = try await store.syncBankAccounts()
 
         let queue = try DatabaseQueue(path: url.path)
         let financialIdMessages = try await queue.read { db in
@@ -453,10 +427,9 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
 
-        try await withoutStoredAccessKey {
-            await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
-                _ = try await store.syncBankAccounts()
-            }
+        store.setSimpleFINAccessKeyForTesting(nil)
+        await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
+            _ = try await store.syncBankAccounts()
         }
     }
 
@@ -467,7 +440,7 @@ struct BudgetStoreBankSyncTests {
             database: database, responseBody: #"{"errors": [], "accounts": []}"#
         )
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.accountsSynced == 0)
         #expect(result.problems.count == 1)
@@ -486,7 +459,7 @@ struct BudgetStoreBankSyncTests {
         """
         let store = try await makeStore(database: database, responseBody: body)
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         // The bridge's errors aren't keyed by account, so they're paired up by
         // the institution they name — which is what lets the account carry the
@@ -560,7 +533,7 @@ struct BudgetStoreBankSyncTests {
             {"id": "sf-1", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
             """))
 
-        _ = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        _ = try await store.syncBankAccounts()
 
         let account = try #require(
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
@@ -583,6 +556,7 @@ struct BudgetStoreBankSyncTests {
         bodies: [String: String]
     ) async throws -> BudgetStore {
         let store = BudgetStore.previewInstance()
+        store.setSimpleFINAccessKeyForTesting(nil)
         let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
         store.configureForTesting(database: database, syncClient: syncClient)
@@ -641,10 +615,8 @@ struct BudgetStoreBankSyncTests {
             "/simplefin/status": #"{"status":"ok","data":{"configured":false}}"#
         ])
 
-        try await withoutStoredAccessKey {
-            await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
-                _ = try await store.syncBankAccounts()
-            }
+        await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
+            _ = try await store.syncBankAccounts()
         }
         #expect(!store.serverProvidesBankSync)
     }
@@ -656,10 +628,8 @@ struct BudgetStoreBankSyncTests {
         defer { cleanup(url) }
         let store = try await makeServerStore(database: database, bodies: [:])
 
-        try await withoutStoredAccessKey {
-            await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
-                _ = try await store.syncBankAccounts()
-            }
+        await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
+            _ = try await store.syncBankAccounts()
         }
     }
 
@@ -741,7 +711,7 @@ struct BudgetStoreBankSyncTests {
             walletStore: appleCardStub()
         )
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.accountsSynced == 2)
         #expect(result.problems.isEmpty)
@@ -762,14 +732,15 @@ struct BudgetStoreBankSyncTests {
         let store = try await makeStore(
             database: database,
             responseBody: accountSet(transactions: ""),
-            walletStore: appleCardStub()
+            walletStore: appleCardStub(),
+            hasAccessKey: false
         )
 
         // No device key and no reachable server: the SimpleFIN download can't
         // even start. With only SimpleFIN linked this throws (see
         // syncingWithoutAnAccessKeyIsRefused) — with Wallet in the run it
         // must not.
-        let result = try await withoutStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.accountsSynced == 1)
         #expect(!result.problems.isEmpty)
@@ -794,7 +765,7 @@ struct BudgetStoreBankSyncTests {
             walletStore: wallet
         )
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.accountsSynced == 1)
         #expect(!result.problems.isEmpty)
@@ -822,7 +793,7 @@ struct BudgetStoreBankSyncTests {
             walletStore: wallet
         )
 
-        let result = try await withStoredAccessKey { try await store.syncBankAccounts() }
+        let result = try await store.syncBankAccounts()
 
         #expect(result.problems.contains { $0.contains("SimpleFIN didn't return this account") })
         let simpleFinAccount = try #require(try row(

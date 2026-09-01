@@ -11,8 +11,8 @@ import Testing
 @MainActor
 struct DemoDataSeederTests {
 
-    private func seedAndOpen(tracking: Bool = false) throws -> BudgetDatabase {
-        try DemoDataSeeder.seed(tracking: tracking)
+    private func seedAndOpen(tracking: Bool = false, now: Date = Date()) throws -> BudgetDatabase {
+        try DemoDataSeeder.seed(tracking: tracking, now: now)
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
         return try BudgetDatabase(path: dbPath)
     }
@@ -44,6 +44,18 @@ struct DemoDataSeederTests {
         let month = try await database.fetchBudgetMonth(month: currentMonth)
 
         #expect(month.toBudget != nil)
+    }
+
+    @Test func newestCheckingTransactionsStayUnclearedAtMonthEnd() async throws {
+        let calendar = Calendar(identifier: .gregorian)
+        let august31 = try #require(calendar.date(from: DateComponents(year: 2026, month: 8, day: 31, hour: 12)))
+        let database = try seedAndOpen(now: august31)
+        let checking = try #require(try await database.fetchAccounts().first { $0.name == "Chase Checking" })
+        let newest = try #require(try await database.fetchTransactions()
+            .filter { $0.accountId == checking.id }
+            .max { $0.date < $1.date })
+
+        #expect(!newest.cleared)
     }
 
     // Two pages so the demo exercises the dashboard switcher (GH #120);

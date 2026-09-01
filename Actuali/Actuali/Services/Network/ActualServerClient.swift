@@ -776,6 +776,63 @@ actor ActualServerClient {
         return data
     }
 
+    /// Upload a budget archive to `/sync/upload-user-file`, registering it on
+    /// the server. Returns the sync group id the server assigned (a fresh one
+    /// when no `X-ACTUAL-GROUP-ID` is sent, as for a newly created file).
+    /// Mirrors upstream's upload (loot-core cloud-storage.ts:289) minus the
+    /// encryption branch — Actuali only creates unencrypted files.
+    func uploadFile(zipData: Data, fileId: String, name: String) async throws -> String {
+        guard let serverURL else {
+            throw ActualServerError.invalidURL
+        }
+
+        guard let token else {
+            throw ActualServerError.unauthorized
+        }
+
+        let url = serverURL.appendingPathComponent("/sync/upload-user-file")
+        var request = makeRequest(url)
+        request.httpMethod = "POST"
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.setValue(fileId, forHTTPHeaderField: "X-ACTUAL-FILE-ID")
+        // Upstream sends encodeURIComponent(budgetName), whose unreserved set
+        // is exactly this (ASCII only — CharacterSet.alphanumerics would leave
+        // non-ASCII letters unescaped and produce an invalid header value).
+        let unreserved = CharacterSet(
+            charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_.!~*'()"
+        )
+        let encodedName = name.addingPercentEncoding(withAllowedCharacters: unreserved) ?? name
+        request.setValue(encodedName, forHTTPHeaderField: "X-ACTUAL-NAME")
+        request.setValue("2", forHTTPHeaderField: "X-ACTUAL-FORMAT")
+        request.setValue("application/encrypted-file", forHTTPHeaderField: "Content-Type")
+        request.httpBody = zipData
+
+        let (data, response) = try await send(request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+
+        if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let message = String(data: data, encoding: .utf8)
+            throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        struct UploadResponse: Decodable {
+            let status: String
+            let groupId: String?
+        }
+        let decoded = try JSONDecoder().decode(UploadResponse.self, from: data)
+        guard decoded.status == "ok", let groupId = decoded.groupId else {
+            throw ActualServerError.invalidResponse
+        }
+        return groupId
+    }
+
     func getFileInfo(fileId: String) async throws -> FileInfoResponse.FileInfo {
         guard let serverURL else {
             throw ActualServerError.invalidURL
@@ -813,6 +870,44 @@ actor ActualServerClient {
         }
 
         return fileInfo
+    }
+
+    /// `POST /sync/delete-user-file` — marks the file deleted on the server for
+    /// every client. Mirrors upstream's `removeFile` (cloud-storage.ts), which
+    /// sends the token in the body; the header is our usual transport for it.
+    func deleteFile(fileId: String) async throws {
+        guard let serverURL else { throw ActualServerError.invalidURL }
+        guard let token else { throw ActualServerError.unauthorized }
+
+        let url = serverURL.appendingPathComponent("/sync/delete-user-file")
+        var request = makeRequest(url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(token, forHTTPHeaderField: "X-ACTUAL-TOKEN")
+        request.httpBody = try JSONEncoder().encode(["token": token, "fileId": fileId])
+
+        let (data, response) = try await send(request)
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw ActualServerError.invalidResponse
+        }
+        // Callers treat .fileNotFound as "already deleted" and destroy the
+        // local copy, so nothing that isn't the Actual server's own answer may
+        // map to it: an auth proxy's login page is named as such, and 404 —
+        // which the server never sends for a missing file (it answers 400, its
+        // own FIXME notwithstanding) — stays a plain HTTP error, since it
+        // usually means a proxy or a stripped route.
+        if looksLikeAuthProxy(httpResponse, data: data) {
+            throw ActualServerError.authProxyBlocked
+        }
+        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
+            throw ActualServerError.fileNotFound
+        }
+        guard httpResponse.statusCode == 200 else {
+            throw ActualServerError.httpError(
+                statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
+            )
+        }
     }
 
     func getKeyInfo(fileId: String) async throws -> ServerKeyInfo {

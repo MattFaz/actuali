@@ -175,6 +175,10 @@ struct AddTransactionView: View {
             }
     }
 
+    private var showsStandardCategoryFields: Bool {
+        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
+    }
+
     /// Converting keeps the edited row on its own side of the transfer, so
     /// the form asks for one account — the other one — instead of the From/To
     /// pair a new transfer needs. The account row stays editable and keeps
@@ -426,7 +430,7 @@ struct AddTransactionView: View {
                                 Text("Split")
                                     .foregroundStyle(.secondary)
                             }
-                        } else if !isSplitting {
+                        } else if showsStandardCategoryFields && !isSplitting {
                             NavigationLink {
                                 CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
                                     userPickedCategory = true
@@ -452,7 +456,7 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
-                if isSplitting && !isTransfer {
+                if isSplitting && !isTransfer && showsStandardCategoryFields {
                     splitEntrySection
                 }
 
@@ -703,7 +707,8 @@ struct AddTransactionView: View {
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if isSplitting && !isTransfer && showsStandardCategoryFields
+            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -1004,7 +1009,18 @@ struct AmountInputField: UIViewRepresentable {
         ))
         toolbar.items = items
         toolbar.sizeToFit()
-        field.inputAccessoryView = toolbar
+        // inputAccessoryView sits flush on top of the keyboard, so to float the
+        // toolbar with a gap we host it in a taller, transparent container and
+        // pin the toolbar to the top — the leftover strip below is the space.
+        let gap: CGFloat = 4
+        let container = UIView(
+            frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
+        )
+        container.backgroundColor = .clear
+        toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
+        toolbar.autoresizingMask = [.flexibleWidth]
+        container.addSubview(toolbar)
+        field.inputAccessoryView = container
         context.coordinator.textField = field
         context.coordinator.sync(fromDisplay: text)
         return field
