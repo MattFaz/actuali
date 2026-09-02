@@ -198,7 +198,14 @@ struct BudgetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
+            .onAppear {
+                selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
+            }
+            .onChange(of: budgetStore.currentBudgetId) { _, _ in
+                selectedMonth = budgetStore.lastViewedBudgetMonth ?? Self.currentMonthString()
+            }
             .onChange(of: selectedMonth) { _, newMonth in
+                budgetStore.lastViewedBudgetMonth = newMonth
                 Task {
                     await budgetStore.fetchBudgetMonth(newMonth)
                 }

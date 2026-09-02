@@ -630,6 +630,23 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Budget month last viewed in this budget. This stays on the device, like
+    /// the account and dashboard defaults above, rather than syncing as budget data.
+    var lastViewedBudgetMonth: String? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return UserDefaults.standard.string(forKey: "lastViewedBudgetMonth_\(budgetId)")
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: "lastViewedBudgetMonth_\(budgetId)")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "lastViewedBudgetMonth_\(budgetId)")
+            }
+        }
+    }
+
     /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
     /// Persisted per budget in UserDefaults.
     var cardAccountMappings: [String: String] {
@@ -1126,6 +1143,10 @@ final class BudgetStore: ObservableObject {
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
+
+    /// Test-only: pause a load after its month snapshots are fetched so a
+    /// month request can race the final publish deterministically.
+    var budgetMonthsFetchedForTesting: (() async -> Void)?
 
     /// Test-only: release the open database and sync client the way the app's
     /// file-mutating paths (disconnect, downloadBudget) do, so a test can
@@ -1899,7 +1920,7 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
-        let requestedMonthBeforeLoad = requestedBudgetMonth
+        let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
 
         var db: BudgetDatabase?
@@ -1923,7 +1944,16 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
+                ? lastViewedBudgetMonth ?? currentMonth
+                : requestedBudgetMonth ?? lastViewedBudgetMonth ?? currentMonth
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: displayedMonth)
+            let fetchedWidgetBudgetMonth = displayedMonth == currentMonth
+                ? fetchedBudgetMonth
+                : try await openedDb.fetchBudgetMonth(month: currentMonth)
+            #if DEBUG
+            await budgetMonthsFetchedForTesting?()
+            #endif
             let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
                 id: "flags.goalTemplatesEnabled") == "true"
             let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
@@ -1973,11 +2003,11 @@ final class BudgetStore: ObservableObject {
             // A month selected while the database reads were in flight is
             // newer than this initial current-month snapshot. Leave that
             // request and its fetch result intact instead of replacing it.
-            if requestedBudgetMonth == requestedMonthBeforeLoad {
-                requestedBudgetMonth = currentMonth
+            if budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad {
+                requestedBudgetMonth = displayedMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedWidgetBudgetMonth
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
@@ -5113,8 +5143,10 @@ return transaction.id
     /// month (@State); this mirrors the latest request so an older in-flight
     /// fetch can't publish over a newer one after its await.
     private var requestedBudgetMonth: String?
+    private var budgetMonthRequestGeneration = 0
 
     func fetchBudgetMonth(_ month: String) async {
+        budgetMonthRequestGeneration += 1
         requestedBudgetMonth = month
         do {
             let fetched = try await database?.fetchBudgetMonth(month: month)
