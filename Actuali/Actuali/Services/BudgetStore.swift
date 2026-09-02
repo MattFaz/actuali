@@ -622,6 +622,23 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Budget month last viewed in this budget. This stays on the device, like
+    /// the account and dashboard defaults above, rather than syncing as budget data.
+    var lastViewedBudgetMonth: String? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return UserDefaults.standard.string(forKey: "lastViewedBudgetMonth_\(budgetId)")
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: "lastViewedBudgetMonth_\(budgetId)")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "lastViewedBudgetMonth_\(budgetId)")
+            }
+        }
+    }
+
     /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
     /// Persisted per budget in UserDefaults.
     var cardAccountMappings: [String: String] {
@@ -1913,7 +1930,11 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let displayedMonth = requestedBudgetMonth ?? lastViewedBudgetMonth ?? currentMonth
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: displayedMonth)
+            let fetchedWidgetBudgetMonth = displayedMonth == currentMonth
+                ? fetchedBudgetMonth
+                : try await openedDb.fetchBudgetMonth(month: currentMonth)
             let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
                 id: "flags.goalTemplatesEnabled") == "true"
             let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
@@ -1964,10 +1985,10 @@ final class BudgetStore: ObservableObject {
             // newer than this initial current-month snapshot. Leave that
             // request and its fetch result intact instead of replacing it.
             if requestedBudgetMonth == requestedMonthBeforeLoad {
-                requestedBudgetMonth = currentMonth
+                requestedBudgetMonth = displayedMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedWidgetBudgetMonth
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
