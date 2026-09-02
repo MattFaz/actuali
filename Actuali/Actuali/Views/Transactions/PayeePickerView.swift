@@ -33,13 +33,23 @@ struct PayeePickerView: View {
     }
 
     private var filteredPayees: [Payee] {
-        let payees = budgetStore.payees.filter { payee in
-            !payee.tombstone &&
-                payee.transferAccountId == nil
-        }
+        Self.filteredPayees(from: budgetStore.payees, searchText: trimmedSearchText)
+    }
 
-        guard !trimmedSearchText.isEmpty else {
-            return payees
+    nonisolated static func allowedPayees(_ payees: [Payee]) -> [Payee] {
+        payees.filter { payee in
+            !payee.tombstone && payee.transferAccountId == nil
+        }
+    }
+
+    nonisolated static func filteredPayees(
+        from payees: [Payee],
+        searchText: String
+    ) -> [Payee] {
+        let usablePayees = allowedPayees(payees)
+
+        guard !searchText.isEmpty else {
+            return usablePayees
                 .sorted {
                     $0.name.localizedCaseInsensitiveCompare($1.name)
                         == .orderedAscending
@@ -48,15 +58,10 @@ struct PayeePickerView: View {
                 .map { $0 }
         }
 
-        let lower = trimmedSearchText.lowercased()
+        let lower = searchText.lowercased()
 
-        return payees
-            .filter { payee in
-                payee.name.lowercased() != lower &&
-                    payee.name.localizedCaseInsensitiveContains(
-                        trimmedSearchText
-                    )
-            }
+        return usablePayees
+            .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
             .sorted { lhs, rhs in
                 let lhsPrefix = lhs.name.lowercased().hasPrefix(lower)
                 let rhsPrefix = rhs.name.lowercased().hasPrefix(lower)
@@ -81,15 +86,24 @@ struct PayeePickerView: View {
     }
 
     private var canCommitCustomPayee: Bool {
-        guard !trimmedSearchText.isEmpty else {
+        Self.canCommitCustomPayee(
+            searchText: trimmedSearchText,
+            payees: budgetStore.payees
+        )
+    }
+
+    nonisolated static func canCommitCustomPayee(
+        searchText: String,
+        payees: [Payee]
+    ) -> Bool {
+        guard !searchText.isEmpty else {
             return false
         }
 
-        return !budgetStore.payees.contains { payee in
+        return !payees.contains { payee in
             !payee.tombstone &&
                 payee.transferAccountId == nil &&
-                payee.name.caseInsensitiveCompare(trimmedSearchText)
-                    == .orderedSame
+                payee.name.caseInsensitiveCompare(searchText) == .orderedSame
         }
     }
 
@@ -184,25 +198,23 @@ struct PayeePickerView: View {
                             }
                         }
                     }
-                } else {
-                    if !filteredPayees.isEmpty {
-                        Section("Suggestions") {
-                            ForEach(filteredPayees) { payee in
-                                Button {
-                                    onSelect(payee)
-                                } label: {
-                                    HStack {
-                                        Image(
-                                            systemName: "clock.arrow.circlepath"
-                                        )
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
+                } else if !filteredPayees.isEmpty {
+                    Section("Suggestions") {
+                        ForEach(filteredPayees) { payee in
+                            Button {
+                                onSelect(payee)
+                            } label: {
+                                HStack {
+                                    Image(
+                                        systemName: "clock.arrow.circlepath"
+                                    )
+                                    .foregroundStyle(.secondary)
+                                    .font(.footnote)
 
-                                        Text(payee.name)
-                                            .foregroundStyle(.primary)
+                                    Text(payee.name)
+                                        .foregroundStyle(.primary)
 
-                                        Spacer()
-                                    }
+                                    Spacer()
                                 }
                             }
                         }
@@ -253,9 +265,10 @@ struct PayeePickerView: View {
                 }
             }
             .task {
-                suggestedPayees = await budgetStore.fetchCommonPayees()
+                suggestedPayees = Self.allowedPayees(
+                    await budgetStore.fetchCommonPayees()
+                )
             }
         }
     }
 }
-
