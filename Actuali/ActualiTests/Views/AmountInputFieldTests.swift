@@ -76,6 +76,42 @@ struct AmountInputFieldTests {
         #expect(box.value == "12")
     }
 
+    @Test func pastingGroupedDecimalPreservesTheWholeAmount() {
+        let (coordinator, textField, box) = makeField()
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "450,046.23"
+        )
+
+        #expect(textField.text == "450046.23")
+        #expect(box.value == "450046.23")
+    }
+
+    @Test func pastingAnOversizedNumberFallsBackInsteadOfCrashing() {
+        let (coordinator, textField, box) = makeField()
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "1,000,000,000,000,000,000,000"
+        )
+
+        #expect(Double(box.value) != nil)
+    }
+
+    @Test func pastingGroupedDecimalInConventionalModeKeepsSignAndCents() {
+        let (coordinator, textField, box) = makeField(
+            allowsNegative: true, conventionalAmountEntry: true
+        )
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "-450,046.23"
+        )
+
+        #expect(box.value == "-450046.23")
+    }
+
     @Test func conventionalModeKeepsExplicitDecimalEntry() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12.05", into: coordinator, textField)
