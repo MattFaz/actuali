@@ -5191,6 +5191,30 @@ return transaction.id
         await fetchBudgetMonth(month)
     }
 
+    /// Turn "rollover overspending" on or off for a category (GH #372), then
+    /// refetch the month so the published flag and Available recompute.
+    /// Mirrors the web's balance menu: the flag is written from this month
+    /// through the last month the web would have created, so both clients
+    /// agree on which rows carry it. `now` pins the range's end for tests.
+    func setBudgetCarryover(month: String, categoryId: String, enabled: Bool, now: Date = Date()) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetCarryover(
+            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
+        await fetchBudgetMonth(month)
+    }
+
+    /// The months upstream `setCategoryCarryover` flags: `month` through the
+    /// latest month in the web's sheet, which `createAllBudgets` extends to
+    /// twelve months past today (`getBudgetRange`). A month already beyond
+    /// that gets flagged alone. Pure, so it stays callable off the main actor.
+    nonisolated static func carryoverMonths(from month: String, now: Date = Date()) -> [String] {
+        let latest = BudgetMonthMath.addMonths(BudgetMonthMath.currentMonth(now), 12)
+        let count = max(BudgetMonthMath.differenceInCalendarMonths(latest, month), 0)
+        return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
+    }
+
     /// Move budgeted funds between categories (GH #128), nil meaning the
     /// month's "To Budget" pool on that side. Writes through the sync engine
     /// (optimistic local-first), then refetches the month so both categories'

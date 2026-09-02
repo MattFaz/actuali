@@ -344,6 +344,7 @@ struct CompactCategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(balanceActionLabel)
+                .rolloverIndicator(category.carryoverEnabled, color: categoryBalanceColor)
             }
             .frame(maxWidth: .infinity, alignment: .trailing)
             .layoutPriority(1)
@@ -379,6 +380,7 @@ struct CompactCategoryBudgetRow: View {
             .buttonStyle(.plain)
             .disabled(category.available == 0)
             .accessibilityLabel(balanceActionLabel)
+            .rolloverIndicator(category.carryoverEnabled, color: categoryBalanceColor)
         }
     }
 
