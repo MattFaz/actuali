@@ -8,10 +8,9 @@ struct AddTransactionView: View {
     @Environment(\.isPresented) private var isPresented
 
     private let editing: Transaction?
-    /// Called after a successful save (not on cancel). Lets a presenting flow
-    /// react to the write — e.g. the pending-imports inbox clears the queued
-    /// item only once its edited copy actually reaches the budget.
-    private let onSaved: (() -> Void)?
+    /// Called after a successful save (not on cancel). The optional id is the
+    /// exact row written by the save path, or nil when nothing was created.
+    private let onSaved: ((String?) -> Void)?
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -49,7 +48,7 @@ struct AddTransactionView: View {
         categoryId: String? = nil,
         isIncome: Bool = false,
         cleared: Bool = false,
-        onSaved: (() -> Void)? = nil
+        onSaved: ((String?) -> Void)? = nil
     ) {
         self.editing = nil
         self.onSaved = onSaved
@@ -173,6 +172,10 @@ struct AddTransactionView: View {
                 if lhs.offBudget != rhs.offBudget { return !lhs.offBudget }
                 return lhs.sortOrder < rhs.sortOrder
             }
+    }
+
+    private var showsStandardCategoryFields: Bool {
+        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
 
     /// Converting keeps the edited row on its own side of the transfer, so
@@ -426,7 +429,7 @@ struct AddTransactionView: View {
                                 Text("Split")
                                     .foregroundStyle(.secondary)
                             }
-                        } else if !isSplitting {
+                        } else if showsStandardCategoryFields && !isSplitting {
                             NavigationLink {
                                 CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
                                     userPickedCategory = true
@@ -452,7 +455,7 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
-                if isSplitting && !isTransfer {
+                if isSplitting && !isTransfer && showsStandardCategoryFields {
                     splitEntrySection
                 }
 
@@ -703,7 +706,8 @@ struct AddTransactionView: View {
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if isSplitting && !isTransfer && showsStandardCategoryFields
+            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -728,8 +732,8 @@ struct AddTransactionView: View {
         )
 
         do {
-            try await budgetStore.saveTransaction(form, editing: editing)
-            onSaved?()
+            let savedTransactionId = try await budgetStore.saveTransaction(form, editing: editing)
+            onSaved?(savedTransactionId)
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the
@@ -1146,7 +1150,15 @@ struct AmountInputField: UIViewRepresentable {
                 pendingOperator = nil
             }
 
-            if string.isEmpty {
+            // UIKit delivers a pasted value as one replacement string. Parse
+            // that complete value before feeding characters through the
+            // calculator-mode digit shifter; otherwise a grouping comma is
+            // mistaken for the decimal point ("450,046.23" became "450.04").
+            if string.count > 1,
+               let pastedValue = AmountParser.parse(string),
+               Transaction.cents(fromDollars: pastedValue) != nil {
+                setOperand(to: pastedValue)
+            } else if string.isEmpty {
                 handleBackspace()
             } else {
                 for character in string {

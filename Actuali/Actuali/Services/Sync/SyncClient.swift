@@ -854,36 +854,53 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
-    /// Persist the currency code to the budget's `preferences` table (Actual's
-    /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
-    /// other clients. Without this, the picker only ever wrote to
-    /// UserDefaults — the value the app treats as authoritative on every DB
-    /// load was never updated, so it silently reverted to whatever the
-    /// server/PWA last set (GH #59).
-    func updateCurrencyCode(_ code: String) async throws {
+    // MARK: - Synced Preferences
+
+    /// Generic writer for any preference key in Actual's `preferences` table.
+    /// Emits CRDT messages, applies locally, updates the Merkle tree, and pushes to server in background.
+    /// Passing `value: nil` sets the preference value to null / clears it.
+    func setPreference(key: String, value: String?) async throws {
         guard let database else { throw SyncError.notConfigured }
 
-        logger.debug("updateCurrencyCode() - code: \(code, privacy: .public)")
+        logger.debug("setPreference() - key: \(key, privacy: .public)")
 
-        let fields: [(column: String, value: (any Sendable)?)] = [("value", code)]
-        let messages = try await messageGenerator.messages(dataset: "preferences", row: "defaultCurrencyCode", fields: fields)
-        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
+        let fields: [(column: String, value: (any Sendable)?)] = [("value", value)]
+        let messages = try await messageGenerator.messages(dataset: "preferences", row: key, fields: fields)
 
-        // 2. Apply locally (optimistic) through the same LWW upsert incoming
-        //    messages use, so a local edit and the identical edit arriving
-        //    from another device converge byte-for-byte.
         try database.applyMessages(messages)
 
-        // 3. Store messages and update merkle
         for msg in try database.insertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
         try saveClock()
-        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
-        // 4. Push to the server in the background
         scheduleAutomaticSync()
+    }
+
+    /// Persist the currency code to the budget's `preferences` table (Actual's
+    /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
+    /// other clients (GH #59).
+    func updateCurrencyCode(_ code: String) async throws {
+        try await setPreference(key: "defaultCurrencyCode", value: code)
+    }
+
+    /// Persists or clears a credit card account configuration in the budget's `preferences` table
+    /// under `actuali:credit_card:<accountId>`, so it syncs across all devices.
+    ///
+    /// Upstream compatibility: Actual's `preferences` table (`packages/loot-core/src/server/preferences/app.ts`)
+    /// is a key-value store (`id TEXT PRIMARY KEY, value TEXT`) that treats unknown preference keys as passthrough
+    /// synced items without schema constraints or client-side side-effects.
+    func setCreditCardConfig(accountId: String, config: CreditCardConfig?) async throws {
+        let key = BudgetDatabase.creditCardPreferenceKey(for: accountId)
+        let jsonString: String?
+        if let config {
+            let data = try JSONEncoder().encode(config)
+            jsonString = String(data: data, encoding: .utf8)
+        } else {
+            jsonString = nil
+        }
+        try await setPreference(key: key, value: jsonString)
     }
 
     /// Set the budgeted amount for a category in a month (optimistic

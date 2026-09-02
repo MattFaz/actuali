@@ -208,18 +208,20 @@ struct BudgetStoreSaveTransactionTests {
 
     // MARK: - End-to-end save (create and edit)
 
-    @Test func savingANewTransactionPersistsRowWithImportedPayee() async throws {
+    @Test func savingANewTransactionPersistsRowAndReturnsCreatedID() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
 
-        try await store.saveTransaction(
+        let id = try await store.saveTransaction(
             form(type: .expense, amount: "10.50", payeeName: "Trader Joe's")
         )
 
+        let returnedID = try #require(id)
         let rows = try transactionRows(path: path)
         #expect(rows.count == 1)
         let row = try #require(rows.first)
+        #expect(row["id"] == returnedID)
         #expect(row["acct"] == "acct-1")
         #expect(row["amount"] == -1050)
         // New transactions record the typed payee name as imported_description
@@ -228,6 +230,44 @@ struct BudgetStoreSaveTransactionTests {
         let createdPayee = try #require(store.payees.first { $0.name == "Trader Joe's" })
         #expect(row["description"] == createdPayee.id)
         #expect(row["tombstone"] == 0)
+    }
+
+    @Test func editingATransactionReturnsNoCreatedID() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        let original = transaction(payeeId: nil, payeeName: nil)
+        try database.insertTransaction(original)
+
+        let id = try await store.saveTransaction(
+            form(type: .expense, amount: "10.50", payeeName: "Updated"),
+            editing: original
+        )
+        #expect(id == nil)
+    }
+
+    @Test func savingANewOffBudgetTransactionDropsCategoriesAndSplits() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Brokerage", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0)
+        ]
+        var offBudgetForm = form(amount: "10.50")
+        offBudgetForm.categoryId = "cat-food"
+        offBudgetForm.splits = [
+            .init(categoryId: "cat-food", amount: "5.25"),
+            .init(categoryId: "cat-fun", amount: "5.25")
+        ]
+
+        try await store.saveTransaction(offBudgetForm)
+
+        let rows = try transactionRows(path: path)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
+        #expect(row["category"] == nil)
+        #expect(row["isParent"] == 0)
     }
 
     @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {

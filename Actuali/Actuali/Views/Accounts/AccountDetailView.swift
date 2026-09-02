@@ -85,6 +85,13 @@ struct AccountDetailView: View {
         note = await budgetStore.fetchNote(id: EntityNote.accountNoteId(account.id))
     }
 
+    /// Fire the category-funding automation only for a newly-created manual
+    /// standard expense. The callback carries the exact saved row id, so
+    /// backdated entries and transactions in other accounts cannot be mixed up.
+    private func handleManualTransactionSaved(_ savedTransactionId: String?) {
+        CategoryFundingAutomation.processIfNeeded(savedTransactionId, using: budgetStore)
+    }
+
     /// The account's note (GH #198), presented exactly as a category's is (see
     /// CategoryTransactionsView): visible without digging, tap to edit. Hidden
     /// while searching — a search is about finding transactions, not reading
@@ -241,7 +248,7 @@ struct AccountDetailView: View {
                                     transaction: transaction,
                                     showAccount: false,
                                     showDate: false,
-                                    isSelectionMode: isSelecting,
+                                    isSelectionMode: $isSelecting,
                                     isSelected: selectedTransactionIds.contains(transaction.id),
                                     editing: $editingTransaction,
                                     onToggleSelect: {
@@ -263,7 +270,7 @@ struct AccountDetailView: View {
                             TransactionListRow(
                                 transaction: transaction,
                                 showAccount: false,
-                                isSelectionMode: isSelecting,
+                                isSelectionMode: $isSelecting,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
@@ -385,7 +392,10 @@ struct AccountDetailView: View {
                 .environmentObject(budgetStore)
         }
         .sheet(isPresented: $showingAddTransaction) {
-            AddTransactionView(accountId: account.id)
+            AddTransactionView(
+                accountId: account.id,
+                onSaved: handleManualTransactionSaved
+            )
                 .environmentObject(budgetStore)
         }
         .sheet(item: $editingTransaction) { transaction in

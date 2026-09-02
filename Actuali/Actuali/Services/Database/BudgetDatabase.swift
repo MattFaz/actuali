@@ -2741,6 +2741,41 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Bank Sync
 
+    /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
+    /// the budget file began, wherever it began: the messages travel with the
+    /// file, so every device answers the same. Nil for a budget with no
+    /// messages yet. HLC timestamps sort lexically and start with the ISO
+    /// date, so MIN gives the earliest and its first ten characters the day.
+    ///
+    /// That day is UTC, unlike every other `YYYYMMDD` here, which comes from
+    /// `Calendar.current`. Deliberate: agreeing across devices is the whole
+    /// point, and a local reading would have two phones in different zones
+    /// answer differently for the same file. Worst case it names the day
+    /// after the one the file was really made on, which only shifts an import
+    /// floor by a day.
+    func earliestMessageDay() async throws -> Int? {
+        try await dbQueue.read { db in
+            guard let timestamp = try String.fetchOne(
+                db, sql: "SELECT MIN(timestamp) FROM messages_crdt"
+            ), timestamp.count >= 10 else { return nil }
+            return Int(timestamp.prefix(10).replacingOccurrences(of: "-", with: ""))
+        }
+    }
+
+    /// The id of an account's opening-balance row, if it has one. A backfill
+    /// needs it to hand back what the rows it imports were already counted
+    /// for (see `absorbIntoStartingBalance`).
+    func startingBalanceTransactionId(accountId: String) async throws -> String? {
+        try await dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE acct = ? AND starting_balance_flag = 1
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY date
+                """, arguments: [accountId])
+        }
+    }
+
     /// Every account wired up to a bank feed, in the order the accounts tab
     /// lists them. Empty (rather than an error) on a budget file old enough
     /// to predate the columns — nothing can be linked in that case anyway.
@@ -3563,7 +3598,35 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    // MARK: - Preferences
+    // MARK: - Preferences (Synced Budget-level Key-Value Store)
+
+    /// Preference key prefix for synced credit card configurations.
+    static let creditCardPreferenceKeyPrefix = "actuali:credit_card:"
+
+    /// Preference key for a specific account's credit card config.
+    static func creditCardPreferenceKey(for accountId: String) -> String {
+        "\(creditCardPreferenceKeyPrefix)\(accountId)"
+    }
+
+    /// Fetches all synced credit card configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
+    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return [:] }
+            let prefix = Self.creditCardPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
+            )
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let value: String = row["value"],
+                      let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
+                result[String(id.dropFirst(prefix.count))] = config
+            }
+        }
+    }
 
     /// Fetch currency code from preferences table (stored by Actual Budget)
     /// Returns nil if not set, caller should default to "USD"
