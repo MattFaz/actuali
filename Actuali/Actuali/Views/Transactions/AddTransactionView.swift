@@ -8,10 +8,9 @@ struct AddTransactionView: View {
     @Environment(\.isPresented) private var isPresented
 
     private let editing: Transaction?
-    /// Called after a successful save (not on cancel). Lets a presenting flow
-    /// react to the write — e.g. the pending-imports inbox clears the queued
-    /// item only once its edited copy actually reaches the budget.
-    private let onSaved: (() -> Void)?
+    /// Called after a successful save (not on cancel). The optional id is the
+    /// exact row written by the save path, or nil when nothing was created.
+    private let onSaved: ((String?) -> Void)?
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -49,7 +48,7 @@ struct AddTransactionView: View {
         categoryId: String? = nil,
         isIncome: Bool = false,
         cleared: Bool = false,
-        onSaved: (() -> Void)? = nil
+        onSaved: ((String?) -> Void)? = nil
     ) {
         self.editing = nil
         self.onSaved = onSaved
@@ -733,8 +732,8 @@ struct AddTransactionView: View {
         )
 
         do {
-            try await budgetStore.saveTransaction(form, editing: editing)
-            onSaved?()
+            let savedTransactionId = try await budgetStore.saveTransaction(form, editing: editing)
+            onSaved?(savedTransactionId)
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the

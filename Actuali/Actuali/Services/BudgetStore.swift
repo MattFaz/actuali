@@ -116,6 +116,23 @@ struct CustomHeader: Codable, Identifiable, Equatable {
 
 @MainActor
 final class BudgetStore: ObservableObject {
+    private var categoryFundingTask: Task<Void, Never>?
+
+    func enqueueCategoryFunding(
+        savedTransactionId: String,
+        defaults: UserDefaults
+    ) {
+        let previousTask = categoryFundingTask
+        categoryFundingTask = Task { @MainActor [weak self] in
+            _ = await previousTask?.result
+            guard let self else { return }
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: self,
+                defaults: defaults
+            )
+        }
+    }
     // MARK: - Published State
 
     @Published var isLoading = false
@@ -4043,7 +4060,8 @@ final class BudgetStore: ObservableObject {
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
-    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws {
+      @discardableResult
+    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
         var form = form
         // The add form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.
@@ -4066,7 +4084,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form, otherAccountId: toAccountId,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 try await updateTransfer(
                     original: original,
@@ -4078,7 +4096,7 @@ final class BudgetStore: ObservableObject {
                     cleared: form.cleared,
                     categoryId: form.categoryId
                 )
-                return
+                return nil
             }
             try await createTransfer(
                 fromAccountId: form.accountId,
@@ -4088,6 +4106,7 @@ final class BudgetStore: ObservableObject {
                 notes: notes,
                 cleared: form.cleared
             )
+            return nil
 
         case .split(let amountCents, let lines):
             if let original {
@@ -4099,7 +4118,7 @@ final class BudgetStore: ObservableObject {
                         amountCents: amountCents, lines: lines,
                         date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 // Editing a plain transaction into a split: the original row
                 // becomes the parent and the form's lines its children.
@@ -4110,7 +4129,7 @@ final class BudgetStore: ObservableObject {
                     amountCents: amountCents, lines: lines,
                     date: date, notes: notes
                 )
-                return
+                return nil
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
@@ -4177,6 +4196,7 @@ final class BudgetStore: ObservableObject {
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
             }
+            return nil
 
         case .standard(let amountCents):
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
@@ -4191,7 +4211,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return
+                    return nil
                 }
                 // Split parents: the amount is the children's sum and the
                 // category lives on the children — never overwrite either
@@ -4219,6 +4239,7 @@ final class BudgetStore: ObservableObject {
                     try await cascadeSharedFieldsToChildren(
                         of: updated, originalPayeeId: original.payeeId)
                 }
+                return nil
             } else {
                 let transaction = Transaction(
                     id: UUID().uuidString,
@@ -4243,6 +4264,7 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
+return transaction.id
             }
         }
     }
