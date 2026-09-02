@@ -328,17 +328,20 @@ struct AddTransactionView: View {
                             }
                         }
                     }
-
                     Button {
                         loadNearbyPayees()
                         showPayeePicker = true
                     } label: {
                         HStack {
                             Text("Payee")
+                                .foregroundStyle(.secondary)
                             Spacer()
-                            Text(payeeName.isEmpty ? "None" : payeeName)
-                                .foregroundStyle(payeeName.isEmpty ? .secondary : .primary)
+                            if !payeeName.isEmpty {
+                                Text(payeeName)
+                                    .foregroundStyle(.primary)
+                            }
                         }
+                        .contentShape(Rectangle()) // Ensures the whole row is tappable
                     }
                     .buttonStyle(.plain)
                     .sheet(isPresented: $showPayeePicker) {
