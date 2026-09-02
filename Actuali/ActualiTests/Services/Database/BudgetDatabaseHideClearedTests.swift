@@ -139,6 +139,24 @@ struct BudgetDatabaseHideClearedTests {
         #expect(all.map(\.id) == ["t-pending", "t-cleared"])
     }
 
+    @Test func hideReconciledDropsOnlyReconciledRows() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedLookups(db)
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, description, amount, date, sort_order, cleared, reconciled) VALUES
+                    ('t-pending',    'acct-1', 'payee-market', -1000, 20260603, 3, 0, 0),
+                    ('t-cleared',    'acct-1', 'payee-market', -2000, 20260602, 2, 1, 0),
+                    ('t-reconciled', 'acct-1', 'payee-market', -3000, 20260601, 1, 1, 1);
+            """)
+        }
+
+        let visible = try await db.fetchTransactions(hideReconciled: true)
+        #expect(visible.map(\.id) == ["t-pending", "t-cleared"])
+    }
+
     @Test func unclearedOnlyComposesWithAccountScopeAndSearch() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }

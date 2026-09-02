@@ -497,6 +497,14 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Whether transaction lists hide transactions locked by reconciliation.
+    /// Persisted to UserDefaults, defaults to off (GH #355).
+    @Published var hideReconciledTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
+        }
+    }
+
     /// Whether the Accounts list drops its Closed Accounts section, for
     /// budgets that have accumulated closed accounts over the years
     /// (GH #277). Persisted to UserDefaults, defaults to off.
@@ -1201,6 +1209,8 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: defaults
             .bool(forKey: "hideClearedTransactions"))
+        _hideReconciledTransactions = Published(initialValue: defaults
+            .bool(forKey: "hideReconciledTransactions"))
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
@@ -2587,12 +2597,13 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        unclearedOnly: Bool = false
+        unclearedOnly: Bool = false,
+        hideReconciled: Bool = false
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: unclearedOnly
+                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)

@@ -41,7 +41,8 @@ struct TransactionsListView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
-                unclearedOnly: store.hideClearedTransactions
+                unclearedOnly: store.hideClearedTransactions,
+                hideReconciled: store.hideReconciledTransactions
             )
         }
         pager = created
@@ -62,6 +63,12 @@ struct TransactionsListView: View {
                         "No Uncleared Transactions",
                         systemImage: "checkmark.circle",
                         description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
+                    )
+                } else if budgetStore.hideReconciledTransactions {
+                    ContentUnavailableView(
+                        "No Unreconciled Transactions",
+                        systemImage: "lock.fill",
+                        description: Text("Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest.")
                     )
                 } else {
                     ContentUnavailableView(
@@ -136,6 +143,14 @@ struct TransactionsListView: View {
                     )
                 }
             }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
+                    Label(
+                        "Hide Reconciled Transactions",
+                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
+                    )
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
@@ -166,6 +181,9 @@ struct TransactionsListView: View {
         .onChange(of: budgetStore.hideClearedTransactions) {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .refreshable {
