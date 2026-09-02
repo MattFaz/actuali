@@ -12,6 +12,7 @@ struct PayeePickerView: View {
 
     @State private var searchText: String
     @State private var suggestedPayees: [Payee] = []
+    @FocusState private var isSearchFocused: Bool
 
     init(
         payeeName: String,
@@ -110,6 +111,18 @@ struct PayeePickerView: View {
     var body: some View {
         NavigationStack {
             List {
+                // Custom search field (replaces .searchable)
+                Section {
+                    HStack {
+                        Image(systemName: "magnifyingglass")
+                            .foregroundStyle(.secondary)
+                        TextField("Search payees", text: $searchText)
+                            .focused($isSearchFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                    }
+                }
+
                 if trimmedSearchText.isEmpty {
                     if !suggestedPayees.isEmpty {
                         Section("Suggested Payees") {
@@ -118,15 +131,11 @@ struct PayeePickerView: View {
                                     onSelect(payee)
                                 } label: {
                                     HStack {
-                                        Image(
-                                            systemName: "clock.arrow.circlepath"
-                                        )
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
-
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
                                         Text(payee.name)
                                             .foregroundStyle(.primary)
-
                                         Spacer()
                                     }
                                 }
@@ -144,32 +153,19 @@ struct PayeePickerView: View {
                                         Image(systemName: "location.fill")
                                             .foregroundStyle(.secondary)
                                             .font(.footnote)
-
                                         Text(nearby.payee.name)
                                             .foregroundStyle(.primary)
-
                                         Spacer()
-
-                                        Text(
-                                            LocationUtils.formatDistance(
-                                                meters: nearby.distanceMeters
-                                            )
-                                        )
-                                        .font(.caption2)
-                                        .foregroundStyle(.secondary)
+                                        Text(LocationUtils.formatDistance(meters: nearby.distanceMeters))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
                                     }
                                 }
-                                .swipeActions(
-                                    edge: .trailing,
-                                    allowsFullSwipe: true
-                                ) {
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                     Button(role: .destructive) {
                                         onDeleteNearby(nearby)
                                     } label: {
-                                        Label(
-                                            "Delete",
-                                            systemImage: "trash"
-                                        )
+                                        Label("Delete", systemImage: "trash")
                                     }
                                 }
                             }
@@ -183,15 +179,11 @@ struct PayeePickerView: View {
                                     onSelect(payee)
                                 } label: {
                                     HStack {
-                                        Image(
-                                            systemName: "clock.arrow.circlepath"
-                                        )
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
-
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
                                         Text(payee.name)
                                             .foregroundStyle(.primary)
-
                                         Spacer()
                                     }
                                 }
@@ -205,15 +197,11 @@ struct PayeePickerView: View {
                                 onSelect(payee)
                             } label: {
                                 HStack {
-                                    Image(
-                                        systemName: "clock.arrow.circlepath"
-                                    )
-                                    .foregroundStyle(.secondary)
-                                    .font(.footnote)
-
+                                    Image(systemName: "clock.arrow.circlepath")
+                                        .foregroundStyle(.secondary)
+                                        .font(.footnote)
                                     Text(payee.name)
                                         .foregroundStyle(.primary)
-
                                     Spacer()
                                 }
                             }
@@ -229,10 +217,8 @@ struct PayeePickerView: View {
                             HStack {
                                 Image(systemName: "plus.circle")
                                     .foregroundStyle(.tint)
-
                                 Text("Use \"\(trimmedSearchText)\"")
                                     .foregroundStyle(.primary)
-
                                 Spacer()
                             }
                         }
@@ -241,11 +227,6 @@ struct PayeePickerView: View {
             }
             .navigationTitle("Payee")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $searchText,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search payees"
-            )
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -263,6 +244,18 @@ struct PayeePickerView: View {
                         }
                     }
                 }
+
+                // Keyboard toolbar with Done button
+                ToolbarItemGroup(placement: .keyboard) {
+                    Spacer()
+                    Button("Done") {
+                        isSearchFocused = false
+                    }
+                }
+            }
+            .onAppear {
+                // Open keyboard automatically
+                isSearchFocused = true
             }
             .task {
                 suggestedPayees = Self.allowedPayees(
