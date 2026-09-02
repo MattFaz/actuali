@@ -1700,7 +1700,8 @@ final class BudgetDatabase: Sendable {
                     hidden: cat.hidden == 1,
                     groupHidden: group.hidden == 1,
                     goal: targetBudgets[cat.id]?.goal,
-                    longGoal: targetBudgets[cat.id]?.longGoal == 1
+                    longGoal: targetBudgets[cat.id]?.longGoal == 1,
+                    carryoverEnabled: targetBudgets[cat.id]?.flag == true
                 )
             }
 

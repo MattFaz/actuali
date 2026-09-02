@@ -115,6 +115,12 @@ struct CategoryBudget: Identifiable, Hashable {
     /// progress is measured against the balance rather than this month's
     /// budgeted amount, mirroring the web's BalanceWithCarryover.
     var longGoal = false
+    
+    /// The row's `carryover` flag ("Rollover overspending" in the web's
+    /// balance menu): a negative balance rolls into next month instead of
+    /// being absorbed by To Budget (envelope) or dropped (tracking). Distinct
+    /// from `carryover`, which is the amount that actually rolled in.
+    var carryoverEnabled = false
 
     var isEffectivelyHidden: Bool { hidden || groupHidden }
 
