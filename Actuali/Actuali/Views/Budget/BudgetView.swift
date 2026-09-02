@@ -1895,6 +1895,7 @@ struct CategoryBudgetDetailSheet: View {
                         get: { rolloverEnabled },
                         set: { enabled in
                             guard !isSavingRollover else { return }
+                            isSavingRollover = true
                             rolloverEnabled = enabled
                             Task { await saveRollover(enabled) }
                         }
@@ -2096,7 +2097,6 @@ struct CategoryBudgetDetailSheet: View {
     /// Writes immediately, like the web's balance menu — a rollover change
     /// is a budget edit, not part of the name draft the Save button commits.
     private func saveRollover(_ enabled: Bool) async {
-        isSavingRollover = true
         errorMessage = nil
         do {
             try await budgetStore.setBudgetCarryover(
