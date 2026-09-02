@@ -156,7 +156,7 @@ struct PendingImportsView: View {
                 categoryId: nil,
                 isIncome: item.isIncome,
                 cleared: false,
-                onSaved: { store.remove(id: item.id) }
+                onSaved: { _ in store.remove(id: item.id) }
             )
             .environmentObject(budgetStore)
         } else {

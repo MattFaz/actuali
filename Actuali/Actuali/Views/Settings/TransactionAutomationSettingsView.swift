@@ -161,6 +161,17 @@ struct TransactionAutomationSettingsView: View {
             }
 
             Section {
+                if budgetStore.currentBudgetId != nil {
+                    NavigationLink {
+                        CategoryFundingAutomationView()
+                    } label: {
+                        Label("Category Funding Settings", systemImage: "arrow.up.circle")
+                    }
+                } else {
+                    Text("Load a budget to configure Category Funding.")
+                        .foregroundStyle(.secondary)
+                }
+
                 NavigationLink {
                     BankSyncSetupView()
                 } label: {
@@ -184,9 +195,9 @@ struct TransactionAutomationSettingsView: View {
                 Text("Automations")
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Connect SimpleFIN to import transactions straight from your bank, set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN, log tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
                 } else {
-                    Text("Connect SimpleFIN to import transactions straight from your bank, or set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN or log tap-to-pay purchases from Apple Wallet.")
                 }
             }
         }
