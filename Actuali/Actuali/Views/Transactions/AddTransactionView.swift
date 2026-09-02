@@ -543,7 +543,14 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(line: $line, txType: txType, remainingCents: splitRemainingCents)
+                SplitLineRow(
+                    line: $line,
+                    txType: txType,
+                    remainingCents: splitRemainingCents,
+                    nearbyPayees: $nearbyPayees,
+                    onOpenPayeePicker: loadNearbyPayees,
+                    onDeleteNearby: deleteNearbySuggestion
+                )
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -753,8 +760,7 @@ enum SplitEntryMath {
     }
 }
 
-/// One editable split line: a category picked through a sheet and an amount.
-/// Borderless button so the amount field keeps its own tap target in the row.
+/// One editable split line with category, amount, payee, and notes controls.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
@@ -764,7 +770,11 @@ private struct SplitLineRow: View {
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
+    @Binding var nearbyPayees: [NearbyPayee]
+    let onOpenPayeePicker: () -> Void
+    let onDeleteNearby: (NearbyPayee) -> Void
     @State private var showCategoryPicker = false
+    @State private var showPayeePicker = false
 
     private var categoryName: String {
         guard let id = line.categoryId else { return "Category" }
@@ -830,11 +840,34 @@ private struct SplitLineRow: View {
                     .buttonStyle(.borderless)
                 }
             }
-            // Empty payee inherits the transaction's payee
-            TextField("Payee (optional)", text: $line.payeeName)
-                .font(.subheadline)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.words)
+            // Empty payee inherits the transaction's payee.
+            Button {
+                onOpenPayeePicker()
+                showPayeePicker = true
+            } label: {
+                Text(line.payeeName.isEmpty ? "Payee (optional)" : line.payeeName)
+                    .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .font(.subheadline)
+            .sheet(isPresented: $showPayeePicker) {
+                PayeePickerView(
+                    payeeName: line.payeeName,
+                    nearbyPayees: $nearbyPayees,
+                    onSelect: { payee in
+                        line.payeeName = payee.name
+                        showPayeePicker = false
+                    },
+                    onCommit: { name in
+                        line.payeeName = name
+                        showPayeePicker = false
+                    },
+                    onDeleteNearby: onDeleteNearby
+                )
+                .environmentObject(budgetStore)
+            }
             TextField("Notes (optional)", text: $line.notes)
                 .font(.subheadline)
             NoteLinkRows(text: line.notes)
