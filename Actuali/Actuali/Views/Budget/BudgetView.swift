@@ -1135,9 +1135,7 @@ struct CategoryBudgetRow: View {
                 } label: {
                     BudgetAmountPill(
                         text: budgetStore.displayBudgetCell(category.available),
-                        color: balanceColor(
-                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
-                            zero: .secondary)
+                        color: balanceTint
                     )
                 }
                 .buttonStyle(.borderless)
@@ -1145,6 +1143,7 @@ struct CategoryBudgetRow: View {
                 .accessibilityLabel(category.isOverspent
                     ? "Cover overspending for \(category.categoryName)"
                     : "Move money from \(category.categoryName)")
+                .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -1180,6 +1179,10 @@ struct CategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney
         ))
+    }
+
+    private var balanceTint: Color {
+        balanceColor(category, goalsEnabled: budgetStore.goalTemplatesEnabled, zero: .secondary)
     }
 }
 
@@ -1223,15 +1226,14 @@ struct CleanCategoryBudgetRow: View {
                     onMoveMoney(category)
                 } label: {
                     Text(budgetStore.displayBalance(category.available))
-                        .foregroundColor(balanceColor(
-                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
-                            zero: .green))
+                        .foregroundColor(balanceTint)
                 }
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
                     ? "Cover overspending for \(category.categoryName)"
                     : "Move money from \(category.categoryName)")
+                .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -1297,6 +1299,10 @@ struct CleanCategoryBudgetRow: View {
             onMoveMoney: onMoveMoney
         ))
     }
+
+    private var balanceTint: Color {
+        balanceColor(category, goalsEnabled: budgetStore.goalTemplatesEnabled, zero: .green)
+    }
 }
 
 /// Shared long-press/right-click menu for all category row styles — the same
@@ -1352,6 +1358,25 @@ func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -
         return category.isGoalUnderfunded ? .orange : .green
     }
     return category.available == 0 ? zero : .green
+}
+
+extension View {
+    /// The web's CarryoverIndicator: a small arrow just past the balance's
+    /// trailing edge, in the balance's color, when the category's overspending
+    /// rolls into next month (GH #372). An overlay rather than a sibling so
+    /// amounts stay column-aligned whether or not a row rolls over.
+    func rolloverIndicator(_ shown: Bool, color: Color) -> some View {
+        overlay(alignment: .trailing) {
+            if shown {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 7, weight: .heavy))
+                    .foregroundStyle(color)
+                    .offset(x: 10)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityHint(shown ? "Overspending rolls over to next month" : "")
+    }
 }
 
 /// Whether `month` ("YYYY-MM") is before the current calendar month. The
