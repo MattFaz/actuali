@@ -838,6 +838,21 @@ final class BudgetStore: ObservableObject {
             return []
         }
     }
+    
+    /// Most frequently used payees from the last 12 weeks, for the
+    /// Add Transaction payee picker. Failures degrade to no suggestions.
+    func fetchCommonPayees() async -> [Payee] {
+        guard let database else { return [] }
+
+        do {
+            return try await database.fetchCommonPayees()
+        } catch {
+            logger.error(
+                "fetchCommonPayees failed: \(error.localizedDescription, privacy: .public)"
+            )
+            return []
+        }
+    }
 
     /// Tombstone one recorded payee location (swipe-delete on a nearby
     /// suggestion, GH #24). Returns whether the delete stuck; failures are
