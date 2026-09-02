@@ -56,6 +56,7 @@ struct CreditCardsSettingsView: View {
                     // recomputing it inside the closure could reorder the list
                     // out from under a swipe that started before midnight.
                     let cards = configuredCards
+                    let detached = budgetStore.syncDetachedByRestore
                     ForEach(cards, id: \.account.id) { item in
                         Button {
                             selectedAccountId = item.account.id
@@ -67,6 +68,7 @@ struct CreditCardsSettingsView: View {
                             CreditCardCycleRow(account: item.account, cycle: item.cycle)
                         }
                         .buttonStyle(.plain)
+                        .disabled(detached)
                         .listRowBackground(
                             CreditCardCycleRow.cardBackground(
                                 daysUntilDue: item.cycle.daysUntilDue()
@@ -77,13 +79,26 @@ struct CreditCardsSettingsView: View {
                     }
                     .onDelete { offsets in
                         for accountId in offsets.map({ cards[$0].account.id }) {
-                            budgetStore.setCreditCard(accountId: accountId, statementDay: nil)
+                            Task {
+                                await budgetStore.setCreditCard(
+                                    accountId: accountId,
+                                    statementDay: nil,
+                                    limit: nil
+                                )
+                            }
                         }
                     }
+                    .deleteDisabled(detached)
                 }
             }
 
-            if !unconfiguredAccounts.isEmpty {
+            if budgetStore.syncDetachedByRestore {
+                Section {
+                    Text("Credit card settings sync with your budget. Re-download this budget to change them.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+            } else if !unconfiguredAccounts.isEmpty {
                 Section {
                     Button {
                         if let first = unconfiguredAccounts.first {
@@ -159,7 +174,13 @@ struct CreditCardsSettingsView: View {
                 if isEditing {
                     Section {
                         Button("Remove Credit Card Tracking", role: .destructive) {
-                            budgetStore.setCreditCard(accountId: selectedAccountId, statementDay: nil)
+                            Task {
+                                await budgetStore.setCreditCard(
+                                    accountId: selectedAccountId,
+                                    statementDay: nil,
+                                    limit: nil
+                                )
+                            }
                             editingAccountId = nil
                         }
                     }
@@ -176,12 +197,14 @@ struct CreditCardsSettingsView: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
-                        budgetStore.setCreditCard(
-                            accountId: selectedAccountId,
-                            statementDay: selectedStatementDay,
-                            dueOffsetDays: selectedDueOffset
-                        )
-                        budgetStore.setCreditLimit(accountId: selectedAccountId, cents: enteredLimitCents)
+                        Task {
+                            await budgetStore.setCreditCard(
+                                accountId: selectedAccountId,
+                                statementDay: selectedStatementDay,
+                                dueOffsetDays: selectedDueOffset,
+                                limit: enteredLimitCents
+                            )
+                        }
                         showingAddSheet = false
                         editingAccountId = nil
                     }
