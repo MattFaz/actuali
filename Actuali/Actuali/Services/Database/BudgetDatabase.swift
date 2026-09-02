@@ -3598,7 +3598,35 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    // MARK: - Preferences
+    // MARK: - Preferences (Synced Budget-level Key-Value Store)
+
+    /// Preference key prefix for synced credit card configurations.
+    static let creditCardPreferenceKeyPrefix = "actuali:credit_card:"
+
+    /// Preference key for a specific account's credit card config.
+    static func creditCardPreferenceKey(for accountId: String) -> String {
+        "\(creditCardPreferenceKeyPrefix)\(accountId)"
+    }
+
+    /// Fetches all synced credit card configurations stored in the `preferences` table.
+    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
+    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return [:] }
+            let prefix = Self.creditCardPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
+            )
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let value: String = row["value"],
+                      let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
+                result[String(id.dropFirst(prefix.count))] = config
+            }
+        }
+    }
 
     /// Fetch currency code from preferences table (stored by Actual Budget)
     /// Returns nil if not set, caller should default to "USD"

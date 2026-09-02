@@ -199,6 +199,9 @@ final class BudgetStore: ObservableObject {
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
+            if currentBudgetId != oldValue {
+                creditCardConfigs = [:]
+            }
         }
     }
 
@@ -251,6 +254,9 @@ final class BudgetStore: ObservableObject {
     /// probed via `GET /info` after each budget load). Persisted per server
     /// URL so offline launches keep the last known answer.
     @Published private(set) var payeeLocationWritesEnabled = false
+
+    /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
+    @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
 
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
@@ -631,47 +637,23 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Mappings from accountId -> statement closing day (1...31).
-    /// Persisted per budget in UserDefaults. An account with a statement day configured
-    /// is treated as a credit card with that billing cycle in Actuali.
+    /// Persisted per budget in the preferences table. An account with a statement day
+    /// configured is treated as a credit card with that billing cycle in Actuali.
     var creditCardStatementDays: [String: Int] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            UserDefaults.standard.set(newValue, forKey: "creditCardStatementDays_\(budgetId)")
-            objectWillChange.send()
-        }
+        creditCardConfigs.mapValues(\.statementDay)
     }
 
     /// Mappings from accountId -> days between statement closing and payment due.
     /// A card missing an entry predates the setting and falls back to
     /// `CreditCardCycle.defaultDueOffsetDays`.
     var creditCardDueOffsets: [String: Int] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            UserDefaults.standard.set(newValue, forKey: "creditCardDueOffsets_\(budgetId)")
-            objectWillChange.send()
-        }
+        creditCardConfigs.mapValues(\.dueOffsetDays)
     }
 
     /// Mappings from accountId -> credit limit in cents (positive). Optional per
     /// card: without one there is no available-credit figure to show.
     var creditCardLimits: [String: Int] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            UserDefaults.standard.set(newValue, forKey: "creditCardLimits_\(budgetId)")
-            objectWillChange.send()
-        }
+        creditCardConfigs.compactMapValues(\.limit)
     }
 
     /// Statement days whose account still exists and is open — what the Credit
@@ -683,35 +665,31 @@ final class BudgetStore: ObservableObject {
         return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
     }
 
-    /// Writes a card's cycle config. A nil `statementDay` stops tracking the
-    /// account and clears everything stored for it, the limit included.
-    func setCreditCard(accountId: String, statementDay: Int?, dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays) {
-        var days = creditCardStatementDays
-        var offsets = creditCardDueOffsets
-        if let statementDay {
-            days[accountId] = statementDay
-            offsets[accountId] = dueOffsetDays
-        } else {
-            days.removeValue(forKey: accountId)
-            offsets.removeValue(forKey: accountId)
-            var limits = creditCardLimits
-            limits.removeValue(forKey: accountId)
-            creditCardLimits = limits
+    /// Writes a card's cycle config and persists it through SyncClient.
+    /// A nil `statementDay` stops tracking the account and clears everything stored for it.
+    func setCreditCard(
+        accountId: String,
+        statementDay: Int?,
+        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
+        limit: Int?
+    ) async {
+        guard currentBudgetId != nil else { return }
+        let previous = creditCardConfigs[accountId]
+        let config: CreditCardConfig? = statementDay.map {
+            CreditCardConfig(statementDay: $0, dueOffsetDays: dueOffsetDays, limit: limit)
         }
-        creditCardStatementDays = days
-        creditCardDueOffsets = offsets
-    }
-
-    /// The limit is written on its own so no caller can erase it by leaving an
-    /// argument off a cycle update. A nil `cents` clears it.
-    func setCreditLimit(accountId: String, cents: Int?) {
-        var limits = creditCardLimits
-        if let cents {
-            limits[accountId] = cents
-        } else {
-            limits.removeValue(forKey: accountId)
+        creditCardConfigs[accountId] = config
+        guard let syncClient else {
+            creditCardConfigs[accountId] = previous
+            error = "Credit card settings need sync configured for this budget."
+            return
         }
-        creditCardLimits = limits
+        do {
+            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
+        } catch {
+            creditCardConfigs[accountId] = previous
+            self.error = error.localizedDescription
+        }
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -1928,6 +1906,7 @@ final class BudgetStore: ObservableObject {
             // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
+            let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -1960,6 +1939,21 @@ final class BudgetStore: ObservableObject {
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
+
+            // Read the legacy keys on every load. A card already in the synced table
+            // wins; the rest still migrate, so a partial failure really does retry.
+            var legacyConfigs: [String: CreditCardConfig] = [:]
+            let legacyDays = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
+            let legacyOffsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
+            let legacyLimits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
+            for (accountId, statementDay) in legacyDays where fetchedCreditCards[accountId] == nil {
+                legacyConfigs[accountId] = CreditCardConfig(
+                    statementDay: statementDay,
+                    dueOffsetDays: legacyOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays,
+                    limit: legacyLimits[accountId]
+                )
+            }
+            creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
             
             accounts = fetchedAccounts
             transactions = fetchedTransactions
@@ -2037,6 +2031,27 @@ final class BudgetStore: ObservableObject {
                 }
 
                 subscribeToSyncState()
+
+                if let syncClient {
+                    var allWritten = true
+                    for (accountId, config) in legacyConfigs {
+                        do {
+                            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
+                        } catch {
+                            allWritten = false
+                            logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
+                        }
+                    }
+                    // Erase the legacy keys once the synced table holds every card,
+                    // even when there was nothing to write. A card deleted on another
+                    // device leaves a NULL preference row, and stale defaults here
+                    // would re-create it on the next load.
+                    if allWritten {
+                        for prefix in ["creditCardStatementDays_", "creditCardDueOffsets_", "creditCardLimits_"] {
+                            UserDefaults.standard.removeObject(forKey: prefix + budgetId)
+                        }
+                    }
+                }
             }
 
             refreshPayeeLocationSupport()
@@ -2122,6 +2137,7 @@ final class BudgetStore: ObservableObject {
         guard let database else { return }
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
+        let creditCardsBefore = creditCardConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2147,6 +2163,7 @@ final class BudgetStore: ObservableObject {
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
+            let fetchedCreditCards = try await database.fetchCreditCardConfigs()
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
@@ -2160,6 +2177,12 @@ final class BudgetStore: ObservableObject {
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
             guard self.database === database, self.currentBudgetId == budgetId else { return }
+
+            // A card saved while these reads were in flight is newer than
+            // this snapshot; its write comes back on the next refresh.
+            if creditCardConfigs == creditCardsBefore {
+                creditCardConfigs = fetchedCreditCards
+            }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
