@@ -5179,18 +5179,18 @@ return transaction.id
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
         await fetchBudgetMonth(month)
     }
-    
+
     /// Turn "rollover overspending" on or off for a category (GH #372), then
     /// refetch the month so the published flag and Available recompute.
     /// Mirrors the web's balance menu: the flag is written from this month
     /// through the last month the web would have created, so both clients
-    /// agree on which rows carry it.
-    func setBudgetCarryover(month: String, categoryId: String, enabled: Bool) async throws {
+    /// agree on which rows carry it. `now` pins the range's end for tests.
+    func setBudgetCarryover(month: String, categoryId: String, enabled: Bool, now: Date = Date()) async throws {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetCarryover(
-            months: Self.carryoverMonths(from: month), categoryId: categoryId, flag: enabled)
+            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
         await fetchBudgetMonth(month)
     }
 

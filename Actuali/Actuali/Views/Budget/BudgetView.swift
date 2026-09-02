@@ -1860,13 +1860,16 @@ struct CategoryBudgetDetailSheet: View {
                 if budgetStore.goalTemplatesEnabled {
                     goalSection
                 }
-                
+
                 Section {
                     // The binding, not onChange, kicks off the write: a failed
                     // save reverts the state directly, which must not re-save.
+                    // The guard covers a second tap landing before .disabled
+                    // re-renders, so two writes can't race for the same rows.
                     Toggle("Rollover Overspending", isOn: Binding(
                         get: { rolloverEnabled },
                         set: { enabled in
+                            guard !isSavingRollover else { return }
                             rolloverEnabled = enabled
                             Task { await saveRollover(enabled) }
                         }
@@ -1877,7 +1880,6 @@ struct CategoryBudgetDetailSheet: View {
                         ? "Carry this category's balance into next month. Applies from \(MonthPicker.title(for: category.month)) onward."
                         : "Carry overspending into next month instead of taking it from To Budget. Applies from \(MonthPicker.title(for: category.month)) onward.")
                 }
-
 
                 Section(
                     content: {
@@ -2065,7 +2067,7 @@ struct CategoryBudgetDetailSheet: View {
             isApplyingSuggestion = false
         }
     }
-    
+
     /// Writes immediately, like the web's balance menu — a rollover change
     /// is a budget edit, not part of the name draft the Save button commits.
     private func saveRollover(_ enabled: Bool) async {
@@ -2083,7 +2085,6 @@ struct CategoryBudgetDetailSheet: View {
         }
         isSavingRollover = false
     }
-
 
     private func saveName() async {
         guard trimmedName != category.categoryName else {

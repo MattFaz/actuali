@@ -133,7 +133,8 @@ struct BudgetStoreSetBudgetCarryoverTests {
         let store = try await makeStore(database: database)
         let queue = try DatabaseQueue(path: path.path)
 
-        try await store.setBudgetCarryover(month: "2026-07", categoryId: "cat-groceries", enabled: true)
+        let now = date(2026, 9, 15)
+        try await store.setBudgetCarryover(month: "2026-07", categoryId: "cat-groceries", enabled: true, now: now)
 
         let rows = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets ORDER BY month").map {
@@ -141,12 +142,13 @@ struct BudgetStoreSetBudgetCarryoverTests {
             }
         }
         // Existing row reused (amount untouched), and one row per month
-        // through the end of the sheet — the same rows the web would write.
+        // through twelve months past "today" — the same rows the web writes.
         let july = try #require(rows.first)
         #expect(july.id == "other-client-row")
         #expect(july.amount == 1000)
         #expect(july.carryover == 1)
-        #expect(rows.count == BudgetStore.carryoverMonths(from: "2026-07").count)
+        #expect(rows.count == 15) // 2026-07 through 2027-09
+        #expect(rows.last?.month == 202709)
         #expect(rows.dropFirst().allSatisfy { $0.carryover == 1 })
         #expect(rows.dropFirst().first?.id == "202608-cat-groceries")
 
@@ -161,7 +163,7 @@ struct BudgetStoreSetBudgetCarryoverTests {
         let august = try await database.fetchBudgetMonth(month: "2026-08")
         #expect(august.categoryBudgets.first { $0.categoryId == "cat-groceries" }?.available == -2000)
 
-        try await store.setBudgetCarryover(month: "2026-07", categoryId: "cat-groceries", enabled: false)
+        try await store.setBudgetCarryover(month: "2026-07", categoryId: "cat-groceries", enabled: false, now: now)
 
         let flags = try await queue.read { db in
             try Int.fetchAll(db, sql: "SELECT carryover FROM zero_budgets")

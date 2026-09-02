@@ -990,7 +990,7 @@ actor SyncClient {
         // 4. Push to the server in the background
         scheduleAutomaticSync()
     }
-    
+
     /// Set a category's carryover ("rollover overspending") flag on every
     /// month in `months`, optimistic local-first. Mirrors upstream
     /// setCategoryCarryover / setCarryover (loot-core budget/actions.ts):
