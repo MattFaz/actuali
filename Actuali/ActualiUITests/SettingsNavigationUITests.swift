@@ -35,7 +35,7 @@ final class SettingsNavigationUITests: XCTestCase {
             // shows its unavailable placeholder instead of the Add Rule button.
             content = app.staticTexts["Rules Unavailable"]
         case "Bank Sync (SimpleFIN & Wallet)":
-            content = app.navigationBars["Bank Sync"]
+            content = app.textFields["Setup token"]
         case "About":
             content = app.staticTexts["Version"]
         default:
