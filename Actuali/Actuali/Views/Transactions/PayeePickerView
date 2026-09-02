@@ -1,0 +1,261 @@
+import SwiftUI
+
+struct PayeePickerView: View {
+    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var budgetStore: BudgetStore
+
+    let payeeName: String
+    let nearbyPayees: [NearbyPayee]
+    let onSelect: (Payee) -> Void
+    let onCommit: (String) -> Void
+    let onDeleteNearby: (NearbyPayee) -> Void
+
+    @State private var searchText: String
+    @State private var suggestedPayees: [Payee] = []
+
+    init(
+        payeeName: String,
+        nearbyPayees: [NearbyPayee],
+        onSelect: @escaping (Payee) -> Void,
+        onCommit: @escaping (String) -> Void,
+        onDeleteNearby: @escaping (NearbyPayee) -> Void
+    ) {
+        self.payeeName = payeeName
+        self.nearbyPayees = nearbyPayees
+        self.onSelect = onSelect
+        self.onCommit = onCommit
+        self.onDeleteNearby = onDeleteNearby
+        _searchText = State(initialValue: payeeName)
+    }
+
+    private var trimmedSearchText: String {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var filteredPayees: [Payee] {
+        let payees = budgetStore.payees.filter { payee in
+            !payee.tombstone &&
+                payee.transferAccountId == nil
+        }
+
+        guard !trimmedSearchText.isEmpty else {
+            return payees
+                .sorted {
+                    $0.name.localizedCaseInsensitiveCompare($1.name)
+                        == .orderedAscending
+                }
+                .prefix(20)
+                .map { $0 }
+        }
+
+        let lower = trimmedSearchText.lowercased()
+
+        return payees
+            .filter { payee in
+                payee.name.lowercased() != lower &&
+                    payee.name.localizedCaseInsensitiveContains(
+                        trimmedSearchText
+                    )
+            }
+            .sorted { lhs, rhs in
+                let lhsPrefix = lhs.name.lowercased().hasPrefix(lower)
+                let rhsPrefix = rhs.name.lowercased().hasPrefix(lower)
+
+                if lhsPrefix != rhsPrefix {
+                    return lhsPrefix
+                }
+
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                    == .orderedAscending
+            }
+            .prefix(20)
+            .map { $0 }
+    }
+
+    private var nonSuggestedPayees: [Payee] {
+        filteredPayees.filter { payee in
+            !suggestedPayees.contains { suggestedPayee in
+                suggestedPayee.id == payee.id
+            }
+        }
+    }
+
+    private var canCommitCustomPayee: Bool {
+        guard !trimmedSearchText.isEmpty else {
+            return false
+        }
+
+        return !budgetStore.payees.contains { payee in
+            !payee.tombstone &&
+                payee.transferAccountId == nil &&
+                payee.name.caseInsensitiveCompare(trimmedSearchText)
+                    == .orderedSame
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if trimmedSearchText.isEmpty {
+                    if !suggestedPayees.isEmpty {
+                        Section("Suggested Payees") {
+                            ForEach(suggestedPayees.prefix(5)) { payee in
+                                Button {
+                                    onSelect(payee)
+                                } label: {
+                                    HStack {
+                                        Image(
+                                            systemName: "clock.arrow.circlepath"
+                                        )
+                                        .foregroundStyle(.secondary)
+                                        .font(.footnote)
+
+                                        Text(payee.name)
+                                            .foregroundStyle(.primary)
+
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !nearbyPayees.isEmpty {
+                        Section("Nearby") {
+                            ForEach(nearbyPayees.prefix(5)) { nearby in
+                                Button {
+                                    onSelect(nearby.payee)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "location.fill")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
+
+                                        Text(nearby.payee.name)
+                                            .foregroundStyle(.primary)
+
+                                        Spacer()
+
+                                        Text(
+                                            LocationUtils.formatDistance(
+                                                meters: nearby.distanceMeters
+                                            )
+                                        )
+                                        .font(.caption2)
+                                        .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .swipeActions(
+                                    edge: .trailing,
+                                    allowsFullSwipe: true
+                                ) {
+                                    Button(role: .destructive) {
+                                        onDeleteNearby(nearby)
+                                    } label: {
+                                        Label(
+                                            "Delete",
+                                            systemImage: "trash"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if !nonSuggestedPayees.isEmpty {
+                        Section("Payees") {
+                            ForEach(nonSuggestedPayees) { payee in
+                                Button {
+                                    onSelect(payee)
+                                } label: {
+                                    HStack {
+                                        Image(
+                                            systemName: "clock.arrow.circlepath"
+                                        )
+                                        .foregroundStyle(.secondary)
+                                        .font(.footnote)
+
+                                        Text(payee.name)
+                                            .foregroundStyle(.primary)
+
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    if !filteredPayees.isEmpty {
+                        Section("Suggestions") {
+                            ForEach(filteredPayees) { payee in
+                                Button {
+                                    onSelect(payee)
+                                } label: {
+                                    HStack {
+                                        Image(
+                                            systemName: "clock.arrow.circlepath"
+                                        )
+                                        .foregroundStyle(.secondary)
+                                        .font(.footnote)
+
+                                        Text(payee.name)
+                                            .foregroundStyle(.primary)
+
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if canCommitCustomPayee {
+                    Section {
+                        Button {
+                            onCommit(trimmedSearchText)
+                        } label: {
+                            HStack {
+                                Image(systemName: "plus.circle")
+                                    .foregroundStyle(.tint)
+
+                                Text("Use \"\(trimmedSearchText)\"")
+                                    .foregroundStyle(.primary)
+
+                                Spacer()
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Payee")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search payees"
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel("Close")
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    if canCommitCustomPayee {
+                        Button("Done") {
+                            onCommit(trimmedSearchText)
+                        }
+                    }
+                }
+            }
+            .task {
+                suggestedPayees = await budgetStore.fetchCommonPayees()
+            }
+        }
+    }
+}
+
