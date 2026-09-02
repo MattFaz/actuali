@@ -254,12 +254,20 @@ struct ScheduleRow: View {
                         .lineLimit(1)
                 }
                 Spacer()
+                if schedule.isRecurring {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel("Recurring")
+                }
                 Text(nextDateText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .padding(.vertical, 2)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("scheduleRow.\(schedule.id)")
     }
 
     /// A schedule need not have a name; fall back to the payee, then the
@@ -292,6 +300,28 @@ struct ScheduleRow: View {
         amountOp == .isApprox ? "~ " + amount : amount
     }
 }
+
+#if DEBUG
+struct ScheduleRowUITestFixture: View {
+    private let schedule = ScheduleSummary(
+        id: "fixture", name: "Rent", ruleId: nil,
+        nextDate: DayDate(year: 2026, month: 10, day: 1), nextDateRowId: nil,
+        baseNextDateTs: nil, accountId: nil, payeeId: nil,
+        amount: .fixed(-120_000), amountOp: .isApprox, dateOp: nil,
+        dateCondition: .recurring(RecurConfig(json: [
+            "frequency": "monthly", "start": "2026-09-03",
+        ])!), postsTransaction: false, completed: false,
+        customUpcomingLength: nil, sortOrder: nil, isCustom: false,
+        conditionsJSON: nil, actionsJSON: nil, categoryId: nil)
+
+    var body: some View {
+        ScheduleRow(
+            schedule: schedule, status: .upcoming,
+            accountName: "Checking", payeeName: "Landlord")
+            .padding()
+    }
+}
+#endif
 
 #Preview {
     NavigationStack {

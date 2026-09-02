@@ -32,7 +32,17 @@ struct ActualiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            Group {
+                #if DEBUG
+                if CommandLine.arguments.contains("-showScheduleRowFixture") {
+                    ScheduleRowUITestFixture()
+                } else {
+                    ContentView()
+                }
+                #else
+                ContentView()
+                #endif
+            }
                 .environmentObject(budgetStore)
                 .preferredColorScheme(budgetStore.appearanceMode.colorScheme)
                 .task {
