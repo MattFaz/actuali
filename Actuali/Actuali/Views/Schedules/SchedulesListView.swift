@@ -235,36 +235,28 @@ struct ScheduleRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
+            HStack(spacing: 8) {
                 Text(title)
                     .font(.body.weight(.medium))
                     .lineLimit(1)
+                ScheduleStatusBadge(status: status)
                 Spacer()
                 Text(amountText)
                     .font(.body)
                     .monospacedDigit()
                     .foregroundStyle(schedule.postAmount > 0 ? Color.green : Color.primary)
             }
-
-            HStack(spacing: 6) {
-                ScheduleStatusBadge(status: status)
-                if schedule.isRecurring {
-                    Image(systemName: "arrow.triangle.2.circlepath")
+            HStack {
+                if let accountName, !accountName.isEmpty {
+                    Text(accountName)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Recurring")
+                        .lineLimit(1)
                 }
                 Spacer()
                 Text(nextDateText)
                     .font(.caption)
                     .foregroundStyle(.secondary)
-            }
-
-            if let subtitle {
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
         }
         .padding(.vertical, 2)
@@ -276,14 +268,6 @@ struct ScheduleRow: View {
         if let name = schedule.name, !name.isEmpty { return name }
         if let payeeName, !payeeName.isEmpty { return payeeName }
         return accountName ?? "Schedule"
-    }
-
-    private var subtitle: String? {
-        var parts: [String] = []
-        // Only repeat the payee when it isn't already doing duty as the title.
-        if let payeeName, !payeeName.isEmpty, title != payeeName { parts.append(payeeName) }
-        if let accountName, !accountName.isEmpty { parts.append(accountName) }
-        return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
     private var nextDateText: String {
@@ -298,11 +282,14 @@ struct ScheduleRow: View {
         case (.isBetween, .range(let low, let high)):
             let ordered = low <= high ? (low, high) : (high, low)
             return "\(budgetStore.displayBalance(ordered.0)) – \(budgetStore.displayBalance(ordered.1))"
-        case (.isApprox, _):
-            return "~" + budgetStore.displayBalance(schedule.postAmount)
         default:
-            return budgetStore.displayBalance(schedule.postAmount)
+            return Self.formattedAmount(
+                budgetStore.displayBalance(schedule.postAmount), amountOp: schedule.amountOp)
         }
+    }
+
+    nonisolated static func formattedAmount(_ amount: String, amountOp: ScheduleAmountOp) -> String {
+        amountOp == .isApprox ? "~ " + amount : amount
     }
 }
 
