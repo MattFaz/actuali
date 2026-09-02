@@ -372,7 +372,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
-    
+
     /// What tapping a row in the Uncategorized list opens.
     /// Persisted to UserDefaults, defaults to the category picker.
     @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {

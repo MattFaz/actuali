@@ -349,7 +349,7 @@ struct AddTransactionView: View {
                         .sheet(isPresented: $showPayeePicker) {
                             PayeePickerView(
                                 payeeName: payeeName,
-                                nearbyPayees: nearbyPayees,
+                                nearbyPayees: $nearbyPayees,
                                 onSelect: { payee in
                                     payeeName = payee.name
                                     applyCategoryFromHistory(payeeId: payee.id)
@@ -401,11 +401,11 @@ struct AddTransactionView: View {
                         }
                     }
 
-                    if isSplitting && !isTransfer && showsStandardCategoryFields {
-                        splitEntrySection
-                    }
-
                     DatePicker("Date", selection: $date, displayedComponents: .date)
+                }
+
+                if isSplitting && !isTransfer && showsStandardCategoryFields {
+                    splitEntrySection
                 }
 
                 Section {

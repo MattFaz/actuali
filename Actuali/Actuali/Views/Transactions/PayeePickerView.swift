@@ -4,25 +4,23 @@ struct PayeePickerView: View {
     @Environment(\.dismiss) private var dismiss
     @EnvironmentObject private var budgetStore: BudgetStore
 
-    let payeeName: String
-    let nearbyPayees: [NearbyPayee]
+    @Binding var nearbyPayees: [NearbyPayee]
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
     let onDeleteNearby: (NearbyPayee) -> Void
 
     @State private var searchText: String
     @State private var suggestedPayees: [Payee] = []
-    @FocusState private var isSearchFocused: Bool
+    @State private var isSearchPresented = true
 
     init(
         payeeName: String,
-        nearbyPayees: [NearbyPayee],
+        nearbyPayees: Binding<[NearbyPayee]>,
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
         onDeleteNearby: @escaping (NearbyPayee) -> Void
     ) {
-        self.payeeName = payeeName
-        self.nearbyPayees = nearbyPayees
+        _nearbyPayees = nearbyPayees
         self.onSelect = onSelect
         self.onCommit = onCommit
         self.onDeleteNearby = onDeleteNearby
@@ -108,41 +106,26 @@ struct PayeePickerView: View {
         }
     }
 
+    private func payeeButton(_ payee: Payee) -> some View {
+        Button {
+            onSelect(payee)
+        } label: {
+            Label {
+                Text(payee.name)
+                    .foregroundStyle(.primary)
+            } icon: {
+                Image(systemName: "clock.arrow.circlepath")
+                    .foregroundStyle(.secondary)
+                    .font(.footnote)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
     var body: some View {
         NavigationStack {
             List {
-                // Custom search field (replaces .searchable)
-                Section {
-                    HStack {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundStyle(.secondary)
-                        TextField("Search payees", text: $searchText)
-                            .focused($isSearchFocused)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                    }
-                }
-
                 if trimmedSearchText.isEmpty {
-                    if !suggestedPayees.isEmpty {
-                        Section("Suggested Payees") {
-                            ForEach(suggestedPayees.prefix(5)) { payee in
-                                Button {
-                                    onSelect(payee)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "clock.arrow.circlepath")
-                                            .foregroundStyle(.secondary)
-                                            .font(.footnote)
-                                        Text(payee.name)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                    }
-                                }
-                            }
-                        }
-                    }
-
                     if !nearbyPayees.isEmpty {
                         Section("Nearby") {
                             ForEach(nearbyPayees.prefix(5)) { nearby in
@@ -172,39 +155,25 @@ struct PayeePickerView: View {
                         }
                     }
 
+                    if !suggestedPayees.isEmpty {
+                        Section("Suggested Payees") {
+                            ForEach(suggestedPayees.prefix(5)) { payee in
+                                payeeButton(payee)
+                            }
+                        }
+                    }
+
                     if !nonSuggestedPayees.isEmpty {
                         Section("Payees") {
                             ForEach(nonSuggestedPayees) { payee in
-                                Button {
-                                    onSelect(payee)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "clock.arrow.circlepath")
-                                            .foregroundStyle(.secondary)
-                                            .font(.footnote)
-                                        Text(payee.name)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                    }
-                                }
+                                payeeButton(payee)
                             }
                         }
                     }
                 } else if !filteredPayees.isEmpty {
                     Section("Suggestions") {
                         ForEach(filteredPayees) { payee in
-                            Button {
-                                onSelect(payee)
-                            } label: {
-                                HStack {
-                                    Image(systemName: "clock.arrow.circlepath")
-                                        .foregroundStyle(.secondary)
-                                        .font(.footnote)
-                                    Text(payee.name)
-                                        .foregroundStyle(.primary)
-                                    Spacer()
-                                }
-                            }
+                            payeeButton(payee)
                         }
                     }
                 }
@@ -227,6 +196,14 @@ struct PayeePickerView: View {
             }
             .navigationTitle("Payee")
             .navigationBarTitleDisplayMode(.inline)
+            .searchable(
+                text: $searchText,
+                isPresented: $isSearchPresented,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Search payees"
+            )
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.words)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -238,24 +215,10 @@ struct PayeePickerView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    if canCommitCustomPayee {
-                        Button("Done") {
-                            onCommit(trimmedSearchText)
-                        }
-                    }
-                }
-
-                // Keyboard toolbar with Done button
-                ToolbarItemGroup(placement: .keyboard) {
-                    Spacer()
                     Button("Done") {
-                        isSearchFocused = false
+                        onCommit(trimmedSearchText)
                     }
                 }
-            }
-            .onAppear {
-                // Open keyboard automatically
-                isSearchFocused = true
             }
             .task {
                 suggestedPayees = Self.allowedPayees(

@@ -1414,13 +1414,13 @@ final class BudgetDatabase: Sendable {
                     p.transfer_acct,
                     COUNT(t.id) AS usage_count
                 FROM payees p
-                LEFT JOIN payee_mapping pm ON pm.id = p.id
-                LEFT JOIN transactions t ON t.description = pm.targetId
+                JOIN payee_mapping pm ON pm.targetId = p.id
+                JOIN transactions t ON t.description = pm.id
                 WHERE LENGTH(p.name) > 0
+                  AND p.transfer_acct IS NULL
                   AND (p.tombstone = 0 OR p.tombstone IS NULL)
                   AND t.date > ?
                   AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND t.date IS NOT NULL
                   AND (t.isChild = 0 OR t.isChild IS NULL)
                 GROUP BY p.id
                 ORDER BY usage_count DESC, p.name COLLATE NOCASE ASC
