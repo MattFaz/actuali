@@ -328,43 +328,46 @@ struct AddTransactionView: View {
                             }
                         }
                     }
-                    Button {
-                        loadNearbyPayees()
-                        showPayeePicker = true
-                    } label: {
-                        HStack {
-                            Text("Payee")
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if !payeeName.isEmpty {
-                                Text(payeeName)
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        .contentShape(Rectangle()) // Ensures the whole row is tappable
-                    }
-                    .buttonStyle(.plain)
-                    .sheet(isPresented: $showPayeePicker) {
-                        PayeePickerView(
-                            payeeName: payeeName,
-                            nearbyPayees: nearbyPayees,
-                            onSelect: { payee in
-                                payeeName = payee.name
-                                applyCategoryFromHistory(payeeId: payee.id)
-                                showPayeePicker = false
-                            },
-                            onCommit: { name in
-                                payeeName = name
-                                if let payee = matchingPayee(for: name) {
-                                    applyCategoryFromHistory(payeeId: payee.id)
+
+                    if !isTransfer {
+                        Button {
+                            loadNearbyPayees()
+                            showPayeePicker = true
+                        } label: {
+                            HStack {
+                                Text("Payee")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                if !payeeName.isEmpty {
+                                    Text(payeeName)
+                                        .foregroundStyle(.primary)
                                 }
-                                showPayeePicker = false
-                            },
-                            onDeleteNearby: { nearby in
-                                deleteNearbySuggestion(nearby)
                             }
-                        )
-                        .environmentObject(budgetStore)
+                            .contentShape(Rectangle()) // Ensures the whole row is tappable
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showPayeePicker) {
+                            PayeePickerView(
+                                payeeName: payeeName,
+                                nearbyPayees: nearbyPayees,
+                                onSelect: { payee in
+                                    payeeName = payee.name
+                                    applyCategoryFromHistory(payeeId: payee.id)
+                                    showPayeePicker = false
+                                },
+                                onCommit: { name in
+                                    payeeName = name
+                                    if let payee = matchingPayee(for: name) {
+                                        applyCategoryFromHistory(payeeId: payee.id)
+                                    }
+                                    showPayeePicker = false
+                                },
+                                onDeleteNearby: { nearby in
+                                    deleteNearbySuggestion(nearby)
+                                }
+                            )
+                            .environmentObject(budgetStore)
+                        }
                     }
 
                     if isEditingSplitParent && !isSplitting && !unsplitRequested {
@@ -397,9 +400,13 @@ struct AddTransactionView: View {
                             }
                         }
                     }
-                }
 
-                DatePicker("Date", selection: $date, displayedComponents: .date)
+                    if isSplitting && !isTransfer && showsStandardCategoryFields {
+                        splitEntrySection
+                    }
+
+                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                }
 
                 Section {
                     // One line while the note is short — an empty three-line
@@ -855,11 +862,10 @@ private struct SplitLineRow: View {
 /// gains a fraction the user didn't type, so zero-decimal currencies never
 /// need a trailing ".00" (GH #211).
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
-/// the text's own sign. With `onToggleSign`, the same button appears but the
-/// sign lives outside the field (a split line's direction flip) and the text
-/// stays unsigned. Neither set means sign is handled elsewhere entirely
-/// (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips the
+/// text's own sign. With `onToggleSign`, the same button appears but the sign
+/// lives outside the field (a split line's direction flip) and the text stays unsigned.
+/// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
