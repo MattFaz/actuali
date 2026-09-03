@@ -7,7 +7,10 @@ import Foundation
 /// representation carries the real value — possibly with a currency symbol,
 /// currency code, and locale-specific separators ("4,00 €", "$1,234.56").
 enum AmountParser {
-    static func parse(_ text: String) -> Double? {
+    /// Parses using the current format when one is known. Without a format,
+    /// retain the legacy separator heuristics used by automation inputs whose
+    /// locale is independent of the app's selected display format.
+    static func parse(_ text: String, numberFormat: ActualNumberFormat? = nil) -> Double? {
         // Exactly one number token, or refuse: shortcuts misconfigured to
         // pass the whole transaction can stringify with extra digits (dates,
         // "7-Eleven"), and a wrong amount is worse than an error.
@@ -25,6 +28,12 @@ enum AmountParser {
             .replacingOccurrences(of: "\u{202F}", with: "")
             .replacingOccurrences(of: "'", with: "")
             .replacingOccurrences(of: "\u{2019}", with: "")
+
+        if let numberFormat,
+           let normalized = normalize(token, using: numberFormat),
+           let value = Double(normalized) {
+            return negative ? -value : value
+        }
 
         let normalized: String
         switch (token.lastIndex(of: "."), token.lastIndex(of: ",")) {
@@ -44,6 +53,48 @@ enum AmountParser {
 
         guard let value = Double(normalized) else { return nil }
         return negative ? -value : value
+    }
+
+    /// Normalizes a token according to the explicitly selected Actual format.
+    /// This makes an otherwise ambiguous value such as `1,234` mean 1.234 in
+    /// `dot-comma`, while `1.234` remains 1,234 in that same format.
+    private static func normalize(_ token: String, using numberFormat: ActualNumberFormat) -> String? {
+        let decimalSeparator = Character(numberFormat.decimalSeparator)
+        let groupingSeparators: Set<Character>
+
+        switch numberFormat {
+        case .commaDot, .commaDotIn:
+            groupingSeparators = [","]
+        case .dotComma:
+            groupingSeparators = ["."]
+        case .spaceComma:
+            groupingSeparators = ["\u{202F}", "\u{00A0}"]
+        case .apostropheDot:
+            groupingSeparators = ["'", "\u{2019}"]
+        }
+
+        var seenDecimal = false
+        var normalized = ""
+        for character in token {
+            if character == decimalSeparator {
+                guard !seenDecimal else { return nil }
+                seenDecimal = true
+                normalized.append(".")
+            } else if groupingSeparators.contains(character) {
+                continue
+            } else if character == "." || character == ","
+                || character == "'" || character == "\u{2019}"
+                || character == "\u{202F}" || character == "\u{00A0}" {
+                return nil
+            } else if character.isWholeNumber {
+                normalized.append(character)
+            } else {
+                return nil
+            }
+        }
+
+        guard !normalized.isEmpty else { return nil }
+        return normalized
     }
 
     /// With only one separator kind present, decide decimal vs grouping:
