@@ -150,6 +150,39 @@ struct CurrencyAmountFormatTests {
         ) == "$10,00,000.33")
     }
 
+    @Test func zeroUsesSelectedNumberFormat() {
+        let expected: [(ActualNumberFormat, String)] = [
+            (.commaDot, "$0.00"),
+            (.dotComma, "$0,00"),
+            (.spaceComma, "$0,00"),
+            (.apostropheDot, "$0.00"),
+            (.commaDotIn, "$0.00")
+        ]
+
+        for (format, value) in expected {
+            #expect(CurrencyAmountFormat.string(
+                cents: 0,
+                currencyCode: "USD",
+                narrowSymbol: true,
+                numberFormat: format,
+                locale: enUS
+            ) == value)
+        }
+    }
+
+    @Test func zeroWholeUnitsStaysZero() {
+        for format in ActualNumberFormat.allCases {
+            #expect(CurrencyAmountFormat.string(
+                cents: 0,
+                currencyCode: "USD",
+                narrowSymbol: true,
+                wholeUnits: true,
+                numberFormat: format,
+                locale: enUS
+            ) == "$0")
+        }
+    }
+
     @Test func numberFormatRawValuesMatchActualPreferenceKeys() {
         #expect(ActualNumberFormat.allCases.map(\.rawValue) == [
             "comma-dot",
