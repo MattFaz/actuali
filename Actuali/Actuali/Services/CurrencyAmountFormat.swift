@@ -30,6 +30,17 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    private func normalize(_ string: String) -> String {
+        switch self {
+        case .spaceComma:
+            return string.replacingOccurrences(of: "\u{00A0}", with: "\u{202F}")
+        case .apostropheDot:
+            return string.replacingOccurrences(of: "'", with: "\u{2019}")
+        default:
+            return string
+        }
+    }
+
     func formatter(currencyCode: String, wholeUnits: Bool) -> NumberFormatter {
         let formatter = NumberFormatter()
         formatter.locale = locale
@@ -52,11 +63,16 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         formatter.maximumFractionDigits = wholeUnits ? 0 : 2
         return formatter
     }
+
+    func format(number: NSNumber, wholeUnits: Bool, currencyCode: String?) -> String {
+        let formatter = currencyCode.map {
+            self.formatter(currencyCode: $0, wholeUnits: wholeUnits)
+        } ?? decimalFormatter(wholeUnits: wholeUnits)
+        return normalize(formatter.string(from: number) ?? "")
+    }
 }
 
-/// Shared cents → display-string formatting for the budget's display
-/// currency. Used by BudgetStore's view formatting and both notification
-/// composers so the "Symbol Only" setting applies everywhere amounts render.
+/// Shared cents → display-string formatting for the budget's display currency.
 enum CurrencyAmountFormat {
 
     @MainActor private static var symbolLessFormatters: [String: NumberFormatter] = [:]
@@ -76,8 +92,8 @@ enum CurrencyAmountFormat {
                        locale: Locale = .autoupdatingCurrent) -> String {
         let amount = Double(cents) / 100.0
         guard !currencyCode.isEmpty else {
-            return numberFormat.decimalFormatter(wholeUnits: wholeUnits)
-                .string(from: NSNumber(value: amount)) ?? ""
+            return numberFormat.format(
+                number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: nil)
         }
 
         var style = FloatingPointFormatStyle<Double>.Currency(code: currencyCode, locale: locale)
@@ -88,18 +104,15 @@ enum CurrencyAmountFormat {
             style = style.precision(.fractionLength(0))
         }
         let currencyString = amount.formatted(style)
-        let numericFormatter = numberFormat.formatter(
-            currencyCode: currencyCode,
-            wholeUnits: wholeUnits
-        )
-        let numericString = numericFormatter.string(from: NSNumber(value: amount)) ?? ""
+        let numericString = numberFormat.format(
+            number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: currencyCode)
         return replacingNumericPart(in: currencyString, with: numericString)
     }
 
     private static func replacingNumericPart(in currencyString: String, with numericString: String) -> String {
         let scalars = Array(currencyString.unicodeScalars)
-        guard let firstDigit = scalars.firstIndex(where: { $0.properties.isNumeric }),
-              let lastDigit = scalars.lastIndex(where: { $0.properties.isNumeric }) else {
+        guard let firstDigit = scalars.firstIndex(where: { CharacterSet.decimalDigits.contains($0) }),
+              let lastDigit = scalars.lastIndex(where: { CharacterSet.decimalDigits.contains($0) }) else {
             return currencyString
         }
 
@@ -121,9 +134,8 @@ enum CurrencyAmountFormat {
     ) -> String {
         let amount = Double(cents) / 100.0
         guard !currencyCode.isEmpty else {
-            return amount.formatted(
-                .number.precision(.fractionLength(wholeUnits ? 0 : 2)).locale(locale)
-            )
+            return numberFormat.format(
+                number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: nil)
         }
 
         let key = "\(locale.identifier)|\(currencyCode)|\(wholeUnits)|\(numberFormat.rawValue)"
@@ -139,8 +151,9 @@ enum CurrencyAmountFormat {
             formatter = created
         }
 
-        return (formatter.string(from: NSNumber(value: amount)) ?? "")
+        return numberFormat
+            .format(number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: currencyCode)
+            .replacingOccurrences(of: formatter.string(from: NSNumber(value: amount)) ?? "", with: formatter.string(from: NSNumber(value: amount)) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\u{2019}", with: "\u{2019}")
     }
 }
