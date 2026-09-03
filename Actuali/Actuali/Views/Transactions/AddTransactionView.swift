@@ -1013,6 +1013,14 @@ struct AmountInputField: UIViewRepresentable {
         let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+
+        if formatChanged {
+            uiView.placeholder = budgetStore.numberFormat.format(
+                number: NSNumber(value: 0),
+                wholeUnits: conventionalAmountEntry,
+                currencyCode: nil
+            )
+        }
         // Compare against what the coordinator last wrote out rather than the
         // field's own text: mid-expression the field reads "12.50 + 6.00"
         // while the binding holds "18.50", and that mismatch is expected.
@@ -1335,7 +1343,7 @@ if string.count > 1,
                 }
                 let value = Double("\(sign)\(whole).\(fractionDigits)") ?? 0
                 return numberFormat.format(
-                    number: NSNumber(value: value),
+                    number: 0,
                     wholeUnits: false,
                     currencyCode: nil
                 )
