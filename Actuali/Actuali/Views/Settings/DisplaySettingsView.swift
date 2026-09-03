@@ -82,6 +82,15 @@ struct DisplaySettingsView: View {
         )
     }
 
+    private var numberFormatSelection: Binding<ActualNumberFormat> {
+        Binding(
+            get: { budgetStore.numberFormat },
+            set: { newValue in
+                Task { await budgetStore.setNumberFormat(newValue) }
+            }
+        )
+    }
+
     var body: some View {
         Form {
             Section {
@@ -92,6 +101,12 @@ struct DisplaySettingsView: View {
                     Text("None").tag("")
                     ForEach(currencyOptions) { option in
                         Text("\(option.symbol) \(option.code)").tag(option.code)
+                    }
+                }
+
+                Picker("Number Formatting", selection: numberFormatSelection) {
+                    ForEach(ActualNumberFormat.allCases) { format in
+                        Text(format.example).tag(format)
                     }
                 }
 
