@@ -46,10 +46,15 @@ enum BackupError: LocalizedError {
 
 actor BackupService {
     private let fileManager: BudgetFileManager
+    private let destinationManager: BackupDestinationManager
     private let fm = FileManager.default
 
-    init(fileManager: BudgetFileManager = .shared) {
+    init(
+        fileManager: BudgetFileManager = .shared,
+        destinationManager: BackupDestinationManager = .shared
+    ) {
         self.fileManager = fileManager
+        self.destinationManager = destinationManager
     }
 
     /// The snapshot is taken with VACUUM INTO instead of a raw file copy, so it is consistent under any journal mode and never touches the live db.
@@ -125,8 +130,12 @@ actor BackupService {
         try? fm.removeItem(at: fileManager.latestMetadataPath(for: budgetId))
 
         // 6. Prune existing backups
-        prune(budgetId: budgetId, today: now)
+        await prune(budgetId: budgetId, today: now)
         logger.info("Backup created: \(archiveURL.lastPathComponent, privacy: .public)")
+
+        // 7. Mirror to custom destination folder if configured
+        let archiveFilename = BudgetFileManager.backupArchiveName(for: now)
+        await destinationManager.mirrorArchive(from: archiveURL, filename: archiveFilename)
     }
 
     /// Consistent snapshot of the live db via VACUUM INTO — serialized on the
@@ -209,9 +218,10 @@ actor BackupService {
         return removed
     }
 
-    private func prune(budgetId: String, today: Date) {
+    private func prune(budgetId: String, today: Date) async {
         for id in Self.backupsToRemove(archiveList(budgetId: budgetId), today: today) {
             try? fm.removeItem(at: fileManager.backupPath(for: budgetId, name: id))
+            await destinationManager.removeMirroredArchive(filename: id)
         }
     }
     

@@ -25,7 +25,27 @@ import Layout from "../../layouts/Layout.astro";
       <p class="text-neutral-700">
         Because iOS isolates every app's internal files for security and privacy, backups do not
         appear directly in the iOS Files app by default. To access a backup archive outside Actuali,
-        you simply <strong>export</strong> it using the share sheet.
+        you can <strong>export</strong> it using the share sheet, or configure a <strong>custom backup folder</strong>.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Custom backup location (iCloud Drive or Files)</h2>
+      <p class="text-neutral-700">
+        If you want your backups to automatically save into a specific folder &mdash; such as a dedicated
+        folder in iCloud Drive (e.g. <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">iCloud Drive &gt; my-fav-backup</code>)
+        or anywhere in the Files app &mdash; Actuali supports automated folder mirroring:
+      </p>
+      <ol class="list-decimal space-y-2 pl-6 text-neutral-700">
+        <li>Go to <strong>More &rarr; Connection &amp; Data &rarr; Backups</strong>.</li>
+        <li>Under <strong>Destination</strong>, tap <strong>Choose Folder</strong>.</li>
+        <li>Select any folder in iCloud Drive or on your device (you can create a new folder like <em>my-fav-backup</em> directly in the picker).</li>
+        <li>Tap <strong>Open</strong> to confirm.</li>
+      </ol>
+      <p class="text-neutral-700">
+        Once selected, Actuali automatically copies all existing backups and every new automatic backup to your chosen folder.
+        Backups are always captured locally first for instant, offline reliability, and then safely mirrored to your chosen folder using iOS coordinated file access.
+        You can change the folder or tap <strong>Reset to Default</strong> at any time.
       </p>
     </section>
 
