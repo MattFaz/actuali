@@ -457,6 +457,24 @@ struct AmountInputFieldTests {
         #expect(box.value == "0.09")
     }
 
+    @Test func negativeResultKeepsItsSignWhereAllowed() {
+        let (coordinator, textField, box) = makeField(allowsNegative: true)
+        type("500", into: coordinator, textField)
+        coordinator.subtractTapped()
+        type("2000", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "-15.00")
+    }
+
+    @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
+        let (coordinator, textField, box) = makeField()
+        type("500", into: coordinator, textField)
+        coordinator.subtractTapped()
+        type("2000", into: coordinator, textField)
+        coordinator.textFieldDidEndEditing(textField)
+        #expect(box.value == "15.00")
+    }
+
     @Test func resultStaysEditableAfterEvaluating() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("10", into: coordinator, textField)
@@ -467,5 +485,16 @@ struct AmountInputFieldTests {
         #expect(box.value == "18.50")
         backspace(coordinator, textField)
         #expect(box.value == "18.50")
+    }
+
+    @Test func minusIsIgnoredWhenNegativeNotAllowed() {
+        let (coordinator, textField, box) = makeField(initial: "-1.20")
+        type("-", into: coordinator, textField)
+        #expect(box.value.hasPrefix("-") == false)
+        coordinator.toggleSign()
+        // Sign toggle exists but sync/full-replace never mark unsigned fields
+        // negative; typed digits keep the amount positive.
+        type("5", into: coordinator, textField)
+        #expect(textField.text?.hasPrefix("-") == false)
     }
 }
