@@ -1383,11 +1383,12 @@ if string.count > 1,
 
         /// What the binding carries: always a plain decimal, so callers can
         /// parse it at any moment — including mid-expression.
-        private func computeBoundText() -> String {
-            let value = normalized(resolvedValue())
-            let whole = parent.conventionalAmountEntry && value == value.rounded()
-            return String(format: whole ? "%.0f" : "%.2f", value)
-        }
+private func computeBoundText() -> String {
+    guard hasTypedOperand || pendingOperator != nil else { return "" }
+    let value = normalized(resolvedValue())
+    let whole = parent.conventionalAmountEntry && value == value.rounded()
+    return String(format: whole ? "%.0f" : "%.2f", value)
+}
 
         fileprivate func applyDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
