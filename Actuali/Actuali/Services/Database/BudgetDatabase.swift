@@ -1394,6 +1394,48 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Payees used most often in the last 12 weeks, matching Actual's
+    /// `getCommonPayees()` behavior. Suggestions are ordered by usage count,
+    /// then by payee name.
+    func fetchCommonPayees() async throws -> [Payee] {
+        try await dbQueue.read { db in
+            let twelveWeeksAgo = Calendar.current.date(
+                byAdding: .weekOfYear,
+                value: -12,
+                to: Date()
+            ) ?? Date()
+
+            let cutoffDate = Transaction.yyyymmdd(from: twelveWeeksAgo)
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.transfer_acct,
+                    COUNT(t.id) AS usage_count
+                FROM payees p
+                JOIN payee_mapping pm ON pm.targetId = p.id
+                JOIN transactions t ON t.description = pm.id
+                WHERE LENGTH(p.name) > 0
+                  AND p.transfer_acct IS NULL
+                  AND (p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND t.date > ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL)
+                GROUP BY p.id
+                ORDER BY usage_count DESC, p.name COLLATE NOCASE ASC
+                LIMIT 10
+                """, arguments: [cutoffDate])
+
+            return rows.map { row in
+                Payee(
+                    id: row["id"],
+                    name: row["name"] ?? "Unknown",
+                    transferAccountId: row["transfer_acct"]
+                )
+            }
+        }
+    }
     // MARK: - Transaction Category History
 
     /// Returns the category id of the most recent non-tombstoned transaction for `payeeId`

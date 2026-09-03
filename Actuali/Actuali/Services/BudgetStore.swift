@@ -372,7 +372,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
-    
+
     /// What tapping a row in the Uncategorized list opens.
     /// Persisted to UserDefaults, defaults to the category picker.
     @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {
@@ -835,6 +835,21 @@ final class BudgetStore: ObservableObject {
             return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
         } catch {
             logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+    
+    /// Most frequently used payees from the last 12 weeks, for the
+    /// Add Transaction payee picker. Failures degrade to no suggestions.
+    func fetchCommonPayees() async -> [Payee] {
+        guard let database else { return [] }
+
+        do {
+            return try await database.fetchCommonPayees()
+        } catch {
+            logger.error(
+                "fetchCommonPayees failed: \(error.localizedDescription, privacy: .public)"
+            )
             return []
         }
     }

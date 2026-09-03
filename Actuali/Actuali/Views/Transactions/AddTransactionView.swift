@@ -26,6 +26,7 @@ struct AddTransactionView: View {
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
     @State private var nearbyPayees: [NearbyPayee] = []
+    @State private var showPayeePicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -33,8 +34,6 @@ struct AddTransactionView: View {
     /// multiple categories" undoes the toggle instantly) but the form shows
     /// the category picker and saves as a single transaction.
     @State private var unsplitRequested = false
-
-    @FocusState private var payeeFocused: Bool
 
     /// Initializer for the "Add" flow. The optional prefill parameters carry
     /// whatever an automation passed along — a failed Wallet log or the Add
@@ -250,27 +249,6 @@ struct AddTransactionView: View {
         }
     }
 
-    private var payeeSuggestions: [Payee] {
-        let trimmed = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return [] }
-        let lower = trimmed.lowercased()
-        return budgetStore.payees
-            .filter { payee in
-                !payee.tombstone &&
-                    payee.transferAccountId == nil &&
-                    payee.name.lowercased() != lower &&
-                    payee.name.localizedCaseInsensitiveContains(trimmed)
-            }
-            .sorted { lhs, rhs in
-                let lp = lhs.name.lowercased().hasPrefix(lower)
-                let rp = rhs.name.lowercased().hasPrefix(lower)
-                if lp != rp { return lp }
-                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
-            }
-            .prefix(5)
-            .map { $0 }
-    }
-
     private var selectedCategoryName: String {
         guard let id = selectedCategoryId else { return "None" }
         for group in budgetStore.categoryGroups {
@@ -349,105 +327,76 @@ struct AddTransactionView: View {
                                 }
                             }
                         }
-                    } else {
-                        TextField("Payee", text: $payeeName)
-                            .focused($payeeFocused)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.words)
-                            .onChange(of: payeeName) { _, newValue in
-                                if let payee = matchingPayee(for: newValue) {
-                                    applyCategoryFromHistory(payeeId: payee.id)
-                                }
-                            }
-                            .onChange(of: payeeFocused) { _, focused in
-                                if focused { loadNearbyPayees() }
-                                guard focused, !payeeName.isEmpty else { return }
-                                DispatchQueue.main.async {
-                                    UIApplication.shared.sendAction(
-                                        #selector(UIResponder.selectAll(_:)),
-                                        to: nil, from: nil, for: nil
-                                    )
-                                }
-                            }
+                    }
 
-                        if payeeFocused && !payeeSuggestions.isEmpty {
-                            ForEach(payeeSuggestions) { payee in
-                                Button {
+                    if !isTransfer {
+                        Button {
+                            loadNearbyPayees()
+                            showPayeePicker = true
+                        } label: {
+                            HStack {
+                                Text("Payee")
+                                    .foregroundStyle(.secondary)
+                                Spacer()
+                                if !payeeName.isEmpty {
+                                    Text(payeeName)
+                                        .foregroundStyle(.primary)
+                                }
+                            }
+                            .contentShape(Rectangle()) // Ensures the whole row is tappable
+                        }
+                        .buttonStyle(.plain)
+                        .sheet(isPresented: $showPayeePicker) {
+                            PayeePickerView(
+                                payeeName: payeeName,
+                                nearbyPayees: $nearbyPayees,
+                                onSelect: { payee in
                                     payeeName = payee.name
-                                    payeeFocused = false
                                     applyCategoryFromHistory(payeeId: payee.id)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "clock.arrow.circlepath")
-                                            .foregroundStyle(.secondary)
-                                            .font(.footnote)
-                                        Text(payee.name)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
+                                    showPayeePicker = false
+                                },
+                                onCommit: { name in
+                                    payeeName = name
+                                    if let payee = matchingPayee(for: name) {
+                                        applyCategoryFromHistory(payeeId: payee.id)
                                     }
+                                    showPayeePicker = false
+                                },
+                                onDeleteNearby: { nearby in
+                                    deleteNearbySuggestion(nearby)
                                 }
-                            }
+                            )
+                            .environmentObject(budgetStore)
                         }
+                    }
 
-                        if payeeFocused,
-                           payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                           !nearbyPayees.isEmpty {
-                            ForEach(nearbyPayees.prefix(5)) { nearby in
-                                Button {
-                                    payeeName = nearby.payee.name
-                                    payeeFocused = false
-                                    applyCategoryFromHistory(payeeId: nearby.payee.id)
-                                } label: {
-                                    HStack {
-                                        Image(systemName: "location.fill")
-                                            .foregroundStyle(.secondary)
-                                            .font(.footnote)
-                                        Text(nearby.payee.name)
-                                            .foregroundStyle(.primary)
-                                        Spacer()
-                                        Text(LocationUtils.formatDistance(meters: nearby.distanceMeters))
-                                            .font(.caption2)
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                    Button(role: .destructive) {
-                                        deleteNearbySuggestion(nearby)
-                                    } label: {
-                                        Label("Delete", systemImage: "trash")
-                                    }
-                                }
-                            }
+                    if isEditingSplitParent && !isSplitting && !unsplitRequested {
+                        // Placeholder while the children load into the
+                        // editable split lines below.
+                        HStack {
+                            Text("Category")
+                            Spacer()
+                            Text("Split")
+                                .foregroundStyle(.secondary)
                         }
-
-                        if isEditingSplitParent && !isSplitting && !unsplitRequested {
-                            // Placeholder while the children load into the
-                            // editable split lines below.
+                    } else if showsStandardCategoryFields && !isSplitting {
+                        NavigationLink {
+                            CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                                userPickedCategory = true
+                            }
+                        } label: {
                             HStack {
                                 Text("Category")
                                 Spacer()
-                                Text("Split")
+                                Text(selectedCategoryName)
                                     .foregroundStyle(.secondary)
                             }
-                        } else if showsStandardCategoryFields && !isSplitting {
-                            NavigationLink {
-                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                    userPickedCategory = true
-                                }
+                        }
+                        if canSplitIntoCategories {
+                            Button {
+                                startSplit()
                             } label: {
-                                HStack {
-                                    Text("Category")
-                                    Spacer()
-                                    Text(selectedCategoryName)
-                                        .foregroundStyle(.secondary)
-                                }
-                            }
-                            if canSplitIntoCategories {
-                                Button {
-                                    startSplit()
-                                } label: {
-                                    Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
-                                }
+                                Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
                             }
                         }
                     }
@@ -594,7 +543,14 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(line: $line, txType: txType, remainingCents: splitRemainingCents)
+                SplitLineRow(
+                    line: $line,
+                    txType: txType,
+                    remainingCents: splitRemainingCents,
+                    nearbyPayees: $nearbyPayees,
+                    onOpenPayeePicker: loadNearbyPayees,
+                    onDeleteNearby: deleteNearbySuggestion
+                )
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -773,7 +729,6 @@ struct AddTransactionView: View {
     }
 
     private func dismissKeyboard() {
-        payeeFocused = false
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
             to: nil, from: nil, for: nil
@@ -805,8 +760,7 @@ enum SplitEntryMath {
     }
 }
 
-/// One editable split line: a category picked through a sheet and an amount.
-/// Borderless button so the amount field keeps its own tap target in the row.
+/// One editable split line with category, amount, payee, and notes controls.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
@@ -816,7 +770,11 @@ private struct SplitLineRow: View {
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
+    @Binding var nearbyPayees: [NearbyPayee]
+    let onOpenPayeePicker: () -> Void
+    let onDeleteNearby: (NearbyPayee) -> Void
     @State private var showCategoryPicker = false
+    @State private var showPayeePicker = false
 
     private var categoryName: String {
         guard let id = line.categoryId else { return "Category" }
@@ -882,11 +840,34 @@ private struct SplitLineRow: View {
                     .buttonStyle(.borderless)
                 }
             }
-            // Empty payee inherits the transaction's payee
-            TextField("Payee (optional)", text: $line.payeeName)
-                .font(.subheadline)
-                .autocorrectionDisabled()
-                .textInputAutocapitalization(.words)
+            // Empty payee inherits the transaction's payee.
+            Button {
+                onOpenPayeePicker()
+                showPayeePicker = true
+            } label: {
+                Text(line.payeeName.isEmpty ? "Payee (optional)" : line.payeeName)
+                    .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .font(.subheadline)
+            .sheet(isPresented: $showPayeePicker) {
+                PayeePickerView(
+                    payeeName: line.payeeName,
+                    nearbyPayees: $nearbyPayees,
+                    onSelect: { payee in
+                        line.payeeName = payee.name
+                        showPayeePicker = false
+                    },
+                    onCommit: { name in
+                        line.payeeName = name
+                        showPayeePicker = false
+                    },
+                    onDeleteNearby: onDeleteNearby
+                )
+                .environmentObject(budgetStore)
+            }
             TextField("Notes (optional)", text: $line.notes)
                 .font(.subheadline)
             NoteLinkRows(text: line.notes)
@@ -914,11 +895,10 @@ private struct SplitLineRow: View {
 /// gains a fraction the user didn't type, so zero-decimal currencies never
 /// need a trailing ".00" (GH #211).
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
-/// the text's own sign. With `onToggleSign`, the same button appears but the
-/// sign lives outside the field (a split line's direction flip) and the text
-/// stays unsigned. Neither set means sign is handled elsewhere entirely
-/// (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips the
+/// text's own sign. With `onToggleSign`, the same button appears but the sign
+/// lives outside the field (a split line's direction flip) and the text stays unsigned.
+/// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
