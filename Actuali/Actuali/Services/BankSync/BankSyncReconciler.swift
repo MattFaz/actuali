@@ -31,6 +31,7 @@ struct BankSyncExistingTransaction: Sendable, Equatable {
     var notes: String?
     var cleared: Bool
     var reconciled: Bool
+    var tombstone: Bool = false
 }
 
 /// The columns a matched transaction takes from the downloaded one.
@@ -70,7 +71,8 @@ enum BankSyncReconciler {
 
     static func plan(
         candidates: [BankSyncCandidate],
-        existing: [BankSyncExistingTransaction]
+        existing: [BankSyncExistingTransaction],
+        reimportDeleted: Bool = true
     ) -> BankSyncPlan {
         var matchedIds = Set<String>()
         var plan = BankSyncPlan()
@@ -88,7 +90,9 @@ enum BankSyncReconciler {
         var pending: [(candidate: BankSyncCandidate, match: BankSyncExistingTransaction?, window: [BankSyncExistingTransaction])] = []
         for candidate in candidates {
             if let match = existing.first(where: {
-                $0.importedId == candidate.importedId && !matchedIds.contains($0.id)
+                $0.importedId == candidate.importedId
+                    && (!$0.tombstone || !reimportDeleted)
+                    && !matchedIds.contains($0.id)
             }) {
                 matchedIds.insert(match.id)
                 pending.append((candidate, match, []))
@@ -96,7 +100,7 @@ enum BankSyncReconciler {
             }
             let window = existing
                 .compactMap { row -> (row: BankSyncExistingTransaction, distance: Int)? in
-                    guard row.amount == candidate.amount,
+                    guard !row.tombstone, row.amount == candidate.amount,
                           let distance = dayDistance(row.date, candidate.date),
                           distance <= fuzzyMatchDayRadius else { return nil }
                     return (row, distance)
@@ -131,8 +135,9 @@ enum BankSyncReconciler {
                 plan.inserts.append(entry.candidate)
                 continue
             }
-            // Reconciled transactions are locked; upstream leaves them alone.
-            guard !match.reconciled else {
+            // Reconciled and deleted transactions are locked; upstream leaves
+            // both alone. A deleted row only acts as an exact-ID dedupe key.
+            guard !match.reconciled, !match.tombstone else {
                 plan.unchanged += 1
                 continue
             }

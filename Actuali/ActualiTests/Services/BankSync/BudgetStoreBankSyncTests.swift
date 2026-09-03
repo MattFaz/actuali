@@ -414,7 +414,7 @@ struct BudgetStoreBankSyncTests {
         #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 0").count == 1)
     }
 
-    @Test func disabledReimportMatchesADeletedTransactionWithANewBankId() async throws {
+    @Test func disabledReimportDoesNotFuzzyMatchADeletedTransactionWithANewBankId() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let accountId = Self.accountId
@@ -440,13 +440,45 @@ struct BudgetStoreBankSyncTests {
 
         let result = try await store.syncBankAccounts()
 
-        // The preference also applies when the provider changes the
-        // transaction id: fuzzy matching must find the tombstone rather than
-        // creating a visible duplicate.
-        #expect(result.added == 1)
-        #expect(result.updated == 1)
-        #expect(try rows(path: url, where: "financial_id = 'sf-new-id'").count == 1)
-        #expect(try rows(path: url, where: "financial_id = 'sf-new-id' AND tombstone = 0").isEmpty)
+        // A changed provider id is not proof that this is the deleted
+        // transaction. The tombstone must be excluded from fuzzy matching, so
+        // this download is imported as a new visible transaction.
+        #expect(result.added == 2)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-old-id'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-id' AND tombstone = 0").count == 1)
+    }
+
+    @Test func disabledReimportDoesNotLetDeletedRowsStealNearbyNewTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        let deletedDay = Self.expectedDay(5)
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions
+                    (id, acct, date, amount, imported_description, financial_id,
+                     tombstone, cleared, sort_order)
+                VALUES ('tx-deleted', ?, ?, -3345, 'Deleted Merchant', 'sf-deleted',
+                        1, 1, 1)
+                """, arguments: [accountId, deletedDay])
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, 'false')",
+                arguments: ["sync-reimport-deleted-\(accountId)"]
+            )
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-new-charge", "posted": \(Self.daysAgo(8)),
+             "amount": "-33.45", "payee": "New Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 2)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-charge' AND tombstone = 0").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 1").count == 1)
     }
 
     /// A transaction entered by hand before the bank posted it should be

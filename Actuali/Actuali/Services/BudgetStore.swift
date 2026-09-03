@@ -3327,10 +3327,13 @@ final class BudgetStore: ObservableObject {
             accountId: target.id,
             from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
             to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest,
-            includeTombstoned: !reimportDeleted
         )
 
-        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: window,
+            reimportDeleted: reimportDeleted
+        )
 
         try await syncClient.applyBankSyncUpdates(plan.updates)
 

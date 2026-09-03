@@ -2857,26 +2857,16 @@ final class BudgetDatabase: Sendable {
     ///
     /// Split children are excluded: a download matches the parent (which
     /// carries the full amount), never one of its portions. Tombstoned rows
-    /// are included only when the account's `reimportDeleted` setting is
-    /// disabled. In that mode matching the tombstone prevents the downloaded
-    /// transaction from being inserted again while leaving the row deleted.
-    func bankSyncWindow(
-        accountId: String,
-        from: Int,
-        to: Int,
-        includeTombstoned: Bool = false
-    ) async throws -> [BankSyncExistingTransaction] {
+    /// are included so the reconciler can apply the account's
+    /// `reimportDeleted` setting: they are usable only as exact-ID dedupe keys.
+    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
         try await dbQueue.read { db in
-            let tombstoneFilter = includeTombstoned
-                ? ""
-                : "AND (tombstone = 0 OR tombstone IS NULL)"
             return try Row.fetchAll(db, sql: """
                 SELECT id, date, amount, description, financial_id, imported_description,
-                       notes, cleared, reconciled
+                       notes, cleared, reconciled, tombstone
                 FROM transactions
                 WHERE acct = ?
                   AND date IS NOT NULL AND date >= ? AND date <= ?
-                  \(tombstoneFilter)
                   AND (isChild = 0 OR isChild IS NULL)
                 """, arguments: [accountId, from, to]).map { row in
                 BankSyncExistingTransaction(
@@ -2888,7 +2878,8 @@ final class BudgetDatabase: Sendable {
                     importedPayee: row["imported_description"],
                     notes: row["notes"],
                     cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1
+                    reconciled: row["reconciled"] == 1,
+                    tombstone: row["tombstone"] == 1
                 )
             }
         }
