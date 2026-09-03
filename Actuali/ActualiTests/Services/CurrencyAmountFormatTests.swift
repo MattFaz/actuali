@@ -107,4 +107,56 @@ struct CurrencyAmountFormatTests {
         #expect(dinar == "1,234.500")
         #expect(roundedDollars == "1,235")
     }
+
+    @Test func actualNumberFormatsMatchExpectedGrouping() {
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .commaDot,
+            locale: enUS
+        ) == "$1,000.33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .dotComma,
+            locale: enUS
+        ) == "$1.000,33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .spaceComma,
+            locale: enUS
+        ) == "$1\u{202F}000,33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .apostropheDot,
+            locale: enUS
+        ) == "$1\u{2019}000.33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_000_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .commaDotIn,
+            locale: enUS
+        ) == "$10,00,000.33")
+    }
+
+    @Test func numberFormatRawValuesMatchActualPreferenceKeys() {
+        #expect(ActualNumberFormat.allCases.map(\.rawValue) == [
+            "comma-dot",
+            "dot-comma",
+            "space-comma",
+            "apostrophe-dot",
+            "comma-dot-in"
+        ])
+    }
 }
