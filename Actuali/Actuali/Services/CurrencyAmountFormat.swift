@@ -115,7 +115,8 @@ enum CurrencyAmountFormat {
         }
         let currencyString = amount.formatted(style)
         let numericString = numberFormat.format(
-            number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: currencyCode)
+            number: NSNumber(value: abs(amount)), wholeUnits: wholeUnits, currencyCode: currencyCode
+        ).trimmingCharacters(in: CharacterSet.decimalDigits.inverted)
         return replacingNumericPart(in: currencyString, with: numericString)
     }
 
