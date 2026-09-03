@@ -23,17 +23,18 @@ enum AmountParser {
         let negative = token.hasPrefix("-")
             || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
         token = token.trimmingCharacters(in: CharacterSet(charactersIn: "-.,'\u{2019}\u{202F}\u{00A0}"))
-        token = token
-            .replacingOccurrences(of: "\u{00A0}", with: "")
-            .replacingOccurrences(of: "\u{202F}", with: "")
-            .replacingOccurrences(of: "'", with: "")
-            .replacingOccurrences(of: "\u{2019}", with: "")
 
         if let numberFormat,
            let normalized = normalize(token, using: numberFormat),
            let value = Double(normalized) {
             return negative ? -value : value
         }
+
+        token = token
+            .replacingOccurrences(of: "\u{00A0}", with: "")
+            .replacingOccurrences(of: "\u{202F}", with: "")
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: "\u{2019}", with: "")
 
         let normalized: String
         switch (token.lastIndex(of: "."), token.lastIndex(of: ",")) {
