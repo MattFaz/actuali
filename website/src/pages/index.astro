@@ -106,7 +106,7 @@ const privacy = [
   {
     icon: "offline",
     title: "Works offline & auto-backs up",
-    body: 'Every budget lives locally in SQLite, backed up automatically each time you leave the app. Export anytime to Files or desktop — see the <a href="/guides/backups" class="underline hover:text-neutral-900">backups guide</a>.',
+    body: "Every budget lives locally in SQLite, backed up automatically each time you leave the app. Export anytime to Files or desktop.",
   },
   {
     icon: "sync",
@@ -333,6 +333,19 @@ const privacy = [
             <h3 class="font-semibold">{feature.title}</h3>
             <p class="mt-1.5 text-sm text-neutral-600">
               {feature.body}
+              {feature.icon === "offline" && (
+                <>
+                  {" "}
+                  See the{" "}
+                  <a
+                    href="/guides/backups"
+                    class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500"
+                  >
+                    backups guide
+                  </a>
+                  .
+                </>
+              )}
               {feature.icon === "shield" && (
                 <>
                   {" "}
