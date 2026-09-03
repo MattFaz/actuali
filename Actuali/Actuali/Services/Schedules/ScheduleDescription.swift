@@ -9,8 +9,12 @@ enum ScheduleDescription {
     private static let localizationBundle = Bundle(for: ScheduleDescriptionBundleToken.self)
 
     private static func localized(_ key: String, locale: Locale) -> String {
-        let languageCode = locale.languageCode ?? locale.identifier.split(separator: "_").first.map(String.init) ?? locale.identifier
-        let localeBundle = localizationBundle.path(forResource: languageCode, ofType: "lproj")
+        let languageCode = locale.language.languageCode?.identifier ?? locale.identifier
+        let localeIdentifier = locale.identifier.replacingOccurrences(of: "_", with: "-")
+        let resourceName = localeIdentifier == "" ? languageCode : localeIdentifier
+        let localeBundle = localizationBundle.path(forResource: resourceName, ofType: "lproj")
+            .flatMap(Bundle.init(path:))
+            ?? localizationBundle.path(forResource: languageCode, ofType: "lproj")
             .flatMap(Bundle.init(path:)) ?? localizationBundle
         return localeBundle.localizedString(forKey: key, value: nil, table: "Localizable")
     }
