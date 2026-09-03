@@ -11,7 +11,7 @@ enum AmountParser {
         // Exactly one number token, or refuse: shortcuts misconfigured to
         // pass the whole transaction can stringify with extra digits (dates,
         // "7-Eleven"), and a wrong amount is worse than an error.
-        let tokens = text.matches(of: /-?\d[\d.,]*/)
+        let tokens = text.matches(of: /-?\d[\d.,'\u{2019}\u{202F}\u{00A0}]*/)
         guard tokens.count == 1 else { return nil }
 
         var token = String(tokens[0].output)
@@ -19,7 +19,12 @@ enum AmountParser {
         // string — a hyphenated merchant name ("Coca-Cola") is not a sign.
         let negative = token.hasPrefix("-")
             || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
-        token = token.trimmingCharacters(in: CharacterSet(charactersIn: "-.,"))
+        token = token.trimmingCharacters(in: CharacterSet(charactersIn: "-.,'\u{2019}\u{202F}\u{00A0}"))
+        token = token
+            .replacingOccurrences(of: "\u{00A0}", with: "")
+            .replacingOccurrences(of: "\u{202F}", with: "")
+            .replacingOccurrences(of: "'", with: "")
+            .replacingOccurrences(of: "\u{2019}", with: "")
 
         let normalized: String
         switch (token.lastIndex(of: "."), token.lastIndex(of: ",")) {
