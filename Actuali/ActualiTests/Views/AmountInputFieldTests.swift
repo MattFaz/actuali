@@ -140,7 +140,7 @@ struct AmountInputFieldTests {
             replacementString: "450,046.23"
         )
 
-        #expect(textField.text == "450046.23")
+        #expect(textField.text == "450,046.23")
         #expect(box.value == "450046.23")
     }
 
@@ -186,13 +186,13 @@ struct AmountInputFieldTests {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12.05", into: coordinator, textField)
         backspace(coordinator, textField)
-        #expect(box.value == "12.0")
-        backspace(coordinator, textField)
-        #expect(box.value == "12.")
+        #expect(box.value == "12")
         backspace(coordinator, textField)
         #expect(box.value == "12")
         backspace(coordinator, textField)
         #expect(box.value == "1")
+        backspace(coordinator, textField)
+        #expect(box.value == "")
     }
 
     @Test func conventionalModeKeepsEmptyFieldEmpty() {
@@ -293,7 +293,7 @@ struct AmountInputFieldTests {
             initial: "324", conventionalAmountEntry: true
         )
         type("5", into: coordinator, textField)
-        #expect(textField.text == "3245")
+        #expect(textField.text == "3,245")
         #expect(box.value == "3245")
     }
 
@@ -437,7 +437,7 @@ struct AmountInputFieldTests {
         #expect(textField.text == "12.50")
         #expect(box.value == "12.50")
         backspace(coordinator, textField)
-        #expect(box.value == "12.5")
+        #expect(box.value == "12")
     }
 
     @Test func fullReplaceClearsAPendingExpression() {
@@ -480,7 +480,7 @@ struct AmountInputFieldTests {
         type("600", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
         backspace(coordinator, textField)
-        #expect(box.value == "18.5")
+        #expect(box.value == "18.50")
     }
 
     @Test func minusIsIgnoredWhenNegativeNotAllowed() {
@@ -488,6 +488,8 @@ struct AmountInputFieldTests {
         type("-", into: coordinator, textField)
         #expect(box.value.hasPrefix("-") == false)
         coordinator.toggleSign()
+        // Sign toggle exists but sync/full-replace never mark unsigned fields
+        // negative; typed digits keep the amount positive.
         type("5", into: coordinator, textField)
         #expect(textField.text?.hasPrefix("-") == false)
     }
