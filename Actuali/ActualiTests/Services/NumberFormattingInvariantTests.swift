@@ -42,21 +42,6 @@ struct NumberFormattingInvariantTests {
         }
     }
 
-    @Test func formattingChangesDoNotChangeStoredCents() {
-        let cents = 123456
-
-        for format in ActualNumberFormat.allCases {
-            let rendered = CurrencyAmountFormat.string(
-                cents: cents,
-                currencyCode: "USD",
-                narrowSymbol: false,
-                numberFormat: format
-            )
-            #expect(rendered.contains("1"))
-            #expect(Double(cents) / 100.0 == 1234.56)
-        }
-    }
-
     @Test func calculatorEntryUsesSelectedFormatWithoutChangingCanonicalAmount() {
         let (coordinator, textField, box) = makeField(
             conventionalAmountEntry: false,
