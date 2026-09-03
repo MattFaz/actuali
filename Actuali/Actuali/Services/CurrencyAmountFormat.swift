@@ -30,7 +30,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    private func normalize(_ string: String) -> String {
+    fileprivate func normalize(_ string: String) -> String {
         switch self {
         case .spaceComma:
             return string.replacingOccurrences(of: "\u{00A0}", with: "\u{202F}")
@@ -41,7 +41,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    private func numberFormatter(currencyCode: String, wholeUnits: Bool) -> NumberFormatter {
+    fileprivate func numberFormatter(currencyCode: String, wholeUnits: Bool) -> NumberFormatter {
         let formatter = NumberFormatter()
         formatter.locale = locale
         formatter.numberStyle = .currency
