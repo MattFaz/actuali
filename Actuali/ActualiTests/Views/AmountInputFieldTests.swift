@@ -185,14 +185,19 @@ struct AmountInputFieldTests {
     @Test func conventionalModeBackspaceWorksThroughDecimalAndDigits() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("12.05", into: coordinator, textField)
+
         backspace(coordinator, textField)
         #expect(box.value == "12")
+
         backspace(coordinator, textField)
         #expect(box.value == "12")
+
         backspace(coordinator, textField)
         #expect(box.value == "12")
+
         backspace(coordinator, textField)
         #expect(box.value == "1")
+
         backspace(coordinator, textField)
         #expect(box.value == "")
     }
@@ -435,9 +440,11 @@ struct AmountInputFieldTests {
         type("1250", into: coordinator, textField)
         coordinator.addTapped()
         #expect(textField.text == "12.50 + ")
+
         backspace(coordinator, textField)
         #expect(textField.text == "12.50")
         #expect(box.value == "12.50")
+
         backspace(coordinator, textField)
         #expect(box.value == "12.50")
     }
