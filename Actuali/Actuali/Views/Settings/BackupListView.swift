@@ -35,10 +35,29 @@ struct BackupListView: View {
                 } else {
                     ForEach(archives) { backup in
                         if case .archive(let id, let date) = backup {
-                            Button {
-                                pendingRestore = backup
-                            } label: {
-                                Text(Self.dateFormatter.string(from: date))
+                            HStack {
+                                Button {
+                                    pendingRestore = backup
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(Self.dateFormatter.string(from: date))
+                                            .foregroundStyle(.primary)
+                                        Text("Tap to restore")
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
+                                if let url = budgetStore.backupFileURL(id) {
+                                    ShareLink(item: url) {
+                                        Label("Export", systemImage: "square.and.arrow.up")
+                                            .font(.subheadline)
+                                    }
+                                    .buttonStyle(.bordered)
+                                }
                             }
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 if let url = budgetStore.backupFileURL(id) {
@@ -47,12 +66,28 @@ struct BackupListView: View {
                                     }
                                 }
                             }
+                            .contextMenu {
+                                if let url = budgetStore.backupFileURL(id) {
+                                    ShareLink(item: url) {
+                                        Label("Export Backup", systemImage: "square.and.arrow.up")
+                                    }
+                                }
+                                Button(role: .destructive) {
+                                    pendingRestore = backup
+                                } label: {
+                                    Label("Restore Backup", systemImage: "arrow.counterclockwise")
+                                }
+                            }
                         }
                     }
                 }
+            } header: {
+                if !archives.isEmpty {
+                    Text("Available Backups")
+                }
             } footer: {
                 if !hasLatest && !archives.isEmpty {
-                    Text("Restoring a backup replaces the current budget. Your current data is saved first so you can revert. Swipe a backup to export it for import into Actual on the web or desktop.")
+                    Text("Backups are stored in Actuali's private app storage on this device. Tap Export to save to Files, iCloud Drive, or AirDrop. Tapping a backup restores it (your current data is saved first so you can revert).")
                 }
             }
         }

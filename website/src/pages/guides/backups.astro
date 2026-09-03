@@ -1,0 +1,122 @@
+---
+import Layout from "../../layouts/Layout.astro";
+---
+
+<Layout
+  title="Backups & Export · Actuali"
+  description="How Actuali creates, stores, and exports budget backups, and how to import them into Actual Budget on web or desktop."
+>
+  <article class="mx-auto max-w-3xl space-y-6">
+    <header class="space-y-2">
+      <h1 class="text-3xl font-semibold tracking-tight sm:text-4xl">Backups &amp; Export</h1>
+      <p class="text-neutral-500">
+        Actuali takes automatic backups so your finances are always protected on your device.
+        This guide explains where backups live, how to export them to Files or your computer,
+        and how to restore or import them into Actual Budget.
+      </p>
+    </header>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Where backups are stored</h2>
+      <p class="text-neutral-700">
+        Backups are stored locally on your iPhone in Actuali's private app sandbox
+        (within the application data container).
+      </p>
+      <p class="text-neutral-700">
+        Because iOS isolates every app's internal files for security and privacy, backups do not
+        appear directly in the iOS Files app by default. To access a backup archive outside Actuali,
+        you simply <strong>export</strong> it using the share sheet.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">When backups are created</h2>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Automatic snapshots on exit:</strong> Actuali automatically captures a backup
+          each time you leave or background the app. You never have to remember to back up before closing.
+        </li>
+        <li>
+          <strong>Manual snapshots on demand:</strong> Open <strong>More &rarr; Connection &amp; Data</strong>
+          and tap <strong>Back Up Now</strong> whenever you want to take an immediate snapshot before
+          making large adjustments.
+        </li>
+        <li>
+          <strong>Safety snapshots before restore:</strong> When you restore an older backup,
+          Actuali automatically saves a snapshot of your live data first. A banner appears allowing you to
+          <strong>Revert to Original Version</strong> at any time.
+        </li>
+        <li>
+          <strong>Automatic retention:</strong> Actuali retains a rolling history of recent backups
+          so you always have points to restore to without backups consuming unnecessary space on your device.
+        </li>
+      </ul>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">How to export a backup</h2>
+      <p class="text-neutral-700">
+        Exporting allows you to save your budget archive to the Files app, iCloud Drive, AirDrop it to your Mac,
+        or send it to another device:
+      </p>
+      <ol class="list-decimal space-y-2 pl-6 text-neutral-700">
+        <li>Open the <strong>More</strong> tab and tap <strong>Connection &amp; Data</strong>.</li>
+        <li>Tap <strong>Backups</strong> to see all available timestamps.</li>
+        <li>
+          Tap the <strong>Export</strong> button next to the backup you want to export.
+          (You can also swipe left on any row or long-press it for the context menu).
+        </li>
+        <li>
+          The iOS Share Sheet opens. From here you can:
+          <ul class="mt-2 list-disc space-y-1 pl-6">
+            <li><strong>Save to Files:</strong> Choose any folder on your iPhone or in iCloud Drive.</li>
+            <li><strong>AirDrop:</strong> Instantly beam the file to your Mac or iPad.</li>
+            <li><strong>Share via Mail, Messages, or cloud storage:</strong> Send or archive the backup anywhere you like.</li>
+          </ul>
+        </li>
+      </ol>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Importing into Actual on Web or Desktop</h2>
+      <p class="text-neutral-700">
+        Actuali's backup archives are 100% compatible with upstream Actual Budget.
+        Each export is a standard <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">.zip</code> archive
+        containing <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">db.sqlite</code> and
+        <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">metadata.json</code> with CRDT sync state stripped,
+        exactly matching Actual's export format.
+      </p>
+      <p class="text-neutral-700">
+        To import an exported backup into the Actual Budget desktop app or web app:
+      </p>
+      <ol class="list-decimal space-y-2 pl-6 text-neutral-700">
+        <li>Export the backup from Actuali to your Files or Mac.</li>
+        <li>Open Actual Budget in your desktop app or browser.</li>
+        <li>From the budget selection screen, select <strong>Import my budget</strong> (or go to <strong>Settings &rarr; Import backup</strong>).</li>
+        <li>Select the exported <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">.zip</code> file.</li>
+      </ol>
+      <p class="text-neutral-700">
+        Actual will load your full budget with all accounts, payees, rules, categories, and transaction history.
+      </p>
+    </section>
+
+    <section class="space-y-3">
+      <h2 class="text-xl font-semibold">Restoring a backup in Actuali</h2>
+      <p class="text-neutral-700">
+        In <strong>More &rarr; Connection &amp; Data &rarr; Backups</strong>, tapping any backup timestamp
+        prompts you to restore it.
+      </p>
+      <ul class="list-disc space-y-2 pl-6 text-neutral-700">
+        <li>
+          <strong>Reverting:</strong> If you decide you want to return to the budget as it was before restoring,
+          tap <strong>Revert to Original Version</strong> at the top of the Backups screen.
+        </li>
+        <li>
+          <strong>Sync disconnection:</strong> Restoring an older backup deliberately detaches sync with your server.
+          This prevents restored old transactions or deleted entries from immediately overwriting or conflicting with
+          your server. To sync again, re-download the budget from your server (which replaces the restored local data).
+        </li>
+      </ul>
+    </section>
+  </article>
+</Layout>
