@@ -78,7 +78,8 @@ extension BudgetStore {
             : CurrencyAmountFormat.symbolLessString(
                 cents: cents,
                 currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces
+                wholeUnits: hideDecimalPlaces,
+                numberFormat: numberFormat
             )
     }
 }
@@ -1124,7 +1125,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel("Edit budgeted amount for \(category.categoryName}")
                 Button {
                     onShowTransactions(category, category.month)
                 } label: {
@@ -1262,7 +1263,6 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
