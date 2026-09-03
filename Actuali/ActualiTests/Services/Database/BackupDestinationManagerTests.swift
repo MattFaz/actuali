@@ -11,14 +11,19 @@ struct BackupDestinationManagerTests {
         return (manager, defaults, suiteName)
     }
 
-    @Test func defaultStateHasNoCustomDestination() {
+    @Test func defaultStateHasNoCustomDestination() async {
         let (manager, defaults, suiteName) = makeManager()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
-        #expect(manager.destinationName == nil)
-        #expect(!manager.isCustomDestinationConfigured)
-        #expect(manager.lastMirroredDate == nil)
-        #expect(manager.lastMirrorError == nil)
+        let name = await manager.destinationName
+        let isConfigured = await manager.isCustomDestinationConfigured
+        let lastDate = await manager.lastMirroredDate
+        let lastError = await manager.lastMirrorError
+
+        #expect(name == nil)
+        #expect(!isConfigured)
+        #expect(lastDate == nil)
+        #expect(lastError == nil)
     }
 
     @Test func clearDestinationRemovesKeys() async {
@@ -30,20 +35,30 @@ struct BackupDestinationManagerTests {
         defaults.set(Date(), forKey: BackupDestinationManager.lastMirroredDateKey)
         defaults.set("Mock Error", forKey: BackupDestinationManager.lastMirrorErrorKey)
 
-        #expect(manager.destinationName == "my-fav-backup")
-        #expect(manager.isCustomDestinationConfigured)
-        #expect(manager.lastMirroredDate != nil)
-        #expect(manager.lastMirrorError == "Mock Error")
+        let nameBefore = await manager.destinationName
+        let isConfiguredBefore = await manager.isCustomDestinationConfigured
+        let lastDateBefore = await manager.lastMirroredDate
+        let lastErrorBefore = await manager.lastMirrorError
 
-        manager.clearDestination()
+        #expect(nameBefore == "my-fav-backup")
+        #expect(isConfiguredBefore)
+        #expect(lastDateBefore != nil)
+        #expect(lastErrorBefore == "Mock Error")
 
-        #expect(manager.destinationName == nil)
-        #expect(!manager.isCustomDestinationConfigured)
-        #expect(manager.lastMirroredDate == nil)
-        #expect(manager.lastMirrorError == nil)
+        await manager.clearDestination()
+
+        let nameAfter = await manager.destinationName
+        let isConfiguredAfter = await manager.isCustomDestinationConfigured
+        let lastDateAfter = await manager.lastMirroredDate
+        let lastErrorAfter = await manager.lastMirrorError
+
+        #expect(nameAfter == nil)
+        #expect(!isConfiguredAfter)
+        #expect(lastDateAfter == nil)
+        #expect(lastErrorAfter == nil)
     }
 
-    @Test func saveDestinationStoresBookmarkAndName() throws {
+    @Test func saveDestinationStoresBookmarkAndName() async throws {
         let (manager, defaults, suiteName) = makeManager()
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
@@ -52,10 +67,13 @@ struct BackupDestinationManagerTests {
         try FileManager.default.createDirectory(at: tempFolder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempFolder) }
 
-        try manager.saveDestination(from: tempFolder)
+        try await manager.saveDestination(from: tempFolder)
 
-        #expect(manager.isCustomDestinationConfigured)
-        #expect(manager.destinationName?.hasPrefix("my-fav-backup") == true)
+        let isConfigured = await manager.isCustomDestinationConfigured
+        let name = await manager.destinationName
+
+        #expect(isConfigured)
+        #expect(name?.hasPrefix("my-fav-backup") == true)
     }
 
     @Test func mirrorArchiveSafelySkipsWhenUnconfigured() async {
@@ -80,7 +98,7 @@ struct BackupDestinationManagerTests {
         try FileManager.default.createDirectory(at: tempFolder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: tempFolder) }
 
-        try manager.saveDestination(from: tempFolder)
+        try await manager.saveDestination(from: tempFolder)
 
         let sourceFile = FileManager.default.temporaryDirectory.appendingPathComponent("source-\(UUID().uuidString).zip")
         try Data("mock archive content".utf8).write(to: sourceFile)
@@ -92,8 +110,11 @@ struct BackupDestinationManagerTests {
 
         let mirroredFile = tempFolder.appendingPathComponent("Actuali/\(budgetId)/\(filename)")
         #expect(FileManager.default.fileExists(atPath: mirroredFile.path))
-        #expect(manager.lastMirroredDate != nil)
-        #expect(manager.lastMirrorError == nil)
+
+        let lastDate = await manager.lastMirroredDate
+        let lastError = await manager.lastMirrorError
+        #expect(lastDate != nil)
+        #expect(lastError == nil)
 
         await manager.removeMirroredArchive(budgetId: budgetId, filename: filename)
         #expect(!FileManager.default.fileExists(atPath: mirroredFile.path))
