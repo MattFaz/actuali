@@ -22,8 +22,10 @@ actor BackupDestinationManager {
 
     static let bookmarkKey = "actuali.backup.customDestinationBookmark"
     static let nameKey = "actuali.backup.customDestinationName"
+    static let lastMirroredDateKey = "actuali.backup.lastMirroredDate"
+    static let lastMirrorErrorKey = "actuali.backup.lastMirrorError"
 
-    private let userDefaults: UserDefaults
+    nonisolated let userDefaults: UserDefaults
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
@@ -35,6 +37,14 @@ actor BackupDestinationManager {
 
     nonisolated var isCustomDestinationConfigured: Bool {
         userDefaults.data(forKey: Self.bookmarkKey) != nil
+    }
+
+    nonisolated var lastMirroredDate: Date? {
+        userDefaults.object(forKey: Self.lastMirroredDateKey) as? Date
+    }
+
+    nonisolated var lastMirrorError: String? {
+        userDefaults.string(forKey: Self.lastMirrorErrorKey)
     }
 
     /// Secures persistent access to the folder via a security-scoped bookmark.
@@ -53,6 +63,7 @@ actor BackupDestinationManager {
         )
         userDefaults.set(bookmarkData, forKey: Self.bookmarkKey)
         userDefaults.set(url.lastPathComponent, forKey: Self.nameKey)
+        userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
         logger.info("Custom backup destination configured: \(url.lastPathComponent, privacy: .public)")
     }
 
@@ -60,74 +71,86 @@ actor BackupDestinationManager {
     nonisolated func clearDestination() {
         userDefaults.removeObject(forKey: Self.bookmarkKey)
         userDefaults.removeObject(forKey: Self.nameKey)
+        userDefaults.removeObject(forKey: Self.lastMirroredDateKey)
+        userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
         logger.info("Custom backup destination reset to default")
     }
 
-    /// Mirrors a local backup archive to the user-selected destination folder.
+    /// Mirrors a local backup archive to the user-selected destination folder under Actuali/<budgetId>/.
     /// ponytail: Mirroring runs fire-and-forget; if the destination is temporarily unavailable
     /// (e.g. offline iCloud Drive), local storage retains the master copy safely.
-    func mirrorArchive(from sourceURL: URL, filename: String) async {
+    func mirrorArchive(from sourceURL: URL, budgetId: String, filename: String) async {
         guard let folderURL = resolveDestinationURL() else { return }
         guard folderURL.startAccessingSecurityScopedResource() else {
+            recordFailure("Could not access security-scoped destination")
             logger.warning("Could not access security-scoped resource for custom backup destination")
             return
         }
         defer { folderURL.stopAccessingSecurityScopedResource() }
 
-        // Must check existence *after* startAccessingSecurityScopedResource() is active
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            recordFailure("Destination folder no longer exists")
             logger.warning("Custom destination folder no longer exists on disk")
             return
         }
 
-        let targetURL = folderURL.appendingPathComponent(filename)
+        let budgetFolder = folderURL.appendingPathComponent("Actuali/\(budgetId)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: budgetFolder, withIntermediateDirectories: true)
+
+        let targetURL = budgetFolder.appendingPathComponent(filename)
         let coordinator = NSFileCoordinator()
         var coordinatorError: NSError?
 
-        // options: [] allows creating a new file or replacing an existing file safely across file providers
-        coordinator.coordinate(writingItemAt: targetURL, options: [], error: &coordinatorError) { writeURL in
+        coordinator.coordinate(writingItemAt: targetURL, options: .forReplacing, error: &coordinatorError) { writeURL in
             do {
-                let data = try Data(contentsOf: sourceURL)
-                try data.write(to: writeURL, options: .atomic)
+                try? FileManager.default.removeItem(at: writeURL)
+                try FileManager.default.copyItem(at: sourceURL, to: writeURL)
+                recordSuccess()
                 logger.info("Successfully mirrored backup archive \(filename, privacy: .public) to custom destination")
             } catch {
+                recordFailure(error.localizedDescription)
                 logger.error("Failed to mirror backup archive: \(error.localizedDescription, privacy: .public)")
             }
         }
 
         if let coordinatorError {
+            recordFailure(coordinatorError.localizedDescription)
             logger.error("File coordinator error while mirroring backup: \(coordinatorError.localizedDescription, privacy: .public)")
         }
     }
 
     /// Prunes a mirrored archive when retention removes it from local backups.
-    func removeMirroredArchive(filename: String) async {
+    func removeMirroredArchive(budgetId: String, filename: String) async {
         guard let folderURL = resolveDestinationURL() else { return }
         guard folderURL.startAccessingSecurityScopedResource() else { return }
         defer { folderURL.stopAccessingSecurityScopedResource() }
 
-        var isDirectory: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            return
-        }
-
-        let targetURL = folderURL.appendingPathComponent(filename)
+        let targetURL = folderURL.appendingPathComponent("Actuali/\(budgetId)/\(filename)")
         guard FileManager.default.fileExists(atPath: targetURL.path) else { return }
 
         let coordinator = NSFileCoordinator()
         var coordinatorError: NSError?
 
-        coordinator.coordinate(writingItemAt: targetURL, options: [], error: &coordinatorError) { writeURL in
+        coordinator.coordinate(writingItemAt: targetURL, options: .forDeleting, error: &coordinatorError) { writeURL in
             try? FileManager.default.removeItem(at: writeURL)
         }
     }
 
     /// Copies a list of existing archives to the destination (e.g. immediately after selecting a folder).
-    func mirrorExistingBackups(urls: [URL]) async {
+    func mirrorExistingBackups(budgetId: String, urls: [URL]) async {
         for url in urls {
-            await mirrorArchive(from: url, filename: url.lastPathComponent)
+            await mirrorArchive(from: url, budgetId: budgetId, filename: url.lastPathComponent)
         }
+    }
+
+    private nonisolated func recordSuccess() {
+        userDefaults.set(Date(), forKey: Self.lastMirroredDateKey)
+        userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
+    }
+
+    private nonisolated func recordFailure(_ reason: String) {
+        userDefaults.set(reason, forKey: Self.lastMirrorErrorKey)
     }
 
     private func resolveDestinationURL() -> URL? {

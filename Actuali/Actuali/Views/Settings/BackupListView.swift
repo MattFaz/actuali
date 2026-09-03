@@ -5,6 +5,8 @@ struct BackupListView: View {
     @State private var pendingRestore: Backup?
     @State private var showingFolderPicker = false
     @State private var destinationName: String? = BackupDestinationManager.shared.destinationName
+    @State private var lastMirroredDate: Date? = BackupDestinationManager.shared.lastMirroredDate
+    @State private var lastMirrorError: String? = BackupDestinationManager.shared.lastMirrorError
     @State private var destinationErrorMessage: String?
 
     private static let dateFormatter: DateFormatter = {
@@ -43,6 +45,22 @@ struct BackupListView: View {
                             }
                             .font(.caption)
                             .foregroundStyle(.secondary)
+
+                            if let error = lastMirrorError {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                    Text("Mirror failed: \(error)")
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                            } else if let date = lastMirroredDate {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle")
+                                    Text("Mirrored \(Self.dateFormatter.string(from: date))")
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            }
                         } else {
                             Text("Default (App Storage)")
                                 .font(.caption)
@@ -60,13 +78,15 @@ struct BackupListView: View {
                     Button("Reset to Default", role: .destructive) {
                         BackupDestinationManager.shared.clearDestination()
                         destinationName = nil
+                        lastMirroredDate = nil
+                        lastMirrorError = nil
                     }
                 }
             } header: {
                 Text("Destination")
             } footer: {
                 if destinationName != nil {
-                    Text("Backups are saved locally on this device and automatically mirrored to your chosen folder.")
+                    Text("Backups are saved locally on this device and automatically mirrored to your chosen folder under Actuali/<budgetId>/.")
                 } else {
                     Text("Backups are stored safely in Actuali's private app storage. You can choose a custom folder (such as an iCloud Drive folder) to automatically mirror every backup there.")
                 }
@@ -103,25 +123,6 @@ struct BackupListView: View {
                                     .buttonStyle(.bordered)
                                 }
                             }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                                if let url = budgetStore.backupFileURL(id) {
-                                    ShareLink(item: url) {
-                                        Label("Export", systemImage: "square.and.arrow.up")
-                                    }
-                                }
-                            }
-                            .contextMenu {
-                                if let url = budgetStore.backupFileURL(id) {
-                                    ShareLink(item: url) {
-                                        Label("Export Backup", systemImage: "square.and.arrow.up")
-                                    }
-                                }
-                                Button(role: .destructive) {
-                                    pendingRestore = backup
-                                } label: {
-                                    Label("Restore Backup", systemImage: "arrow.counterclockwise")
-                                }
-                            }
                         }
                     }
                 }
@@ -137,7 +138,7 @@ struct BackupListView: View {
         }
         .navigationTitle("Backups")
         .task {
-            destinationName = BackupDestinationManager.shared.destinationName
+            refreshDestinationState()
             await budgetStore.refreshBackups()
         }
         .confirmationDialog(
@@ -162,11 +163,16 @@ struct BackupListView: View {
                 Text("Your current data is saved first so you can revert.")
             }
         }
-        .sheet(isPresented: $showingFolderPicker) {
-            FolderPicker { url in
+        .fileImporter(
+            isPresented: $showingFolderPicker,
+            allowedContentTypes: [.folder]
+        ) { result in
+            switch result {
+            case .success(let url):
                 do {
                     try BackupDestinationManager.shared.saveDestination(from: url)
-                    destinationName = BackupDestinationManager.shared.destinationName
+                    refreshDestinationState()
+                    guard let budgetId = budgetStore.currentBudgetId else { return }
                     let urls = archives.compactMap { backup -> URL? in
                         if case .archive(let id, _) = backup {
                             return budgetStore.backupFileURL(id)
@@ -174,11 +180,14 @@ struct BackupListView: View {
                         return nil
                     }
                     Task {
-                        await BackupDestinationManager.shared.mirrorExistingBackups(urls: urls)
+                        await BackupDestinationManager.shared.mirrorExistingBackups(budgetId: budgetId, urls: urls)
+                        refreshDestinationState()
                     }
                 } catch {
                     destinationErrorMessage = error.localizedDescription
                 }
+            case .failure(let error):
+                destinationErrorMessage = error.localizedDescription
             }
         }
         .alert(
@@ -194,6 +203,12 @@ struct BackupListView: View {
                 Text(message)
             }
         }
+    }
+
+    private func refreshDestinationState() {
+        destinationName = BackupDestinationManager.shared.destinationName
+        lastMirroredDate = BackupDestinationManager.shared.lastMirroredDate
+        lastMirrorError = BackupDestinationManager.shared.lastMirrorError
     }
 }
 

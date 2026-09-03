@@ -43,8 +43,9 @@ import Layout from "../../layouts/Layout.astro";
         <li>Tap <strong>Open</strong> to confirm.</li>
       </ol>
       <p class="text-neutral-700">
-        Once selected, Actuali automatically copies all existing backups and every new automatic backup to your chosen folder.
-        Backups are always captured locally first for instant, offline reliability, and then safely mirrored to your chosen folder using iOS coordinated file access.
+        Once selected, Actuali automatically copies all existing backups and every new automatic backup to your chosen folder under an <code class="rounded bg-neutral-100 px-1.5 py-0.5 text-sm">Actuali/&lt;budgetId&gt;/</code> subfolder.
+        This isolates your backups from any existing files in that directory and keeps multiple budgets cleanly separated.
+        Mirrored archives follow the same rolling retention schedule (retaining up to 10 snapshots) so your iCloud storage remains clean.
         You can change the folder or tap <strong>Reset to Default</strong> at any time.
       </p>
     </section>

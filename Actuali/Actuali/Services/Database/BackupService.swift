@@ -135,7 +135,7 @@ actor BackupService {
 
         // 7. Mirror to custom destination folder if configured
         let archiveFilename = BudgetFileManager.backupArchiveName(for: now)
-        await destinationManager.mirrorArchive(from: archiveURL, filename: archiveFilename)
+        await destinationManager.mirrorArchive(from: archiveURL, budgetId: budgetId, filename: archiveFilename)
     }
 
     /// Consistent snapshot of the live db via VACUUM INTO — serialized on the
@@ -221,7 +221,7 @@ actor BackupService {
     private func prune(budgetId: String, today: Date) async {
         for id in Self.backupsToRemove(archiveList(budgetId: budgetId), today: today) {
             try? fm.removeItem(at: fileManager.backupPath(for: budgetId, name: id))
-            await destinationManager.removeMirroredArchive(filename: id)
+            await destinationManager.removeMirroredArchive(budgetId: budgetId, filename: id)
         }
     }
     
