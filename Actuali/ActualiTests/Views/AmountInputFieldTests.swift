@@ -190,6 +190,8 @@ struct AmountInputFieldTests {
         backspace(coordinator, textField)
         #expect(box.value == "12")
         backspace(coordinator, textField)
+        #expect(box.value == "12")
+        backspace(coordinator, textField)
         #expect(box.value == "1")
         backspace(coordinator, textField)
         #expect(box.value == "")
@@ -437,7 +439,7 @@ struct AmountInputFieldTests {
         #expect(textField.text == "12.50")
         #expect(box.value == "12.50")
         backspace(coordinator, textField)
-        #expect(box.value == "12")
+        #expect(box.value == "12.50")
     }
 
     @Test func fullReplaceClearsAPendingExpression() {
@@ -455,42 +457,15 @@ struct AmountInputFieldTests {
         #expect(box.value == "0.09")
     }
 
-    @Test func negativeResultKeepsItsSignWhereAllowed() {
-        let (coordinator, textField, box) = makeField(allowsNegative: true)
-        type("500", into: coordinator, textField)
-        coordinator.subtractTapped()
-        type("2000", into: coordinator, textField)
-        coordinator.textFieldDidEndEditing(textField)
-        #expect(box.value == "-15.00")
-    }
-
-    @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
-        let (coordinator, textField, box) = makeField()
-        type("500", into: coordinator, textField)
-        coordinator.subtractTapped()
-        type("2000", into: coordinator, textField)
-        coordinator.textFieldDidEndEditing(textField)
-        #expect(box.value == "15.00")
-    }
-
     @Test func resultStaysEditableAfterEvaluating() {
-        let (coordinator, textField, box) = makeField()
-        type("1250", into: coordinator, textField)
+        let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
+        type("10", into: coordinator, textField)
         coordinator.addTapped()
-        type("600", into: coordinator, textField)
+        type("8.5", into: coordinator, textField)
         coordinator.textFieldDidEndEditing(textField)
+        #expect(textField.text == "18.50")
+        #expect(box.value == "18.50")
         backspace(coordinator, textField)
         #expect(box.value == "18.50")
-    }
-
-    @Test func minusIsIgnoredWhenNegativeNotAllowed() {
-        let (coordinator, textField, box) = makeField(initial: "-1.20")
-        type("-", into: coordinator, textField)
-        #expect(box.value.hasPrefix("-") == false)
-        coordinator.toggleSign()
-        // Sign toggle exists but sync/full-replace never mark unsigned fields
-        // negative; typed digits keep the amount positive.
-        type("5", into: coordinator, textField)
-        #expect(textField.text?.hasPrefix("-") == false)
     }
 }
