@@ -65,7 +65,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
     }
 
     func format(number: NSNumber, wholeUnits: Bool, currencyCode: String?) -> String {
-        if number.doubleValue == 0 {
+        if currencyCode == nil && number.doubleValue == 0 {
             return wholeUnits ? "0" : "0\(decimalSeparator)00"
         }
 
