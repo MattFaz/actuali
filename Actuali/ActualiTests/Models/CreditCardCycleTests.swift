@@ -161,6 +161,60 @@ struct CreditCardCycleTests {
         #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due in 10d")
     }
 
+    @Test func upcomingDueDateWhenDueDayIsNextMonth() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Feb 20, 2026: Feb 15 statement closed, due on Mar 1, 2026
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 3, day: 1))
+        #expect(cycle.daysUntilDue(for: today) == 9)
+    }
+
+    @Test func upcomingDueDateWhenDueDayIsSameMonth() {
+        let cycle = CreditCardCycle(statementDay: 5, paymentDue: .dayOfMonth(25))
+        // Today is Jan 10, 2026: Jan 5 statement closed, due on Jan 25, 2026
+        let today = DayDate(year: 2026, month: 1, day: 10)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 1, day: 25))
+        #expect(cycle.daysUntilDue(for: today) == 15)
+    }
+
+    @Test func upcomingDueDateRollsToCurrentCycleWhenPastPreviousDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Mar 2, 2026: Feb 15 statement was due Mar 1 (passed),
+        // so next due is Mar 15 statement due Apr 1
+        let today = DayDate(year: 2026, month: 3, day: 2)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 4, day: 1))
+        #expect(cycle.daysUntilDue(for: today) == 30)
+    }
+
+    @Test func upcomingDueDateClampsForShorterMonthsWithDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(31))
+        // Feb 15, 2026 statement -> due on Feb 28 (clamped to month end)
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 2, day: 28))
+    }
+
+    @Test func upcomingDueDateRollsOverYearEndWithDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Dec 20, 2026: Dec 15 statement closed, due on Jan 1, 2027
+        let today = DayDate(year: 2026, month: 12, day: 20)
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2027, month: 1, day: 1))
+    }
+
+    @Test func dueSummaryWithDueDayReadsAccurately() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Feb 15 statement -> due Mar 1, 2026
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 3, day: 1)) == "Due today")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 28)) == "Due tomorrow")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due 1 Mar 2026 (9d)")
+        #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due in 9d")
+    }
+
     // MARK: - Store Persistence
 
     /// Points the store at throwaway budget ids and configures test database and sync client.
@@ -214,6 +268,20 @@ struct CreditCardCycleTests {
             // by a later card on the same account.
             await store.setCreditCard(accountId: "acct_anz", statementDay: nil, limit: nil)
             #expect(store.creditCardDueOffsets["acct_anz"] == nil)
+        }
+    }
+
+    @Test func dueDayPersistsAndClearsWithTheCard() async throws {
+        try await withStore { store in
+            await store.setCreditCard(accountId: "acct_alipay", statementDay: 15, paymentDue: .dayOfMonth(1), limit: nil)
+
+            #expect(store.creditCardDueDays["acct_alipay"] == 1)
+            #expect(store.creditCardCycle(for: "acct_alipay")?.paymentDue == .dayOfMonth(1))
+            #expect(store.creditCardCycle(for: "acct_alipay")?.dueDay == 1)
+
+            await store.setCreditCard(accountId: "acct_alipay", statementDay: nil, limit: nil)
+            #expect(store.creditCardDueDays["acct_alipay"] == nil)
+            #expect(store.creditCardCycle(for: "acct_alipay") == nil)
         }
     }
 
