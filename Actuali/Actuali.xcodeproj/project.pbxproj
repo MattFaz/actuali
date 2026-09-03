@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		D00000000000000000000001 /* Localizable.xcstrings in ActualiTests */ = {isa = PBXBuildFile; fileRef = D00000000000000000000002 /* Localizable.xcstrings */; };
 		A7550BD62EE7B8F8007026DC /* GRDB in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BD52EE7B8F8007026DC /* GRDB */; };
 		A7550BD92EE7B967007026DC /* SwiftProtobuf in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BD82EE7B967007026DC /* SwiftProtobuf */; };
 		A7550BE62EE7BDFE007026DC /* ZIPFoundation in Frameworks */ = {isa = PBXBuildFile; productRef = A7550BE52EE7BDFE007026DC /* ZIPFoundation */; };
@@ -52,6 +53,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		D00000000000000000000002 /* Localizable.xcstrings */ = {isa = PBXFileReference; lastKnownFileType = text.json.xcstrings; path = Actuali/Localizable.xcstrings; sourceTree = "<group>"; };
 		A7550B862EE7B4F7007026DC /* Actuali.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Actuali.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A79D4A9D2FA1F8F000D5A2DF /* ActualiTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		AB0000000000000000000BDF /* ActualiUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ActualiUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -314,6 +316,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				D00000000000000000000001 /* Localizable.xcstrings in ActualiTests */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

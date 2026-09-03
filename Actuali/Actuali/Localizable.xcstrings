@@ -29929,7 +29929,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.amount"
+            "value": "amount"
           }
         },
         "fr": {
@@ -29975,7 +29975,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.amountInflow"
+            "value": "amount (inflow)"
           }
         },
         "fr": {
@@ -30021,7 +30021,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.amountOutflow"
+            "value": "amount (outflow)"
           }
         },
         "fr": {
@@ -30067,7 +30067,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.categoryGroup"
+            "value": "category group"
           }
         },
         "fr": {
@@ -30113,7 +30113,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.importedPayee"
+            "value": "imported payee"
           }
         },
         "fr": {
@@ -30159,7 +30159,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.field.payeeName"
+            "value": "payee (name)"
           }
         },
         "fr": {
@@ -30205,7 +30205,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.allocate"
+            "value": "allocate"
           }
         },
         "fr": {
@@ -30251,7 +30251,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.appendNotes"
+            "value": "append notes"
           }
         },
         "fr": {
@@ -30297,7 +30297,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.contains"
+            "value": "contains"
           }
         },
         "fr": {
@@ -30343,7 +30343,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.deleteTransaction"
+            "value": "delete transaction"
           }
         },
         "fr": {
@@ -30389,7 +30389,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.doesNotContain"
+            "value": "does not contain"
           }
         },
         "fr": {
@@ -30435,7 +30435,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.hasAllTags"
+            "value": "has all tags"
           }
         },
         "fr": {
@@ -30481,7 +30481,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.hasAnyTag"
+            "value": "has any tag"
           }
         },
         "fr": {
@@ -30527,7 +30527,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.is"
+            "value": "is"
           }
         },
         "fr": {
@@ -30573,7 +30573,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.isApprox"
+            "value": "is approximately"
           }
         },
         "fr": {
@@ -30619,7 +30619,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.isBetween"
+            "value": "is between"
           }
         },
         "fr": {
@@ -30665,7 +30665,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.isNot"
+            "value": "is not"
           }
         },
         "fr": {
@@ -30711,7 +30711,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.isOffBudget"
+            "value": "is off budget"
           }
         },
         "fr": {
@@ -30757,7 +30757,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.isOnBudget"
+            "value": "is on budget"
           }
         },
         "fr": {
@@ -30803,7 +30803,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.linkSchedule"
+            "value": "link schedule"
           }
         },
         "fr": {
@@ -30849,7 +30849,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.matches"
+            "value": "matches"
           }
         },
         "fr": {
@@ -30895,7 +30895,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.notOneOf"
+            "value": "is not one of"
           }
         },
         "fr": {
@@ -30941,7 +30941,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.oneOf"
+            "value": "is one of"
           }
         },
         "fr": {
@@ -30987,7 +30987,7 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.prependNotes"
+            "value": "prepend notes"
           }
         },
         "fr": {
@@ -31028,12 +31028,20 @@
         }
       }
     },
+    "rule.op.isGreaterThan": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is greater than"}}, "fr": {"stringUnit": {"state": "translated", "value": "est supérieur à"}}, "es": {"stringUnit": {"state": "translated", "value": "es mayor que"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é maior que"}}, "de": {"stringUnit": {"state": "translated", "value": "ist größer als"}}, "it": {"stringUnit": {"state": "translated", "value": "è maggiore di"}}, "nl": {"stringUnit": {"state": "translated", "value": "is groter dan"}}}},
+    "rule.op.isGreaterThanOrEquals": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is greater than or equal to"}}, "fr": {"stringUnit": {"state": "translated", "value": "est supérieur ou égal à"}}, "es": {"stringUnit": {"state": "translated", "value": "es mayor o igual que"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é maior ou igual a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist größer oder gleich"}}, "it": {"stringUnit": {"state": "translated", "value": "è maggiore o uguale a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is groter dan of gelijk aan"}}}},
+    "rule.op.isLessThan": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is less than"}}, "fr": {"stringUnit": {"state": "translated", "value": "est inférieur à"}}, "es": {"stringUnit": {"state": "translated", "value": "es menor que"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é menor que"}}, "de": {"stringUnit": {"state": "translated", "value": "ist kleiner als"}}, "it": {"stringUnit": {"state": "translated", "value": "è minore di"}}, "nl": {"stringUnit": {"state": "translated", "value": "is kleiner dan"}}}},
+    "rule.op.isLessThanOrEquals": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is less than or equal to"}}, "fr": {"stringUnit": {"state": "translated", "value": "est inférieur ou égal à"}}, "es": {"stringUnit": {"state": "translated", "value": "es menor o igual que"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é menor ou igual a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist kleiner oder gleich"}}, "it": {"stringUnit": {"state": "translated", "value": "è minore o uguale a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is kleiner dan of gelijk aan"}}}},
+    "rule.op.isAfter": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is after"}}, "fr": {"stringUnit": {"state": "translated", "value": "est après"}}, "es": {"stringUnit": {"state": "translated", "value": "es posterior a"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é posterior a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist nach"}}, "it": {"stringUnit": {"state": "translated", "value": "è successivo a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is na"}}}},
+    "rule.op.isAfterOrEquals": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is after or equal to"}}, "fr": {"stringUnit": {"state": "translated", "value": "est après ou égal à"}}, "es": {"stringUnit": {"state": "translated", "value": "es posterior o igual a"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é posterior ou igual a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist nach oder gleich"}}, "it": {"stringUnit": {"state": "translated", "value": "è successivo o uguale a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is na of gelijk aan"}}}},
+    "rule.op.isBefore": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is before"}}, "fr": {"stringUnit": {"state": "translated", "value": "est avant"}}, "es": {"stringUnit": {"state": "translated", "value": "es anterior a"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é anterior a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist vor"}}, "it": {"stringUnit": {"state": "translated", "value": "è precedente a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is voor"}}}},
+    "rule.op.isBeforeOrEquals": {"localizations": {"en": {"stringUnit": {"state": "translated", "value": "is before or equal to"}}, "fr": {"stringUnit": {"state": "translated", "value": "est avant ou égal à"}}, "es": {"stringUnit": {"state": "translated", "value": "es anterior o igual a"}}, "pt-BR": {"stringUnit": {"state": "translated", "value": "é anterior ou igual a"}}, "de": {"stringUnit": {"state": "translated", "value": "ist vor oder gleich"}}, "it": {"stringUnit": {"state": "translated", "value": "è precedente o uguale a"}}, "nl": {"stringUnit": {"state": "translated", "value": "is voor of gelijk aan"}}}},
     "rule.op.set": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "rule.op.set"
+            "value": "set"
           }
         },
         "fr": {

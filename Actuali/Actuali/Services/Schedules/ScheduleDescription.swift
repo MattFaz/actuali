@@ -1,19 +1,30 @@
 
 import Foundation
 
+private final class ScheduleDescriptionBundleToken {}
+
 /// Human-readable text for a schedule's recurrence and status
 enum ScheduleDescription {
+
+    private static let localizationBundle = Bundle(for: ScheduleDescriptionBundleToken.self)
+
+    private static func localized(_ key: String, locale: Locale) -> String {
+        let languageCode = locale.languageCode ?? locale.identifier.split(separator: "_").first.map(String.init) ?? locale.identifier
+        let localeBundle = localizationBundle.path(forResource: languageCode, ofType: "lproj")
+            .flatMap(Bundle.init(path:)) ?? localizationBundle
+        return localeBundle.localizedString(forKey: key, value: nil, table: "Localizable")
+    }
 
     // MARK: - Status
 
     static func statusLabel(_ status: ScheduleStatus, locale: Locale = .autoupdatingCurrent) -> String {
         switch status {
-        case .completed: String(localized: "Completed", locale: locale)
-        case .paid: String(localized: "Paid", locale: locale)
-        case .due: String(localized: "Due", locale: locale)
-        case .upcoming: String(localized: "Upcoming", locale: locale)
-        case .missed: String(localized: "Missed", locale: locale)
-        case .scheduled: String(localized: "Scheduled", locale: locale)
+        case .completed: localized("Completed", locale: locale)
+        case .paid: localized("Paid", locale: locale)
+        case .due: localized("Due", locale: locale)
+        case .upcoming: localized("Upcoming", locale: locale)
+        case .missed: localized("Missed", locale: locale)
+        case .scheduled: localized("Scheduled", locale: locale)
         }
     }
 
@@ -24,8 +35,8 @@ enum ScheduleDescription {
         switch condition {
         case .fixed(let day): Self.mediumDate(day, locale: locale)
         case .recurring(let config): recurring(config, locale: locale)
-        case .unsupported: String(localized: "Unsupported repeat", locale: locale)
-        case nil: String(localized: "No date", locale: locale)
+        case .unsupported: localized("Unsupported repeat", locale: locale)
+        case nil: localized("No date", locale: locale)
         }
     }
 
@@ -39,11 +50,11 @@ enum ScheduleDescription {
         case "after_n_occurrences":
             let count = config.endOccurrences ?? 1
             endSuffix = count == 1
-                ? String(localized: "once", locale: locale)
-                : String(format: String(localized: "%lld times", locale: locale), Int64(count))
+                ? localized("once", locale: locale)
+                : String(format: localized("%lld times", locale: locale), Int64(count))
         case "on_date":
             if let end = config.endDate {
-                endSuffix = String(format: String(localized: "until %@", locale: locale), mediumDate(end, locale: locale))
+                endSuffix = String(format: localized("until %@", locale: locale), mediumDate(end, locale: locale))
             }
         default:
             break
@@ -51,8 +62,8 @@ enum ScheduleDescription {
 
         let weekendSuffix = config.skipWeekend
             ? (config.weekendSolveMode == "after"
-                ? String(localized: "(after weekend)", locale: locale)
-                : String(localized: "(before weekend)", locale: locale))
+                ? localized("(after weekend)", locale: locale)
+                : localized("(before weekend)", locale: locale))
             : ""
 
         var suffix = ""
@@ -63,32 +74,32 @@ enum ScheduleDescription {
         switch config.frequency {
         case .daily:
             body = interval != 1
-                ? String(format: String(localized: "Every %lld days", locale: locale), Int64(interval))
-                : String(localized: "Every day", locale: locale)
+                ? String(format: localized("Every %lld days", locale: locale), Int64(interval))
+                : localized("Every day", locale: locale)
         case .weekly:
             let day = weekdayName(config.start.weekday, locale: locale)
             body = interval != 1
-                ? String(format: String(localized: "Every %lld weeks on %@", locale: locale), Int64(interval), day)
-                : String(format: String(localized: "Every week on %@", locale: locale), day)
+                ? String(format: localized("Every %lld weeks on %@", locale: locale), Int64(interval), day)
+                : String(format: localized("Every week on %@", locale: locale), day)
         case .monthly:
             let range = monthlyRange(config, locale: locale)
             if range.isEmpty {
                 let day = ordinal(config.start.day, locale: locale)
                 body = interval != 1
-                    ? String(format: String(localized: "Every %lld months on the %@", locale: locale), Int64(interval), day)
-                    : String(format: String(localized: "Every month on the %@", locale: locale), day)
+                    ? String(format: localized("Every %lld months on the %@", locale: locale), Int64(interval), day)
+                    : String(format: localized("Every month on the %@", locale: locale), day)
             } else {
                 body = interval != 1
-                    ? String(format: String(localized: "Every %lld months on %@", locale: locale), Int64(interval), range)
-                    : String(format: String(localized: "Every month on %@", locale: locale), range)
+                    ? String(format: localized("Every %lld months on the %@", locale: locale), Int64(interval), range)
+                    : String(format: localized("Every month on the %@", locale: locale), range)
             }
         case .yearly:
-            let day = String(format: String(localized: "%@ %@", locale: locale),
+            let day = String(format: localized("%@ %@", locale: locale),
                              shortMonthName(config.start.month, locale: locale),
                              ordinal(config.start.day, locale: locale))
             body = interval != 1
-                ? String(format: String(localized: "Every %lld years on %@", locale: locale), Int64(interval), day)
-                : String(format: String(localized: "Every year on %@", locale: locale), day)
+                ? String(format: localized("Every %lld years on %@", locale: locale), Int64(interval), day)
+                : String(format: localized("Every year on %@", locale: locale), day)
         }
 
         return (body + suffix).trimmingCharacters(in: .whitespaces)
@@ -121,22 +132,22 @@ enum ScheduleDescription {
         let parts: [String] = patterns.map { pattern in
             if pattern.type == "day" {
                 return pattern.value == -1
-                    ? String(localized: "last day", locale: locale)
+                    ? localized("last day", locale: locale)
                     : ordinal(pattern.value, locale: locale)
             }
             let dayName = isSameDay ? "" : " " + weekdayName(forCode: pattern.type, locale: locale)
             return pattern.value == -1
-                ? String(localized: "last", locale: locale) + dayName
+                ? localized("last", locale: locale) + dayName
                 : ordinal(pattern.value, locale: locale) + dayName
         }
 
         var range: String
         if parts.count > 2 {
             range = parts.dropLast().joined(separator: ", ")
-                + String(localized: ", and ", locale: locale)
+                + localized(", and ", locale: locale)
                 + (parts.last ?? "")
         } else {
-            range = parts.joined(separator: String(localized: " and ", locale: locale))
+            range = parts.joined(separator: localized(" and ", locale: locale))
         }
         if isSameDay {
             range += " " + weekdayName(forCode: first.type, locale: locale)
