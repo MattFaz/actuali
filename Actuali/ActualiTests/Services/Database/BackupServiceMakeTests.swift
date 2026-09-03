@@ -168,7 +168,7 @@ struct BackupServiceMakeTests {
         try FileManager.default.createDirectory(at: customFolder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: customFolder) }
 
-        try destManager.saveDestination(from: customFolder)
+        try await destManager.saveDestination(from: customFolder)
 
         let service = BackupService(fileManager: manager, destinationManager: destManager)
         let now = Date()

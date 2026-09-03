@@ -25,50 +25,53 @@ actor BackupDestinationManager {
     static let lastMirroredDateKey = "actuali.backup.lastMirroredDate"
     static let lastMirrorErrorKey = "actuali.backup.lastMirrorError"
 
-    nonisolated let userDefaults: UserDefaults
+    private let userDefaults: UserDefaults
 
     init(userDefaults: UserDefaults = .standard) {
         self.userDefaults = userDefaults
     }
 
-    nonisolated var destinationName: String? {
+    var destinationName: String? {
         userDefaults.string(forKey: Self.nameKey)
     }
 
-    nonisolated var isCustomDestinationConfigured: Bool {
+    var isCustomDestinationConfigured: Bool {
         userDefaults.data(forKey: Self.bookmarkKey) != nil
     }
 
-    nonisolated var lastMirroredDate: Date? {
+    var lastMirroredDate: Date? {
         userDefaults.object(forKey: Self.lastMirroredDateKey) as? Date
     }
 
-    nonisolated var lastMirrorError: String? {
+    var lastMirrorError: String? {
         userDefaults.string(forKey: Self.lastMirrorErrorKey)
     }
 
+    /// Persists pre-minted bookmark data and folder name.
+    func saveDestination(bookmarkData: Data, folderName: String) {
+        userDefaults.set(bookmarkData, forKey: Self.bookmarkKey)
+        userDefaults.set(folderName, forKey: Self.nameKey)
+        userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
+        logger.info("Custom backup destination configured: \(folderName, privacy: .public)")
+    }
+
     /// Secures persistent access to the folder via a security-scoped bookmark.
-    /// Runs synchronously so the bookmark is minted immediately while the picker's temporary access is active.
-    nonisolated func saveDestination(from url: URL) throws {
+    func saveDestination(from url: URL) throws {
         guard url.startAccessingSecurityScopedResource() else {
             throw BackupDestinationError.accessDenied
         }
         defer { url.stopAccessingSecurityScopedResource() }
 
-        // On iOS, empty options create a security-scoped bookmark from an open-in-place URL
         let bookmarkData = try url.bookmarkData(
             options: [],
             includingResourceValuesForKeys: nil,
             relativeTo: nil
         )
-        userDefaults.set(bookmarkData, forKey: Self.bookmarkKey)
-        userDefaults.set(url.lastPathComponent, forKey: Self.nameKey)
-        userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
-        logger.info("Custom backup destination configured: \(url.lastPathComponent, privacy: .public)")
+        saveDestination(bookmarkData: bookmarkData, folderName: url.lastPathComponent)
     }
 
     /// Clears the custom destination and returns to default local storage.
-    nonisolated func clearDestination() {
+    func clearDestination() {
         userDefaults.removeObject(forKey: Self.bookmarkKey)
         userDefaults.removeObject(forKey: Self.nameKey)
         userDefaults.removeObject(forKey: Self.lastMirroredDateKey)
@@ -101,22 +104,23 @@ actor BackupDestinationManager {
         let targetURL = budgetFolder.appendingPathComponent(filename)
         let coordinator = NSFileCoordinator()
         var coordinatorError: NSError?
+        var copyError: NSError?
 
         coordinator.coordinate(writingItemAt: targetURL, options: .forReplacing, error: &coordinatorError) { writeURL in
             do {
                 try? FileManager.default.removeItem(at: writeURL)
                 try FileManager.default.copyItem(at: sourceURL, to: writeURL)
-                recordSuccess()
                 logger.info("Successfully mirrored backup archive \(filename, privacy: .public) to custom destination")
             } catch {
-                recordFailure(error.localizedDescription)
+                copyError = error as NSError
                 logger.error("Failed to mirror backup archive: \(error.localizedDescription, privacy: .public)")
             }
         }
 
-        if let coordinatorError {
-            recordFailure(coordinatorError.localizedDescription)
-            logger.error("File coordinator error while mirroring backup: \(coordinatorError.localizedDescription, privacy: .public)")
+        if let error = coordinatorError ?? copyError {
+            recordFailure(error.localizedDescription)
+        } else {
+            recordSuccess()
         }
     }
 
@@ -144,12 +148,12 @@ actor BackupDestinationManager {
         }
     }
 
-    private nonisolated func recordSuccess() {
+    private func recordSuccess() {
         userDefaults.set(Date(), forKey: Self.lastMirroredDateKey)
         userDefaults.removeObject(forKey: Self.lastMirrorErrorKey)
     }
 
-    private nonisolated func recordFailure(_ reason: String) {
+    private func recordFailure(_ reason: String) {
         userDefaults.set(reason, forKey: Self.lastMirrorErrorKey)
     }
 

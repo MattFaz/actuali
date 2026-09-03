@@ -1,12 +1,13 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BackupListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var pendingRestore: Backup?
     @State private var showingFolderPicker = false
-    @State private var destinationName: String? = BackupDestinationManager.shared.destinationName
-    @State private var lastMirroredDate: Date? = BackupDestinationManager.shared.lastMirroredDate
-    @State private var lastMirrorError: String? = BackupDestinationManager.shared.lastMirrorError
+    @State private var destinationName: String?
+    @State private var lastMirroredDate: Date?
+    @State private var lastMirrorError: String?
     @State private var destinationErrorMessage: String?
 
     private static let dateFormatter: DateFormatter = {
@@ -76,10 +77,10 @@ struct BackupListView: View {
 
                 if destinationName != nil {
                     Button("Reset to Default", role: .destructive) {
-                        BackupDestinationManager.shared.clearDestination()
-                        destinationName = nil
-                        lastMirroredDate = nil
-                        lastMirrorError = nil
+                        Task {
+                            await BackupDestinationManager.shared.clearDestination()
+                            await refreshDestinationState()
+                        }
                     }
                 }
             } header: {
@@ -138,7 +139,7 @@ struct BackupListView: View {
         }
         .navigationTitle("Backups")
         .task {
-            refreshDestinationState()
+            await refreshDestinationState()
             await budgetStore.refreshBackups()
         }
         .confirmationDialog(
@@ -169,19 +170,33 @@ struct BackupListView: View {
         ) { result in
             switch result {
             case .success(let url):
+                guard url.startAccessingSecurityScopedResource() else {
+                    destinationErrorMessage = BackupDestinationError.accessDenied.localizedDescription
+                    return
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
                 do {
-                    try BackupDestinationManager.shared.saveDestination(from: url)
-                    refreshDestinationState()
-                    guard let budgetId = budgetStore.currentBudgetId else { return }
-                    let urls = archives.compactMap { backup -> URL? in
-                        if case .archive(let id, _) = backup {
-                            return budgetStore.backupFileURL(id)
-                        }
-                        return nil
-                    }
+                    let bookmarkData = try url.bookmarkData(
+                        options: [],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    let folderName = url.lastPathComponent
                     Task {
+                        await BackupDestinationManager.shared.saveDestination(
+                            bookmarkData: bookmarkData,
+                            folderName: folderName
+                        )
+                        await refreshDestinationState()
+                        guard let budgetId = budgetStore.currentBudgetId else { return }
+                        let urls = archives.compactMap { backup -> URL? in
+                            if case .archive(let id, _) = backup {
+                                return budgetStore.backupFileURL(id)
+                            }
+                            return nil
+                        }
                         await BackupDestinationManager.shared.mirrorExistingBackups(budgetId: budgetId, urls: urls)
-                        refreshDestinationState()
+                        await refreshDestinationState()
                     }
                 } catch {
                     destinationErrorMessage = error.localizedDescription
@@ -205,10 +220,10 @@ struct BackupListView: View {
         }
     }
 
-    private func refreshDestinationState() {
-        destinationName = BackupDestinationManager.shared.destinationName
-        lastMirroredDate = BackupDestinationManager.shared.lastMirroredDate
-        lastMirrorError = BackupDestinationManager.shared.lastMirrorError
+    private func refreshDestinationState() async {
+        destinationName = await BackupDestinationManager.shared.destinationName
+        lastMirroredDate = await BackupDestinationManager.shared.lastMirroredDate
+        lastMirrorError = await BackupDestinationManager.shared.lastMirrorError
     }
 }
 
