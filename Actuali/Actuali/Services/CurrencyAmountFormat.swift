@@ -20,6 +20,15 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
+    var decimalSeparator: String {
+        switch self {
+        case .commaDot, .apostropheDot, .commaDotIn:
+            return "."
+        case .dotComma, .spaceComma:
+            return ","
+        }
+    }
+
     private var locale: Locale {
         switch self {
         case .commaDot: return Locale(identifier: "en_US")
@@ -120,7 +129,7 @@ enum CurrencyAmountFormat {
 
     /// Formats with the budget currency's native precision while omitting its
     /// symbol. The budget tables supply the currency and meaning through their
-    /// column headers, leaving more horizontal room for category names.
+    /// column headers, leaving more room for category names.
     @MainActor
     static func symbolLessString(
         cents: Int,
