@@ -40,6 +40,28 @@ struct SettingsView: View {
                     }
                 }
 
+                Section("Manage") {
+                    NavigationLink {
+                        SchedulesListView()
+                    } label: {
+                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                    }
+
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            RulesListView()
+                        } label: {
+                            Label("Rules", systemImage: "list.bullet.rectangle")
+                        }
+                    }
+
+                    NavigationLink {
+                        BankSyncSetupView()
+                    } label: {
+                        Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
+                    }
+                }
+
                 Section("Information") {
                     NavigationLink {
                         AboutSettingsView()
