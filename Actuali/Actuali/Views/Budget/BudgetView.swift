@@ -78,8 +78,7 @@ extension BudgetStore {
             : CurrencyAmountFormat.symbolLessString(
                 cents: cents,
                 currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces,
-                numberFormat: numberFormat
+                wholeUnits: hideDecimalPlaces
             )
     }
 }
@@ -189,6 +188,13 @@ struct BudgetView: View {
                 }
             }
             .navigationTitle("Budget")
+            // The summary bar is pinned outside the List (GH #155), so it
+            // can't move with an overscroll the way list content does. A
+            // large title stretches on that overscroll and draws straight
+            // over the card, and collapses on scroll-up, jolting it (GH
+            // #253). Inline keeps the bar a fixed height; the month stepper
+            // below already occupies the centre, and the tab bar says
+            // "Budget" anyway.
             .navigationBarTitleDisplayMode(.inline)
             .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
@@ -204,12 +210,17 @@ struct BudgetView: View {
                     await budgetStore.fetchBudgetMonth(newMonth)
                 }
             }
+            // Hiding the strip takes its filter with it — otherwise the table
+            // stays filtered with no visible control to clear it.
             .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
                 if !isShown { categoryFilter = .all }
             }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            // Compact only — in a wide window the inspector below presents
+            // the same selection instead. The conditional binding also hands
+            // an open presentation over to the other style on a window resize.
             .sheet(item: usesInspector ? .constant(nil) : $selectedCategory) { category in
                 CategoryBudgetDetailSheet(category: category)
             }
@@ -218,6 +229,15 @@ struct BudgetView: View {
                 set: { if !$0 { selectedCategory = nil } }
             )) {
                 if let category = selectedCategory {
+                    // .id resets the editor's @State (name draft, history) when
+                    // the selection moves to another category — unlike a sheet,
+                    // the inspector stays mounted across selections, so without
+                    // it the previous category's draft would linger.
+                    // ponytail: `category` is the value captured at tap time, so
+                    // amounts shown in Quick Assign can go stale if a sync lands
+                    // while the column is open — same ceiling the sheet always
+                    // had, just longer-lived. Upgrade path: re-resolve by
+                    // categoryId+month from currentBudgetMonth at render.
                     CategoryBudgetDetailSheet(category: category)
                         .id(category.id)
                         .inspectorColumnWidth(min: 320, ideal: 380, max: 480)
@@ -253,17 +273,24 @@ struct BudgetView: View {
         .initialSyncBanner()
     }
 
+    /// Outcome of a goal-template run, presented as an alert.
     struct GoalTemplateResultAlert: Identifiable {
         let id = UUID()
         let title: String
         let message: String
     }
 
+    /// One group's rows, extracted from the `List` so the body stays within
+    /// the compiler's type-check budget.
     @ViewBuilder
     private func groupSection(_ group: CategoryGroupSection) -> some View {
         let isCollapsed = collapsedGroups.contains(group.id)
         switch budgetStore.budgetDisplayStyle {
         case .clean:
+            // Clean style: the group name sits above the card as a section
+            // header, like the App Store screenshots. The same collapse
+            // control lives there so collapsing behaves identically in both
+            // styles.
             Section {
                 if !isCollapsed {
                     ForEach(group.categories) { category in
@@ -276,6 +303,8 @@ struct BudgetView: View {
                             },
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
+                            // Name shows all time, Spent shows
+                            // the displayed month (GH #56).
                             onShowTransactions: showTransactions,
                             onMoveMoney: moveMoney
                         )
@@ -294,6 +323,9 @@ struct BudgetView: View {
                 .textCase(nil)
             }
         case .detailed:
+            // The group row lives inside the card (first row, tinted) like
+            // the PWA's table, so its totals share the exact column grid of
+            // the rows below.
             Section {
                 BudgetGroupHeader(
                     name: group.name,
@@ -321,6 +353,8 @@ struct BudgetView: View {
                                 category.id == group.categories.last?.id,
                             onShowDetails: { selectedCategory = $0 },
                             onEditBudget: { editingCategory = $0 },
+                            // Name shows all time, Spent shows
+                            // the displayed month (GH #56).
                             onShowTransactions: showTransactions,
                             onMoveMoney: moveMoney
                         )
@@ -363,6 +397,8 @@ struct BudgetView: View {
         }
     }
 
+    /// The income group drawn at the bottom of the table, extracted from the
+    /// `List` so the body stays within the compiler's type-check budget.
     @ViewBuilder
     private func incomeSection(_ budget: BudgetMonth) -> some View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
@@ -391,6 +427,12 @@ struct BudgetView: View {
                     }
                 }
             } header: {
+                // The Income group can only be unhidden, never hidden:
+                // hiding it would drop the app's only income total
+                // from the budget table entirely. `onSetHidden` is passed
+                // only when the group is already hidden (e.g. leftover
+                // state from before this restriction existed). GH #130's
+                // collapse control still applies.
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
@@ -469,9 +511,32 @@ struct BudgetView: View {
         }
     }
 
+    /// The screen's toolbar, extracted from `body` so the whole screen stays
+    /// within the compiler's type-check budget.
     @ToolbarContentBuilder
     private var budgetToolbar: some ToolbarContent {
+        // Both arrows flank the month in the center, so nothing sits in the
+        // leading "back button" position where the previous-month chevron
+        // used to be mistaken for one (it steps the month, not the
+        // navigation stack).
         ToolbarItem(placement: .principal) {
+            // UIKit centers a title view only while it stays under ~140pt
+            // next to these two trailing buttons; one point over and it
+            // left-aligns the whole stepper against the leading edge instead.
+            // That cliff has been hit twice — GH #234, then again by #319
+            // padding both chevrons out to 44pt wide (44 + 44 + a 78pt
+            // "Aug 2026" = 166). So the width is the budget: the touch target
+            // grows downward to 44pt and stays 30pt wide, giving 138 total.
+            // `.frame(maxWidth: .infinity)` can't buy centering back — the
+            // title view is sized to fit its content, so the frame has no
+            // extra width to center in.
+            //
+            // ponytail: 138 of ~140 is all the headroom there is, and the slot
+            // shrinks as the trailing buttons scale, so raised text sizes still
+            // left-align (measured at XXXL). Anything that needs a bigger
+            // stepper — a third trailing button, unabbreviated months, real
+            // Dynamic Type support — has to leave the bar for a pinned header
+            // row above the summary card, where centering is real layout.
             HStack(spacing: 0) {
                 Button {
                     selectedMonth = Self.shiftMonth(selectedMonth, by: -1)
@@ -494,6 +559,9 @@ struct BudgetView: View {
                 .accessibilityLabel("Next month")
             }
         }
+        // Creation, unlike everything in the options menu, changes the budget
+        // rather than the view of it — so it gets its own button (GH #284).
+        // Nothing to add to until a budget is open.
         if budgetStore.currentBudgetMonth != nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
@@ -502,6 +570,7 @@ struct BudgetView: View {
                     } label: {
                         Label("New Category", systemImage: "tag")
                     }
+                    // A category needs a group to live in.
                     .disabled(firstSelectableGroupId == nil)
                     Button {
                         newBudgetItem = .group
@@ -517,6 +586,12 @@ struct BudgetView: View {
             }
         }
         ToolbarItem(placement: .topBarTrailing) {
+            // Every "how should this look" control lives here (GH #157).
+            // Whole-table expand/collapse is a menu rather than a long-press
+            // on the group headers: SwiftUI context menus don't fire inside
+            // the clean style's section headers (GH #130).
+            // The isolated method references can't be inferred as optional
+            // closures under Swift 6, so wrap them.
             let hasBudget = budgetStore.currentBudgetMonth != nil
             BudgetOptionsMenu(
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
@@ -527,6 +602,8 @@ struct BudgetView: View {
         }
     }
 
+    /// Run the month's template action and surface the outcome — the web
+    /// shows these as toast notifications; an alert is the iOS equivalent.
     private func runTemplates(_ action: BudgetStore.GoalTemplateAction) {
         guard !isRunningTemplates else { return }
         isRunningTemplates = true
@@ -556,6 +633,9 @@ struct BudgetView: View {
         }
     }
 
+    /// The pinned summary plus the scrolling budget table, shown once a
+    /// budget month has loaded. Extracted from `body` so the whole screen
+    /// stays within the compiler's type-check budget.
     @ViewBuilder
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
@@ -567,6 +647,10 @@ struct BudgetView: View {
                 .padding(.bottom, 8)
             }
 
+            // Summary card: the clean style reads as a 2x2 grid of currency
+            // amounts; the detailed style's captioned columns double as the
+            // column headers for the table below. It sits above the List (not
+            // inside it) so it stays pinned while the table scrolls (GH #155).
             if !isCompact
                 || budgetStore.showCompactBudgetOverview {
                 Group {
@@ -581,6 +665,8 @@ struct BudgetView: View {
                             )
                     case .detailed:
                         TableBudgetSummary(budget: budget)
+                            // Fine-tune the fixed-width columns against the
+                            // amount pills in the rows below.
                             .padding(.leading, 4)
                             .padding(.trailing, 4)
                             .padding(.horizontal, 12)
@@ -601,6 +687,10 @@ struct BudgetView: View {
                 .background(Color(.systemGroupedBackground).ignoresSafeArea())
             }
 
+            // The strip filters categories, so it can't express uncategorized
+            // transactions — and the check-in card it replaced held the only
+            // in-app route to that list (otherwise reachable only from a
+            // notification tap).
             if budgetStore.uncategorizedCount > 0 {
                 NavigationLink {
                     UncategorizedTransactionsView()
@@ -616,6 +706,8 @@ struct BudgetView: View {
                     }
                     .font(.subheadline.weight(.semibold))
                     .foregroundStyle(.orange)
+                    // Reads as a full-width row like the List section it used
+                    // to live in (GH #29 / #305), not a stray line of text.
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -654,10 +746,16 @@ struct BudgetView: View {
                     groupSection(group)
                 }
 
+                // Income group last, matching the bottom of the web UI's
+                // budget table.
                 if categoryFilter == .all, !displayedIncomeCategories(in: budget).isEmpty {
                     incomeSection(budget)
                 }
             }
+            // Collapse state lives in @AppStorage, and a write to that lands
+            // outside any withAnimation transaction — so the rows have to be
+            // animated from here, off the stored value, rather than at the
+            // call site.
             .animation(AppAnimation.disclosure, value: collapsedGroupsStorage)
             .listSectionSpacing(listMetrics.sectionSpacing)
             .contentMargins(
@@ -665,16 +763,33 @@ struct BudgetView: View {
                 listMetrics.horizontalContentMargin,
                 for: .scrollContent
             )
+            // Pull-to-refresh belongs to the table alone. Attached to the
+            // container instead, SwiftUI also wires it to the check-in
+            // strip's horizontal ScrollView, so dragging the chips down
+            // fired a sync.
             .refreshable {
                 await budgetStore.sync()
             }
+            // The rest of the gap under the pinned summary — this part
+            // scrolls away with the content, leaving the 8 pt gutter above.
+            // Together they sit a notch wider than the spacing between the
+            // group sections, so the summary reads as its own bar rather than
+            // a first group (GH #165).
             .contentMargins(
                 .top,
                 listMetrics.topContentMargin,
                 for: .scrollContent
             )
             .budgetListStyle(for: budgetStore.budgetDisplayStyle)
+            // Let short rows (group headers) sit below the stock 44 pt
+            // minimum; tap targets stay fine because the whole row is the
+            // button.
             .environment(\.defaultMinListRowHeight, 32)
+            // Rows leaving the table used to be chopped off flat against the
+            // gutter under the summary, a hard grey line across mid-row. Fade
+            // them into it instead. The List's top content margin above is
+            // deeper than this fade, so at rest it covers empty background and
+            // nothing on screen looks washed out.
             .overlay(alignment: .top) {
                 if listMetrics.showsTopFade {
                     LinearGradient(
@@ -703,15 +818,22 @@ struct BudgetView: View {
                     }
             )
         }
+        // The budget table is a fixed grid of narrow amount columns;
+        // stretched to iPad width it becomes a category name and its numbers
+        // separated by a foot of nothing.
         .readableWidth()
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
-
+    /// Open the move-money sheet for a tapped balance (GH #128): cover
+    /// overspending when red, move the surplus when green. The month is
+    /// captured alongside so the picker lists its sibling categories.
     private func moveMoney(_ category: CategoryBudget) {
         guard let budget = budgetStore.currentBudgetMonth else { return }
         transferContext = BudgetTransferContext(category: category, budget: budget)
     }
-
+    
+    /// The group a new category starts out filed under: the first one the
+    /// table would draw. Nil when the budget has no group to file it in.
     private var firstSelectableGroupId: String? {
         let visible = budgetStore.categoryGroups.filter { !$0.hidden }
         return visible.min { $0.sortOrder < $1.sortOrder }?.id
@@ -749,6 +871,8 @@ struct BudgetView: View {
         }
     }
 
+    /// Push the category's transactions: month narrows to one "yyyy-MM",
+    /// nil means all time (GH #56).
     private func showTransactions(_ category: CategoryBudget, month: String?) {
         transactionsDestination = CategoryTransactionsDestination(
             categoryId: category.categoryId,
@@ -769,7 +893,9 @@ struct BudgetView: View {
         let id: String
         let name: String
         let isHidden: Bool
+        /// The rows to draw, after "Hide Spent Categories" filtering.
         let categories: [CategoryBudget]
+        /// Totals over the group's non-hidden category list.
         let totals: CategoryGroupTotals
     }
 
@@ -782,11 +908,16 @@ struct BudgetView: View {
         var sections = byGroup
             .compactMap { groupId, items -> (Double, CategoryGroupSection)? in
                 guard let first = items.first else { return nil }
+                // An explicit filter is its own visibility rule: "Not Funded"
+                // must still match zero-available categories even when the
+                // Hide Spent Categories setting would drop them from "All".
                 let base = categoryFilter == .all
                     ? budgetStore.visibleCategoryBudgets(items)
                     : items.filter(categoryFilter.includes)
                 let visible = base
                     .sorted { $0.categorySortOrder < $1.categorySortOrder }
+                // A group whose rows are all hidden drops out entirely rather
+                // than leaving a header stranded over an empty card.
                 guard !visible.isEmpty else { return nil }
                 return (
                     first.groupSortOrder,
@@ -802,6 +933,13 @@ struct BudgetView: View {
                     )
                 )
             }
+        // A group you just made has no categories, so the month's rows above
+        // can't know about it. Draw it anyway — otherwise creating a group
+        // looks like it did nothing (GH #284). Income groups stay out: this
+        // list is the expense table, and income has its own section below,
+        // which likewise only appears once it has categories.
+        // Empty placeholders only belong in the unfiltered table: a filter
+        // that matches nothing should show the empty state, not bare headers.
         sections += budgetStore.categoryGroups
             .filter {
                 categoryFilter == .all && !$0.isIncome
@@ -850,6 +988,10 @@ private extension View {
     }
 }
 
+/// A name that always occupies two lines' height, so short and wrapping
+/// names produce equal-height rows and the amount columns line up (GH
+/// #252). A hidden copy reserves the space and the visible copy centers
+/// within it — `reservesSpace` alone pins the text to the top.
 private struct TwoLineName: View {
     let text: String
     let font: Font
@@ -871,6 +1013,8 @@ private struct TwoLineName: View {
     }
 }
 
+/// Status filters stay visible above the category list, so checking the
+/// month never requires opening a menu or scrolling past a large card.
 struct BudgetCheckInStrip: View {
     let budget: BudgetMonth
     @Binding var selection: BudgetCategoryFilter
@@ -942,11 +1086,17 @@ struct CategoryBudgetRow: View {
     var addsGroupBottomPadding = false
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
+    /// Push the category's transactions: month narrows to one "yyyy-MM",
+    /// nil means all time (GH #56).
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
+    /// Open the move-money sheet for this category's balance (GH #128).
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
+            // One PWA-style table line: name, then the Budgeted/Spent/Balance
+            // pills in their fixed columns. Each element keeps its own tap
+            // action (our enhancement over the PWA's read-only cells).
             HStack(spacing: BudgetColumn.spacing) {
                 Button {
                     onShowDetails(category)
@@ -985,6 +1135,8 @@ struct CategoryBudgetRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                // A zero balance has nothing to move and nothing to cover, so
+                // it stays a plain cell.
                 Button {
                     onMoveMoney(category)
                 } label: {
@@ -1041,6 +1193,9 @@ struct CategoryBudgetRow: View {
     }
 }
 
+/// Clean-style category row, matching the App Store screenshots: name and a
+/// large Available amount up top, the progress bar beneath, then tappable
+/// Budgeted/Spent captions. Same tap actions as the detailed table's cells.
 struct CleanCategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let category: CategoryBudget
@@ -1049,7 +1204,10 @@ struct CleanCategoryBudgetRow: View {
     var onSetHidden: ((Bool) -> Void)?
     var onShowDetails: (CategoryBudget) -> Void = { _ in }
     var onEditBudget: (CategoryBudget) -> Void = { _ in }
+    /// Push the category's transactions: month narrows to one "yyyy-MM",
+    /// nil means all time (GH #56).
     var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
+    /// Open the move-money sheet for this category's balance (GH #128).
     var onMoveMoney: (CategoryBudget) -> Void = { _ in }
 
     var body: some View {
@@ -1069,6 +1227,8 @@ struct CleanCategoryBudgetRow: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel("Details for \(category.categoryName)")
                 Spacer()
+                // A zero balance has nothing to move and nothing to cover, so
+                // it stays a plain label.
                 Button {
                     onMoveMoney(category)
                 } label: {
@@ -1102,11 +1262,14 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
                 } label: {
                     HStack(spacing: 4) {
+                        // Green + signed so a deposit-only category doesn't
+                        // read as spending (GH #102).
                         Text("Spent: \(budgetStore.displaySpentCaption(category.spent))")
                             .font(.caption)
                             .foregroundStyle(category.spent > 0
@@ -1149,6 +1312,8 @@ struct CleanCategoryBudgetRow: View {
     }
 }
 
+/// Shared long-press/right-click menu for all category row styles — the same
+/// actions as the row's tappable cells plus the hide/show swipe action.
 struct CategoryRowContextMenu: ViewModifier {
     let category: CategoryBudget
     let isHidden: Bool
@@ -1172,6 +1337,8 @@ struct CategoryRowContextMenu: ViewModifier {
             Button { onShowTransactions(category, nil) } label: {
                 Label("All Transactions", systemImage: "list.bullet.rectangle")
             }
+            // Zero balance: nothing to move, nothing to cover — same rule as
+            // the balance pill.
             if category.available != 0 {
                 Button { onMoveMoney(category) } label: {
                     Label(category.isOverspent ? "Cover Overspending" : "Move Money",
@@ -1188,6 +1355,10 @@ struct CategoryRowContextMenu: ViewModifier {
     }
 }
 
+/// Balance color with goal awareness — port of the web's
+/// `makeBalanceAmountStyle`: negative is always red; with goal templates
+/// enabled and a goal on the row, orange marks an underfunded goal and green
+/// a funded one; otherwise the caller's zero-balance color applies.
 func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -> Color {
     if category.isOverspent { return .red }
     if goalsEnabled, category.goal != nil {
@@ -1197,6 +1368,10 @@ func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -
 }
 
 extension View {
+    /// The web's CarryoverIndicator: a small arrow just past the balance's
+    /// trailing edge, in the balance's color, when the category's overspending
+    /// rolls into next month (GH #372). An overlay rather than a sibling so
+    /// amounts stay column-aligned whether or not a row rolls over.
     func rolloverIndicator(_ shown: Bool, color: Color) -> some View {
         overlay(alignment: .trailing) {
             if shown {
@@ -1211,10 +1386,16 @@ extension View {
     }
 }
 
+/// Whether `month` ("YYYY-MM") is before the current calendar month. The
+/// strings are zero-padded, so a plain lexicographic compare is exact.
 @MainActor private func isPastMonth(_ month: String) -> Bool {
     month < BudgetView.currentMonthString()
 }
 
+/// The tracking-budget result figure for the summary bar: actual savings once
+/// a month is finished, projected savings while it's still current or ahead.
+/// Mirrors the Actual webapp, which flips "Projected savings" to "Saved" when
+/// the month rolls over.
 @MainActor private func trackingSavings(_ budget: BudgetMonth) -> Int {
     isPastMonth(budget.month) ? budget.savedActual : budget.projectedSavings
 }
@@ -1223,6 +1404,9 @@ extension View {
     isPastMonth(budget.month) ? "Saved" : "Projected"
 }
 
+/// Clean-style summary card: a 2x2 grid whose reading order follows the
+/// money — came in, allocated, went out, left over. Two rows because four
+/// currency amounts don't fit across narrow devices.
 struct CleanBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
@@ -1247,6 +1431,9 @@ struct CleanBudgetSummary: View {
                     value: budgetStore.displayBalance(-budget.totalSpent)
                 )
                 Spacer()
+                // Envelope budgets lead with unallocated funds; tracking
+                // budgets report savings instead — actual for a finished month,
+                // projected for the current/future month.
                 if let toBudget = budget.toBudget {
                     SummaryStat(
                         label: "To Budget",
@@ -1269,12 +1456,17 @@ struct CleanBudgetSummary: View {
     }
 }
 
+/// PWA-style summary bar: unallocated funds lead, and the three captioned
+/// columns double as the column headers for the table below.
 struct TableBudgetSummary: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let budget: BudgetMonth
 
     var body: some View {
         HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+            // Envelope budgets lead with unallocated funds; tracking
+            // budgets have no to-budget concept, so lead with income
+            // received instead.
             if let toBudget = budget.toBudget {
                 SummaryStat(
                     label: "To Budget",
@@ -1296,6 +1488,9 @@ struct TableBudgetSummary: View {
                 label: "Spent",
                 value: budgetStore.displayBudgetCell(budget.totalSpent)
             )
+            // Envelope budgets total the category balances; tracking budgets
+            // report savings instead — actual for a finished month, projected
+            // for the current/future month.
             if budget.toBudget != nil {
                 SummaryColumn(
                     label: "Balance",
@@ -1314,6 +1509,7 @@ struct TableBudgetSummary: View {
     }
 }
 
+/// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
     let label: String
     let value: String
@@ -1335,6 +1531,8 @@ struct SummaryStat: View {
     }
 }
 
+/// One captioned column in the summary bar, sized to line up with the
+/// category pills below it.
 struct SummaryColumn: View {
     let label: String
     let value: String
@@ -1357,6 +1555,31 @@ struct SummaryColumn: View {
     }
 }
 
+/// One amount cell in the budget table, in the PWA's pill style.
+struct BudgetAmountPill: View {
+    let text: String
+    var color: Color = .primary
+    var dimmed = false
+
+    var body: some View {
+        Text(text)
+            .font(.footnote)
+            .monospacedDigit()
+            .lineLimit(1)
+            .minimumScaleFactor(0.6)
+            .foregroundStyle(dimmed ? Color.secondary : color)
+            .animatedAmount(text)
+            .padding(.vertical, 3)
+            .frame(width: BudgetColumn.width, alignment: .trailing)
+            .contentShape(.rect)
+    }
+}
+
+/// A `BudgetAmountPill` with a small caption above it, naming the column
+/// ("Budgeted" / "Spent" / "Balance") the same way the pinned summary bar's
+/// columns are captioned. Used by the detailed group header's totals so a
+/// group row reads the same as the summary above it, rather than leaving the
+/// person to cross-reference bare numbers against the summary's labels.
 private struct CaptionedAmountPill: View {
     let label: String
     let text: String
@@ -1376,21 +1599,42 @@ private struct CaptionedAmountPill: View {
     }
 }
 
+/// Group header row: collapse control and group name, plus the group's
+/// Budgeted, Spent and Balance totals in the table's three rightmost
+/// columns, each captioned the same way the pinned summary bar is.
+///
+/// The way to hide/show the group depends on the display style:
+/// - **Clean style** uses a three‑dot ellipsis menu (because section headers
+///   don't support swipe actions reliably).
+/// - **Detailed style** uses a swipe‑to‑hide gesture, matching category rows.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let name: String
     let isCollapsed: Bool
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
+    /// The detailed style totals its columns here; the clean style's header
+    /// is a plain section title above the card, so it leaves this nil.
     var totals: CategoryGroupTotals?
+    /// Income groups use the same header shell but have one meaningful total:
+    /// money received. It occupies the trailing column where expense groups
+    /// show their balance.
     var receivedTotal: Int? = nil
     let onToggleCollapse: () -> Void
+    /// Detailed tables omit currency symbols from their numeric columns;
+    /// clean headers retain the app-wide currency presentation.
     var usesTableNumberFormat = false
+    /// The detailed style reserves two lines so group rows stay equal-height
+    /// whether names wrap or not (GH #252); the clean style's plain section
+    /// titles keep their natural height.
     var reservesTwoLines = false
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleCollapse) {
                 HStack(alignment: .top, spacing: BudgetColumn.spacing) {
+                    // Nested so the chevron centers against the name (which can
+                    // run one or two lines) rather than pinning to the top of
+                    // the row alongside the totals' captions.
                     HStack(spacing: BudgetColumn.spacing) {
                         DisclosureChevron(
                             isExpanded: !isCollapsed,
@@ -1427,6 +1671,8 @@ struct BudgetGroupHeader: View {
                         CaptionedAmountPill(
                             label: "Balance",
                             text: budgetStore.displayBudgetCell(totals.balance),
+                            // Same three-way treatment as the category rows, so a
+                            // group that lands on zero doesn't read as healthy.
                             color: totals.balance < 0
                                 ? .red
                                 : (totals.balance == 0 ? .secondary : .green)
@@ -1476,6 +1722,9 @@ struct BudgetGroupHeader: View {
         }
     }
 
+    /// The pills are decoration to VoiceOver once the button carries its own
+    /// label, so the totals have to be spoken here or they're lost. Currency
+    /// formatting, not the table's symbol-less cells, reads better aloud.
     private var accessibilityLabel: String {
         let state = isCollapsed ? "collapsed" : "expanded"
         if let receivedTotal {
@@ -1508,6 +1757,8 @@ struct BudgetGroupHeader: View {
     }
 }
 
+/// One income category: name and the amount received this month. Tracking
+/// budgets can budget income, so they also get a "Budgeted" caption.
 struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let income: IncomeCategory
@@ -1575,6 +1826,9 @@ struct IncomeCategoryRow: View {
     }
 }
 
+/// A compact category editor. Amount cells in the budget table keep their
+/// existing actions; tapping the name is reserved for the category's own
+/// metadata and quick-assignment shortcuts.
 struct CategoryBudgetDetailSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
@@ -1640,6 +1894,10 @@ struct CategoryBudgetDetailSheet: View {
                 }
 
                 Section {
+                    // The binding, not onChange, kicks off the write: a failed
+                    // save reverts the state directly, which must not re-save.
+                    // The guard covers a second tap landing before .disabled
+                    // re-renders, so two writes can't race for the same rows.
                     Toggle("Rollover Overspending", isOn: Binding(
                         get: { rolloverEnabled },
                         set: { enabled in
@@ -1658,6 +1916,9 @@ struct CategoryBudgetDetailSheet: View {
 
                 Section(
                     content: {
+                    // A suggestion overwrites this month's amount, so name the
+                    // month and show what's there now — otherwise the user
+                    // confirms a budget write blind.
                     LabeledContent(MonthPicker.title(for: category.month)) {
                         Text(budgetStore.displayBalance(category.budgeted))
                             .monospacedDigit()
@@ -1732,6 +1993,10 @@ struct CategoryBudgetDetailSheet: View {
         }
     }
 
+    /// Goal status mirroring the web's balance tooltip: funding state against
+    /// the goal, the goal type (long-term `#goal` vs template automation), and
+    /// the tracked amount. Templates are set in the category note (`#template`
+    /// / `#goal` lines) and applied from the month's template actions.
     @ViewBuilder private var goalSection: some View {
         Section(
             content: {
@@ -1836,6 +2101,8 @@ struct CategoryBudgetDetailSheet: View {
         }
     }
 
+    /// Writes immediately, like the web's balance menu — a rollover change
+    /// is a budget edit, not part of the name draft the Save button commits.
     private func saveRollover(_ enabled: Bool) async {
         errorMessage = nil
         do {
@@ -1872,6 +2139,10 @@ struct CategoryBudgetDetailSheet: View {
     }
 }
 
+/// One place for the status color and mode-neutral wording, shared by the
+/// bar, the dot, and the detail sheet — so VoiceOver says the same thing for
+/// the same category everywhere. The detail sheet keeps its own
+/// envelope/tracking titles on top of this.
 extension CategoryProgressState {
     var tint: Color {
         switch self {
@@ -1894,6 +2165,8 @@ extension CategoryProgressState {
     }
 }
 
+/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
+/// Available amount: green while money remains, red once overspent.
 struct CategoryProgressBar: View {
     let fraction: Double
     let state: CategoryProgressState
@@ -1913,12 +2186,16 @@ struct CategoryProgressBar: View {
             }
         }
         .frame(height: 5)
+        // Budgeting a category shrinks its bar as the money lands, so the
+        // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
         .accessibilityLabel("\(state.statusText), spent \(Int((fraction * 100).rounded())) percent")
     }
 }
 
+/// A deliberately quiet status cue for budget rows. The category detail sheet
+/// carries the full plain-language status so the main budget remains scannable.
 struct CompactCategoryStatusDot: View {
     let state: CategoryProgressState
 
@@ -1931,6 +2208,8 @@ struct CompactCategoryStatusDot: View {
     }
 }
 
+/// Edit the budgeted amount for one category-month. Saving writes through
+/// the sync engine (optimistic local-first) and refreshes the month.
 struct EditBudgetAmountSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
@@ -1988,6 +2267,7 @@ struct EditBudgetAmountSheet: View {
         errorMessage = nil
         Task {
             do {
+                // An emptied field means "no longer budgeted", i.e. zero.
                 let cents = try BudgetStore.budgetAmountCents(
                     from: amountText.isEmpty ? "0" : amountText,
                     allowNegative: true
@@ -2021,9 +2301,13 @@ struct MonthPicker: View {
                 .font(.headline)
                 .lineLimit(1)
         }
+        // The abbreviation is a layout constraint, not what the month is
+        // called — VoiceOver still reads it in full.
         .accessibilityLabel(Self.title(for: selectedMonth))
     }
 
+    /// Next month back through the prior year, newest first, padded with the
+    /// selection itself when swiping has moved outside that window.
     private var monthOptions: [String] {
         let current = BudgetView.currentMonthString()
         var months = (-12...1).map { BudgetView.shiftMonth(current, by: $0) }
@@ -2041,6 +2325,7 @@ struct MonthPicker: View {
         return monthTitleFormatter.string(from: date)
     }
 
+    /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
     nonisolated static func shortTitle(for month: String) -> String {
         guard let date = date(fromMonth: month) else {
             return month
