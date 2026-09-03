@@ -396,8 +396,8 @@ struct BudgetView: View {
                         } label: {
                             Image(systemName: "plus")
                         }
-                        .accessibilityLabel("Add")
-                        .accessibilityHint("Create a category or category group")
+                        .accessibilityLabel(String(localized: "navigation.add"))
+                        .accessibilityHint(String(localized: "Create a category or category group"))
                     }
                 }
                 ToolbarItem(placement: .topBarTrailing) {
@@ -1470,12 +1470,12 @@ struct CategoryBudgetDetailSheet: View {
                 }
 
                 if note.supported {
-                    Section("Note") {
+                    Section(String(localized: "common.note")) {
                         Button {
                             editingNote = true
                         } label: {
                             if note.isEmpty {
-                                Label("Add Note", systemImage: "note.text.badge.plus")
+                                Label(String(localized: "common.addNote"), systemImage: "note.text.badge.plus")
                             } else {
                                 Text(NoteLinkText.attributed(note.text))
                                     .foregroundStyle(.primary)
@@ -1497,7 +1497,7 @@ struct CategoryBudgetDetailSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
+                    Button(String(localized: "common.done")) { dismiss() }
                 }
             }
             .task { await reloadSupportingDetails() }
@@ -1584,8 +1584,8 @@ struct BudgetDetailSectionHeader: View {
         .accessibilityAddTraits(.isHeader)
         .accessibilityLabel(String(format: String(localized: "%@, %@"), title,
                        isExpanded ? String(localized: "expanded") : String(localized: "collapsed")))
-        .accessibilityIdentifier("\(title), \(isExpanded ? "expanded" : "collapsed")")
-        .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
+        .accessibilityIdentifier("budget.section.\(isExpanded ? "expanded" : "collapsed")")
+        .accessibilityHint(String(localized: isExpanded ? "Collapses this section" : "Expands this section"))
     }
 }
 
@@ -1741,7 +1741,7 @@ struct MonthPicker: View {
 
     var body: some View {
         Menu {
-            Picker("Month", selection: $selectedMonth) {
+            Picker(String(localized: "Month"), selection: $selectedMonth) {
                 ForEach(monthOptions, id: \.self) { month in
                     Text(Self.title(for: month)).tag(month)
                 }

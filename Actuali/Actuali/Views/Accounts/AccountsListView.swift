@@ -330,8 +330,8 @@ struct AccountsListView: View {
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("Accounts options")
-                    .accessibilityHint("Account list display options")
+                    .accessibilityLabel(String(localized: "Accounts options"))
+                    .accessibilityHint(String(localized: "Account list display options"))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     SyncStatusView(state: budgetStore.syncState)

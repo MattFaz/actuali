@@ -186,14 +186,14 @@ struct SettingsView: View {
                         .autocapitalization(.none)
                         .keyboardType(.URL)
                         .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Example: https://actual.example.com")
+                        .accessibilityHint(String(localized: "settings.server.urlHint"))
 
                     TextField("Fallback server URL (optional)", text: $budgetStore.fallbackServerURL)
                         .textContentType(.URL)
                         .autocapitalization(.none)
                         .keyboardType(.URL)
                         .disabled(budgetStore.isConnected)
-                        .accessibilityHint("Used when the primary server cannot be reached")
+                        .accessibilityHint(String(localized: "Used when the primary server cannot be reached"))
 
                     if !budgetStore.isConnected {
                         // Show the password field before probing, when password
@@ -254,7 +254,7 @@ struct SettingsView: View {
                             CustomHeadersEditor(headers: $budgetStore.customHeaders)
                         } label: {
                             HStack {
-                                Text("Custom HTTP headers")
+                                Text(String(localized: "Custom HTTP headers"))
                                 Spacer()
                                 let count = budgetStore.customHeaders.filter {
                                     !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -283,10 +283,10 @@ struct SettingsView: View {
                         }
                     }
                 } header: {
-                    Text("Server Connection")
+                    Text(String(localized: "Server Connection"))
                 } footer: {
                     if !budgetStore.isConnected {
-                        Text("Example: https://actual.example.com\n\nBehind an auth proxy like Cloudflare Access? Add a service token under \u{201C}Custom HTTP headers.\u{201D}\n\nNo server? Tap \u{201C}Try the demo budget\u{201D} to explore the app with sample data. The demo runs entirely on this device \u{2014} it never connects to a server or touches a real budget.")
+                        Text(String(localized: "settings.server.help"))
                     }
                 }
 
@@ -296,7 +296,7 @@ struct SettingsView: View {
                 if budgetStore.isConnected || budgetStore.currentBudgetId != nil {
                     Section {
                         if budgetStore.isConnected {
-                            Picker("Budget", selection: budgetPickerBinding) {
+                            Picker(String(localized: "navigation.budget"), selection: budgetPickerBinding) {
                                 // Placeholder until a budget is chosen — deliberately
                                 // not offered again afterwards, so "None" can't be
                                 // (re)selected.
@@ -354,7 +354,7 @@ struct SettingsView: View {
                             }
                         }
                     } header: {
-                        Text("Budget")
+                        Text(String(localized: "navigation.budget"))
                     } footer: {
                         if budgetStore.currentBudgetId == nil {
                             if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
@@ -458,7 +458,7 @@ struct SettingsView: View {
                     if budgetStore.currencyCode.isEmpty {
                         Text("Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
                     } else {
-                        Text("Symbol Only shows amounts with just the currency symbol — $ instead of NZ$. Conventional Amount Entry types amounts whole — 324 for 324.00 — instead of filling cents first. Hide Balances masks amounts across the app. Start Page takes effect the next time the app opens.")
+                        Text(String(localized: "settings.preferences.symbolOnly"))
                     }
                 }
 
@@ -471,7 +471,7 @@ struct SettingsView: View {
 
                     Toggle(String(localized: "Post Scheduled Transactions"), isOn: $budgetStore.postScheduledTransactions)
                 } footer: {
-                    Text("When enabled, scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
+                    Text(String(localized: "settings.scheduledTransactions.description"))
                 }
 
                 if budgetStore.currentBudgetId != nil {
@@ -507,7 +507,7 @@ struct SettingsView: View {
                         }
 
                         if budgetStore.syncDetachedByRestore {
-                            Text("Sync is disconnected because a backup was restored. Re-download the budget from your server to resume syncing — that replaces the restored data with the server copy.")
+                            Text(String(localized: "settings.sync.detachedByRestore"))
                                 .font(.footnote)
                                 .foregroundStyle(.secondary)
                         }
@@ -594,7 +594,7 @@ struct SettingsView: View {
                             Button("Back Up", role: .destructive) {
                                 Task { await budgetStore.makeBackupNow() }
                             }
-                            Button("Cancel", role: .cancel) {}
+                            Button(String(localized: "common.cancel"), role: .cancel) {}
                         } message: {
                             Text("This makes the restored data your current budget and removes the option to revert to the version from before you loaded a backup.")
                         }
@@ -673,7 +673,7 @@ struct SettingsView: View {
                 }
             }
             .readableWidth()
-            .navigationTitle("Settings")
+            .navigationTitle(String(localized: "navigation.settings"))
             .contentMargins(.horizontal, 6, for: .scrollContent)
             .task {
                 reloadBackgroundRefreshStatus()
@@ -708,7 +708,7 @@ struct SettingsView: View {
                     budgetStore.logout()
                     password = ""
                 }
-                Button("Cancel", role: .cancel) {}
+                Button(String(localized: "common.cancel"), role: .cancel) {}
             } message: {
                 Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
             }
@@ -722,7 +722,7 @@ struct SettingsView: View {
                         await budgetStore.resetSyncState()
                     }
                 }
-                Button("Cancel", role: .cancel) {}
+                Button(String(localized: "common.cancel"), role: .cancel) {}
             } message: {
                 Text("Discards the local sync marker and re-checks your budget against the server, pulling down anything missing. Local edits are re-sent rather than discarded, but a large budget can take a moment to reconcile.")
             }

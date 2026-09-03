@@ -67,7 +67,7 @@ extension View {
                 Text("Checking")
                 Text("Savings")
             }
-            .navigationTitle("Accounts")
+            .navigationTitle(String(localized: "navigation.accounts"))
         }
     }
 }

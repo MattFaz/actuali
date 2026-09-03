@@ -45,7 +45,7 @@ struct DiscoverSchedulesView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
-                Button("Create") { Task { await createSelected() } }
+                Button(String(localized: "common.create")) { Task { await createSelected() } }
                     .disabled(selected.isEmpty || isCreating)
             }
         }

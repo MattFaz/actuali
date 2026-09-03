@@ -45,7 +45,7 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
-            Picker("Categories", selection: $categoryFilter) {
+            Picker(String(localized: "Categories"), selection: $categoryFilter) {
                 Label("All Categories", systemImage: "list.bullet")
                     .tag(BudgetCategoryFilter.all)
                 Label("Needs Attention", systemImage: "exclamationmark.circle")
@@ -107,7 +107,7 @@ struct BudgetOptionsMenu: View {
 
 #Preview {
     NavigationStack {
-        Text("Budget")
+        Text(String(localized: "navigation.budget"))
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     BudgetOptionsMenu(

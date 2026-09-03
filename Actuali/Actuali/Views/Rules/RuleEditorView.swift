@@ -91,7 +91,7 @@ struct RuleEditorView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .cancellationAction) {
-                Button("Cancel") { dismiss() }
+                Button(String(localized: "common.cancel")) { dismiss() }
             }
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save") { save() }

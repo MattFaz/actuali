@@ -16,12 +16,28 @@ SOURCE_LANGUAGE = "en"
 REQUIRED_LOCALES = {"en", "fr", "es", "pt-BR", "de", "it", "nl"}
 
 KEY_PATTERN = re.compile(r'String\(localized:\s*"((?:\\.|[^"\\])*)"')
+SWIFTUI_KEY_PATTERN = re.compile(
+    r'(?:Text|Label|Toggle|Button|Link|Section|Picker|TextField|SecureField)'
+    r'\(\s*"((?:\\.|[^"\\])*)"'
+    r'|(?:navigationTitle|navigationBarTitle|accessibilityLabel|accessibilityHint|accessibilityValue)'
+    r'\(\s*"((?:\\.|[^"\\])*)"'
+)
 WIDGET_KEY_PATTERN = re.compile(
     r'(?:Text|configurationDisplayName|description)\(\s*"((?:\\.|[^"\\])*)"'
 )
 PLACEHOLDER_PATTERN = re.compile(r"%(?!%)(?:\d+\$)?[+\-0-9.*lh]*[a-zA-Z@]")
 # Swift string interpolation inside a localized key, e.g. "Found \(count) items"
 INTERPOLATION_PATTERN = re.compile(r"\\\([^()]*(?:\([^()]*\)[^()]*)*\)")
+
+
+def swift_string_value(value: str) -> str:
+    """Normalize the Swift escapes used in source keys to catalog values."""
+    value = re.sub(
+        r"\\u\{([0-9A-Fa-f]+)\}",
+        lambda match: chr(int(match.group(1), 16)),
+        value,
+    )
+    return value.replace(r"\n", "\n").replace(r'\"', '"').replace(r"\\", "\\")
 
 
 def placeholders(value: str) -> list[str]:
@@ -75,8 +91,15 @@ def main() -> int:
     used: set[str] = set()
     for source_root in SOURCE_ROOTS:
         for source in source_root.rglob("*.swift"):
-            source_text = source.read_text(encoding="utf-8")
-            used.update(KEY_PATTERN.findall(source_text))
+            source_text = "\n".join(
+                line for line in source.read_text(encoding="utf-8").splitlines()
+                if not line.lstrip().startswith(("//", "/*", "*", "*/"))
+            )
+            used.update(swift_string_value(key) for key in KEY_PATTERN.findall(source_text))
+            for match in SWIFTUI_KEY_PATTERN.findall(source_text):
+                for key in match:
+                    if key and "\\(" not in key:
+                        used.add(swift_string_value(key))
             if source_root.name == "ActualiWidgets":
                 used.update(WIDGET_KEY_PATTERN.findall(source_text))
 

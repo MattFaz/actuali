@@ -218,7 +218,7 @@ struct ScheduleEditView: View {
 
     @ViewBuilder
     private var amountSection: some View {
-        Section("Amount") {
+        Section(String(localized: "common.amount")) {
             Picker("Type", selection: $txType) {
                 Text("Expense").tag(TransactionType.expense)
                 Text("Income").tag(TransactionType.income)

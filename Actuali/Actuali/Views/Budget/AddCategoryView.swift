@@ -28,7 +28,7 @@ struct NewCategoryGroupSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Group Name", text: $name)
+                    TextField(String(localized: "error.invalidCategoryGroupName"), text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
                 } footer: {
@@ -40,14 +40,14 @@ struct NewCategoryGroupSheet: View {
                     }
                 }
             }
-            .navigationTitle("New Group")
+            .navigationTitle(String(localized: "New Category Group"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button(String(localized: "common.create")) {
                         Task { await create() }
                     }
                     .disabled(isSaving || trimmedName.isEmpty)
@@ -106,7 +106,7 @@ struct NewCategorySheet: View {
         NavigationStack {
             Form {
                 Section {
-                    TextField("Category Name", text: $name)
+                    TextField(String(localized: "error.invalidCategoryName"), text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
                 } footer: {
@@ -117,7 +117,7 @@ struct NewCategorySheet: View {
                 }
 
                 Section {
-                    Picker("Group", selection: $groupId) {
+                    Picker(String(localized: "Category"), selection: $groupId) {
                         ForEach(selectableGroups) { group in
                             Text(group.name).tag(group.id)
                         }
@@ -126,14 +126,14 @@ struct NewCategorySheet: View {
                     Text("The category is added at the top of its group, the same as the web app.")
                 }
             }
-            .navigationTitle("New Category")
+            .navigationTitle(String(localized: "New Category"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button(String(localized: "common.cancel")) { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
+                    Button(String(localized: "common.create")) {
                         Task { await create() }
                     }
                     .disabled(isSaving || trimmedName.isEmpty || groupId.isEmpty)

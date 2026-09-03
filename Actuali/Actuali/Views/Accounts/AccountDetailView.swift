@@ -231,7 +231,7 @@ struct AccountDetailView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 if isSelecting {
-                    Button("Done") {
+                    Button(String(localized: "common.done")) {
                         withAnimation {
                             isSelecting = false
                             selectedTransactionIds.removeAll()

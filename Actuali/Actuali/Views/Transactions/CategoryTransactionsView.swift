@@ -43,7 +43,7 @@ struct CategoryTransactionsView: View {
     /// transactions, not reading guidance — and on files with no `notes` table,
     /// where an edit could never save.
     private var noteSection: some View {
-        Section("Note") {
+        Section(String(localized: "common.note")) {
             if note.isEmpty {
                 Button {
                     editingNote = true

@@ -142,7 +142,7 @@ struct SchedulesListView: View {
                 ScheduleEditView(budgetStore: budgetStore)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { isAddingSchedule = false }
+                            Button(String(localized: "common.cancel")) { isAddingSchedule = false }
                         }
                     }
             }

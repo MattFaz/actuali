@@ -98,12 +98,7 @@ enum NewTransactionNotifier {
                  accountNames: accountNames, offBudgetAccountIds: offBudgetAccountIds)
         }
         if transactions.count > maxDetailLines {
-            lines.append(
-                String(
-                    format: String(localized: "…and %lld more"),
-                    Int64(transactions.count - maxDetailLines)
-                )
-            )
+            lines.append(String(localized: "…and \(transactions.count - maxDetailLines) more"))
         }
         content.body = lines.joined(separator: "\n")
 
