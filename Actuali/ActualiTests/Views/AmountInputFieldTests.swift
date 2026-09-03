@@ -67,6 +67,62 @@ struct AmountInputFieldTests {
         #expect(box.value == "1.20")
     }
 
+    @Test func selectedDotCommaFormatChangesGroupingAndDecimalSeparator() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .dotComma
+        type("123456", into: coordinator, textField)
+        #expect(textField.text == "1.234,56")
+        #expect(box.value == "1234.56")
+    }
+
+    @Test func selectedSpaceCommaFormatUsesNarrowNoBreakSpace() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .spaceComma
+        type("123456", into: coordinator, textField)
+        #expect(textField.text == "1\u{202F}234,56")
+        #expect(box.value == "1234.56")
+    }
+
+    @Test func selectedApostropheDotFormatUsesActualApostrophe() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .apostropheDot
+        type("123456", into: coordinator, textField)
+        #expect(textField.text == "1\u{2019}234.56")
+        #expect(box.value == "1234.56")
+    }
+
+    @Test func selectedIndianFormatUsesIndianGrouping() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .commaDotIn
+        type("123456789", into: coordinator, textField)
+        #expect(textField.text == "12,34,567.89")
+        #expect(box.value == "1234567.89")
+    }
+
+    @Test func pastingSpaceCommaPreservesCanonicalAmount() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .spaceComma
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "1\u{202F}234,56"
+        )
+        #expect(textField.text == "1\u{202F}234,56")
+        #expect(box.value == "1234.56")
+    }
+
+    @Test func pastingApostropheDotPreservesCanonicalAmount() {
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .apostropheDot
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "1\u{2019}234.56"
+        )
+        #expect(textField.text == "1\u{2019}234.56")
+        #expect(box.value == "1234.56")
+    }
+
     // MARK: - Conventional entry
 
     @Test func conventionalModeEntersWholeDigitsWithoutShiftingCents() {
@@ -222,8 +278,6 @@ struct AmountInputFieldTests {
         #expect(Double(box.value) == 18)
     }
 
-    /// A fractional result still carries its cents — the whole-number display
-    /// is about not inventing a fraction, not about dropping one.
     @Test func conventionalModeKeepsCentsOnFractionalResult() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("5", into: coordinator, textField)
@@ -234,8 +288,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "2.50")
     }
 
-    /// A prefilled whole amount must survive the round trip through
-    /// `sync(fromDisplay:)` — the field is handed "%.2f" strings by callers.
     @Test func conventionalModeEditsPrefilledWholeAmount() {
         let (coordinator, textField, box) = makeField(
             initial: "324", conventionalAmountEntry: true
@@ -265,14 +317,12 @@ struct AmountInputFieldTests {
     }
 
     @Test func prefilledNegativeAmountKeepsSignWhenEdited() {
-        // Reconcile prefills e.g. a credit card's cleared balance.
         let (coordinator, textField, box) = makeField(initial: "-123.4", allowsNegative: true)
         type("5", into: coordinator, textField)
         #expect(box.value == "-123.45")
     }
 
     @Test func fullReplaceResetsSign() {
-        // Tapping the field selects all; the next digit replaces everything.
         let (coordinator, textField, box) = makeField(initial: "-123.45", allowsNegative: true)
         _ = coordinator.textField(
             textField,
@@ -311,8 +361,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "18.50")
     }
 
-    /// The Save button is an ordinary form row, so it never ends editing —
-    /// the binding has to be parseable while the expression is still visible.
     @Test func bindingHoldsEvaluatedValueMidExpression() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
@@ -354,7 +402,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "10.00")
     }
 
-    /// "12.50 ×" then Done must not multiply by an implied zero.
     @Test func danglingOperatorCollapsesToRunningTotal() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
@@ -408,7 +455,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "0.09")
     }
 
-    /// Reconcile can show a negative balance, so the true signed result stands.
     @Test func negativeResultKeepsItsSignWhereAllowed() {
         let (coordinator, textField, box) = makeField(allowsNegative: true)
         type("500", into: coordinator, textField)
@@ -418,8 +464,6 @@ struct AmountInputFieldTests {
         #expect(box.value == "-15.00")
     }
 
-    /// Elsewhere the sign comes from the expense/income toggle, so the field
-    /// carries the magnitude rather than silently zeroing the entry.
     @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
         let (coordinator, textField, box) = makeField()
         type("500", into: coordinator, textField)
@@ -444,8 +488,6 @@ struct AmountInputFieldTests {
         type("-", into: coordinator, textField)
         #expect(box.value.hasPrefix("-") == false)
         coordinator.toggleSign()
-        // Sign toggle exists but sync/full-replace never mark unsigned fields
-        // negative; typed digits keep the amount positive.
         type("5", into: coordinator, textField)
         #expect(textField.text?.hasPrefix("-") == false)
     }
