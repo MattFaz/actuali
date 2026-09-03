@@ -654,7 +654,6 @@ final class BudgetStore: ObservableObject {
     /// Writes or removes a card-to-account mapping and persists it through SyncClient.
     /// Passing nil or empty `accountId` removes the keyword mapping.
     func setCardAccountMapping(keyword: String, accountId: String?) async {
-        guard currentBudgetId != nil else { return }
         let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         var updated = cardAccountMappings
@@ -663,29 +662,25 @@ final class BudgetStore: ObservableObject {
         } else {
             updated.removeValue(forKey: cleaned)
         }
-        let previous = cardAccountMappings
-        cardAccountMappings = updated
-        guard let syncClient else {
-            cardAccountMappings = previous
-            error = "Card mappings need sync configured for this budget."
-            return
-        }
-        do {
-            try await syncClient.setCardAccountMappings(updated)
-        } catch {
-            cardAccountMappings = previous
-            self.error = error.localizedDescription
-        }
+        await persistCardAccountMappings(updated)
     }
 
     /// Removes multiple card-to-account mappings in a single batch write.
     func deleteCardAccountMappings(keywords: [String]) async {
-        guard currentBudgetId != nil, !keywords.isEmpty else { return }
+        guard !keywords.isEmpty else { return }
         var updated = cardAccountMappings
         for keyword in keywords {
-            let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
-            updated.removeValue(forKey: cleaned)
+            updated.removeValue(forKey: keyword)
+            updated.removeValue(forKey: keyword.trimmingCharacters(in: .whitespacesAndNewlines))
         }
+        await persistCardAccountMappings(updated)
+    }
+
+    /// Publishes `updated` first, then persists it. A failed write rolls the
+    /// published value back and surfaces the error.
+    private func persistCardAccountMappings(_ updated: [String: String]) async {
+        guard currentBudgetId != nil else { return }
+        guard updated != cardAccountMappings else { return }
         let previous = cardAccountMappings
         cardAccountMappings = updated
         guard let syncClient else {
@@ -696,7 +691,9 @@ final class BudgetStore: ObservableObject {
         do {
             try await syncClient.setCardAccountMappings(updated)
         } catch {
-            cardAccountMappings = previous
+            if cardAccountMappings == updated {
+                cardAccountMappings = previous
+            }
             self.error = error.localizedDescription
         }
     }
@@ -790,13 +787,18 @@ final class BudgetStore: ObservableObject {
     /// to the default account or an error the user can act on, while a wrong match logs
     /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
-        let mappings: [String: String]
-        if !cardAccountMappings.isEmpty {
-            mappings = cardAccountMappings
-        } else if let db = database {
-            mappings = (try? await db.fetchCardAccountMappings()) ?? [:]
-        } else {
-            mappings = cardAccountMappings
+        var mappings = cardAccountMappings
+        if mappings.isEmpty {
+            // Same fallback as accountsForIntent(): a cold headless launch has no
+            // `database` yet, so open the budget file directly.
+            let db = database ?? currentBudgetId.flatMap {
+                fileManager.budgetExists($0)
+                    ? try? BudgetDatabase(path: fileManager.databasePath(for: $0))
+                    : nil
+            }
+            if let db {
+                mappings = (try? await db.fetchCardAccountMappings()) ?? [:]
+            }
         }
         return Self.resolveAccountId(
             hint: hint,
@@ -2061,8 +2063,12 @@ final class BudgetStore: ObservableObject {
 
             var legacyCardMappings: [String: String] = [:]
             let savedCardMappings = UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
-            for (keyword, accountId) in savedCardMappings where fetchedCardMappings[keyword] == nil {
-                legacyCardMappings[keyword] = accountId
+            for (keyword, accountId) in savedCardMappings {
+                let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !cleaned.isEmpty else { continue }
+                if fetchedCardMappings[cleaned] == nil {
+                    legacyCardMappings[cleaned] = accountId
+                }
             }
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
             

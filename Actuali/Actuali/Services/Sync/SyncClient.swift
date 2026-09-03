@@ -905,6 +905,11 @@ actor SyncClient {
 
     /// Persists or clears card-to-account mappings in the budget's `preferences` table
     /// under `actuali:card_mappings`, so it syncs across all devices.
+    ///
+    /// ponytail: one preference row holds the whole map, so two devices that add a
+    /// keyword before a sync lose one of them (last write wins). Upgrade path: one row
+    /// per keyword under `actuali:card_mapping:<keyword>`, read back with a prefix
+    /// query, the same shape as setCreditCardConfig / fetchCreditCardConfigs.
     func setCardAccountMappings(_ mappings: [String: String]) async throws {
         let jsonString: String?
         if !mappings.isEmpty {

@@ -55,12 +55,19 @@ struct BudgetStoreAccountMappingTests {
 
         try await seedBudget(id: budgetId, in: manager)
 
-        UserDefaults.standard.set(["1234": "acct_hsbc", "9876": "acct_hdfc"], forKey: "cardAccountMappings_\(budgetId)")
+        UserDefaults.standard.set(
+            ["1234": "acct_hsbc", "9876": "acct_hdfc", " 5678 ": "acct_chase", "  ": "acct_blank"],
+            forKey: "cardAccountMappings_\(budgetId)"
+        )
 
         await store.loadLocalBudget(budgetId)
 
         #expect(store.cardAccountMappings["1234"] == "acct_hsbc")
         #expect(store.cardAccountMappings["9876"] == "acct_hdfc")
+        #expect(store.cardAccountMappings["5678"] == "acct_chase")
+        #expect(store.cardAccountMappings[" 5678 "] == nil)
+        #expect(store.cardAccountMappings[""] == nil)
+        #expect(store.cardAccountMappings["  "] == nil)
 
         // Legacy UserDefaults key must be erased
         #expect(UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") == nil)
@@ -97,6 +104,39 @@ struct BudgetStoreAccountMappingTests {
         #expect(store.cardAccountMappings["1234"] == nil)
 
         fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched.isEmpty)
+    }
+
+    @Test func deleteCardAccountMappingsRemovesEveryKeyword() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCardAccountMapping(keyword: "1234", accountId: "acct_chase")
+        await store.setCardAccountMapping(keyword: "HSBC", accountId: "acct_hsbc")
+
+        // Deleting non-existent keywords should be a safe no-op
+        await store.deleteCardAccountMappings(keywords: ["UNKNOWN"])
+        #expect(store.cardAccountMappings.count == 2)
+
+        await store.deleteCardAccountMappings(keywords: [" 1234 ", "HSBC"])
+
+        #expect(store.cardAccountMappings.isEmpty)
+        let fetched = try await database.fetchCardAccountMappings()
         #expect(fetched.isEmpty)
     }
 
@@ -193,6 +233,32 @@ struct BudgetStoreAccountMappingTests {
             let resolved = await store.resolveAccountId(hint: "NonExistentBank9999")
             #expect(resolved == nil)
         }
+    }
+
+    @Test func resolveAccountIdFallsBackToDatabaseFileWhenDatabaseIsNil() async throws {
+        let (store, manager, budgetId, root) = try makeStore()
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        try await seedBudget(id: budgetId, in: manager)
+
+        let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
+        let data = try JSONEncoder().encode(["1234": "acct_hsbc"])
+        let json = String(decoding: data, as: UTF8.self)
+        try await dbQueue.write { db in
+            try db.execute(
+                sql: "INSERT INTO accounts (id, name, type, offbudget, closed, tombstone) VALUES (?, ?, ?, 0, 0, 0)",
+                arguments: ["acct_hsbc", "HSBC Checking", "checking"]
+            )
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: [BudgetDatabase.cardMappingsPreferenceKey, json]
+            )
+        }
+
+        store.currentBudgetId = budgetId
+
+        let resolved = await store.resolveAccountId(hint: "1234")
+        #expect(resolved == "acct_hsbc")
     }
 
     // The static entry point is what the pending-import edit form calls;

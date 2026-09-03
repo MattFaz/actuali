@@ -8,7 +8,7 @@ struct CardAccountMappingsView: View {
     @State private var selectedAccountId = ""
 
     private var sortedMappings: [(keyword: String, accountName: String)] {
-        let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0.name) })
+        let accountsById = Dictionary(budgetStore.accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         return budgetStore.cardAccountMappings.map { (keyword, accountId) in
             (keyword: keyword, accountName: accountsById[accountId] ?? "Unknown Account")
         }.sorted { $0.keyword < $1.keyword }
