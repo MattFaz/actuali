@@ -1,15 +1,6 @@
 import XCTest
 
 final class SettingsNavigationUITests: XCTestCase {
-    private func navigationBarTitle(for destination: String) -> String {
-        switch destination {
-        case "Bank Sync (SimpleFIN & Wallet)":
-            return "Bank Sync"
-        default:
-            return destination
-        }
-    }
-
     @MainActor
     private func assertExpectedContent(for destination: String, in app: XCUIApplication) {
         let content: XCUIElement
@@ -70,7 +61,9 @@ final class SettingsNavigationUITests: XCTestCase {
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
-            let navigationBar = app.navigationBars[navigationBarTitle(for: destination)]
+            let navigationBar = app.navigationBars[
+                destination == "Bank Sync (SimpleFIN & Wallet)" ? "Bank Sync" : destination
+            ]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
                 "\(destination) screen did not open"
