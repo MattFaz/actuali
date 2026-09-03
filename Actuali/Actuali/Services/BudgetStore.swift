@@ -99,7 +99,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
         case .bankSyncNotConfigured:
-            return "SimpleFIN isn't set up yet. Connect it in More → Transactions & Automation first."
+            return "SimpleFIN isn't set up yet. Connect it in More → Manage → Bank Sync (SimpleFIN & Wallet)."
         }
     }
 }
