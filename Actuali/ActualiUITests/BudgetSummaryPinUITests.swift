@@ -12,9 +12,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
+        let groceries = app.buttons["All transactions for Groceries"].firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
 
@@ -38,7 +38,7 @@ final class BudgetSummaryPinUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Budget"].tap()
+        app.tabBars.buttons["tab.budget"].tap()
 
         let nextMonth = app.buttons["Next month"]
         XCTAssertTrue(nextMonth.waitForExistence(timeout: 10),
@@ -47,29 +47,5 @@ final class BudgetSummaryPinUITests: XCTestCase {
         app.swipeUp()
         XCTAssertTrue(nextMonth.isHittable,
                       "the inline bar keeps the stepper tappable while scrolled")
-    }
-
-    /// UIKit silently gives up on centering a title view once it outgrows the
-    /// slot the trailing buttons leave, and jams it against the leading edge
-    /// instead — twice now (GH #234, #319). Only the rendered frames catch it,
-    /// and the stepper clears the slot by 2pt, so this is the guard for the
-    /// next thing that widens it.
-    @MainActor
-    func testMonthStepperIsCenteredInTheBar() throws {
-        let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
-        app.launch()
-
-        app.tabBars.buttons["Budget"].tap()
-
-        let navBar = app.navigationBars.firstMatch
-        let previousMonth = navBar.buttons["Previous month"]
-        XCTAssertTrue(previousMonth.waitForExistence(timeout: 10),
-                      "the month stepper lives in the bar")
-        let nextMonth = navBar.buttons["Next month"]
-
-        let stepperMidX = (previousMonth.frame.minX + nextMonth.frame.maxX) / 2
-        XCTAssertEqual(stepperMidX, navBar.frame.midX, accuracy: 4,
-                       "the month stepper must stay centered in the bar")
     }
 }

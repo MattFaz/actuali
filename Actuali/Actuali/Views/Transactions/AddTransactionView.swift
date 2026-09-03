@@ -8,9 +8,6 @@ struct AddTransactionView: View {
     @Environment(\.isPresented) private var isPresented
 
     private let editing: Transaction?
-    /// Called after a successful save (not on cancel). The optional id is the
-    /// exact row written by the save path, or nil when nothing was created.
-    private let onSaved: ((String?) -> Void)?
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -26,7 +23,6 @@ struct AddTransactionView: View {
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
     @State private var nearbyPayees: [NearbyPayee] = []
-    @State private var showPayeePicker = false
     @State private var saveLocation = true
     @State private var splitLines: [BudgetStore.SplitLineForm] = []
     /// True while the edit form's "Remove Split" is toggled on an existing
@@ -34,6 +30,8 @@ struct AddTransactionView: View {
     /// multiple categories" undoes the toggle instantly) but the form shows
     /// the category picker and saves as a single transaction.
     @State private var unsplitRequested = false
+
+    @FocusState private var payeeFocused: Bool
 
     /// Initializer for the "Add" flow. The optional prefill parameters carry
     /// whatever an automation passed along — a failed Wallet log or the Add
@@ -46,11 +44,9 @@ struct AddTransactionView: View {
         notes: String = "",
         categoryId: String? = nil,
         isIncome: Bool = false,
-        cleared: Bool = false,
-        onSaved: ((String?) -> Void)? = nil
+        cleared: Bool = false
     ) {
         self.editing = nil
-        self.onSaved = onSaved
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -70,7 +66,6 @@ struct AddTransactionView: View {
     /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
-        self.onSaved = nil
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -173,10 +168,6 @@ struct AddTransactionView: View {
             }
     }
 
-    private var showsStandardCategoryFields: Bool {
-        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
-    }
-
     /// Converting keeps the edited row on its own side of the transfer, so
     /// the form asks for one account — the other one — instead of the From/To
     /// pair a new transfer needs. The account row stays editable and keeps
@@ -249,6 +240,27 @@ struct AddTransactionView: View {
         }
     }
 
+    private var payeeSuggestions: [Payee] {
+        let trimmed = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return [] }
+        let lower = trimmed.lowercased()
+        return budgetStore.payees
+            .filter { payee in
+                !payee.tombstone &&
+                    payee.transferAccountId == nil &&
+                    payee.name.lowercased() != lower &&
+                    payee.name.localizedCaseInsensitiveContains(trimmed)
+            }
+            .sorted { lhs, rhs in
+                let lp = lhs.name.lowercased().hasPrefix(lower)
+                let rp = rhs.name.lowercased().hasPrefix(lower)
+                if lp != rp { return lp }
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            .prefix(5)
+            .map { $0 }
+    }
+
     private var selectedCategoryName: String {
         guard let id = selectedCategoryId else { return "None" }
         for group in budgetStore.categoryGroups {
@@ -264,11 +276,11 @@ struct AddTransactionView: View {
             Form {
                 Section {
                     HStack {
-                        Picker("Type", selection: $txType) {
-                            Text("Expense").tag(TransactionType.expense)
-                            Text("Income").tag(TransactionType.income)
+                        Picker(String(localized: "Type"), selection: $txType) {
+                            Text(String(localized: "Expense")).tag(TransactionType.expense)
+                            Text(String(localized: "Income")).tag(TransactionType.income)
                             if !isEditing || isEditingTransfer || canConvertToTransfer {
-                                Text("Transfer").tag(TransactionType.transfer)
+                                Text(String(localized: "Transfer")).tag(TransactionType.transfer)
                             }
                         }
                         .pickerStyle(.segmented)
@@ -308,7 +320,7 @@ struct AddTransactionView: View {
 
                     if isTransfer {
                         Picker(transferPartnerLabel, selection: $transferToAccountId) {
-                            Text("Select account").tag(String?.none)
+                            Text(String(localized: "Select account")).tag(String?.none)
                             ForEach(transferEligibleAccounts) { account in
                                 Text(account.name).tag(String?.some(account.id))
                             }
@@ -320,91 +332,120 @@ struct AddTransactionView: View {
                                 }
                             } label: {
                                 HStack {
-                                    Text("Category")
+                                    Text(String(localized: "Category"))
                                     Spacer()
                                     Text(selectedCategoryName)
                                         .foregroundStyle(.secondary)
                                 }
                             }
                         }
-                    }
-
-                    if !isTransfer {
-                        Button {
-                            loadNearbyPayees()
-                            showPayeePicker = true
-                        } label: {
-                            HStack {
-                                Text("Payee")
-                                    .foregroundStyle(.secondary)
-                                Spacer()
-                                if !payeeName.isEmpty {
-                                    Text(payeeName)
-                                        .foregroundStyle(.primary)
-                                }
-                            }
-                            .contentShape(Rectangle()) // Ensures the whole row is tappable
-                        }
-                        .buttonStyle(.plain)
-                        .sheet(isPresented: $showPayeePicker) {
-                            PayeePickerView(
-                                payeeName: payeeName,
-                                nearbyPayees: $nearbyPayees,
-                                onSelect: { payee in
-                                    payeeName = payee.name
+                    } else {
+                        TextField(String(localized: "Payee"), text: $payeeName)
+                            .focused($payeeFocused)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.words)
+                            .onChange(of: payeeName) { _, newValue in
+                                if let payee = matchingPayee(for: newValue) {
                                     applyCategoryFromHistory(payeeId: payee.id)
-                                    showPayeePicker = false
-                                },
-                                onCommit: { name in
-                                    payeeName = name
-                                    if let payee = matchingPayee(for: name) {
-                                        applyCategoryFromHistory(payeeId: payee.id)
-                                    }
-                                    showPayeePicker = false
-                                },
-                                onDeleteNearby: { nearby in
-                                    deleteNearbySuggestion(nearby)
                                 }
-                            )
-                            .environmentObject(budgetStore)
-                        }
-                    }
-
-                    if isEditingSplitParent && !isSplitting && !unsplitRequested {
-                        // Placeholder while the children load into the
-                        // editable split lines below.
-                        HStack {
-                            Text("Category")
-                            Spacer()
-                            Text("Split")
-                                .foregroundStyle(.secondary)
-                        }
-                    } else if showsStandardCategoryFields && !isSplitting {
-                        NavigationLink {
-                            CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
-                                userPickedCategory = true
                             }
-                        } label: {
+                            .onChange(of: payeeFocused) { _, focused in
+                                if focused { loadNearbyPayees() }
+                                guard focused, !payeeName.isEmpty else { return }
+                                DispatchQueue.main.async {
+                                    UIApplication.shared.sendAction(
+                                        #selector(UIResponder.selectAll(_:)),
+                                        to: nil, from: nil, for: nil
+                                    )
+                                }
+                            }
+
+                        if payeeFocused && !payeeSuggestions.isEmpty {
+                            ForEach(payeeSuggestions) { payee in
+                                Button {
+                                    payeeName = payee.name
+                                    payeeFocused = false
+                                    applyCategoryFromHistory(payeeId: payee.id)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "clock.arrow.circlepath")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
+                                        Text(payee.name)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                    }
+                                }
+                            }
+                        }
+
+                        if payeeFocused,
+                           payeeName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                           !nearbyPayees.isEmpty {
+                            ForEach(nearbyPayees.prefix(5)) { nearby in
+                                Button {
+                                    payeeName = nearby.payee.name
+                                    payeeFocused = false
+                                    applyCategoryFromHistory(payeeId: nearby.payee.id)
+                                } label: {
+                                    HStack {
+                                        Image(systemName: "location.fill")
+                                            .foregroundStyle(.secondary)
+                                            .font(.footnote)
+                                        Text(nearby.payee.name)
+                                            .foregroundStyle(.primary)
+                                        Spacer()
+                                        Text(LocationUtils.formatDistance(meters: nearby.distanceMeters))
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                                .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                                    Button(role: .destructive) {
+                                        deleteNearbySuggestion(nearby)
+                                    } label: {
+                                        Label(String(localized: "common.delete"), systemImage: "trash")
+                                    }
+                                }
+                            }
+                        }
+
+                        if isEditingSplitParent && !isSplitting && !unsplitRequested {
+                            // Placeholder while the children load into the
+                            // editable split lines below.
                             HStack {
-                                Text("Category")
+                                Text(String(localized: "Category"))
                                 Spacer()
-                                Text(selectedCategoryName)
+                                Text(String(localized: "Split"))
                                     .foregroundStyle(.secondary)
                             }
-                        }
-                        if canSplitIntoCategories {
-                            Button {
-                                startSplit()
+                        } else if !isSplitting {
+                            NavigationLink {
+                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                                    userPickedCategory = true
+                                }
                             } label: {
-                                Label("Split into multiple categories", systemImage: "arrow.triangle.branch")
+                                HStack {
+                                    Text(String(localized: "Category"))
+                                    Spacer()
+                                    Text(selectedCategoryName)
+                                        .foregroundStyle(.secondary)
+                                }
+                            }
+                            if canSplitIntoCategories {
+                                Button {
+                                    startSplit()
+                                } label: {
+                                    Label(String(localized: "Split into multiple categories"), systemImage: "arrow.triangle.branch")
+                                }
                             }
                         }
                     }
 
-                    DatePicker("Date", selection: $date, displayedComponents: .date)
+                    DatePicker(String(localized: "Date"), selection: $date, displayedComponents: .date)
                 }
 
-                if isSplitting && !isTransfer && showsStandardCategoryFields {
+                if isSplitting && !isTransfer {
                     splitEntrySection
                 }
 
@@ -412,7 +453,7 @@ struct AddTransactionView: View {
                     // One line while the note is short — an empty three-line
                     // box only pushes Cleared and the save button off screen —
                     // growing as the text needs it, up to six.
-                    TextField("Notes", text: $notes, axis: .vertical)
+                    TextField(String(localized: "Notes"), text: $notes, axis: .vertical)
                         .lineLimit(1...6)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
@@ -421,14 +462,14 @@ struct AddTransactionView: View {
                 }
 
                 Section {
-                    Toggle("Cleared", isOn: $cleared)
+                    Toggle(String(localized: "Cleared"), isOn: $cleared)
                     // Only the paths that record locations (adds and split
                     // edits) get the per-save opt-out; standard edits never
                     // record, so the toggle would be a no-op there.
                     if (!isEditing || isEditingSplitParent) && !isTransfer
                         && budgetStore.payeeLocationWritesEnabled
                         && budgetStore.recordPayeeLocations {
-                        Toggle("Save Location", isOn: $saveLocation)
+                        Toggle(String(localized: "Save Location"), isOn: $saveLocation)
                     }
                 }
 
@@ -464,7 +505,7 @@ struct AddTransactionView: View {
                     Button(role: .destructive, action: cancelEntry) {
                         HStack {
                             Spacer()
-                            Text("Cancel")
+                            Text(String(localized: "common.cancel"))
                                 .fontWeight(.semibold)
                             Spacer()
                         }
@@ -484,14 +525,14 @@ struct AddTransactionView: View {
             .contentMargins(.top, canDismiss ? nil : 8, for: .scrollContent)
             // Presented flows keep their sheet titles; the tab root shows no
             // header, matching the Accounts and Budget tabs.
-            .navigationTitle(canDismiss ? (isEditing ? "Edit Transaction" : "Add Transaction") : "")
+            .navigationTitle(canDismiss ? (isEditing ? String(localized: "Edit Transaction") : String(localized: "Add Transaction")) : "")
             .navigationBarTitleDisplayMode(canDismiss ? .automatic : .inline)
             .listSectionSpacing(.compact)
             .scrollDismissesKeyboard(.interactively)
             .toolbar {
                 ToolbarItemGroup(placement: .keyboard) {
                     Spacer()
-                    Button("Done") { dismissKeyboard() }
+                    Button(String(localized: "common.done")) { dismissKeyboard() }
                         .fontWeight(.semibold)
                 }
             }
@@ -543,14 +584,7 @@ struct AddTransactionView: View {
     private var splitEntrySection: some View {
         Section {
             ForEach($splitLines) { $line in
-                SplitLineRow(
-                    line: $line,
-                    txType: txType,
-                    remainingCents: splitRemainingCents,
-                    nearbyPayees: $nearbyPayees,
-                    onOpenPayeePicker: loadNearbyPayees,
-                    onDeleteNearby: deleteNearbySuggestion
-                )
+                SplitLineRow(line: $line, txType: txType, remainingCents: splitRemainingCents)
             }
             .onDelete { offsets in
                 if isEditingSplitParent {
@@ -575,7 +609,7 @@ struct AddTransactionView: View {
             Button {
                 splitLines.append(.init())
             } label: {
-                Label("Add Line", systemImage: "plus")
+                Label(String(localized: "Add Line"), systemImage: "plus")
             }
             // Tapping "Remove Split" on an existing parent switches the form
             // to single-transaction mode: keep the lines in memory for an
@@ -592,18 +626,18 @@ struct AddTransactionView: View {
                     splitLines = []
                 }
             } label: {
-                Text("Remove Split")
+                Text(String(localized: "Remove Split"))
             }
         } header: {
-            Text("Split")
+            Text(String(localized: "Split"))
         } footer: {
             if let remaining = splitRemainingCents, remaining != 0 {
-                Text("\(budgetStore.formatCurrency(remaining)) left to assign")
+                Text(String(format: String(localized: "%@ left to assign"), budgetStore.formatCurrency(remaining)))
                     .foregroundStyle(.red)
             } else if splitRemainingCents == 0 && hasBlankSplitLine {
                 // Nothing left to assign but a line is still blank — say why
                 // Save stays disabled instead of leaving it a mystery.
-                Text("Fill in or remove the empty line")
+                Text(String(localized: "Fill in or remove the empty line"))
                     .foregroundStyle(.red)
             }
         }
@@ -662,8 +696,7 @@ struct AddTransactionView: View {
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && showsStandardCategoryFields
-            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if isSplitting && !isTransfer && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
         return false
     }
 
@@ -688,8 +721,7 @@ struct AddTransactionView: View {
         )
 
         do {
-            let savedTransactionId = try await budgetStore.saveTransaction(form, editing: editing)
-            onSaved?(savedTransactionId)
+            try await budgetStore.saveTransaction(form, editing: editing)
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the
@@ -729,6 +761,7 @@ struct AddTransactionView: View {
     }
 
     private func dismissKeyboard() {
+        payeeFocused = false
         UIApplication.shared.sendAction(
             #selector(UIResponder.resignFirstResponder),
             to: nil, from: nil, for: nil
@@ -760,7 +793,8 @@ enum SplitEntryMath {
     }
 }
 
-/// One editable split line with category, amount, payee, and notes controls.
+/// One editable split line: a category picked through a sheet and an amount.
+/// Borderless button so the amount field keeps its own tap target in the row.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var line: BudgetStore.SplitLineForm
@@ -770,11 +804,7 @@ private struct SplitLineRow: View {
     /// The section-wide unassigned remainder; a positive value on a line with
     /// no amount yet offers one-tap fill instead of mental arithmetic.
     var remainingCents: Int?
-    @Binding var nearbyPayees: [NearbyPayee]
-    let onOpenPayeePicker: () -> Void
-    let onDeleteNearby: (NearbyPayee) -> Void
     @State private var showCategoryPicker = false
-    @State private var showPayeePicker = false
 
     private var categoryName: String {
         guard let id = line.categoryId else { return "Category" }
@@ -817,7 +847,7 @@ private struct SplitLineRow: View {
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
-                .accessibilityHint("Flips this line's direction")
+                .accessibilityHint(String(localized: "transaction.split.flipDirectionHint"))
                 AmountInputField(
                     text: $line.amount,
                     conventionalAmountEntry: budgetStore.conventionalAmountEntry,
@@ -834,41 +864,18 @@ private struct SplitLineRow: View {
                     Button {
                         line.amount = SplitEntryMath.amountString(fromCents: remaining)
                     } label: {
-                        Text("Use remaining \(budgetStore.formatCurrency(remaining))")
+                        Text(String(format: String(localized: "Use remaining %@"), budgetStore.formatCurrency(remaining)))
                             .font(.subheadline)
                     }
                     .buttonStyle(.borderless)
                 }
             }
-            // Empty payee inherits the transaction's payee.
-            Button {
-                onOpenPayeePicker()
-                showPayeePicker = true
-            } label: {
-                Text(line.payeeName.isEmpty ? "Payee (optional)" : line.payeeName)
-                    .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .font(.subheadline)
-            .sheet(isPresented: $showPayeePicker) {
-                PayeePickerView(
-                    payeeName: line.payeeName,
-                    nearbyPayees: $nearbyPayees,
-                    onSelect: { payee in
-                        line.payeeName = payee.name
-                        showPayeePicker = false
-                    },
-                    onCommit: { name in
-                        line.payeeName = name
-                        showPayeePicker = false
-                    },
-                    onDeleteNearby: onDeleteNearby
-                )
-                .environmentObject(budgetStore)
-            }
-            TextField("Notes (optional)", text: $line.notes)
+            // Empty payee inherits the transaction's payee
+            TextField(String(localized: "Payee (optional)"), text: $line.payeeName)
+                .font(.subheadline)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.words)
+            TextField(String(localized: "Notes (optional)"), text: $line.notes)
                 .font(.subheadline)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
@@ -895,10 +902,11 @@ private struct SplitLineRow: View {
 /// gains a fraction the user didn't type, so zero-decimal currencies never
 /// need a trailing ".00" (GH #211).
 ///
-/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips the
-/// text's own sign. With `onToggleSign`, the same button appears but the sign
-/// lives outside the field (a split line's direction flip) and the text stays unsigned.
-/// Neither set means sign is handled elsewhere entirely (e.g. the expense/income toggle).
+/// With `allowsNegative`, a ± button joins the keyboard toolbar and flips
+/// the text's own sign. With `onToggleSign`, the same button appears but the
+/// sign lives outside the field (a split line's direction flip) and the text
+/// stays unsigned. Neither set means sign is handled elsewhere entirely
+/// (e.g. the expense/income toggle).
 ///
 /// The toolbar also carries +, −, × and ÷ for quick math: typing 12.50, then
 /// +, then 6.00 shows "12.50 + 6.00" in the field and collapses to "18.50"
@@ -980,26 +988,13 @@ struct AmountInputField: UIViewRepresentable {
             items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
-        // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
-        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
         items.append(UIBarButtonItem(
-            title: "Done", style: doneStyle,
+            title: String(localized: "common.done"), style: .prominent,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items
         toolbar.sizeToFit()
-        // inputAccessoryView sits flush on top of the keyboard, so to float the
-        // toolbar with a gap we host it in a taller, transparent container and
-        // pin the toolbar to the top — the leftover strip below is the space.
-        let gap: CGFloat = 4
-        let container = UIView(
-            frame: CGRect(x: 0, y: 0, width: toolbar.frame.width, height: toolbar.frame.height + gap)
-        )
-        container.backgroundColor = .clear
-        toolbar.frame = CGRect(x: 0, y: 0, width: container.frame.width, height: toolbar.frame.height)
-        toolbar.autoresizingMask = [.flexibleWidth]
-        container.addSubview(toolbar)
-        field.inputAccessoryView = container
+        field.inputAccessoryView = toolbar
         context.coordinator.textField = field
         context.coordinator.sync(fromDisplay: text)
         return field
@@ -1130,15 +1125,7 @@ struct AmountInputField: UIViewRepresentable {
                 pendingOperator = nil
             }
 
-            // UIKit delivers a pasted value as one replacement string. Parse
-            // that complete value before feeding characters through the
-            // calculator-mode digit shifter; otherwise a grouping comma is
-            // mistaken for the decimal point ("450,046.23" became "450.04").
-            if string.count > 1,
-               let pastedValue = AmountParser.parse(string),
-               Transaction.cents(fromDollars: pastedValue) != nil {
-                setOperand(to: pastedValue)
-            } else if string.isEmpty {
+            if string.isEmpty {
                 handleBackspace()
             } else {
                 for character in string {
@@ -1375,7 +1362,7 @@ struct CategoryPickerView: View {
                     dismiss()
                 } label: {
                     HStack {
-                        Text("None")
+                        Text(String(localized: "None"))
                             .foregroundStyle(.primary)
                         Spacer()
                         if selectedCategoryId == nil {
@@ -1408,9 +1395,9 @@ struct CategoryPickerView: View {
                 }
             }
         }
-        .navigationTitle("Category")
+        .navigationTitle(String(localized: "Category"))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search categories")
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search categories"))
     }
 
     private var filteredGroups: [CategoryGroup] {

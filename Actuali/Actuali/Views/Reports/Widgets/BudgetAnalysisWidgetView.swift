@@ -52,30 +52,6 @@ struct BudgetAnalysisWidgetView: View {
         return seriesDomain.compactMap { colors[$0] }
     }
 
-    // Resolve the bar/line choice into a single erased type. Using an if/else
-    // directly inside the Chart builder yields _ConditionalContent, whose
-    // ChartContent conformance is iOS 27+ only.
-    private func valueMark(_ mark: Mark) -> AnyChartContent {
-        if data.graphType == .bar {
-            AnyChartContent(
-                BarMark(
-                    x: .value("Month", mark.month, unit: .month),
-                    y: .value("Amount", mark.amount)
-                )
-                .foregroundStyle(by: .value("Series", mark.series))
-                .position(by: .value("Series", mark.series))
-            )
-        } else {
-            AnyChartContent(
-                LineMark(
-                    x: .value("Month", mark.month, unit: .month),
-                    y: .value("Amount", mark.amount)
-                )
-                .foregroundStyle(by: .value("Series", mark.series))
-            )
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -92,7 +68,7 @@ struct BudgetAnalysisWidgetView: View {
             }
 
             if data.intervalData.isEmpty {
-                Text("No data")
+                Text(String(localized: "No data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
@@ -100,7 +76,20 @@ struct BudgetAnalysisWidgetView: View {
                 Chart {
                     if !data.balanceOnly {
                         ForEach(valueMarks) { mark in
-                            valueMark(mark)
+                            if data.graphType == .bar {
+                                BarMark(
+                                    x: .value("Month", mark.month, unit: .month),
+                                    y: .value("Amount", mark.amount)
+                                )
+                                .foregroundStyle(by: .value("Series", mark.series))
+                                .position(by: .value("Series", mark.series))
+                            } else {
+                                LineMark(
+                                    x: .value("Month", mark.month, unit: .month),
+                                    y: .value("Amount", mark.amount)
+                                )
+                                .foregroundStyle(by: .value("Series", mark.series))
+                            }
                         }
                     }
                     if data.showBalance || data.balanceOnly {

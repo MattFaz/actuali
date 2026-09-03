@@ -95,7 +95,7 @@ struct CustomReportWidgetView: View {
     }
 
     private var emptyText: some View {
-        Text("No data in range")
+        Text(String(localized: "No data in range"))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)

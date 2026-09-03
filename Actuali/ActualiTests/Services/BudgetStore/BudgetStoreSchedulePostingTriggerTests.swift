@@ -159,11 +159,14 @@ struct BudgetStoreSchedulePostingTriggerTests {
         // carry over between test runs; scrub both UserDefaults keys after.
         let budgetId = "test-\(UUID().uuidString)"
         let savedBudgetId = UserDefaults.standard.string(forKey: "currentBudgetId")
+        let savedToggle = UserDefaults.standard.object(forKey: "postScheduledTransactions")
         defer {
             UserDefaults.standard.set(savedBudgetId, forKey: "currentBudgetId")
+            UserDefaults.standard.set(savedToggle, forKey: "postScheduledTransactions")
             UserDefaults.standard.removeObject(forKey: "lastScheduleRun-\(budgetId)")
         }
         store.currentBudgetId = budgetId
+        store.postScheduledTransactions = true
 
         #expect(try postedTransactionCount(database) == 0)
 

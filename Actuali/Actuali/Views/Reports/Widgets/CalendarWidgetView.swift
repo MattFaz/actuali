@@ -27,7 +27,7 @@ struct CalendarWidgetView: View {
                 )
             }
             if data.months.isEmpty {
-                Text("No data")
+                Text(String(localized: "No data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)

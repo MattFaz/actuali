@@ -32,32 +32,13 @@ struct ActualiApp: App {
 
     var body: some Scene {
         WindowGroup {
-            Group {
-                #if DEBUG
-                if CommandLine.arguments.contains("-showScheduleRowFixture") {
-                    ScheduleRowUITestFixture()
-                } else {
-                    ContentView()
-                }
-                #else
-                ContentView()
-                #endif
-            }
+            ContentView()
                 .environmentObject(budgetStore)
                 .preferredColorScheme(budgetStore.appearanceMode.colorScheme)
                 .task {
                     #if DEBUG
                     if CommandLine.arguments.contains("-loadDemoData") {
-                        await budgetStore.loadDemoData(
-                            tracking: CommandLine.arguments.contains("-loadTrackingDemoData")
-                        )
-                    }
-                    if CommandLine.arguments.contains("-connectedServerSettings") {
-                        // Seed the view state directly: fetchRemoteBudgets owns
-                        // the single test seam that suppresses network work.
-                        budgetStore.serverURL = "https://primary.example.com"
-                        budgetStore.fallbackServerURL = ""
-                        budgetStore.isConnected = true
+                        await budgetStore.loadDemoData()
                     }
                     // Stands in for coordinates the Add Transaction form would
                     // have recorded, so PayeeLocationsUITests can clear them.

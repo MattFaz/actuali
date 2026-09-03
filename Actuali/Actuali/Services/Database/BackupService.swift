@@ -23,21 +23,21 @@ enum Backup: Identifiable, Equatable {
 }
 
 enum BackupError: LocalizedError {
-    case snapshotFailed(any Error)
-    case archiveCreationFailed(any Error)
+    case snapshotFailed(Error)
+    case archiveCreationFailed(Error)
     case backupNotFound(String)
-    case restoreFailed(any Error)
+    case restoreFailed(Error)
 
     var errorDescription: String? {
         switch self {
         case .snapshotFailed(let error):
-            return "Couldn't snapshot the budget database: \(error.localizedDescription)"
+            return String(format: String(localized: "Couldn't snapshot the budget database: %@"), error.localizedDescription)
         case .archiveCreationFailed(let error):
-            return "Couldn't create the backup archive: \(error.localizedDescription)"
+            return String(format: String(localized: "Couldn't create the backup archive: %@"), error.localizedDescription)
         case .backupNotFound(let id):
-            return "Backup \(id) no longer exists"
+            return String(format: String(localized: "Backup %@ no longer exists"), id)
         case .restoreFailed(let error):
-            return "Couldn't restore the backup: \(error.localizedDescription)"
+            return String(format: String(localized: "Couldn't restore the backup: %@"), error.localizedDescription)
         }
     }
 }

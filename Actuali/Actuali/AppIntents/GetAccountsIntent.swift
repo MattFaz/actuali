@@ -18,7 +18,7 @@ struct GetAccountsIntent: AppIntent {
         let entities = accounts.map { AccountEntity(id: $0.id, name: $0.name) }
 
         let count = entities.count
-        let dialogText = "Found \(count) open account\(count == 1 ? "" : "s") in Actuali."
+        let dialogText = String(localized: "Found \(count) open accounts in Actuali.")
         return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

@@ -8,7 +8,7 @@ struct RuleValueEditorsTests {
 
     private let visible = ["cat-a", "cat-b", "cat-c"]
 
-    @MainActor @Test func togglingAddsAndRemovesAVisibleId() {
+    @Test func togglingAddsAndRemovesAVisibleId() {
         let added = RuleIdMultiPicker.toggling("cat-b", in: .list([]), visibleIds: visible)
         #expect(added == .list([.string("cat-b")]))
 
@@ -16,7 +16,7 @@ struct RuleValueEditorsTests {
         #expect(removed == .list([]))
     }
 
-    @MainActor @Test func togglingKeepsVisibleIdsInChoiceOrder() {
+    @Test func togglingKeepsVisibleIdsInChoiceOrder() {
         var value = RuleValue.list([])
         for id in ["cat-c", "cat-a"] {
             value = RuleIdMultiPicker.toggling(id, in: value, visibleIds: visible)
@@ -24,7 +24,7 @@ struct RuleValueEditorsTests {
         #expect(value == .list([.string("cat-a"), .string("cat-c")]))
     }
 
-    @MainActor @Test func togglingPreservesIdsThePickerCannotDisplay() {
+    @Test func togglingPreservesIdsThePickerCannotDisplay() {
         let webAuthored = RuleValue.list([.string("hidden-cat"), .string("cat-a")])
 
         let toggled = RuleIdMultiPicker.toggling("cat-b", in: webAuthored, visibleIds: visible)

@@ -5,7 +5,6 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
     case needsAttention
     case overspent
     case unassigned
-    case approachingLimit
     case onTrack
 
     var id: Self { self }
@@ -20,8 +19,6 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
             category.progressState == .overspent
         case .unassigned:
             category.progressState == .unassigned
-        case .approachingLimit:
-            category.isApproachingLimit
         case .onTrack:
             category.progressState == .funded || category.progressState == .spending
         }
@@ -30,106 +27,81 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 
 /// The Budget tab's single view-options control (GH #157).
 ///
-/// Layout, expand/collapse and the spent-category visibility toggle used to be three
+/// Layout, expand/collapse and the spent-category filter used to be three
 /// separate controls — two crowding the navigation bar and one stranded in a
-/// footer section below the table. The status filters themselves live in the
-/// visible check-in strip rather than in here; only whether that strip is
-/// shown is a view option.
+/// footer section below the table. They all answer "how should this screen
+/// look", so they live behind one menu; the navigation bar keeps only month
+/// navigation.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+
+    @Binding var categoryFilter: BudgetCategoryFilter
+    var isTrackingBudget = false
 
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
     var expandAllGroups: (() -> Void)?
     var collapseAllGroups: (() -> Void)?
-    /// Month-level goal-template actions (GH #371). nil hides the section —
-    /// no budget loaded, or the goalTemplatesEnabled flag is off, mirroring
-    /// the web's month menu behind its feature flag.
-    var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
 
     var body: some View {
         Menu {
-            Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
-                Label("Clean", systemImage: "list.bullet.rectangle")
-                    .tag(BudgetDisplayStyle.clean)
-                Label("Detailed", systemImage: "rectangle.grid.1x2")
-                    .tag(BudgetDisplayStyle.detailed)
-                Label("Compact", systemImage: "list.bullet")
-                    .tag(BudgetDisplayStyle.compact)
+            Picker("Categories", selection: $categoryFilter) {
+                Label("All Categories", systemImage: "list.bullet")
+                    .tag(BudgetCategoryFilter.all)
+                Label("Needs Attention", systemImage: "exclamationmark.circle")
+                    .tag(BudgetCategoryFilter.needsAttention)
+                Label(isTrackingBudget ? "Over Budget" : "Overspent", systemImage: "exclamationmark.triangle")
+                    .tag(BudgetCategoryFilter.overspent)
+                Label(isTrackingBudget ? "No Budget Set" : "Not Funded", systemImage: "circle.dashed")
+                    .tag(BudgetCategoryFilter.unassigned)
+                Label(isTrackingBudget ? "Within Budget" : "On Track", systemImage: "checkmark.circle")
+                    .tag(BudgetCategoryFilter.onTrack)
             }
             .pickerStyle(.inline)
 
-            if budgetStore.budgetDisplayStyle == .compact {
-                Section {
-                    Toggle(isOn: $budgetStore.showCompactBudgetOverview) {
-                        Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
-                    }
-                    Toggle(isOn: $budgetStore.showCompactSpentColumn) {
-                        Label("Show Spent", systemImage: "tablecells.badge.ellipsis")
-                    }
-                    .accessibilityLabel("Show Spent Column")
-                }
+            Picker(String(localized: "budget.options.layout"), selection: $budgetStore.budgetDisplayStyle) {
+                Label(String(localized: "budget.options.clean"), systemImage: "list.bullet.rectangle")
+                    .tag(BudgetDisplayStyle.clean)
+                Label(String(localized: "budget.options.detailed"), systemImage: "tablecells")
+                    .tag(BudgetDisplayStyle.detailed)
             }
+            .pickerStyle(.inline)
 
             if let expandAllGroups, let collapseAllGroups {
                 Section {
                     Button(action: expandAllGroups) {
-                        Label("Expand Groups", systemImage: "chevron.down")
+                        Label(String(localized: "budget.options.expandAll"), systemImage: "chevron.down")
                     }
-                    .accessibilityLabel("Expand All Groups")
+                    .accessibilityIdentifier("budget.expandAllGroups")
                     Button(action: collapseAllGroups) {
-                        Label("Collapse Groups", systemImage: "chevron.right")
+                        Label(String(localized: "budget.options.collapseAll"), systemImage: "chevron.right")
                     }
-                    .accessibilityLabel("Collapse All Groups")
-                }
-            }
-
-            // The web month menu's three template actions, in its order.
-            if let onTemplateAction {
-                Section {
-                    Button {
-                        onTemplateAction(.check)
-                    } label: {
-                        Label("Check Templates", systemImage: "checkmark.seal")
-                    }
-                    Button {
-                        onTemplateAction(.apply)
-                    } label: {
-                        Label("Apply Budget Template", systemImage: "wand.and.stars")
-                    }
-                    Button {
-                        onTemplateAction(.overwrite)
-                    } label: {
-                        Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
-                    }
+                    .accessibilityIdentifier("budget.collapseAllGroups")
                 }
             }
 
             // Amount masking isn't here: it's app-wide, so it lives in
             // Settings (GH #158) rather than in any one tab's menu.
             Section {
-                if budgetStore.budgetDisplayStyle != .clean {
+                // Only the detailed style has columns for a group header to
+                // total, so the clean style doesn't offer the switch.
+                if budgetStore.budgetDisplayStyle == .detailed {
                     Toggle(isOn: $budgetStore.showGroupTotals) {
-                        Label("Group Totals", systemImage: "sum")
+                        Label(String(localized: "budget.options.groupTotals"), systemImage: "sum")
                     }
                 }
-                Toggle(isOn: $budgetStore.showBudgetCheckInStrip) {
-                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
-                }
                 Toggle(isOn: $budgetStore.hideZeroBudgetCategories) {
-                    Label("Hide Spent", systemImage: "line.3.horizontal.decrease")
+                        Label(String(localized: "budget.options.hideSpent"), systemImage: "line.3.horizontal.decrease")
                 }
-                .accessibilityLabel("Hide Spent Categories")
-                Toggle(isOn: $budgetStore.showHiddenCategories) {
-                    Label("Hidden Categories", systemImage: "eye")
-                }
-                .accessibilityLabel("Show Hidden Categories")
             }
         } label: {
-            Image(systemName: "ellipsis.circle")
+            Image(systemName: categoryFilter == .all
+                ? "ellipsis.circle"
+                : "line.3.horizontal.decrease.circle.fill")
         }
-        .accessibilityLabel("Budget options")
-        .accessibilityHint("Layout, group and amount display options")
+        .accessibilityLabel(String(localized: "Budget options"))
+        .accessibilityIdentifier("budget.options")
+        .accessibilityHint(String(localized: "Layout, group and amount display options"))
     }
 }
 
@@ -139,6 +111,7 @@ struct BudgetOptionsMenu: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     BudgetOptionsMenu(
+                        categoryFilter: .constant(.all),
                         expandAllGroups: {},
                         collapseAllGroups: {}
                     )

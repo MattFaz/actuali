@@ -456,7 +456,7 @@ struct RuleIdMultiPicker: View {
     /// keeping ids the picker can't display (hidden categories, closed
     /// accounts, rules authored on another client), which toggling an
     /// unrelated item must not silently drop.
-    nonisolated static func toggling(_ id: String, in value: RuleValue, visibleIds: [String]) -> RuleValue {
+    static func toggling(_ id: String, in value: RuleValue, visibleIds: [String]) -> RuleValue {
         var ids = Set((value.listValue ?? []).compactMap(\.stringValue))
         if ids.contains(id) { ids.remove(id) } else { ids.insert(id) }
         let visible = visibleIds.filter(ids.contains)

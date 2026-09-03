@@ -25,7 +25,6 @@ xcodebuild test \
   -scheme Actuali \
   -destination 'platform=iOS Simulator,name=<any installed iPhone simulator>' \
   -skip-testing:ActualiUITests
-# List what's available with: xcrun simctl list devices available | grep iPhone
 
 # Regenerate protobuf (only if sync.proto changes — never hand-edit Generated/)
 protoc --swift_out=Actuali/Actuali/Generated/ Actuali/Actuali/Resources/sync.proto
@@ -33,27 +32,7 @@ protoc --swift_out=Actuali/Actuali/Generated/ Actuali/Actuali/Resources/sync.pro
 
 Requirements: Xcode with the iOS 26.1+ SDK. Swift Package Manager resolves dependencies (GRDB, SwiftProtobuf, ZIPFoundation) on first build.
 
-`IPHONEOS_DEPLOYMENT_TARGET` is 18.0, so the app ships to iOS 18 while still building against the iOS 26 SDK — the two are independent and both are needed. Code may use an iOS 26 API behind `@available` / `#available` (`.prominent` in `AddTransactionView`, `FoundationModels` in `TransactionTextParser`), which is why the newer SDK stays a hard requirement. Adding an iOS 26 API without a gate is a compile error, so the build itself guards the floor.
-
-What the compiler can't guard is anything the OS resolves at runtime, so CI runs the unit suite twice: once on the newest runtime and once on iOS 18. Two known traps live in that gap — SF Symbols added after SF Symbols 6 render blank rather than failing, and SQLite in iOS 18 predates 3.46.0, so a numeric separator inside a SQL string (`500_000`) throws `unrecognized token` at runtime. Plain Swift numeric literals are fine; only digits inside a SQL string matter.
-
-### Notes for agents
-
-- **Always pass an explicit timeout** on `xcodebuild` (600000 ms is safe). A full `xcodebuild test` exceeds the default 2-minute shell limit and will be killed mid-run, which looks like a build failure but isn't.
-- **Reuse the existing simulator; don't `simctl create`/`delete` per run.** Resolve the UDID once from `xcrun simctl list devices available` and reuse it. Booting a fresh device costs more than the test run.
-- **Narrow the test run.** `-only-testing:ActualiTests/SomeTests` for a single suite; `-skip-testing:ActualiUITests` is the CI-equivalent full run. Don't run UI tests to validate a unit-level change.
-- **Pipe to a filter, don't read raw output.** `xcodebuild ... 2>&1 | grep -E 'error:|warning:|\*\* (TEST|BUILD) (SUCCEEDED|FAILED) \*\*'` — full xcodebuild output is tens of thousands of lines.
-- CI is GitHub Actions. `gh pr checks` exits **8** when checks are still pending — that is a state, not a failure, so don't retry on it. To wait, use `gh pr checks <pr> --watch` rather than polling in a loop.
-
-### Concurrency (Swift 6)
-
-`SWIFT_VERSION = 6.0` on every target, with `SWIFT_STRICT_CONCURRENCY = complete` on the app target and the `SWIFT_UPCOMING_FEATURE_*` flags set at project level. New code is checked for data races: keep UI state on `@MainActor` and I/O in actors rather than reaching for `@unchecked Sendable`. The three existing escape hatches each carry a comment justifying them — add a new one only with the same.
-
-Three rules cover most of what the compiler will stop you on:
-
-- **GRDB `Row` is not `Sendable`, so it can't leave a `read`/`write` closure.** Map rows into a `Sendable` type *inside* the closure and let only that cross the boundary — a domain type where one exists (`BudgetDatabase.nearbyPayees`), otherwise a small local projection or tuple (see `BudgetDatabaseSplitTests.SplitRow`). Don't widen the closure's return to `Any`.
-- **`BudgetDatabase` keeps a strict async/sync split.** Async methods use `try await dbQueue.read`; the synchronous write path uses `try dbQueue.read` and must not suspend (`fetchNote` vs `notesTableExists`). Keep the two apart: under `NONISOLATED_NONSENDING_BY_DEFAULT` a `nonisolated async` body runs on the *caller's* actor, so a blocking DB call in an async method can now block the main thread.
-- **Pure static helpers on `View` types need `nonisolated`.** They otherwise inherit `@MainActor` from the conformance, which forces `@MainActor` onto every test that calls them (`MonthPicker.title`, `ReportsTabView.resolvePageId`, `RuleIdMultiPicker.toggling`). Mark the helper, don't annotate the test. If a helper needs main-actor state it isn't pure — move it onto the model instead, as `BudgetTransferContext.rankedCategories` does.
+`SWIFT_VERSION = 5.0` on the Xcode 26 toolchain — Swift 6 strict concurrency migration is a separate tracked effort; don't flip it as a side effect of other work.
 
 ## Architecture
 
@@ -93,34 +72,15 @@ The sync engine must stay byte-for-byte compatible with upstream Actual. For any
 - Booleans: `0`/`1` integers
 - Monthly budgets live in either `zero_budgets` or `reflect_budgets` depending on budget type — check both
 
-## Coding Standards (Ponytail / Lazy Senior Dev)
+## Coding Standards
 
-Operate in "lazy senior dev" mode: lazy means efficient, not careless. The best code is the code never written.
-
-Before writing code, stop at the first rung that holds:
-1. Does this need to be built at all? (YAGNI)
-2. Does the standard library already do this? Use it.
-3. Does a native platform feature cover it? Use it.
-4. Does an already-installed dependency solve it? Use it.
-5. Can this be one line? Make it one line.
-6. Only then: write the minimum code that works.
-
-Rules:
 - Match the style, naming, and idioms of the surrounding code. Read neighboring files before writing new ones.
-- Keep it simple (KISS): prefer the smallest change that solves the problem. No abstractions that weren't explicitly requested, no speculative feature flags or configuration for needs that don't exist yet.
-- No boilerplate nobody asked for. Deletion over addition. Boring over clever. Fewest files possible.
+- Keep it simple (KISS): prefer the smallest change that solves the problem. No speculative abstractions, feature flags, or configuration for needs that don't exist yet.
 - Don't repeat yourself (DRY): before writing a helper, search for an existing one — this codebase already has utilities for amounts, dates, and database access. But don't force abstractions to unify code that is only coincidentally similar.
-- Question complex requests: "Do you actually need X, or does Y cover it?"
-- Pick the edge-case-correct option when two stdlib approaches are the same size (lazy means less code, not the flimsier algorithm).
-- Mark intentional simplifications with a `ponytail:` comment. If the shortcut has a known ceiling (e.g. global lock, O(n²) scan, naive heuristic), name the ceiling and the upgrade path in the comment.
 - Respect the concurrency model: UI state on `@MainActor` via `BudgetStore`; I/O and sync in `actor` services. Don't introduce ad-hoc `DispatchQueue`/`Task.detached` hops around it.
 - No dead code: don't leave commented-out blocks, unused parameters, or "just in case" branches.
 - Comments explain *why* (constraints, upstream parity, non-obvious invariants), not *what* the next line does.
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
-
-Not lazy about:
-- Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.
-- Lazy code without its check is unfinished: every behavior change needs test coverage (Swift Testing `@Test` / `#expect`), as the Testing section states. Do not skip the test because the change is small.
 
 ## Testing
 

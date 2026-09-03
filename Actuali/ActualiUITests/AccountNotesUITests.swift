@@ -14,7 +14,7 @@ final class AccountNotesUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Accounts"].tap()
+        app.tabBars.buttons["tab.accounts"].tap()
         let account = app.staticTexts[name].firstMatch
         XCTAssertTrue(account.waitForExistence(timeout: 10), "\(name) row not found")
         account.tap()

@@ -24,9 +24,10 @@ struct RuleSummary {
         let op = RuleSchema.label(op: condition.op, type: RuleSchema.fieldType(condition.field))
         switch condition.op {
         case "onBudget", "offBudget":
-            return "\(field) \(op)"
+            return String(format: String(localized: "%@ %@"), field, op)
         default:
-            return "\(field) \(op) \(value(condition.value, field: condition.field))"
+            return String(format: String(localized: "%@ %@ %@"), field, op,
+                          value(condition.value, field: condition.field))
         }
     }
 
@@ -35,20 +36,24 @@ struct RuleSummary {
         case "set":
             guard let field = action.field else { return RuleSchema.label(op: action.op) }
             if let template = action.options?["template"]?.stringValue {
-                return "set \(RuleSchema.label(field: field)) to template \(template)"
+                return String(format: String(localized: "set %@ to template %@"),
+                              RuleSchema.label(field: field), template)
             }
             if let formula = action.options?["formula"]?.stringValue {
-                return "set \(RuleSchema.label(field: field)) to formula \(formula)"
+                return String(format: String(localized: "set %@ to formula %@"),
+                              RuleSchema.label(field: field), formula)
             }
-            return "set \(RuleSchema.label(field: field)) to \(value(action.value, field: field))"
+            return String(format: String(localized: "set %@ to %@"),
+                          RuleSchema.label(field: field), value(action.value, field: field))
         case "prepend-notes", "append-notes":
-            return "\(RuleSchema.label(op: action.op)) \(action.value.stringValue ?? "")"
+            return String(format: String(localized: "%@ %@"),
+                          RuleSchema.label(op: action.op), action.value.stringValue ?? "")
         case "link-schedule":
-            return "link schedule"
+              return String(localized: "link schedule")
         case "delete-transaction":
-            return "delete transaction"
+              return String(localized: "delete transaction")
         case "set-split-amount":
-            return "allocate a split amount"
+            return String(localized: "allocate a split amount")
         default:
             return RuleSchema.label(op: action.op)
         }
@@ -64,15 +69,16 @@ struct RuleSummary {
     private func value(_ value: RuleValue, field: String) -> String {
         switch value {
         case .null:
-            return "nothing"
+            return String(localized: "nothing")
         case .bool(let flag):
-            return flag ? "yes" : "no"
+            return flag ? String(localized: "yes") : String(localized: "no")
         case .list(let items):
             let rendered = items.map { self.value($0, field: field) }
-            return rendered.isEmpty ? "nothing" : rendered.joined(separator: ", ")
+                return rendered.isEmpty ? String(localized: "nothing") : rendered.joined(separator: ", ")
         case .object:
             guard let between = value.betweenValue else { return "" }
-            return "\(formatAmount(Int(between.num1))) and \(formatAmount(Int(between.num2)))"
+            return String(format: String(localized: "%@ and %@"),
+                          formatAmount(Int(between.num1)), formatAmount(Int(between.num2)))
         case .number(let number):
             guard RuleSchema.fieldType(field) == .number else { return "\(Int(number))" }
             return formatAmount(Int(number))
@@ -83,6 +89,7 @@ struct RuleSummary {
             case "category_group": return names.categoryGroups[text] ?? text
             case "account": return names.accounts[text] ?? text
             default: return text.isEmpty ? "nothing" : text
+                return text.isEmpty ? String(localized: "nothing") : text
             }
         }
     }

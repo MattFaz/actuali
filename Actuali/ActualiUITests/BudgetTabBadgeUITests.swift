@@ -12,13 +12,10 @@ final class BudgetTabBadgeUITests: XCTestCase {
     @MainActor
     func testBadgeTracksOverspentCategories() throws {
         let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData", "-initialTab", "1",
-            "-showOverspentBadge", "YES",
-        ]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
         app.launch()
 
-        let budgetTab = app.tabBars.buttons["Budget"]
+        let budgetTab = app.tabBars.buttons["tab.budget"]
         XCTAssertTrue(budgetTab.waitForExistence(timeout: 10), "Budget tab not found")
 
         // Demo data is within budget everywhere: no badge at launch.
@@ -34,10 +31,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
-        app.tabBars.buttons["More"].tap()
-        let budgetView = app.buttons["Budget View"]
-        XCTAssertTrue(budgetView.waitForExistence(timeout: 5), "Budget View settings not found")
-        budgetView.tap()
+        app.tabBars.buttons["tab.settings"].tap()
         let toggle = app.switches["Overspent Badge"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Overspent Badge toggle not found")
         tapSwitch(toggle)
@@ -54,6 +48,34 @@ final class BudgetTabBadgeUITests: XCTestCase {
         XCTAssertTrue(waitForBadgeValue(of: budgetTab, containing: ""),
                       "badge still reported after restoring budget: \(budgetTab.debugDescription)")
         attachScreenshot(app, name: "4-badge-cleared")
+    }
+
+    /// Opens the category's edit-budget sheet and types a new amount.
+    /// The amount field interprets bare digits as cents ("100" → 1.00).
+    @MainActor
+    private func setBudget(_ app: XCUIApplication, category: String, centsKeystrokes: String) {
+        let editButton = app.buttons["Edit budgeted amount for \(category)"]
+        var scrollsLeft = 8
+        while !editButton.isHittable && scrollsLeft > 0 {
+            app.swipeUp()
+            scrollsLeft -= 1
+        }
+        XCTAssertTrue(editButton.isHittable, "edit button for \(category) not reachable")
+        editButton.tap()
+
+        let field = app.textFields.firstMatch
+        XCTAssertTrue(field.waitForExistence(timeout: 5), "amount field not shown")
+        field.tap()
+        // Focus select-alls the current value asynchronously; don't rely on
+        // that racing in our favor — backspace the old value away instead.
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 10))
+        field.typeText(centsKeystrokes)
+
+        let saveButton = app.buttons["Save"]
+        XCTAssertTrue(saveButton.waitForExistence(timeout: 5), "Save button not shown")
+        saveButton.tap()
+        // Sheet dismissal returns us to the budget list.
+        XCTAssertTrue(field.waitForNonExistence(timeout: 5), "edit sheet did not dismiss")
     }
 
     /// A SwiftUI Toggle row exposes itself as a switch, but taps on the row

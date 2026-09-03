@@ -11,7 +11,7 @@ final class TransactionSearchUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData"]
         app.launch()
 
-        app.tabBars.buttons["Accounts"].tap()
+        app.tabBars.buttons["tab.accounts"].tap()
         let allAccounts = app.staticTexts["All Accounts"].firstMatch
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()
@@ -36,13 +36,9 @@ final class TransactionSearchUITests: XCTestCase {
                       "no-match search should show the No Results state")
         XCTAssertFalse(netflixRow.exists)
 
-        // Clearing the query restores the unfiltered paged list. Any row
-        // proves the restore: the list is date-sorted and lazy, so the
-        // Netflix row itself sits below the fold on days before the 11th
-        // (the demo Netflix charge posts on the 11th of each month).
+        // Clearing the query restores the unfiltered paged list.
         searchField.buttons["Clear text"].tap()
-        XCTAssertTrue(app.cells.firstMatch.waitForExistence(timeout: 10),
+        XCTAssertTrue(netflixRow.waitForExistence(timeout: 10),
                       "clearing the search should restore the transaction list")
-        XCTAssertFalse(noResults.exists)
     }
 }

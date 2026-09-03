@@ -113,7 +113,7 @@ struct MonteCarloMeta: Codable, Equatable {
         self.simulationCount = simulationCount
     }
 
-    init(from decoder: any Decoder) throws {
+    init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         name = try container.decodeIfPresent(String.self, forKey: .name)
         pots = try container.decodeIfPresent([MonteCarloPotMeta].self, forKey: .pots)
@@ -135,7 +135,7 @@ struct MonteCarloMeta: Codable, Equatable {
         simulationCount = try container.decodeIfPresent(Double.self, forKey: .simulationCount)
     }
 
-    func encode(to encoder: any Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         try container.encodeIfPresent(name, forKey: .name)
         try container.encodeIfPresent(pots, forKey: .pots)

@@ -24,7 +24,7 @@ struct MerkleNode: Codable, Equatable {
 
     // MARK: - Custom Codable Implementation
 
-    init(from decoder: any Decoder) throws {
+    init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: DynamicCodingKey.self)
 
         // Decode hash if present (server sends signed Int32)
@@ -41,7 +41,7 @@ struct MerkleNode: Codable, Equatable {
         self.children = children
     }
 
-    func encode(to encoder: any Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: DynamicCodingKey.self)
 
         // Encode hash

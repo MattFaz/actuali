@@ -159,9 +159,7 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 ///   one of these async introduces an `await`, which opens an actor
 ///   reentrancy window mid-transaction. Any new write that participates in
 ///   CRDT message application or clock state belongs here.
-// Safe to share across actors: the only stored property is an immutable
-// GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
-final class BudgetDatabase: Sendable {
+class BudgetDatabase {
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
@@ -195,25 +193,6 @@ final class BudgetDatabase: Sendable {
         // messages can land instead of being skipped.
         (1765518577216, "dashboard", "dashboard_page_id", [],
          "ALTER TABLE dashboard ADD COLUMN dashboard_page_id TEXT"),
-        // Upstream 1694438752000 (goal templates) alters three tables; split
-        // here so each waits for its own table, with the upstream id on the
-        // first half and locally minted ids on the rest.
-        (1694438752000, "zero_budgets", "goal", [],
-         "ALTER TABLE zero_budgets ADD COLUMN goal INTEGER DEFAULT null"),
-        (1694438752001, "reflect_budgets", "goal", [],
-         "ALTER TABLE reflect_budgets ADD COLUMN goal INTEGER DEFAULT null"),
-        (1694438752002, "categories", "goal_def", [],
-         "ALTER TABLE categories ADD COLUMN goal_def TEXT DEFAULT null"),
-        // Upstream 1720665000000 (long goal context), same split.
-        (1720665000000, "zero_budgets", "long_goal", [],
-         "ALTER TABLE zero_budgets ADD COLUMN long_goal INTEGER DEFAULT null"),
-        (1720665000001, "reflect_budgets", "long_goal", [],
-         "ALTER TABLE reflect_budgets ADD COLUMN long_goal INTEGER DEFAULT null"),
-        // Upstream 1754611200000 also rewrites NULL template_settings to
-        // '{"source": "ui"}', but no row can be NULL right after the ALTER's
-        // default applies, so only the schema half is mirrored.
-        (1754611200000, "categories", "template_settings", [],
-         "ALTER TABLE categories ADD COLUMN template_settings JSON DEFAULT '{\"source\": \"notes\"}'"),
         (1769000000000, "schedules", "custom_upcoming_length", [],
          "ALTER TABLE schedules ADD COLUMN custom_upcoming_length TEXT DEFAULT NULL"),
         // Upstream 1778510362740 also creates cleanup_groups (see createTableMigrations).
@@ -238,15 +217,7 @@ final class BudgetDatabase: Sendable {
         (1780606215001, "transactions", nil, ["acct", "tombstone"],
          "CREATE INDEX IF NOT EXISTS idx_transactions_acct_tombstone ON transactions(acct, tombstone)"),
         (1780606215002, "transactions", nil, ["schedule"],
-         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)"),
-        // Locally minted ids for the bank-sync columns, which upstream added
-        // long before any migration in this list: a snapshot old enough to
-        // lack them would otherwise have nowhere for a link to land, and
-        // nowhere for the web UI's own link messages to apply.
-        (1780606215003, "accounts", "account_sync_source", [],
-         "ALTER TABLE accounts ADD COLUMN account_sync_source TEXT"),
-        (1780606215004, "accounts", "last_sync", [],
-         "ALTER TABLE accounts ADD COLUMN last_sync TEXT")
+         "CREATE INDEX IF NOT EXISTS idx_transactions_schedule ON transactions(schedule)")
     ]
 
     // Tables added upstream after the original budget file was created. These run
@@ -324,18 +295,6 @@ final class BudgetDatabase: Sendable {
                 name TEXT NOT NULL,
                 tombstone INTEGER DEFAULT 0
             )
-        """),
-        // Defensive, like the two above: `banks` is upstream base schema, but
-        // the bank-sync link writes both the row and the accounts.bank pointer
-        // to it, and a runtime check on one without the other would only half
-        // protect the write.
-        (1770000000003, """
-            CREATE TABLE IF NOT EXISTS banks (
-                id TEXT PRIMARY KEY,
-                bank_id TEXT,
-                name TEXT,
-                tombstone INTEGER DEFAULT 0
-            )
         """)
     ]
     
@@ -349,17 +308,11 @@ final class BudgetDatabase: Sendable {
     /// directory MUST also be listed here.
     static let actualiOnlyMigrationIds: [Int64] = [
         1765518577216, // ALTER half of upstream 1765518577215 (dashboard_page_id)
-        1694438752001, // second ALTER of upstream 1694438752000 (reflect goal)
-        1694438752002, // third ALTER of upstream 1694438752000 (goal_def)
-        1720665000001, // second ALTER of upstream 1720665000000 (reflect long_goal)
         1770000000001, // defensive CREATE dashboard
         1770000000002, // defensive CREATE custom_reports
         1778510362741, // ALTER half of upstream 1778510362740 (cleanup_def)
         1780606214999, // locally minted transactions.schedule backfill
         1780606215002, // second half of upstream index migration 1780606215001
-        1780606215003, // locally minted accounts.account_sync_source backfill
-        1780606215004, // locally minted accounts.last_sync backfill
-        1770000000003, // defensive CREATE banks
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -678,15 +631,15 @@ final class BudgetDatabase: Sendable {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page. `unclearedOnly` and `hideReconciled` filter in
-    /// SQL for the same reason: pages stay full-sized and cover full history.
+    /// just the loaded page. `unclearedOnly` drops cleared rows (which
+    /// includes reconciled ones — locking requires cleared first) in SQL for
+    /// the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        unclearedOnly: Bool = false
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
             // The list's display payee: own payee first (transfer payees show
@@ -746,10 +699,6 @@ final class BudgetDatabase: Sendable {
 
             if unclearedOnly {
                 sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
-            }
-
-            if hideReconciled {
-                sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             }
 
             if let search {
@@ -924,24 +873,6 @@ final class BudgetDatabase: Sendable {
                 uncleared: row?["uncleared"] ?? 0,
                 reconciled: row?["reconciled"] ?? 0
             )
-        }
-    }
-
-    /// Total charges / debits in cents for an account between two dates (inclusive).
-    /// Amounts in Actual are negative for expenses, so this sums negative transactions and returns positive cents.
-    func fetchAccountSpend(accountId: String, fromDate: Int, toDate: Int) async throws -> Int {
-        try await dbQueue.read { db in
-            try Int.fetchOne(db, sql: """
-                SELECT COALESCE(SUM(CASE WHEN t.amount < 0 THEN -t.amount ELSE 0 END), 0)
-                FROM transactions t
-                LEFT JOIN transactions p ON p.id = t.parent_id
-                WHERE t.acct = ?
-                  AND t.date >= ?
-                  AND t.date <= ?
-                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND \(Self.aliveChildPredicate(parent: "p"))
-                  AND (t.isParent = 0 OR t.isParent IS NULL)
-                """, arguments: [accountId, fromDate, toDate]) ?? 0
         }
     }
 
@@ -1127,7 +1058,7 @@ final class BudgetDatabase: Sendable {
                   AND (a.tombstone = 0 OR a.tombstone IS NULL)
                 """
 
-            var arguments: [any DatabaseValueConvertible] = [categoryId]
+            var arguments: [DatabaseValueConvertible] = [categoryId]
 
             // Dates are YYYYMMDD ints, so date/100 is the YYYYMM month.
             if let month, let monthInt = Int(month.replacingOccurrences(of: "-", with: "")) {
@@ -1218,7 +1149,6 @@ final class BudgetDatabase: Sendable {
         case duplicateGroupName(String)
         case duplicateCategoryName(name: String, groupName: String)
         case groupNotFound
-        case categoryNotFound
 
         var errorDescription: String? {
             switch self {
@@ -1228,38 +1158,6 @@ final class BudgetDatabase: Sendable {
                 return "\(groupName) already has a category named \"\(name)\""
             case .groupNotFound:
                 return "That category group no longer exists"
-            case .categoryNotFound:
-                return "That category no longer exists"
-            }
-        }
-    }
-
-    /// Validate a category rename before the sync layer emits its name
-    /// message. Names remain unique within a group, matching category
-    /// creation and the web app.
-    func validateCategoryRename(id: String, name: String) throws {
-        try dbQueue.read { db in
-            let row = try Row.fetchOne(db, sql: """
-                SELECT cat_group FROM categories
-                WHERE id = ? AND tombstone IS NOT 1
-                """, arguments: [id])
-            guard let row else { throw CategoryWriteError.categoryNotFound }
-            let groupId: String = row["cat_group"] ?? ""
-            let groupName = try String.fetchOne(db, sql: """
-                SELECT name FROM category_groups
-                WHERE id = ? AND tombstone IS NOT 1
-                """, arguments: [groupId]) ?? "That group"
-            let clash = try Bool.fetchOne(db, sql: """
-                SELECT 1 FROM categories
-                WHERE cat_group = ? AND id != ? AND UPPER(name) = UPPER(?)
-                  AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [groupId, id, name]) ?? false
-            if clash {
-                throw CategoryWriteError.duplicateCategoryName(
-                    name: name,
-                    groupName: groupName
-                )
             }
         }
     }
@@ -1394,48 +1292,6 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Payees used most often in the last 12 weeks, matching Actual's
-    /// `getCommonPayees()` behavior. Suggestions are ordered by usage count,
-    /// then by payee name.
-    func fetchCommonPayees() async throws -> [Payee] {
-        try await dbQueue.read { db in
-            let twelveWeeksAgo = Calendar.current.date(
-                byAdding: .weekOfYear,
-                value: -12,
-                to: Date()
-            ) ?? Date()
-
-            let cutoffDate = Transaction.yyyymmdd(from: twelveWeeksAgo)
-
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT
-                    p.id,
-                    p.name,
-                    p.transfer_acct,
-                    COUNT(t.id) AS usage_count
-                FROM payees p
-                JOIN payee_mapping pm ON pm.targetId = p.id
-                JOIN transactions t ON t.description = pm.id
-                WHERE LENGTH(p.name) > 0
-                  AND p.transfer_acct IS NULL
-                  AND (p.tombstone = 0 OR p.tombstone IS NULL)
-                  AND t.date > ?
-                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
-                  AND (t.isChild = 0 OR t.isChild IS NULL)
-                GROUP BY p.id
-                ORDER BY usage_count DESC, p.name COLLATE NOCASE ASC
-                LIMIT 10
-                """, arguments: [cutoffDate])
-
-            return rows.map { row in
-                Payee(
-                    id: row["id"],
-                    name: row["name"] ?? "Unknown",
-                    transferAccountId: row["transfer_acct"]
-                )
-            }
-        }
-    }
     // MARK: - Transaction Category History
 
     /// Returns the category id of the most recent non-tombstoned transaction for `payeeId`
@@ -1463,34 +1319,10 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Budget Data
 
-    /// Everything the month-by-month budget walk produces — shared by
-    /// `fetchBudgetMonth` (the Budget tab) and `fetchGoalTemplateSheet` (the
-    /// goal-template engine), so the two can never disagree about balances.
-    struct BudgetWalkResult {
-        struct BudgetRow {
-            let amount: Int
-            let flag: Bool
-            let goal: Int?
-            let longGoal: Int?
-        }
+    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
+        try await dbQueue.read { db in
+            let targetMonthInt = Self.monthStringToInt(month)
 
-        let isEnvelope: Bool
-        /// Budget rows keyed by YYYYMM month int, then category id.
-        let budgetByMonthCat: [Int: [String: BudgetRow]]
-        /// Net activity per (YYYYMM, category).
-        let spentByMonthCat: [Int: [String: Int]]
-        /// End-of-month category balances per (YYYYMM, category).
-        let leftoverByMonthCat: [Int: [String: Int]]
-        /// Envelope "To Budget" at the target month (0 for tracking).
-        let toBudget: Int
-        let incomeCatIds: Set<String>
-        let categories: [CategoryRecord]
-        let groups: [CategoryGroupRecord]
-    }
-
-    /// The month-by-month walk `fetchBudgetMonth` documents below, extracted
-    /// so goal templates can read any prior month's leftover/carryover.
-    static func budgetWalk(_ db: Database, targetMonthInt: Int) throws -> BudgetWalkResult {
             // Detect which budget table the budget uses.
             // Envelope (zero_budgets) clamps negative leftover to 0 unless
             // the carryover flag is set. Tracking (reflect_budgets) drops
@@ -1500,11 +1332,11 @@ final class BudgetDatabase: Sendable {
 
             // Bulk-load all budget rows up to and including the target month.
             // months are YYYYMM ints in the budgets tables.
-            // (budgeted, carryFlag, goal) keyed by (monthInt, categoryId).
-            var budgetByMonthCat: [Int: [String: BudgetWalkResult.BudgetRow]] = [:]
+            // (budgeted, carryFlag) keyed by (monthInt, categoryId).
+            var budgetByMonthCat: [Int: [String: (amount: Int, flag: Bool)]] = [:]
             if let budgetsTable {
                 let rows = try Row.fetchAll(db, sql: """
-                    SELECT month, category, amount, carryover, goal, long_goal
+                    SELECT month, category, amount, carryover
                     FROM \(budgetsTable)
                     WHERE month <= ?
                     """, arguments: [targetMonthInt])
@@ -1513,9 +1345,7 @@ final class BudgetDatabase: Sendable {
                     guard m > 0, let categoryId: String = row["category"] else { continue }
                     let amount: Int = row["amount"] ?? 0
                     let flagInt: Int = row["carryover"] ?? 0
-                    budgetByMonthCat[m, default: [:]][categoryId] = .init(
-                        amount: amount, flag: flagInt == 1,
-                        goal: row["goal"], longGoal: row["long_goal"])
+                    budgetByMonthCat[m, default: [:]][categoryId] = (amount, flagInt == 1)
                 }
             }
 
@@ -1625,7 +1455,6 @@ final class BudgetDatabase: Sendable {
             // unallocated funds instead.
             var runningToBudget = 0
             var priorBuffered = 0
-            var leftoverByMonthCat: [Int: [String: Int]] = [:]
 
             var m = earliestMonth
             while m <= targetMonthInt {
@@ -1686,99 +1515,74 @@ final class BudgetDatabase: Sendable {
                 }
                 runningLeftover = nextLeftover
                 lastFlag = nextFlag
-                leftoverByMonthCat[m] = nextLeftover
 
                 m = Self.nextMonth(from: m)
             }
 
-            let groups = try CategoryGroupRecord
-                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
-                .fetchAll(db)
-
-            return BudgetWalkResult(
-                isEnvelope: isEnvelope,
-                budgetByMonthCat: budgetByMonthCat,
-                spentByMonthCat: spentByMonthCat,
-                leftoverByMonthCat: leftoverByMonthCat,
-                toBudget: runningToBudget,
-                incomeCatIds: incomeCatIds,
-                categories: categories,
-                groups: groups)
-    }
-
-    func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
-        try await dbQueue.read { db in
-            let targetMonthInt = Self.monthStringToInt(month)
-            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
-            let isEnvelope = walk.isEnvelope
-            let categories = walk.categories
-
             // Surface the values for the target month.
-            let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
-            let targetSpent = walk.spentByMonthCat[targetMonthInt] ?? [:]
-            let runningLeftover = walk.leftoverByMonthCat[targetMonthInt] ?? [:]
+            let targetBudgets = budgetByMonthCat[targetMonthInt] ?? [:]
+            let targetSpent = spentByMonthCat[targetMonthInt] ?? [:]
             // The "carryover into target month" is the prior month's leftover
             // contribution (post clamp / flag). Reverse-derive by recomputing
             // available - budgeted - spent for each category we touched.
 
-            let groupsById = Dictionary(uniqueKeysWithValues: walk.groups.map { ($0.id, $0) })
+            let groups = try CategoryGroupRecord
+                .filter(Column("tombstone") == 0 || Column("tombstone") == nil)
+                .fetchAll(db)
+            let visibleGroupIds = Set(groups.filter { $0.hidden != 1 }.map { $0.id })
+            let groupsById = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0) })
 
-            let allCategoryBudgets = categories.compactMap { cat -> CategoryBudget? in
+            let categoryBudgets = categories.compactMap { cat -> CategoryBudget? in
                 guard cat.isIncome != 1 else { return nil }
-                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
+                guard cat.hidden != 1 else { return nil }
+                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
                 let budgeted = targetBudgets[cat.id]?.amount ?? 0
                 let spent = targetSpent[cat.id] ?? 0
                 let available = runningLeftover[cat.id] ?? (budgeted + spent)
                 let priorContribution = available - budgeted - spent
+                let group = groupsById[cat.catGroup ?? ""]
 
                 return CategoryBudget(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
                     groupId: cat.catGroup ?? "",
-                    groupName: group.name ?? "Unknown",
-                    groupSortOrder: group.sortOrder ?? .greatestFiniteMagnitude,
+                    groupName: group?.name ?? "Unknown",
+                    groupSortOrder: group?.sortOrder ?? .greatestFiniteMagnitude,
                     categorySortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: budgeted,
                     spent: spent,
                     available: available,
-                    carryover: priorContribution,
-                    hidden: cat.hidden == 1,
-                    groupHidden: group.hidden == 1,
-                    goal: targetBudgets[cat.id]?.goal,
-                    longGoal: targetBudgets[cat.id]?.longGoal == 1,
-                    carryoverEnabled: targetBudgets[cat.id]?.flag == true
+                    carryover: priorContribution
                 )
             }
 
             // Income categories, shown as their own section like the web
             // UI's Income group. "Received" is the month's net activity on
             // the category (income transactions are positive amounts).
-            let allIncomeCategories = categories.compactMap { cat -> IncomeCategory? in
+            let incomeCategories = categories.compactMap { cat -> IncomeCategory? in
                 guard cat.isIncome == 1 else { return nil }
-                guard let group = groupsById[cat.catGroup ?? ""] else { return nil }
+                guard cat.hidden != 1 else { return nil }
+                guard visibleGroupIds.contains(cat.catGroup ?? "") else { return nil }
+                let group = groupsById[cat.catGroup ?? ""]
 
                 return IncomeCategory(
                     month: month,
                     categoryId: cat.id,
                     categoryName: cat.name ?? "Unknown",
-                    groupName: group.name ?? "Income",
+                    groupName: group?.name ?? "Income",
                     sortOrder: cat.sortOrder ?? .greatestFiniteMagnitude,
                     budgeted: targetBudgets[cat.id]?.amount ?? 0,
-                    received: targetSpent[cat.id] ?? 0,
-                    hidden: cat.hidden == 1,
-                    groupHidden: group.hidden == 1
+                    received: targetSpent[cat.id] ?? 0
                 )
             }
             .sorted { $0.sortOrder < $1.sortOrder }
 
             return BudgetMonth(
                 month: month,
-                categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
-                incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
-                toBudget: isEnvelope ? walk.toBudget : nil,
-                hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
-                hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
+                categoryBudgets: categoryBudgets,
+                incomeCategories: incomeCategories,
+                toBudget: isEnvelope ? runningToBudget : nil
             )
         }
     }
@@ -1896,216 +1700,6 @@ final class BudgetDatabase: Sendable {
             return (year + 1) * 100 + 1
         }
         return year * 100 + month + 1
-    }
-
-    // MARK: - Goal Templates
-
-    /// One category as the goal-template pipeline sees it: identity, whether
-    /// its templates are UI-managed (web's template editor) or notes-managed,
-    /// the stored `goal_def`, and its note text for the notes → goal_def sync.
-    struct GoalTemplateCategoryRow: Sendable {
-        let id: String
-        let name: String
-        let isIncome: Bool
-        let hidden: Bool
-        let groupHidden: Bool
-        let sourceIsUI: Bool
-        let goalDef: String?
-        let cleanupDef: String?
-        let note: String?
-    }
-
-    func fetchGoalTemplateCategories() async throws -> [GoalTemplateCategoryRow] {
-        try await dbQueue.read { db in
-            let hasNotes = try db.tableExists("notes")
-            let noteSelect = hasNotes ? ", n.note AS note" : ""
-            let noteJoin = hasNotes ? "LEFT JOIN notes n ON n.id = c.id" : ""
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT c.id, c.name, c.is_income, c.hidden, c.goal_def, c.cleanup_def,
-                       c.template_settings, g.hidden AS group_hidden\(noteSelect)
-                FROM categories c
-                LEFT JOIN category_groups g ON g.id = c.cat_group
-                \(noteJoin)
-                WHERE (c.tombstone = 0 OR c.tombstone IS NULL)
-                """)
-            return rows.compactMap { row -> GoalTemplateCategoryRow? in
-                guard let id: String = row["id"] else { return nil }
-                // template_settings is a JSON blob; upstream treats anything
-                // that isn't explicitly source:'ui' as notes-managed.
-                let settings: String? = row["template_settings"]
-                let sourceIsUI = settings
-                    .flatMap { $0.data(using: .utf8) }
-                    .flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
-                    .flatMap { $0["source"] as? String } == "ui"
-                return GoalTemplateCategoryRow(
-                    id: id,
-                    name: row["name"] ?? "Unknown",
-                    isIncome: (row["is_income"] ?? 0) == 1,
-                    hidden: (row["hidden"] ?? 0) == 1,
-                    groupHidden: (row["group_hidden"] ?? 0) == 1,
-                    sourceIsUI: sourceIsUI,
-                    goalDef: row["goal_def"],
-                    cleanupDef: row["cleanup_def"],
-                    note: hasNotes ? row["note"] : nil)
-            }
-        }
-    }
-
-    /// Live cleanup pools (`cleanup_groups`), for the automation editor.
-    func fetchCleanupGroups() async throws -> [(id: String, name: String)] {
-        try await dbQueue.read { db in
-            guard try db.tableExists("cleanup_groups") else { return [] }
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, name FROM cleanup_groups
-                WHERE (tombstone = 0 OR tombstone IS NULL)
-                ORDER BY name
-                """)
-            return rows.compactMap { row in
-                guard let id: String = row["id"], let name: String = row["name"] else {
-                    return nil
-                }
-                return (id, name)
-            }
-        }
-    }
-
-    /// Find a pool by name, including tombstoned rows so an editor save can
-    /// revive the existing id instead of creating a duplicate.
-    func findCleanupGroupId(named name: String) async throws -> String? {
-        try await dbQueue.read { db in
-            guard try db.tableExists("cleanup_groups") else { return nil }
-            let rows = try Row.fetchAll(db, sql: """
-                SELECT id, name FROM cleanup_groups
-                ORDER BY tombstone, name
-                """)
-            let target = name.lowercased()
-            return rows.compactMap { row -> (id: String, name: String)? in
-                guard let id: String = row["id"], let name: String = row["name"] else {
-                    return nil
-                }
-                return (id, name)
-            }.first { $0.name.lowercased() == target }?.id
-        }
-    }
-
-    /// Tombstone cleanup pools no live category references any more.
-    /// Local-only like upstream's `tombstoneOrphanCleanupGroups` (a plain
-    /// UPDATE, no CRDT messages) — every client re-derives it from the
-    /// synced cleanup_defs.
-    func tombstoneOrphanCleanupGroups() async throws {
-        try await dbQueue.write { db in
-            guard try db.tableExists("cleanup_groups") else { return }
-            let defs = try String.fetchAll(db, sql: """
-                SELECT cleanup_def FROM categories
-                WHERE (tombstone = 0 OR tombstone IS NULL) AND cleanup_def IS NOT NULL
-                """)
-            var referenced: Set<String> = []
-            for def in defs {
-                for row in CleanupTemplate.decodeArray(fromJSON: def) ?? [] {
-                    if let groupId = row.groupId { referenced.insert(groupId) }
-                }
-            }
-            if referenced.isEmpty {
-                try db.execute(sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0")
-            } else {
-                let placeholders = referenced.map { _ in "?" }.joined(separator: ",")
-                try db.execute(
-                    sql: "UPDATE cleanup_groups SET tombstone = 1 WHERE tombstone = 0 AND id NOT IN (\(placeholders))",
-                    arguments: StatementArguments(Array(referenced)))
-            }
-        }
-    }
-
-    /// The sheet-value snapshot the goal-template engine runs against: every
-    /// cell it can read, for all months up to and including `month`.
-    func fetchGoalTemplateSheet(month: String) async throws -> GoalTemplateSheet {
-        try await dbQueue.read { db in
-            let targetMonthInt = Self.monthStringToInt(month)
-            let walk = try Self.budgetWalk(db, targetMonthInt: targetMonthInt)
-
-            var sheet = GoalTemplateSheet()
-            sheet.isTracking = !walk.isEnvelope
-
-            if walk.isEnvelope {
-                sheet.availableStart = walk.toBudget
-            } else {
-                // tracking `total-saved`: budgeted income minus budgeted
-                // expenses for the month (loot-core tracking.ts).
-                let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
-                var saved = 0
-                for (categoryId, budgetRow) in targetBudgets {
-                    saved += walk.incomeCatIds.contains(categoryId)
-                        ? budgetRow.amount : -budgetRow.amount
-                }
-                sheet.availableStart = saved
-            }
-
-            if try db.tableExists("preferences") {
-                let hideFraction = try String.fetchOne(
-                    db, sql: "SELECT value FROM preferences WHERE id = 'hideFraction'")
-                sheet.hideFraction = hideFraction == "true"
-            }
-
-            for (monthInt, rowsByCategory) in walk.budgetByMonthCat {
-                for (categoryId, budgetRow) in rowsByCategory {
-                    let key = GoalTemplateSheet.MonthCat(monthInt, categoryId)
-                    sheet.budgeted[key] = budgetRow.amount
-                    if budgetRow.flag { sheet.carryover.insert(key) }
-                    if let goal = budgetRow.goal { sheet.goals[key] = goal }
-                    if budgetRow.goal != nil || budgetRow.longGoal != nil {
-                        sheet.goalRows.insert(key)
-                    }
-                    if let existing = sheet.firstActivityMonth[categoryId] {
-                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
-                    } else {
-                        sheet.firstActivityMonth[categoryId] = monthInt
-                    }
-                }
-            }
-            for (monthInt, spentByCategory) in walk.spentByMonthCat {
-                var income = 0
-                for (categoryId, amount) in spentByCategory {
-                    sheet.spent[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
-                    if walk.incomeCatIds.contains(categoryId) { income += amount }
-                    if let existing = sheet.firstActivityMonth[categoryId] {
-                        sheet.firstActivityMonth[categoryId] = min(existing, monthInt)
-                    } else {
-                        sheet.firstActivityMonth[categoryId] = monthInt
-                    }
-                }
-                sheet.totalIncome[monthInt] = income
-            }
-            for (monthInt, leftoverByCategory) in walk.leftoverByMonthCat {
-                for (categoryId, amount) in leftoverByCategory {
-                    sheet.leftover[GoalTemplateSheet.MonthCat(monthInt, categoryId)] = amount
-                }
-            }
-            return sheet
-        }
-    }
-
-    /// Clear `goal_def` on categories whose notes no longer hold templates.
-    /// Deliberately not CRDT-synced: upstream's
-    /// `resetCategoryGoalDefsWithNoTemplates` is a plain UPDATE too — every
-    /// client re-derives the reset from the synced notes.
-    func resetGoalDefs(categoryIds: [String]) async throws {
-        guard !categoryIds.isEmpty else { return }
-        try await dbQueue.write { db in
-            let placeholders = categoryIds.map { _ in "?" }.joined(separator: ",")
-            try db.execute(
-                sql: "UPDATE categories SET goal_def = NULL WHERE id IN (\(placeholders))",
-                arguments: StatementArguments(categoryIds))
-        }
-    }
-
-    /// A synced preference value (`preferences` table), nil when unset or the
-    /// table is missing.
-    func fetchPreference(id: String) async throws -> String? {
-        try await dbQueue.read { db in
-            guard try db.tableExists("preferences") else { return nil }
-            return try String.fetchOne(
-                db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: [id])
-        }
     }
 
     // MARK: - Clock Storage
@@ -2786,230 +2380,6 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    // MARK: - Bank Sync
-
-    /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
-    /// the budget file began, wherever it began: the messages travel with the
-    /// file, so every device answers the same. Nil for a budget with no
-    /// messages yet. HLC timestamps sort lexically and start with the ISO
-    /// date, so MIN gives the earliest and its first ten characters the day.
-    ///
-    /// That day is UTC, unlike every other `YYYYMMDD` here, which comes from
-    /// `Calendar.current`. Deliberate: agreeing across devices is the whole
-    /// point, and a local reading would have two phones in different zones
-    /// answer differently for the same file. Worst case it names the day
-    /// after the one the file was really made on, which only shifts an import
-    /// floor by a day.
-    func earliestMessageDay() async throws -> Int? {
-        try await dbQueue.read { db in
-            guard let timestamp = try String.fetchOne(
-                db, sql: "SELECT MIN(timestamp) FROM messages_crdt"
-            ), timestamp.count >= 10 else { return nil }
-            return Int(timestamp.prefix(10).replacingOccurrences(of: "-", with: ""))
-        }
-    }
-
-    /// The id of an account's opening-balance row, if it has one. A backfill
-    /// needs it to hand back what the rows it imports were already counted
-    /// for (see `absorbIntoStartingBalance`).
-    func startingBalanceTransactionId(accountId: String) async throws -> String? {
-        try await dbQueue.read { db in
-            try String.fetchOne(db, sql: """
-                SELECT id FROM transactions
-                WHERE acct = ? AND starting_balance_flag = 1
-                  AND (tombstone = 0 OR tombstone IS NULL)
-                ORDER BY date
-                """, arguments: [accountId])
-        }
-    }
-
-    /// Every account wired up to a bank feed, in the order the accounts tab
-    /// lists them. Empty (rather than an error) on a budget file old enough
-    /// to predate the columns — nothing can be linked in that case anyway.
-    func fetchBankSyncAccounts() async throws -> [BankSyncAccount] {
-        try await dbQueue.read { db in
-            guard try db.columns(in: "accounts").contains(where: { $0.name == "account_sync_source" }) else {
-                return []
-            }
-            return try Row.fetchAll(db, sql: """
-                SELECT id, name, account_id, account_sync_source, offbudget, closed
-                FROM accounts
-                WHERE (tombstone = 0 OR tombstone IS NULL)
-                  AND account_id IS NOT NULL AND account_id <> ''
-                  AND account_sync_source IS NOT NULL AND account_sync_source <> ''
-                ORDER BY offbudget, sort_order
-                """).map { row in
-                BankSyncAccount(
-                    id: row["id"],
-                    name: row["name"] ?? "Unknown",
-                    externalAccountId: row["account_id"],
-                    syncSource: row["account_sync_source"],
-                    offBudget: row["offbudget"] == 1,
-                    closed: row["closed"] == 1
-                )
-            }
-        }
-    }
-
-    /// The transactions a download could be matching, projected down to the
-    /// columns `BankSyncReconciler` reads. Bounded by date because matching
-    /// only ever looks a week either side of a downloaded transaction.
-    ///
-    /// Split children are excluded: a download matches the parent (which
-    /// carries the full amount), never one of its portions. Tombstoned rows
-    /// are excluded too, so a transaction the person deleted isn't quietly
-    /// resurrected by the next sync — it re-imports as new instead, which is
-    /// the outcome they'd get on the web UI.
-    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
-        try await dbQueue.read { db in
-            try Row.fetchAll(db, sql: """
-                SELECT id, date, amount, description, financial_id, imported_description,
-                       notes, cleared, reconciled
-                FROM transactions
-                WHERE acct = ?
-                  AND date IS NOT NULL AND date >= ? AND date <= ?
-                  AND (tombstone = 0 OR tombstone IS NULL)
-                  AND (isChild = 0 OR isChild IS NULL)
-                """, arguments: [accountId, from, to]).map { row in
-                BankSyncExistingTransaction(
-                    id: row["id"],
-                    date: row["date"] ?? 0,
-                    amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
-                    importedId: row["financial_id"],
-                    importedPayee: row["imported_description"],
-                    notes: row["notes"],
-                    cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1
-                )
-            }
-        }
-    }
-
-    /// The date of an account's earliest transaction, or nil when it has none.
-    /// Decides how far back the first sync of an account reaches.
-    func oldestTransactionDate(accountId: String) async throws -> Int? {
-        try await dbQueue.read { db in
-            try Int.fetchOne(db, sql: """
-                SELECT MIN(date) FROM transactions
-                WHERE acct = ? AND date IS NOT NULL AND (tombstone = 0 OR tombstone IS NULL)
-                """, arguments: [accountId])
-        }
-    }
-
-    /// Apply the reconciler's updates to transactions the download matched,
-    /// with their CRDT messages, in one SQLite transaction.
-    /// Returns the subset of messages that was actually new (see `insertMessages`).
-    func applyBankSyncUpdates(
-        _ updates: [BankSyncUpdate],
-        messages: [CRDTMessage]
-    ) throws -> [CRDTMessage] {
-        try dbQueue.write { db in
-            for update in updates {
-                try db.execute(sql: """
-                    UPDATE transactions
-                    SET financial_id = ?, description = ?, imported_description = ?,
-                        notes = ?, cleared = ?
-                    WHERE id = ?
-                    """, arguments: [
-                        update.importedId,
-                        update.payeeId,
-                        update.importedPayee,
-                        update.notes,
-                        update.cleared ? 1 : 0,
-                        update.existingId
-                    ])
-            }
-            return try Self.insertMessageRows(db, messages)
-        }
-    }
-
-    /// Point an account at a provider's account, writing the institution row
-    /// it points at alongside it, with all of their CRDT messages, in one
-    /// SQLite transaction. The institution row is rewritten whether or not it
-    /// already existed — the caller reads the existing one first, so a rewrite
-    /// restates what's already there.
-    /// Returns the subset of messages that was actually new (see `insertMessages`).
-    func applyBankSyncLink(
-        accountId: String,
-        externalAccountId: String,
-        syncSource: String,
-        bank: Bank,
-        messages: [CRDTMessage]
-    ) throws -> [CRDTMessage] {
-        try dbQueue.write { db in
-            try db.execute(sql: """
-                INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
-                VALUES (?, ?, ?, ?)
-                """, arguments: [bank.id, bank.bankId, bank.name, bank.tombstone ? 1 : 0])
-            try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = ?, account_sync_source = ?, bank = ?
-                WHERE id = ?
-                """, arguments: [externalAccountId, syncSource, bank.id, accountId])
-            return try Self.insertMessageRows(db, messages)
-        }
-    }
-
-    /// Cut an account loose from its bank feed. Clears every column upstream's
-    /// own unlink clears, not just the three that point at the provider: a
-    /// left-behind `bank_sync_status` would keep showing an error badge in the
-    /// web UI for an account that no longer syncs at all.
-    /// Returns the subset of messages that was actually new (see `insertMessages`).
-    func applyBankSyncUnlink(accountId: String, messages: [CRDTMessage]) throws -> [CRDTMessage] {
-        try dbQueue.write { db in
-            try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = NULL, account_sync_source = NULL, bank = NULL,
-                    balance_current = NULL, balance_available = NULL, balance_limit = NULL,
-                    bank_sync_status = NULL
-                WHERE id = ?
-                """, arguments: [accountId])
-            return try Self.insertMessageRows(db, messages)
-        }
-    }
-
-    /// Stamp what a sync did on the account, the way every other Actual client
-    /// does, so the web UI's "last synced" and status badge reflect a sync
-    /// this device ran.
-    /// Returns the subset of messages that was actually new (see `insertMessages`).
-    func applyBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String)],
-        messages: [CRDTMessage]
-    ) throws -> [CRDTMessage] {
-        try dbQueue.write { db in
-            for entry in statuses {
-                // A failed sync leaves last_sync alone rather than nulling it:
-                // "we last had good data at X" stays true, and upstream does
-                // the same (it only writes bank_sync_status on failure).
-                guard let lastSync = entry.lastSync else {
-                    try db.execute(
-                        sql: "UPDATE accounts SET bank_sync_status = ? WHERE id = ?",
-                        arguments: [entry.status, entry.accountId]
-                    )
-                    continue
-                }
-                try db.execute(sql: """
-                    UPDATE accounts SET last_sync = ?, bank_sync_status = ? WHERE id = ?
-                    """, arguments: [lastSync, entry.status, entry.accountId])
-            }
-            return try Self.insertMessageRows(db, messages)
-        }
-    }
-
-    /// The institution row a provider's institution id already has, if any —
-    /// upstream's `findOrCreateBank` lookup half, so two accounts at the same
-    /// bank share one row.
-    func bank(withBankId bankId: String) async throws -> Bank? {
-        try await dbQueue.read { db in
-            guard let row = try Row.fetchOne(db, sql: """
-                SELECT id, bank_id, name FROM banks
-                WHERE bank_id = ? AND (tombstone = 0 OR tombstone IS NULL)
-                """, arguments: [bankId]) else { return nil }
-            return Bank(id: row["id"], bankId: bankId, name: row["name"] ?? "")
-        }
-    }
-
     // MARK: - Transaction Update
 
     /// Update an existing transaction's columns in place.
@@ -3583,7 +2953,7 @@ final class BudgetDatabase: Sendable {
         guard !transactionIds.isEmpty else { return }
         try dbQueue.write { db in
             let placeholders = Array(repeating: "?", count: transactionIds.count).joined(separator: ", ")
-            var arguments: [(any DatabaseValueConvertible)?] = [scheduleId]
+            var arguments: [DatabaseValueConvertible?] = [scheduleId]
             arguments.append(contentsOf: transactionIds)
             try db.execute(
                 sql: "UPDATE transactions SET schedule = ? WHERE id IN (\(placeholders))",
@@ -3645,35 +3015,7 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    // MARK: - Preferences (Synced Budget-level Key-Value Store)
-
-    /// Preference key prefix for synced credit card configurations.
-    static let creditCardPreferenceKeyPrefix = "actuali:credit_card:"
-
-    /// Preference key for a specific account's credit card config.
-    static func creditCardPreferenceKey(for accountId: String) -> String {
-        "\(creditCardPreferenceKeyPrefix)\(accountId)"
-    }
-
-    /// Fetches all synced credit card configurations stored in the `preferences` table.
-    /// Returns a dictionary mapping `accountId -> CreditCardConfig`.
-    func fetchCreditCardConfigs() async throws -> [String: CreditCardConfig] {
-        try await dbQueue.read { db in
-            guard try db.tableExists("preferences") else { return [:] }
-            let prefix = Self.creditCardPreferenceKeyPrefix
-            let rows = try Row.fetchAll(
-                db,
-                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
-                arguments: ["\(prefix)%"]
-            )
-            return rows.reduce(into: [:]) { result, row in
-                guard let id: String = row["id"], id.hasPrefix(prefix),
-                      let value: String = row["value"],
-                      let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
-                result[String(id.dropFirst(prefix.count))] = config
-            }
-        }
-    }
+    // MARK: - Preferences
 
     /// Fetch currency code from preferences table (stored by Actual Budget)
     /// Returns nil if not set, caller should default to "USD"
@@ -3823,12 +3165,8 @@ final class BudgetDatabase: Sendable {
               maxDistanceMeters.isFinite, maxDistanceMeters > 0 else {
             return []
         }
-        // GRDB's `Row` isn't `Sendable`, so it can't escape the `read` closure
-        // across the async boundary under Swift 6. Map rows into `NearbyPayee`
-        // (a Sendable domain type) inside the closure and only let that cross;
-        // the distance filtering then runs on the mapped values below.
-        let candidates = try await dbQueue.read { db -> [NearbyPayee] in
-            let rows = try Row.fetchAll(db, sql: """
+        let rows = try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
                 SELECT pl.id AS location_id, pl.payee_id, pl.latitude, pl.longitude, pl.created_at,
                        p.name, p.transfer_acct
                 FROM payee_locations pl
@@ -3836,34 +3174,32 @@ final class BudgetDatabase: Sendable {
                 WHERE pl.tombstone IS NOT 1 AND p.tombstone IS NOT 1
                   AND pl.latitude IS NOT NULL AND pl.longitude IS NOT NULL AND pl.created_at IS NOT NULL
                 """)
-            return rows.map { row in
-                let location = PayeeLocation(
-                    id: row["location_id"],
-                    payeeId: row["payee_id"],
-                    latitude: row["latitude"],
-                    longitude: row["longitude"],
-                    createdAt: row["created_at"]
-                )
-                let payee = Payee(
-                    id: location.payeeId,
-                    name: row["name"] ?? "Unknown",
-                    transferAccountId: row["transfer_acct"]
-                )
-                let distance = LocationUtils.calculateDistanceMeters(
-                    lat1: latitude, lon1: longitude,
-                    lat2: location.latitude, lon2: location.longitude
-                )
-                return NearbyPayee(payee: payee, location: location, distanceMeters: distance)
-            }
         }
         var closestByPayee: [String: NearbyPayee] = [:]
-        for candidate in candidates {
-            guard candidate.distanceMeters <= maxDistanceMeters else { continue }
-            if let existing = closestByPayee[candidate.payee.id],
-               existing.distanceMeters <= candidate.distanceMeters {
+        for row in rows {
+            let location = PayeeLocation(
+                id: row["location_id"],
+                payeeId: row["payee_id"],
+                latitude: row["latitude"],
+                longitude: row["longitude"],
+                createdAt: row["created_at"]
+            )
+            let distance = LocationUtils.calculateDistanceMeters(
+                lat1: latitude, lon1: longitude,
+                lat2: location.latitude, lon2: location.longitude
+            )
+            guard distance <= maxDistanceMeters else { continue }
+            if let existing = closestByPayee[location.payeeId],
+               existing.distanceMeters <= distance {
                 continue
             }
-            closestByPayee[candidate.payee.id] = candidate
+            let payee = Payee(
+                id: location.payeeId,
+                name: row["name"] ?? "Unknown",
+                transferAccountId: row["transfer_acct"]
+            )
+            closestByPayee[location.payeeId] = NearbyPayee(
+                payee: payee, location: location, distanceMeters: distance)
         }
         return closestByPayee.values
             .sorted {

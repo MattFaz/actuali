@@ -4,8 +4,7 @@ import GRDB
 @testable import Actuali
 
 /// Covers the 26.6.0/26.7.0 upstream migrations mirrored in BudgetDatabase:
-/// tags.hidden, accounts.bank_sync_status, the bank-sync link columns,
-/// categories.cleanup_def,
+/// tags.hidden, accounts.bank_sync_status, categories.cleanup_def,
 /// custom_reports.show_trend_lines, cleanup_groups, transaction indexes —
 /// plus the already-migrated-file guard and CRDT replay into new columns.
 @MainActor
@@ -45,8 +44,6 @@ struct UpstreamSchemaMigrationTests {
 
         #expect(try columnNames(path, table: "tags").contains("hidden"))
         #expect(try columnNames(path, table: "accounts").contains("bank_sync_status"))
-        #expect(try columnNames(path, table: "accounts").contains("account_sync_source"))
-        #expect(try columnNames(path, table: "accounts").contains("last_sync"))
         #expect(try columnNames(path, table: "categories").contains("cleanup_def"))
         #expect(try columnNames(path, table: "custom_reports").contains("show_trend_lines"))
         #expect(try columnNames(path, table: "schedules").contains("custom_upcoming_length"))

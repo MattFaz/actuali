@@ -119,7 +119,6 @@ struct CategoryBudgetProgressTests {
         let overspent = makeCategory(budgeted: 0, spent: -100, available: -100)
         let unassigned = makeCategory(budgeted: 0, spent: 0, available: 0)
         let funded = makeCategory(budgeted: 100, spent: 0, available: 100)
-        let approaching = makeCategory(budgeted: 10000, spent: -8000, available: 2000)
 
         #expect(BudgetCategoryFilter.all.includes(funded))
         #expect(BudgetCategoryFilter.overspent.includes(overspent))
@@ -130,20 +129,6 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
         #expect(BudgetCategoryFilter.onTrack.includes(funded))
         #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
-        #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
-        #expect(!BudgetCategoryFilter.approachingLimit.includes(funded))
-        #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
-    }
-
-    // The toolbar stepper abbreviates the month so its `.principal` item keeps
-    // a width UIKit will still centre; everything that reads a month aloud or
-    // in prose keeps the full name.
-    @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
-        let short = MonthPicker.shortTitle(for: "2026-09")
-        #expect(short.contains("2026"))
-        #expect(short.count <= MonthPicker.title(for: "2026-09").count)
-        // Unparseable input falls through unchanged, like `title(for:)`.
-        #expect(MonthPicker.shortTitle(for: "not-a-month") == "not-a-month")
     }
 
     @Test func monthKeysShiftAcrossTheYearBoundary() {
@@ -167,8 +152,8 @@ struct CategoryBudgetProgressTests {
             )
         )
 
-        #expect(context.rankedCategories.map(\.categoryId)
+        #expect(BudgetTransferSheet.rankedCategories(context).map(\.categoryId)
             == ["small", "large", "partial"])
-        #expect(!context.canUseToBudget)
+        #expect(!BudgetTransferSheet.canUseToBudget(context))
     }
 }

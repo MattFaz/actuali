@@ -15,20 +15,26 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     var errorDescription: String? {
         switch self {
         case .noBudgetLoaded:
-            return "Open Actuali and select a budget first."
+            return String(localized: "intent.error.noBudgetLoaded")
         case .noAccountSelected:
-            return "Select an account in your shortcut or set a default account in Actuali settings."
+            return String(localized: "intent.error.noAccountSelected")
         case .accountUnavailable:
-            return "Account is no longer available. Edit your shortcut to pick a different account."
+            return String(localized: "intent.error.accountUnavailable")
         case .invalidAmount(let received):
             // Show what the automation actually delivered: issue #41 failures
             // hinge on whether iOS passed the real text or a coerced "0".
             let shown = received.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)
-            return "Amount must be greater than 0 (received \"\(shown)\")."
+            return String(
+                format: String(localized: "intent.error.invalidAmount %@"),
+                String(shown)
+            )
         case .noAmountReceived:
-            return "No amount was received from the automation. iOS sometimes runs Wallet automations before the transaction details are available."
+            return String(localized: "intent.error.noAmountReceived")
         case .writeFailed(let underlying):
-            return "Couldn't save transaction. Tap to retry. (\(underlying))"
+            return String(
+                format: String(localized: "intent.error.writeFailed %@"),
+                String(describing: underlying)
+            )
         }
     }
 
@@ -46,13 +52,13 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
     var errorDescription: String? {
         switch self {
         case .accountNotFound:
-            return "Account was not found. Select a valid account in your shortcut."
+            return String(localized: "intent.error.accountNotFound")
         case .categoryNotFound:
-            return "Category was not found in the current budget month."
+            return String(localized: "intent.error.categoryNotFound")
         case .noBudgetLoaded:
-            return "Open Actuali and select a budget first."
+            return String(localized: "intent.error.noBudgetLoaded")
         case .noAccountSelected:
-            return "Select an account in your shortcut or set a default account in Actuali settings."
+            return String(localized: "intent.error.noAccountSelected")
         }
     }
 
@@ -60,4 +66,3 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
         LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
     }
 }
-

@@ -145,7 +145,7 @@ struct ScheduleEditView: View {
                     Text("Rest of Month").tag("currentMonth")
                 }
             } footer: {
-                Text("Automatically added transactions are created on your server when the app opens.")
+                Text("Automatically added transactions are created on your server when the app opens, if “Post Scheduled Transactions” is on in Settings.")
             }
             if let editing {
                 Section("Linked Transactions") {
@@ -162,7 +162,7 @@ struct ScheduleEditView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(budgetStore.displayBalance(transaction.amount))
+                                Text(budgetStore.formatCurrency(transaction.amount))
                                     .monospacedDigit()
                             }
                             .swipeActions {
@@ -275,7 +275,7 @@ struct ScheduleEditView: View {
             if repeats {
                 Text("Next: " + ScheduleRecurrence
                     .upcomingDates(for: recurrence.config, count: 1)
-                    .map(ScheduleDescription.mediumDate)
+                    .map { ScheduleDescription.mediumDate($0) }
                     .joined())
             }
         }

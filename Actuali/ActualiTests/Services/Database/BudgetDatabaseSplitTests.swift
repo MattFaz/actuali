@@ -11,28 +11,6 @@ import GRDB
 @MainActor
 struct BudgetDatabaseSplitTests {
 
-    /// Sendable projection of the transaction columns under test, decoded inside
-    /// the `read` closure so no non-Sendable `Row` crosses the actor boundary.
-    private struct SplitRow: FetchableRecord {
-        let id: String
-        let isParent: Int
-        let isChild: Int
-        let parentId: String?
-        let category: String?
-        let amount: Int
-        let sortOrder: Double
-
-        init(row: Row) {
-            id = row["id"]
-            isParent = row["isParent"]
-            isChild = row["isChild"]
-            parentId = row["parent_id"]
-            category = row["category"]
-            amount = row["amount"]
-            sortOrder = row["sort_order"]
-        }
-    }
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -386,24 +364,24 @@ struct BudgetDatabaseSplitTests {
 
         let queue = try DatabaseQueue(path: url.path)
         let rows = try await queue.read { conn in
-            try SplitRow.fetchAll(conn, sql: """
+            try Row.fetchAll(conn, sql: """
                 SELECT id, isParent, isChild, parent_id, category, amount, sort_order
                 FROM transactions ORDER BY sort_order DESC
                 """)
         }
         #expect(rows.count == 3)
-        #expect(rows[0].id == "parent")
-        #expect(rows[0].isParent == 1)
-        #expect(rows[0].isChild == 0)
-        #expect(rows[0].category == nil)
-        #expect(rows[1].id == "c-1")
-        #expect(rows[1].isChild == 1)
-        #expect(rows[1].parentId == "parent")
-        #expect(rows[1].amount == -600)
+        #expect(rows[0]["id"] == "parent")
+        #expect(rows[0]["isParent"] == 1)
+        #expect(rows[0]["isChild"] == 0)
+        #expect(rows[0]["category"] == nil)
+        #expect(rows[1]["id"] == "c-1")
+        #expect(rows[1]["isChild"] == 1)
+        #expect(rows[1]["parent_id"] == "parent")
+        #expect(rows[1]["amount"] == -600)
         // Explicit sort orders are respected so children keep entry order
-        #expect(rows[1].sortOrder == 99.0)
-        #expect(rows[2].id == "c-2")
-        #expect(rows[2].amount == -400)
+        #expect(rows[1]["sort_order"] == 99.0)
+        #expect(rows[2]["id"] == "c-2")
+        #expect(rows[2]["amount"] == -400)
 
         let messageCount = try await queue.read { conn in
             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1

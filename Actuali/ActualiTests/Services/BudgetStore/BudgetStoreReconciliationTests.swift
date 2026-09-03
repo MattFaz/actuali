@@ -349,17 +349,16 @@ struct BudgetStoreReconciliationTests {
         #expect(try await database.clearedBalance(accountId: "acct-1") == -10000)
 
         let queue = try DatabaseQueue(path: url.path)
-        let adjustment = try await #require(try queue.read { db -> (amount: Int64, cleared: Int64, reconciled: Int64, acct: String?)? in
-            guard let row = try Row.fetchOne(
+        let adjustment = try await #require(try queue.read { db in
+            try Row.fetchOne(
                 db,
                 sql: "SELECT * FROM transactions WHERE notes = ?",
                 arguments: ["Reconciliation balance adjustment"]
-            ) else { return nil }
-            return (row["amount"], row["cleared"], row["reconciled"], row["acct"])
+            )
         })
-        #expect(adjustment.amount == 2000)
-        #expect(adjustment.cleared == 1)
-        #expect(adjustment.reconciled == 0)
-        #expect(adjustment.acct == "acct-1")
+        #expect(adjustment["amount"] == 2000)
+        #expect(adjustment["cleared"] == 1)
+        #expect(adjustment["reconciled"] == 0)
+        #expect(adjustment["acct"] == "acct-1")
     }
 }

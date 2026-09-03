@@ -24,6 +24,13 @@ struct ScheduleDescriptionTests {
             config(["frequency": "daily", "interval": 3])) == "Every 3 days")
     }
 
+    @Test func frenchLocaleLocalizesStatusAndRecurrence() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(ScheduleDescription.statusLabel(.completed, locale: locale) == "Terminée")
+        #expect(ScheduleDescription.recurring(
+            config(["frequency": "daily"]), locale: locale) == "Tous les jours")
+    }
+
     @Test func weekly() {
         // 2026-08-13 is a Thursday.
         #expect(ScheduleDescription.recurring(

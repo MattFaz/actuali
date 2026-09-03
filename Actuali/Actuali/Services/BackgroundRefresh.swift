@@ -48,7 +48,7 @@ enum BackgroundRefresh {
         return request
     }
 
-    static func schedule(using scheduler: any BackgroundTaskRequesting = BGTaskScheduler.shared,
+    static func schedule(using scheduler: BackgroundTaskRequesting = BGTaskScheduler.shared,
                          now: Date = Date(),
                          earliestIn: TimeInterval = minimumInterval,
                          defaults: UserDefaults = .standard) {
@@ -76,8 +76,8 @@ enum BackgroundRefresh {
     }
 
     @discardableResult
-    static func handle(_ task: any BackgroundRefreshTask,
-                       scheduler: any BackgroundTaskRequesting = BGTaskScheduler.shared,
+    static func handle(_ task: BackgroundRefreshTask,
+                       scheduler: BackgroundTaskRequesting = BGTaskScheduler.shared,
                        now: Date = Date(),
                        defaults: UserDefaults = .standard,
                        sync: @escaping @MainActor () async -> Bool = defaultSync) -> Task<Void, Never> {
@@ -92,16 +92,12 @@ enum BackgroundRefresh {
         // ExpirableWork replays an early cancel once the Task is attached.
         let work = ExpirableWork()
         task.expirationHandler = { work.cancel() }
-        // BGTask's completion API is documented as thread-safe but the class
-        // isn't Sendable, so wrap it to move it into the @MainActor sync Task
-        // without tripping strict-concurrency's send check.
-        let completer = TaskCompleter(task: task)
         // On expiration, cancellation propagates into URLSession so the sync
         // aborts quickly; the task body still runs to setTaskCompleted.
         let job = Task { @MainActor in
             let synced = await sync()
             bgLog.info("Background sync finished (budgetConfigured: \(synced))")
-            completer.task.setTaskCompleted(success: synced)
+            task.setTaskCompleted(success: synced)
         }
         work.attach(job)
         return job
@@ -109,15 +105,13 @@ enum BackgroundRefresh {
 
     @MainActor
     private static func defaultSync() async -> Bool {
-        await BudgetStore.shared.syncInBackground()
+        let store = BudgetStore.shared
+        let synced = await store.syncInBackground()
+        if synced {
+            await store.notifyAboutSyncedTransactions()
+        }
+        return synced
     }
-}
-
-/// Carries a BGTask across into the sync Task. Its setTaskCompleted/expiration
-/// APIs are thread-safe, but the class isn't Sendable — this wrapper makes the
-/// move explicit and auditable.
-private struct TaskCompleter: @unchecked Sendable {
-    let task: any BackgroundRefreshTask
 }
 
 /// Lets the expiration handler be installed before the work Task exists: a

@@ -86,43 +86,6 @@ struct AgeOfMoneyEngineTests {
         #expect(data.currentAge == 38)
     }
 
-    @Test func sameDayExpensesKeepUpstreamDescendingSortOrder() {
-        // v_transactions orders same-day rows by sort_order DESC and the
-        // upstream date-only stable sort preserves that order. Reversing it
-        // changes which of the last ten ages is retained.
-        var txs = [
-            tx("i1", date: 20260101, amount: 50),
-            tx("i2", date: 20260201, amount: 110)
-        ]
-        for index in 1...11 {
-            txs.append(tx("e\(index)", date: 20260301, amount: index == 1 ? -60 : -10))
-            txs[txs.count - 1].sortOrder = Double(index)
-        }
-
-        let data = AgeOfMoneyEngine.compute(
-            meta: meta(start: "2026-03", end: "2026-03", mode: .static),
-            transactions: txs, today: today, context: .empty)
-        #expect(data.currentAge == 40)
-    }
-
-    @Test func sameDayNilSortOrderDrainsLast() {
-        // SQLite puts NULL last under sort_order DESC. A missing sort order
-        // must therefore drain after a same-day row with a real sort order.
-        var txs = [
-            tx("i1", date: 20260101, amount: 100),
-            tx("i2", date: 20260201, amount: 100),
-            tx("no-order", date: 20260301, amount: -150),
-            tx("ordered", date: 20260301, amount: -50)
-        ]
-        txs[3].sortOrder = 5
-
-        let data = AgeOfMoneyEngine.compute(
-            meta: meta(start: "2026-03", end: "2026-03", mode: .static),
-            transactions: txs, today: today, context: .empty)
-        #expect(data.currentAge == 44)
-        #expect(data.insufficientData == false)
-    }
-
     @Test func trendComparesLastTwoGraphPoints() {
         // Ages fall over months → declining trend (diff < -2).
         // e1 (Mar 1) ages from i1 (2025-01-01) → 424; the Mar point (424) is

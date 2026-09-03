@@ -5,22 +5,19 @@ import UIKit
 enum OpenIDAuthError: LocalizedError {
     case cancelled
     case missingToken
-    case noWindow
     case server(String)
-    case sessionFailed(any Error)
+    case sessionFailed(Error)
 
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return "Sign-in was cancelled"
+            return String(localized: "Sign-in was cancelled")
         case .missingToken:
-            return "The server did not return a sign-in token"
-        case .noWindow:
-            return "Sign-in needs an open window. Try again with the app in the foreground."
+            return String(localized: "The server did not return a sign-in token")
         case .server(let reason):
-            return "Sign-in failed: \(reason)"
+            return String(format: String(localized: "Sign-in failed: %@"), reason)
         case .sessionFailed(let error):
-            return "Sign-in failed: \(error.localizedDescription)"
+            return String(format: String(localized: "Sign-in failed: %@"), error.localizedDescription)
         }
     }
 }
@@ -36,37 +33,12 @@ enum OpenIDAuthError: LocalizedError {
 @MainActor
 final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContextProviding {
     /// Scheme used for the callback URL. Must match the scheme in `returnURL`.
-    nonisolated static let callbackScheme = "actuali"
+    static let callbackScheme = "actuali"
     /// `returnUrl` sent to the server. Host is `localhost` so it passes the
     /// server's `isValidRedirectUrl` check.
-    nonisolated static let returnURL = "\(callbackScheme)://localhost"
+    static let returnURL = "\(callbackScheme)://localhost"
 
     private var session: ASWebAuthenticationSession?
-
-    /// The window the auth sheet presents from, resolved once at init. Holding it
-    /// as a `let` is what keeps `presentationAnchor(for:)` total: there is no
-    /// "no window" case left to invent a detached `UIWindow` for, and every
-    /// scene-less `UIWindow` initialiser is deprecated as of iOS 26.
-    private let anchor: ASPresentationAnchor
-
-    private init(anchor: ASPresentationAnchor) {
-        self.anchor = anchor
-        super.init()
-    }
-
-    /// Nil when there's no window to present from. Sign-in is always started from
-    /// a tap, so in practice a window is there — this just moves the impossible
-    /// case somewhere the caller can throw instead of trapping at present time.
-    static func make() -> OpenIDAuthenticator? {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        // Prefer the key window; during launch there may not be one yet, and any
-        // window in any connected scene anchors the sheet just as well.
-        guard let anchor = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
-            ?? scenes.first.map(ASPresentationAnchor.init(windowScene:)) else {
-            return nil
-        }
-        return OpenIDAuthenticator(anchor: anchor)
-    }
 
     /// Present the provider's authorization page and wait for the callback.
     /// - Parameter authorizationURL: the OP authorization URL returned by the server.
@@ -130,6 +102,11 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated { anchor }
+        MainActor.assumeIsolated {
+            UIApplication.shared.connectedScenes
+                .compactMap { $0 as? UIWindowScene }
+                .flatMap { $0.windows }
+                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
+        }
     }
 }

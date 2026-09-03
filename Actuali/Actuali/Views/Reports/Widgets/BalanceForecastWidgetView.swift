@@ -29,13 +29,13 @@ struct BalanceForecastWidgetView: View {
                 Spacer()
                 if let ending = data.points.last {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("Ending: \(budgetStore.displayBalanceWholeUnits(ending.balanceCents))")
+                        Text(String(format: String(localized: "Ending: %@"), budgetStore.displayBalanceWholeUnits(ending.balanceCents)))
                             .font(.subheadline)
                             .monospacedDigit()
                             .foregroundStyle(ending.balanceCents < 0 ? Color.red : .secondary)
                         if let lowest = data.points.min(by: { $0.balanceCents < $1.balanceCents }),
                            lowest.date != ending.date {
-                            Text("Low: \(budgetStore.displayBalanceWholeUnits(lowest.balanceCents))")
+                            Text(String(format: String(localized: "Low: %@"), budgetStore.displayBalanceWholeUnits(lowest.balanceCents)))
                                 .font(.caption)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
@@ -75,7 +75,7 @@ struct BalanceForecastWidgetView: View {
                 .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
-                Text("Not enough data")
+                Text(String(localized: "Not enough data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

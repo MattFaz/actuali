@@ -71,7 +71,8 @@ struct MainTabView: View {
             Tab(value: 1) {
                 BudgetView()
             } label: {
-                Label("Budget", systemImage: "wallet.bifold")
+                Label(String(localized: "navigation.budget"), systemImage: "wallet.bifold")
+                    .accessibilityIdentifier("tab.budget")
             }
             .badge(overspentCount)
             // On the tab, not its label: under the Tab API the tab's own
@@ -83,25 +84,29 @@ struct MainTabView: View {
             Tab(value: 0) {
                 AccountsListView()
             } label: {
-                Label("Accounts", systemImage: "banknote")
+                Label(String(localized: "navigation.accounts"), systemImage: "banknote")
+                    .accessibilityIdentifier("tab.accounts")
             }
 
             Tab(value: 2) {
                 AddTransactionTabView()
             } label: {
-                Label("Add", systemImage: "plus.circle.fill")
+                Label(String(localized: "navigation.add"), systemImage: "plus.circle.fill")
+                    .accessibilityIdentifier("tab.add")
             }
 
             Tab(value: 3) {
                 ReportsTabView()
             } label: {
-                Label("Reports", systemImage: "chart.bar.xaxis")
+                Label(String(localized: "navigation.reports"), systemImage: "chart.bar.xaxis")
+                    .accessibilityIdentifier("tab.reports")
             }
 
             Tab(value: 4) {
                 SettingsView()
             } label: {
-                Label("More", systemImage: "ellipsis")
+                Label(String(localized: "navigation.settings"), systemImage: "gear")
+                    .accessibilityIdentifier("tab.settings")
             }
         }
     }
@@ -111,10 +116,6 @@ struct AddTransactionTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var showingDefaultAccountAlert = false
 
-    private func handleManualTransactionSaved(_ savedTransactionId: String?) {
-        CategoryFundingAutomation.processIfNeeded(savedTransactionId, using: budgetStore)
-    }
-
     var body: some View {
         let configuredId = budgetStore.defaultAccountId
         let validDefaultAccount = configuredId.flatMap { id in
@@ -123,26 +124,23 @@ struct AddTransactionTabView: View {
         let fallbackAccount = budgetStore.accounts.first { !$0.closed }
 
         if let account = validDefaultAccount ?? fallbackAccount {
-            AddTransactionView(
-                accountId: account.id,
-                onSaved: handleManualTransactionSaved
-            )
+            AddTransactionView(accountId: account.id)
                 .onAppear {
                     if configuredId != nil && validDefaultAccount == nil {
                         budgetStore.defaultAccountId = nil
                         showingDefaultAccountAlert = true
                     }
                 }
-                .alert("Default Account Unavailable", isPresented: $showingDefaultAccountAlert) {
-                    Button("OK") {}
+                .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
+                    Button(String(localized: "OK")) {}
                 } message: {
-                    Text("Your default account is no longer available. Please configure a new default in More → Transactions & Automation.")
+                    Text(String(localized: "Your default account is no longer available. Please configure a new default in Settings."))
                 }
         } else {
             ContentUnavailableView(
-                "No Accounts",
+                String(localized: "No Accounts"),
                 systemImage: "banknote",
-                description: Text("Add an account to create transactions")
+                description: Text(String(localized: "Add an account to create transactions"))
             )
         }
     }

@@ -20,8 +20,8 @@ struct BudgetStoreAccountMappingTests {
         await body(store)
     }
 
-    private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
-        Account(id: id, name: name, type: .checking, offBudget: false, closed: closed,
+    private func account(_ id: String, _ name: String) -> Account {
+        Account(id: id, name: name, type: .checking, offBudget: false, closed: false,
                 sortOrder: 0, balance: 0)
     }
 
@@ -98,24 +98,5 @@ struct BudgetStoreAccountMappingTests {
             let resolved = await store.resolveAccountId(hint: "NonExistentBank9999")
             #expect(resolved == nil)
         }
-    }
-
-    // The static entry point is what the pending-import edit form calls;
-    // these cover its edges without a store.
-
-    @Test func resolveAccountIdSkipsMappingToClosedAccount() {
-        let resolved = BudgetStore.resolveAccountId(
-            hint: "1234",
-            accounts: [account("acct1", "HSBC", closed: true), account("acct2", "Cash")],
-            cardMappings: ["1234": "acct1"])
-        #expect(resolved == nil)
-    }
-
-    @Test func resolveAccountIdReturnsNilForBlankHint() {
-        let resolved = BudgetStore.resolveAccountId(
-            hint: "  ",
-            accounts: [account("acct1", "Cash")],
-            cardMappings: [:])
-        #expect(resolved == nil)
     }
 }

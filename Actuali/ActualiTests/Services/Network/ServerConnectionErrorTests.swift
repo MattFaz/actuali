@@ -25,7 +25,7 @@ struct ServerConnectionErrorTests {
 
     /// Drives a real `login` through a transport that fails with `code`, and
     /// returns the error the app would see.
-    private func loginFailure(_ code: URLError.Code) async -> (any Error)? {
+    private func loginFailure(_ code: URLError.Code) async -> Error? {
         FailingTransport.failure = URLError(code)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [FailingTransport.self]

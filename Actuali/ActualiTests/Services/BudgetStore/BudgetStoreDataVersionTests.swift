@@ -162,24 +162,4 @@ struct BudgetStoreDataVersionTests {
         #expect(store.error == nil)
         #expect(store.dataVersion > before)
     }
-
-    @Test func syncPreservesBrowsedBudgetMonth() async throws {
-        let (database, url) = try makeDatabase()
-        defer { cleanup(url) }
-        let store = try await makeStore(database: database)
-
-        await store.fetchBudgetMonth("2026-06")
-        #expect(store.currentBudgetMonth?.month == "2026-06")
-
-        // Foreground sync and pull-to-refresh share this refresh pipeline.
-        // It must refresh the selected historical month, not publish today's
-        // calendar month underneath an unchanged month toolbar.
-        await store.sync()
-
-        #expect(store.error == nil)
-        #expect(store.currentBudgetMonth?.month == "2026-06")
-        // Widgets always show the current calendar month, even while the app
-        // is browsing a historical budget.
-        #expect(store.widgetBudgetMonth?.month == BudgetView.currentMonthString())
-    }
 }

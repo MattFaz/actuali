@@ -1,13 +1,11 @@
 import AppIntents
 
 struct ActualiShortcutsProvider: AppShortcutsProvider {
-    static let shortcutTileColor: ShortcutTileColor = .blue
+    static var shortcutTileColor: ShortcutTileColor = .blue
 
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
-            // Voice invocation is the one surface where the spoken confirmation is
-            // wanted; see LogTransactionIntent.showConfirmation.
-            intent: LogTransactionIntent(showConfirmation: true),
+            intent: LogTransactionIntent(),
             phrases: [
                 "Log transaction in \(.applicationName)",
                 "Log transaction to \(\.$account) in \(.applicationName)",
@@ -82,17 +80,6 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             ],
             shortTitle: "List Accounts",
             systemImageName: "creditcard.fill"
-        )
-
-        AppShortcut(
-            intent: ParseAndQueueTransactionIntent(),
-            phrases: [
-                "Import transaction from text in \(.applicationName)",
-                "Parse transaction in \(.applicationName)",
-                "Queue transaction in \(.applicationName)",
-            ],
-            shortTitle: "Import from Text",
-            systemImageName: "tray.and.arrow.down"
         )
     }
 }

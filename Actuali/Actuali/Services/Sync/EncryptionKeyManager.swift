@@ -23,9 +23,9 @@ enum EncryptionKeyError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .invalidPassword:      return "Incorrect encryption password."
-        case .unsupportedLegacyKey: return "This budget uses an old encryption format that isn't supported."
-        case .malformedTestMessage: return "The server returned an unreadable encryption key test."
+        case .invalidPassword:      return String(localized: "Incorrect encryption password.")
+        case .unsupportedLegacyKey: return String(localized: "This budget uses an old encryption format that isn't supported.")
+        case .malformedTestMessage: return String(localized: "The server returned an unreadable encryption key test.")
         }
     }
 }

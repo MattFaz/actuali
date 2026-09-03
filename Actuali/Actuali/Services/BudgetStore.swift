@@ -26,7 +26,6 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case invalidCategoryName
     case invalidCategoryGroupName
     case categoryCreationFailed(String)
-    case categoryUpdateFailed(String)
     case categoryGroupCreationFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
@@ -36,70 +35,67 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case ruleInvalidPattern(pattern: String)
     case ruleOwnedBySchedule
     case ruleNotSerializable
-    case bankSyncNotConfigured
 
     var errorDescription: String? {
         switch self {
         case .syncNotConfigured:
-            return "Sync not configured"
+            return String(localized: "error.syncNotConfigured")
         case .transferAccountsMatch:
-            return "Transfer source and destination must differ"
+            return String(localized: "error.transferAccountsMatch")
         case .transferAmountNotPositive:
-            return "Transfer amount must be positive"
+            return String(localized: "error.transferAmountNotPositive")
         case .transferPayeeMissing:
-            return "Transfer payee not found for selected accounts"
+            return String(localized: "error.transferPayeeMissing")
         case .transferCategoriesMatch:
-            return "Money must move between two different categories"
+            return String(localized: "error.transferCategoriesMatch")
         case .transferAmountExceedsSource:
-            return "That source does not have enough available money"
+            return String(localized: "error.transferAmountExceedsSource")
         case .invalidAmount:
-            return "Invalid amount"
+            return String(localized: "error.invalidAmount")
         case .missingTransferDestination:
-            return "Select a destination account"
+            return String(localized: "error.missingTransferDestination")
         case .payeeCreationFailed(let message):
-            return "Failed to create payee: \(message)"
+            return String(format: String(localized: "error.payeeCreationFailed %@"), message)
         case .transferPartnerMissing:
-            return "The other side of this transfer no longer exists"
+            return String(localized: "error.transferPartnerMissing")
         case .cannotConvertToTransfer:
-            return "Can't turn a split transaction into a transfer"
+            return String(localized: "error.cannotConvertToTransfer")
         case .cannotConvertToSplit:
-            return "Can't convert an existing transaction into a split"
+            return String(localized: "error.cannotConvertToSplit")
         case .splitNeedsTwoLines:
-            return "A split needs at least two lines"
+            return String(localized: "error.splitNeedsTwoLines")
         case .splitAmountMismatch:
-            return "Split amounts must add up to the total"
+            return String(localized: "error.splitAmountMismatch")
         case .invalidAccountName:
-            return "Enter an account name"
+            return String(localized: "error.invalidAccountName")
         case .accountCreationFailed(let message):
-            return "Failed to create account: \(message)"
+            return String(format: String(localized: "error.accountCreationFailed %@"), message)
         case .invalidCategoryName:
-            return "Enter a category name"
+            return String(localized: "error.invalidCategoryName")
         case .invalidCategoryGroupName:
-            return "Enter a category group name"
+            return String(localized: "error.invalidCategoryGroupName")
         case .categoryCreationFailed(let message):
-            return "Failed to create category: \(message)"
-        case .categoryUpdateFailed(let message):
-            return "Failed to update category: \(message)"
+            return String(format: String(localized: "error.categoryCreationFailed %@"), message)
         case .categoryGroupCreationFailed(let message):
-            return "Failed to create category group: \(message)"
+            return String(format: String(localized: "error.categoryGroupCreationFailed %@"), message)
         case .ruleNeedsCondition:
-            return "Add at least one condition."
+            return String(localized: "error.ruleNeedsCondition")
         case .ruleNeedsAction:
-            return "Add at least one action."
+            return String(localized: "error.ruleNeedsAction")
         case .ruleInvalidCondition(let field, let op):
-            return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
+            return String(format: String(localized: "error.ruleInvalidCondition %@ %@"),
+                          RuleSchema.label(op: op), RuleSchema.label(field: field))
         case .ruleInvalidAction:
-            return "Choose a field for every action."
+            return String(localized: "error.ruleInvalidAction")
         case .ruleEmptyValue(let field):
-            return "\(RuleSchema.label(field: field).capitalized) needs a value."
+            return String(format: String(localized: "error.ruleEmptyValue %@"),
+                          RuleSchema.label(field: field).capitalized)
         case .ruleInvalidPattern(let pattern):
-            return "\"\(pattern)\" isn't a valid regular expression."
+            return String(format: String(localized: "error.ruleInvalidPattern %@"), pattern)
         case .ruleOwnedBySchedule:
-            return "This rule belongs to a schedule. Delete the schedule instead."
+            return String(localized: "error.ruleOwnedBySchedule")
         case .ruleNotSerializable:
-            return "This rule contains a value that can't be saved. Check the amounts."
-        case .bankSyncNotConfigured:
-            return "SimpleFIN isn't set up yet. Connect it in More → Manage → Bank Sync (SimpleFIN & Wallet)."
+            return String(localized: "error.ruleNotSerializable")
         }
     }
 }
@@ -116,23 +112,6 @@ struct CustomHeader: Codable, Identifiable, Equatable {
 
 @MainActor
 final class BudgetStore: ObservableObject {
-    private var categoryFundingTask: Task<Void, Never>?
-
-    func enqueueCategoryFunding(
-        savedTransactionId: String,
-        defaults: UserDefaults
-    ) {
-        let previousTask = categoryFundingTask
-        categoryFundingTask = Task { @MainActor [weak self] in
-            _ = await previousTask?.result
-            guard let self else { return }
-            await CategoryFundingAutomation.process(
-                savedTransactionId: savedTransactionId,
-                using: self,
-                defaults: defaults
-            )
-        }
-    }
     // MARK: - Published State
 
     @Published var isLoading = false
@@ -199,9 +178,6 @@ final class BudgetStore: ObservableObject {
     @Published var currentBudgetId: String? {
         didSet {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
-            if currentBudgetId != oldValue {
-                creditCardConfigs = [:]
-            }
         }
     }
 
@@ -217,14 +193,6 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
-    /// Accounts wired up to a bank feed, refreshed alongside the rest of the
-    /// budget so the accounts tab knows which rows can be synced.
-    @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
-    /// Whether this device has claimed a SimpleFIN access key.
-    @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
-    /// True for the length of a bank sync, so the UI can show progress and
-    /// keep a second sync from starting on top of the first.
-    @Published private(set) var isBankSyncing = false
 
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
@@ -255,9 +223,6 @@ final class BudgetStore: ObservableObject {
     /// URL so offline launches keep the last known answer.
     @Published private(set) var payeeLocationWritesEnabled = false
 
-    /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
-    @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
-
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
     @Published var currencyCode: String = "USD" {
@@ -265,24 +230,6 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(currencyCode, forKey: "currencyCode")
             publishWidgetSnapshot()
         }
-    }
-
-    private static func currencyCodeCacheKey(for budgetId: String) -> String {
-        "currencyCode.\(budgetId)"
-    }
-
-    private func cachedCurrencyCode(for budgetId: String) -> String? {
-        UserDefaults.standard.string(forKey: Self.currencyCodeCacheKey(for: budgetId))
-    }
-
-    private func cacheCurrencyCode(_ code: String, for budgetId: String) {
-        // Keep an explicit empty value too: it is Actual's meaningful "None"
-        // preference, distinct from a budget we have never cached.
-        UserDefaults.standard.set(code, forKey: Self.currencyCodeCacheKey(for: budgetId))
-    }
-
-    private func forgetCachedCurrencyCode(for budgetId: String) {
-        UserDefaults.standard.removeObject(forKey: Self.currencyCodeCacheKey(for: budgetId))
     }
 
     /// User-initiated currency changes (the Settings picker) go through
@@ -294,9 +241,6 @@ final class BudgetStore: ObservableObject {
     /// exactly what keeps this from looping back on itself.
     func setCurrencyCode(_ code: String) async {
         currencyCode = code
-        if let currentBudgetId {
-            cacheCurrencyCode(code, for: currentBudgetId)
-        }
         guard let syncClient else { return }
         do {
             try await syncClient.updateCurrencyCode(code)
@@ -336,32 +280,7 @@ final class BudgetStore: ObservableObject {
     /// card look from the App Store screenshots.
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
-            UserDefaults.standard.set(
-                budgetDisplayStyle.rawValue,
-                forKey: "budgetDisplayStyle"
-            )
-        }
-    }
-
-    /// Whether the Compact Budget view style shows its pinned monthly overview.
-    /// This is independent of the Clean and Detailed summaries and defaults on.
-    @Published var showCompactBudgetOverview: Bool = true {
-        didSet {
-            UserDefaults.standard.set(
-                showCompactBudgetOverview,
-                forKey: "showCompactBudgetOverview"
-            )
-        }
-    }
-
-    /// Whether the Compact Budget view style includes the Spent column.
-    /// The narrower two-amount layout is the default.
-    @Published var showCompactSpentColumn: Bool = false {
-        didSet {
-            UserDefaults.standard.set(
-                showCompactSpentColumn,
-                forKey: "showCompactSpentColumn"
-            )
+            UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
         }
     }
 
@@ -389,25 +308,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether Budget rows show their compact category-status dot.
-    /// Persisted to UserDefaults, defaults to on.
-    @Published var showCategoryStatusDots: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
-        }
-    }
-
-    /// Whether Budget shows the status filter strip above the category list.
-    /// Persisted to UserDefaults, defaults to on. It costs a row of vertical
-    /// space on a phone, so a budget that never needs the filters can reclaim
-    /// it — hiding the strip drops any active filter with it.
-    @Published var showBudgetCheckInStrip: Bool = true {
-        didSet {
-            UserDefaults.standard.set(showBudgetCheckInStrip, forKey: "showBudgetCheckInStrip")
-        }
-    }
-
-    /// Whether the Detailed and Compact styles' group headers total their columns.
+    /// Whether the detailed style's group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -449,42 +350,11 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether shaking the device toggles `hideBalances`.
-    /// Persisted to UserDefaults, defaults to off (opt-in to avoid
-    /// conflicting with Shake to Undo).
-    @Published var shakeToHideBalances: Bool = false {
-        didSet {
-            UserDefaults.standard.set(shakeToHideBalances, forKey: "shakeToHideBalances")
-        }
-    }
-
-    /// Changes only for enabled shake gestures, so view feedback is not
-    /// coupled to every other way `hideBalances` can change.
-    @Published private(set) var shakeFeedbackTrigger = false
-
-    /// Whether displayed currency amounts omit their fractional digits.
-    /// The underlying cent values remain unchanged; this is presentation only.
-    @Published var hideDecimalPlaces: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideDecimalPlaces, forKey: "hideDecimalPlaces")
-            publishWidgetSnapshot()
-        }
-    }
-
     /// Whether Budget hides categories with no budget left this month.
     /// Persisted to UserDefaults, defaults to off.
     @Published var hideZeroBudgetCategories: Bool = false {
         didSet {
             UserDefaults.standard.set(hideZeroBudgetCategories, forKey: "hideZeroBudgetCategories")
-        }
-    }
-
-    /// Whether hidden categories and groups are included on the Budget tab.
-    /// Persisted locally so an item stays reachable until the user turns the
-    /// view option off again.
-    @Published var showHiddenCategories: Bool = false {
-        didSet {
-            UserDefaults.standard.set(showHiddenCategories, forKey: "showHiddenCategories")
         }
     }
 
@@ -494,14 +364,6 @@ final class BudgetStore: ObservableObject {
     @Published var hideClearedTransactions: Bool = false {
         didSet {
             UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
-        }
-    }
-
-    /// Whether transaction lists hide transactions locked by reconciliation.
-    /// Persisted to UserDefaults, defaults to off (GH #355).
-    @Published var hideReconciledTransactions: Bool = false {
-        didSet {
-            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
         }
     }
 
@@ -518,13 +380,7 @@ final class BudgetStore: ObservableObject {
     /// exactly-zero available drops out: overspent (negative) categories stay
     /// visible so problems that need fixing are never masked.
     func visibleCategoryBudgets(_ categories: [CategoryBudget]) -> [CategoryBudget] {
-        let visible = categories.filter { !$0.isEffectivelyHidden }
-        let filtered = hideZeroBudgetCategories
-            ? visible.filter { $0.available != 0 }
-            : visible
-        return showHiddenCategories
-            ? filtered + categories.filter(\.isEffectivelyHidden)
-            : filtered
+        hideZeroBudgetCategories ? categories.filter { $0.available != 0 } : categories
     }
 
     /// Closed accounts the Accounts list should show — none when the hide
@@ -543,8 +399,7 @@ final class BudgetStore: ObservableObject {
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
-        guard !hideBalances else { return Self.hiddenBalanceText }
-        return hideDecimalPlaces ? formatCurrencyWholeUnits(cents) : formatCurrency(cents)
+        hideBalances ? Self.hiddenBalanceText : formatCurrency(cents)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
@@ -559,20 +414,9 @@ final class BudgetStore: ObservableObject {
     /// deposits can't masquerade as spending (GH #102).
     func displaySpentCaption(_ spentCents: Int) -> String {
         guard !hideBalances else { return Self.hiddenBalanceText }
-        let magnitude = spentCents > 0 ? spentCents : -spentCents
-        let text = hideDecimalPlaces
-            ? formatCurrencyWholeUnits(magnitude)
-            : formatCurrency(magnitude)
         return spentCents > 0
-            ? "+\(text)"
-            : text
-    }
-
-    /// Toggles `hideBalances` in response to a device shake gesture if enabled.
-    func handleDeviceShake() {
-        guard shakeToHideBalances else { return }
-        hideBalances.toggle()
-        shakeFeedbackTrigger.toggle()
+            ? "+\(formatCurrency(spentCents))"
+            : formatCurrency(-spentCents)
     }
 
     /// Whether transaction saves record the payee's location (GH #24).
@@ -581,6 +425,15 @@ final class BudgetStore: ObservableObject {
     @Published var recordPayeeLocations: Bool = true {
         didSet {
             UserDefaults.standard.set(recordPayeeLocations, forKey: "recordPayeeLocations")
+        }
+    }
+
+    /// Whether due scheduled transactions are posted automatically after a
+    /// successful sync on launch/foreground. Opt-in (defaults off) because
+    /// every post writes to the user's real Actual server.
+    @Published var postScheduledTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(postScheduledTransactions, forKey: "postScheduledTransactions")
         }
     }
 
@@ -612,41 +465,6 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Dashboard page the Reports tab opens on (GH #223). nil means the first
-    /// live page, matching the web app's ReportsDashboardRouter.
-    var defaultDashboardPageId: String? {
-        get {
-            guard let budgetId = currentBudgetId else { return nil }
-            return UserDefaults.standard.string(forKey: "defaultDashboardPageId_\(budgetId)")
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            if let value = newValue {
-                UserDefaults.standard.set(value, forKey: "defaultDashboardPageId_\(budgetId)")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "defaultDashboardPageId_\(budgetId)")
-            }
-            objectWillChange.send()
-        }
-    }
-
-    /// Budget month last viewed in this budget. This stays on the device, like
-    /// the account and dashboard defaults above, rather than syncing as budget data.
-    var lastViewedBudgetMonth: String? {
-        get {
-            guard let budgetId = currentBudgetId else { return nil }
-            return UserDefaults.standard.string(forKey: "lastViewedBudgetMonth_\(budgetId)")
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            if let newValue {
-                UserDefaults.standard.set(newValue, forKey: "lastViewedBudgetMonth_\(budgetId)")
-            } else {
-                UserDefaults.standard.removeObject(forKey: "lastViewedBudgetMonth_\(budgetId)")
-            }
-        }
-    }
-
     /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
     /// Persisted per budget in UserDefaults.
     var cardAccountMappings: [String: String] {
@@ -661,115 +479,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Mappings from accountId -> statement closing day (1...31).
-    /// Persisted per budget in the preferences table. An account with a statement day
-    /// configured is treated as a credit card with that billing cycle in Actuali.
-    var creditCardStatementDays: [String: Int] {
-        creditCardConfigs.mapValues(\.statementDay)
-    }
-
-    /// Mappings from accountId -> days between statement closing and payment due.
-    /// A card missing an entry predates the setting and falls back to
-    /// `CreditCardCycle.defaultDueOffsetDays`.
-    var creditCardDueOffsets: [String: Int] {
-        creditCardConfigs.mapValues(\.dueOffsetDays)
-    }
-
-    /// Mappings from accountId -> credit limit in cents (positive). Optional per
-    /// card: without one there is no available-credit figure to show.
-    var creditCardLimits: [String: Int] {
-        creditCardConfigs.compactMapValues(\.limit)
-    }
-
-    /// Statement days whose account still exists and is open — what the Credit
-    /// Cards screen lists and what the Settings badge counts. Closed and deleted
-    /// accounts keep their stored config (reopening restores the cycle) but drop
-    /// out of both, so the two can never disagree.
-    var activeCreditCardStatementDays: [String: Int] {
-        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
-        return creditCardStatementDays.filter { openAccountIds.contains($0.key) }
-    }
-
-    /// Writes a card's cycle config and persists it through SyncClient.
-    /// A nil `statementDay` stops tracking the account and clears everything stored for it.
-    func setCreditCard(
-        accountId: String,
-        statementDay: Int?,
-        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
-        limit: Int?
-    ) async {
-        guard currentBudgetId != nil else { return }
-        let previous = creditCardConfigs[accountId]
-        let config: CreditCardConfig? = statementDay.map {
-            CreditCardConfig(statementDay: $0, dueOffsetDays: dueOffsetDays, limit: limit)
-        }
-        creditCardConfigs[accountId] = config
-        guard let syncClient else {
-            creditCardConfigs[accountId] = previous
-            error = "Credit card settings need sync configured for this budget."
-            return
-        }
-        do {
-            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
-        } catch {
-            creditCardConfigs[accountId] = previous
-            self.error = error.localizedDescription
-        }
-    }
-
-    func creditCardCycle(for accountId: String) -> CreditCardCycle? {
-        guard let day = creditCardStatementDays[accountId] else { return nil }
-        return CreditCardCycle(
-            statementDay: day,
-            dueOffsetDays: creditCardDueOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
-        )
-    }
-
-    /// The cycle to *display* for an account: nil unless it is a tracked card
-    /// whose account still exists and is open. A closed card has no payment
-    /// coming up, so every surface hides it through this one predicate rather
-    /// than each re-deciding what counts as active.
-    func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
-        guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
-        return creditCardCycle(for: accountId)
-    }
-
-    /// Credit still available on a tracked card: the limit less what is owed.
-    /// Actual holds a card's balance negative while money is owed, so the two
-    /// add. nil unless the account is an active tracked card with a limit set.
-    func availableCredit(for accountId: String) -> Int? {
-        guard let limit = creditCardLimits[accountId],
-              activeCreditCardCycle(for: accountId) != nil,
-              let account = accounts.first(where: { $0.id == accountId })
-        else { return nil }
-        return limit + account.balance
-    }
-
     /// Resolves an account ID from a hint string (e.g. card digits "1234", bank name "HSBC",
     /// or account name). Matching is deliberately conservative — a missed match falls back
     /// to the default account or an error the user can act on, while a wrong match logs
     /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
-        Self.resolveAccountId(
-            hint: hint,
-            accounts: await accountsForIntent(),
-            cardMappings: cardAccountMappings
-        )
-    }
-
-    /// Pure-function account resolution shared by both the async path
-    /// (`PendingImportApprover`) and the synchronous `@ViewBuilder` path
-    /// (`PendingImportsView`). `nonisolated static` so unit tests can call
-    /// it without a full store setup.
-    nonisolated static func resolveAccountId(
-        hint: String,
-        accounts: [Account],
-        cardMappings: [String: String]
-    ) -> String? {
         let trimmed = hint.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !trimmed.isEmpty else { return nil }
 
-        let activeAccounts = accounts.filter { !$0.closed }
+        let activeAccounts = await accountsForIntent().filter { !$0.closed }
         guard !activeAccounts.isEmpty else { return nil }
         let activeIds = Set(activeAccounts.map(\.id))
 
@@ -777,7 +495,7 @@ final class BudgetStore: ObservableObject {
         //    and multi-match resolution is deterministic (Dictionary order isn't). Only
         //    hint-contains-key: the reverse direction would let a one-character hint
         //    match any keyword.
-        let mappingsByLongestKey = cardMappings
+        let mappingsByLongestKey = cardAccountMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
             .filter { !$0.key.isEmpty }
@@ -835,21 +553,6 @@ final class BudgetStore: ObservableObject {
             return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
         } catch {
             logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
-            return []
-        }
-    }
-    
-    /// Most frequently used payees from the last 12 weeks, for the
-    /// Add Transaction payee picker. Failures degrade to no suggestions.
-    func fetchCommonPayees() async -> [Payee] {
-        guard let database else { return [] }
-
-        do {
-            return try await database.fetchCommonPayees()
-        } catch {
-            logger.error(
-                "fetchCommonPayees failed: \(error.localizedDescription, privacy: .public)"
-            )
             return []
         }
     }
@@ -1063,7 +766,7 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
-    
+
     // MARK: - Backups
 
     @Published private(set) var backups: [Backup] = []
@@ -1123,30 +826,6 @@ final class BudgetStore: ObservableObject {
         serverClient = client
     }
 
-    /// Test-only: swap in a SimpleFIN client wired to a stub transport so the
-    /// bank sync path can be exercised without a reachable bridge.
-    func setSimpleFINClientForTesting(_ client: SimpleFINClient) {
-        simpleFINClient = client
-    }
-
-    /// Test-only: avoid sharing the app's Keychain credential across parallel suites.
-    func setSimpleFINAccessKeyForTesting(_ accessKey: SimpleFINAccessKey?) {
-        simpleFINAccessKeyProvider = { accessKey }
-    }
-
-    /// Test-only: swap in a stub Wallet store so the FinanceKit sync path can
-    /// be exercised off-device (the real store only answers on entitled
-    /// iPhones).
-    func setAppleWalletStoreForTesting(_ store: any AppleWalletReading) {
-        appleWalletStore = store
-    }
-
-    /// Test-only: isolate device-local Wallet links from the app's defaults.
-    func configureAppleWalletLinksForTesting(defaults: UserDefaults, budgetId: String) {
-        appleWalletLinkDefaults = defaults
-        _currentBudgetId = Published(initialValue: budgetId)
-    }
-
     /// Test-only: swap in a file manager rooted at a temp directory so
     /// logout()'s full wipe can be exercised without touching the shared
     /// Budgets directory (parallel suites create real budgets there).
@@ -1158,32 +837,9 @@ final class BudgetStore: ObservableObject {
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
-
-    /// Test-only: pause a load after its month snapshots are fetched so a
-    /// month request can race the final publish deterministically.
-    var budgetMonthsFetchedForTesting: (() async -> Void)?
-
-    /// Test-only: release the open database and sync client the way the app's
-    /// file-mutating paths (disconnect, downloadBudget) do, so a test can
-    /// delete a budget's temp directory without unlinking db.sqlite out from
-    /// under a live SQLite connection ("vnode unlinked while in use").
-    func closeDatabaseForTesting() {
-        syncStateCancellable?.cancel()
-        syncStateCancellable = nil
-        syncClient = nil
-        database = nil
-    }
     #endif
 
     private init() {
-        let defaults = UserDefaults.standard
-        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        // overrides as strings; checking for existence first preserves non-false defaults.
-        func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
-            defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
-        }
-
         // Restore saved state. Preferences restore through the Published
         // backing storage (`_x = Published(initialValue:)`) rather than the
         // properties themselves: didSet DOES fire for wrapper-backed
@@ -1192,63 +848,50 @@ final class BudgetStore: ObservableObject {
         // launch-argument (NSArgumentDomain) overrides like
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
-            initialValue: defaults.string(forKey: "serverURL") ?? "")
+            initialValue: UserDefaults.standard.string(forKey: "serverURL") ?? "")
         _fallbackServerURL = Published(
-            initialValue: defaults.string(forKey: "fallbackServerURL") ?? "")
+            initialValue: UserDefaults.standard.string(forKey: "fallbackServerURL") ?? "")
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
         _currentBudgetId = Published(
-            initialValue: defaults.string(forKey: "currentBudgetId"))
+            initialValue: UserDefaults.standard.string(forKey: "currentBudgetId"))
         _currencyCode = Published(
-            initialValue: defaults.string(forKey: "currencyCode") ?? "USD")
-        _useNarrowCurrencySymbol = Published(
-            initialValue: persistedBool("useNarrowCurrencySymbol", default: false))
-        if let raw = defaults.string(forKey: "appearanceMode"),
+            initialValue: UserDefaults.standard.string(forKey: "currencyCode") ?? "USD")
+        _useNarrowCurrencySymbol = Published(initialValue: UserDefaults.standard
+            .object(forKey: "useNarrowCurrencySymbol") as? Bool ?? false)
+        if let raw = UserDefaults.standard.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle(
-            rawValue: defaults.string(forKey: "budgetDisplayStyle") ?? ""
-        ) ?? .clean)
-        _showCompactBudgetOverview = Published(
-            initialValue: persistedBool("showCompactBudgetOverview", default: true))
-        _showCompactSpentColumn = Published(
-            initialValue: persistedBool("showCompactSpentColumn", default: false))
+        if let raw = UserDefaults.standard.string(forKey: "budgetDisplayStyle"),
+           let style = BudgetDisplayStyle(rawValue: raw) {
+            _budgetDisplayStyle = Published(initialValue: style)
+        }
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
-        _showBudgetProgressBars = Published(
-            initialValue: persistedBool("showBudgetProgressBars", default: true))
-        _showCategoryStatusDots = Published(
-            initialValue: persistedBool("showCategoryStatusDots", default: true))
-        _showGroupTotals = Published(
-            initialValue: persistedBool("showGroupTotals", default: true))
-        _showBudgetCheckInStrip = Published(
-            initialValue: persistedBool("showBudgetCheckInStrip", default: true))
-        _showOverspentBadge = Published(
-            initialValue: persistedBool("showOverspentBadge", default: true))
-        _conventionalAmountEntry = Published(
-            initialValue: persistedBool("conventionalAmountEntry", default: false))
-        _hideBalances = Published(
-            initialValue: persistedBool("hideBalances", default: false))
-        _shakeToHideBalances = Published(
-            initialValue: persistedBool("shakeToHideBalances", default: false))
-        _hideDecimalPlaces = Published(
-            initialValue: persistedBool("hideDecimalPlaces", default: false))
-        _recordPayeeLocations = Published(
-            initialValue: persistedBool("recordPayeeLocations", default: true))
+        _showBudgetProgressBars = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showBudgetProgressBars") as? Bool ?? true)
+        _showGroupTotals = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showGroupTotals") as? Bool ?? true)
+        _showOverspentBadge = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showOverspentBadge") as? Bool ?? true)
+        _conventionalAmountEntry = Published(initialValue: UserDefaults.standard
+            .object(forKey: "conventionalAmountEntry") as? Bool ?? false)
+        _hideBalances = Published(initialValue: UserDefaults.standard
+            .object(forKey: "hideBalances") as? Bool ?? false)
+        _recordPayeeLocations = Published(initialValue: UserDefaults.standard
+            .object(forKey: "recordPayeeLocations") as? Bool ?? true)
         // bool(forKey:) defaults to false — the correct opt-in default.
-        _hideZeroBudgetCategories = Published(initialValue: defaults
+        _hideZeroBudgetCategories = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideZeroBudgetCategories"))
-        _showHiddenCategories = Published(initialValue: defaults
-            .bool(forKey: "showHiddenCategories"))
-        _hideClearedTransactions = Published(initialValue: defaults
+        _hideClearedTransactions = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClearedTransactions"))
-        _hideReconciledTransactions = Published(initialValue: defaults
-            .bool(forKey: "hideReconciledTransactions"))
-        _hideClosedAccounts = Published(initialValue: defaults
+        _hideClosedAccounts = Published(initialValue: UserDefaults.standard
             .bool(forKey: "hideClosedAccounts"))
+        _postScheduledTransactions = Published(initialValue: UserDefaults.standard
+            .bool(forKey: "postScheduledTransactions"))
 
         let token = loadAndMigrateAuthToken()
 
@@ -1366,70 +1009,6 @@ final class BudgetStore: ObservableObject {
         isLoading = false
     }
 
-    /// Reconfigures an authenticated session without logging out or touching
-    /// its downloaded budget. Publish the new addresses only after both URLs
-    /// validate and the live client accepts them.
-    func updateServerConnection(
-        serverURL newServerURL: String,
-        fallbackServerURL newFallbackServerURL: String
-    ) async -> Bool {
-        let normalized = Self.normalizedServerURL(newServerURL)
-        let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
-        guard !normalized.isEmpty else {
-            error = "Please enter a server URL"
-            return false
-        }
-        guard Self.isValidServerURL(normalized) else {
-            error = ActualServerError.invalidURL.localizedDescription
-            return false
-        }
-        guard normalizedFallback.isEmpty || Self.isValidServerURL(normalizedFallback) else {
-            error = ActualServerError.invalidFallbackURL.localizedDescription
-            return false
-        }
-
-        isLoading = true
-        error = nil
-        defer { isLoading = false }
-
-        let previousServerURL = serverURL
-        let previousFallbackServerURL = fallbackServerURL
-        do {
-            if normalized != previousServerURL {
-                // Probe the primary without fallback so an unreachable edit
-                // cannot be accepted merely because its alternate responds.
-                try await serverClient.configure(serverURL: normalized)
-                do {
-                    _ = try await serverClient.fetchLoginMethods()
-                } catch let probeError as ActualServerError where probeError.isConnectionFailure {
-                    // A transport failure means the replacement address cannot
-                    // be used. Restore the live client before leaving the saved
-                    // connection untouched.
-                    try? await serverClient.configure(
-                        serverURL: previousServerURL,
-                        fallbackServerURL: previousFallbackServerURL
-                    )
-                    self.error = probeError.localizedDescription
-                    return false
-                } catch {
-                    // A server that answers but lacks this endpoint is reachable;
-                    // older Actual versions and route-stripping proxies are valid.
-                }
-            }
-            try await serverClient.configure(
-                serverURL: normalized,
-                fallbackServerURL: normalizedFallback
-            )
-            serverURL = normalized
-            fallbackServerURL = normalizedFallback
-            refreshPayeeLocationSupport()
-            return true
-        } catch {
-            self.error = error.localizedDescription
-            return false
-        }
-    }
-
     /// Trims whitespace and prepends `https://` if the user omitted a scheme.
     /// Empty input stays empty so callers can still detect "missing URL".
     static func normalizedServerURL(_ raw: String) -> String {
@@ -1439,11 +1018,6 @@ final class BudgetStore: ObservableObject {
             return trimmed
         }
         return "https://" + trimmed
-    }
-
-    private nonisolated static func isValidServerURL(_ raw: String) -> Bool {
-        guard let url = URL(string: raw) else { return false }
-        return url.scheme != nil && url.host != nil
     }
 
     func login(password: String) async {
@@ -1513,9 +1087,7 @@ final class BudgetStore: ObservableObject {
                 returnURL: OpenIDAuthenticator.returnURL,
                 firstTimePassword: firstTimePassword
             )
-            guard let authenticator = OpenIDAuthenticator.make() else {
-                throw OpenIDAuthError.noWindow
-            }
+            let authenticator = OpenIDAuthenticator()
             let token = try await authenticator.authenticate(authorizationURL: authURL)
 
             await serverClient.setToken(token)
@@ -1549,7 +1121,10 @@ final class BudgetStore: ObservableObject {
         // "vnode unlinked" hazard downloadBudget also guards against), and a
         // live sync client would let the next foreground refresh republish
         // the wiped budget's data from that orphaned connection.
-        closeCurrentBudget()
+        syncStateCancellable?.cancel()
+        syncStateCancellable = nil
+        syncClient = nil
+        database = nil
 
         if clearLocalData {
             // Wipe every locally-synced budget's database and metadata from
@@ -1562,16 +1137,7 @@ final class BudgetStore: ObservableObject {
                     try? EncryptionKeyManager.remove(fileId: fileId)
                 }
                 try? fileManager.deleteBudget(local.id)
-                forgetCachedCurrencyCode(for: local.id)
-                forgetAppleWalletLinks(for: local.id)
             }
-
-            // The SimpleFIN access key goes too, for the same reason the
-            // encryption keys above do: it's a bearer credential for live bank
-            // data, and disconnecting should leave nothing behind that still
-            // reaches the previous person's accounts.
-            try? SimpleFINCredentials.clear()
-            isSimpleFINConfigured = false
         }
 
         isConnected = false
@@ -1579,24 +1145,14 @@ final class BudgetStore: ObservableObject {
         // Re-probe on the next connection in case the server URL changes.
         availableLoginMethods = []
         ownerExists = true
-    }
-
-    /// Close whatever budget is open and return to the "select a budget" empty
-    /// state, leaving the server session alone. Tears down the database and
-    /// sync client first (see logout's vnode-unlink comment) and then clears
-    /// everything loaded in memory, so nothing from the old budget lingers in
-    /// the UI. The dataVersion bump makes views that cache their own fetches
-    /// drop them.
-    private func closeCurrentBudget() {
-        syncStateCancellable?.cancel()
-        syncStateCancellable = nil
-        syncClient = nil
-        database = nil
 
         backups = []
         syncDetachedByRestore = false
+
+        // Clear everything currently loaded in memory too, so nothing from
+        // the old budget lingers in the UI post-disconnect. The dataVersion
+        // bump makes views that cache their own fetches drop them.
         currentBudgetId = nil
-        requestedBudgetMonth = nil
         currentBudgetMonth = nil
         widgetBudgetMonth = nil
         accounts = []
@@ -1611,55 +1167,6 @@ final class BudgetStore: ObservableObject {
         isInitialSyncing = false
         dataVersion += 1
         clearWidgetSnapshot()
-    }
-
-    // MARK: - Budget Deletion
-
-    /// Delete a budget's local copy — database, metadata, and backups — and
-    /// any device-side state for it, leaving the server file untouched so it
-    /// can be downloaded again. Deleting the currently open budget closes it
-    /// and returns the app to the "select a budget" empty state.
-    func removeLocalBudget(cloudFileId: String) async {
-        // The derived encryption key must not outlive the budget — removed
-        // even without a local directory (a failed download can leave a key
-        // behind with nothing to unlock).
-        try? EncryptionKeyManager.remove(fileId: cloudFileId)
-
-        guard let local = fileManager.listLocalBudgets().first(
-            where: { $0.cloudFileId == cloudFileId }
-        ) else { return }
-
-        if local.id == currentBudgetId {
-            // Best-effort push of unsynced local edits before the database
-            // holding them is destroyed; offline they're still lost, which the
-            // confirmation dialog warns about. Only the open budget has a live
-            // sync client — a closed budget's pending messages can't be sent.
-            await flushPendingSync()
-            // Close before deleting files — same vnode-unlink hazard as logout.
-            closeCurrentBudget()
-        }
-
-        try? fileManager.deleteBudget(local.id)
-        forgetCachedCurrencyCode(for: local.id)
-        forgetAppleWalletLinks(for: local.id)
-    }
-
-    /// Delete a budget's file on the Actual server — for every client — then
-    /// remove this device's copy and its list row. Returns nil on success, or
-    /// a user-facing message so the confirmation sheet can stay open (see
-    /// `error`: form-local failures stay in the presenting view).
-    func deleteServerBudget(_ remoteBudget: RemoteBudget) async -> String? {
-        do {
-            try await serverClient.deleteFile(fileId: remoteBudget.id)
-        } catch ActualServerError.fileNotFound {
-            // Already gone on the server (deleted from another client) —
-            // finish the local half below so the stale row heals.
-        } catch {
-            return error.localizedDescription
-        }
-        await removeLocalBudget(cloudFileId: remoteBudget.id)
-        remoteBudgets.removeAll { $0.id == remoteBudget.id }
-        return nil
     }
 
     /// Load the auth token, migrating from UserDefaults to Keychain on first run.
@@ -1678,12 +1185,6 @@ final class BudgetStore: ObservableObject {
     // MARK: - Budget Management
 
     func fetchRemoteBudgets() async {
-        #if DEBUG
-        // This UI test seeds a connected session without a server behind it.
-        // Keep the production view lifecycle intact while avoiding a request
-        // that can only time out and raise an unrelated alert.
-        if CommandLine.arguments.contains("-connectedServerSettings") { return }
-        #endif
         isLoading = true
         error = nil
 
@@ -1807,136 +1308,9 @@ final class BudgetStore: ObservableObject {
         return error   // any download error surfaced by downloadBudget
     }
 
-    /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
-    /// checked against the names already on the server (and local files).
-    nonisolated static func budgetNameError(_ name: String, existingNames: [String]) -> String? {
-        if name.isEmpty { return "Budget name cannot be blank" }
-        if name.count > 100 { return "Budget name is too long (max length 100)" }
-        if existingNames.contains(name) { return "\u{201C}\(name)\u{201D} already exists" }
-        return nil
-    }
-
-    /// Create a new empty budget file from the bundled blank template,
-    /// register it on the server, and open it. Mirrors upstream's
-    /// createBudget followed by cloudStorage.upload (budgetfiles/app.ts:400,
-    /// cloud-storage.ts:289): the upload's fresh cloudFileId plus the groupId
-    /// the server assigns is what makes desktop and web treat the file as one
-    /// of their own.
-    ///
-    /// ponytail: creation requires the server to be reachable. Upstream
-    /// tolerates a failed upload because possiblyUpload retries later, but
-    /// Actuali has no re-upload path yet, so a local-only file would be
-    /// stranded unsyncable — instead a failed registration fails the whole
-    /// create and removes the local files. The upgrade path is a general
-    /// upload-on-sync retry.
-    func createBudget(named rawName: String) async {
-        let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let existingNames = remoteBudgets.map(\.name)
-            + fileManager.listLocalBudgets().compactMap(\.budgetName)
-        if let message = Self.budgetNameError(name, existingNames: existingNames) {
-            error = message
-            return
-        }
-        guard let templateURL = Bundle.main.url(forResource: "blank-budget", withExtension: "sqlite") else {
-            error = "The blank budget template is missing from the app bundle."
-            return
-        }
-
-        isLoading = true
-        error = nil
-
-        // Whether /sync/upload-user-file completed: past that point the server
-        // durably has the file, so a later local failure must not read as "the
-        // create failed" — the budget exists and can simply be downloaded.
-        var registeredOnServer = false
-        var uploadOutcomeUnknown = false
-
-        do {
-            let metadata = try fileManager.createBudget(named: name, templateURL: templateURL)
-            let cloudFileId = UUID().uuidString.lowercased()
-            var uploadStarted = false
-            func saveRegistration(groupId: String) throws {
-                let registered = BudgetMetadata(
-                    id: metadata.id,
-                    budgetName: name,
-                    cloudFileId: cloudFileId,
-                    groupId: groupId,
-                    resetClock: nil,
-                    lastUploaded: Self.yearMonthDayFormatter.string(from: Date()),
-                    encryptKeyId: nil
-                )
-                try JSONEncoder().encode(registered)
-                    .write(to: fileManager.metadataPath(for: metadata.id))
-            }
-            do {
-                let zipData = try fileManager.makeUploadArchive(for: metadata.id)
-                uploadStarted = true
-                let groupId = try await serverClient.uploadFile(
-                    zipData: zipData, fileId: cloudFileId, name: name
-                )
-                registeredOnServer = true
-                try saveRegistration(groupId: groupId)
-            } catch {
-                let uploadError = error
-                let files: [ListFilesResponse.RemoteFile]?
-                if uploadStarted {
-                    files = try? await serverClient.listFiles()
-                } else {
-                    files = []
-                }
-                if let remote = files?.first(where: { $0.fileId == cloudFileId }) {
-                    registeredOnServer = true
-                    guard let groupId = remote.groupId else { throw uploadError }
-                    try saveRegistration(groupId: groupId)
-                } else {
-                    // The local copy is still blank. Remove it even when the
-                    // server result is unknown: a committed copy can be
-                    // downloaded later, while an unregistered local copy is
-                    // invisible and permanently blocks this budget name.
-                    uploadOutcomeUnknown = files == nil
-                    try? fileManager.deleteBudget(metadata.id)
-                    throw uploadError
-                }
-            }
-
-            // Close the previous budget before switching, same as downloadBudget.
-            syncStateCancellable?.cancel()
-            syncStateCancellable = nil
-            syncClient = nil
-            database = nil
-
-            currentBudgetId = metadata.id
-            await loadLocalBudget(metadata.id)
-            let loadError = error
-            await fetchRemoteBudgets()
-            if let loadError { self.error = loadError }
-        } catch {
-            if registeredOnServer {
-                // The file exists server-side; surface it in the picker so one
-                // tap downloads it instead of leaving an invisible orphan.
-                await fetchRemoteBudgets()
-                self.error = """
-                    \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
-                    finished on this device: \(error.localizedDescription) \
-                    Select it in Budget Selection to download it.
-                    """
-            } else if uploadOutcomeUnknown {
-                self.error = """
-                    The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.
-                    """
-            } else {
-                self.error = error.localizedDescription
-            }
-        }
-
-        isLoading = false
-    }
-
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
-        let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
-        var published = false
 
         var db: BudgetDatabase?
         do {
@@ -1948,31 +1322,16 @@ final class BudgetStore: ObservableObject {
             // Fetch all data into locals first, then publish in one batch so
             // the UI never sees a torn snapshot if another load interleaves
             // at a suspension point.
-            // Nil means the budget has no currency preference; an empty value
-            // is Actual's explicit "None" setting.
+            // Currency code from preferences (use if non-empty, else keep UserDefaults value)
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
-            let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
-                ? lastViewedBudgetMonth ?? currentMonth
-                : requestedBudgetMonth ?? lastViewedBudgetMonth ?? currentMonth
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: displayedMonth)
-            let fetchedWidgetBudgetMonth = displayedMonth == currentMonth
-                ? fetchedBudgetMonth
-                : try await openedDb.fetchBudgetMonth(month: currentMonth)
-            #if DEBUG
-            await budgetMonthsFetchedForTesting?()
-            #endif
-            let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
-                id: "flags.goalTemplatesEnabled") == "true"
-            let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
-                id: "flags.goalTemplatesUIEnabled") == "true"
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -1980,59 +1339,21 @@ final class BudgetStore: ObservableObject {
             // spinner and clears it when it finishes.
             guard database === openedDb else { return }
 
-            // The database stays authoritative whenever it has an answer, so a
-            // currency changed on another client always wins here. The cache
-            // only covers the gap: a freshly downloaded snapshot can predate
-            // the CRDT preference messages that carry the setting, and without
-            // it the previous budget's currency would stay on screen until the
-            // first sync lands (GH #297).
-            if let fetchedCurrencyCode {
-                currencyCode = fetchedCurrencyCode
-                cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
-            } else if let cached = cachedCurrencyCode(for: budgetId) {
-                currencyCode = cached
+            if let code = fetchedCurrencyCode, !code.isEmpty {
+                currencyCode = code
             }
-            
+
             upcomingScheduledTransactionLength = fetchedUpcomingLength
 
-            // Read the legacy keys on every load. A card already in the synced table
-            // wins; the rest still migrate, so a partial failure really does retry.
-            var legacyConfigs: [String: CreditCardConfig] = [:]
-            let legacyDays = UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") as? [String: Int] ?? [:]
-            let legacyOffsets = UserDefaults.standard.dictionary(forKey: "creditCardDueOffsets_\(budgetId)") as? [String: Int] ?? [:]
-            let legacyLimits = UserDefaults.standard.dictionary(forKey: "creditCardLimits_\(budgetId)") as? [String: Int] ?? [:]
-            for (accountId, statementDay) in legacyDays where fetchedCreditCards[accountId] == nil {
-                legacyConfigs[accountId] = CreditCardConfig(
-                    statementDay: statementDay,
-                    dueOffsetDays: legacyOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays,
-                    limit: legacyLimits[accountId]
-                )
-            }
-            creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
-            
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            // A month selected while the database reads were in flight is
-            // newer than this initial current-month snapshot. Leave that
-            // request and its fetch result intact instead of replacing it.
-            if budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad {
-                requestedBudgetMonth = displayedMonth
-                currentBudgetMonth = fetchedBudgetMonth
-            }
-            widgetBudgetMonth = fetchedWidgetBudgetMonth
-            goalTemplatesEnabled = fetchedGoalTemplatesFlag
-            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
+            currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             dataVersion += 1
             publishWidgetSnapshot()
-            published = true
-
-            // Linked feeds drive the sync buttons in the accounts UI. Without
-            // this, a fresh launch hides them until something else happens to
-            // refresh the data.
-            await loadBankSyncAccounts()
 
             // Get file metadata for groupId
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
@@ -2086,27 +1407,6 @@ final class BudgetStore: ObservableObject {
                 }
 
                 subscribeToSyncState()
-
-                if let syncClient {
-                    var allWritten = true
-                    for (accountId, config) in legacyConfigs {
-                        do {
-                            try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
-                        } catch {
-                            allWritten = false
-                            logger.error("Credit card migration failed for \(accountId, privacy: .public): \(error.localizedDescription)")
-                        }
-                    }
-                    // Erase the legacy keys once the synced table holds every card,
-                    // even when there was nothing to write. A card deleted on another
-                    // device leaves a NULL preference row, and stale defaults here
-                    // would re-create it on the next load.
-                    if allWritten {
-                        for prefix in ["creditCardStatementDays_", "creditCardDueOffsets_", "creditCardLimits_"] {
-                            UserDefaults.standard.removeObject(forKey: prefix + budgetId)
-                        }
-                    }
-                }
             }
 
             refreshPayeeLocationSupport()
@@ -2116,22 +1416,7 @@ final class BudgetStore: ObservableObject {
             // failure belongs to a stale load — don't clobber the winner's
             // error or clear its spinner.
             guard db == nil || database === db else { return }
-            if !published {
-                syncStateCancellable?.cancel()
-                syncStateCancellable = nil
-                syncClient = nil
-                requestedBudgetMonth = nil
-                currentBudgetMonth = nil
-                widgetBudgetMonth = nil
-                accounts = []
-                transactions = []
-                uncategorizedCount = 0
-                categoryGroups = []
-                payees = []
-                dataVersion += 1
-                clearWidgetSnapshot()
-            }
-            self.error = "Failed to load budget: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to load budget: %@"), error.localizedDescription)
         }
 
         isLoading = false
@@ -2182,7 +1467,7 @@ final class BudgetStore: ObservableObject {
             // I/O error. A successful demo seed supersedes it.
             self.error = nil
         } catch {
-            self.error = "Failed to seed demo data: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to seed demo data: %@"), error.localizedDescription)
         }
     }
 
@@ -2190,9 +1475,6 @@ final class BudgetStore: ObservableObject {
     /// Use this after local changes to update the UI
     private func refreshDataOnly() async {
         guard let database else { return }
-        let budgetId = currentBudgetId
-        let currencyCodeBefore = currencyCode
-        let creditCardsBefore = creditCardConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2203,73 +1485,26 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
             let currentMonth = currentMonthString()
-            // `currentBudgetMonth` follows the month BudgetView is browsing.
-            // Foreground sync must not silently replace a historical month
-            // with the current calendar month while the toolbar still shows
-            // the user's selection (GH #328).
-            let displayedMonth = requestedBudgetMonth ?? currentMonth
-            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
-            let fetchedWidgetBudgetMonth: BudgetMonth
-            if displayedMonth == currentMonth {
-                fetchedWidgetBudgetMonth = fetchedBudgetMonth
-            } else {
-                fetchedWidgetBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
-            }
+            let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
-            let fetchedCreditCards = try await database.fetchCreditCardConfigs()
-            // Re-read here too: a sync can bring in a currency set on another
-            // client, and nothing else republishes it (GH #297).
-            let fetchedCurrencyCode = try await database.fetchCurrencyCode()
-            // Same story for the goal-templates flags — the web's Experimental
-            // settings toggles arrive as synced preferences.
-            let fetchedGoalTemplatesFlag = try await database.fetchPreference(
-                id: "flags.goalTemplatesEnabled") == "true"
-            let fetchedGoalTemplatesUIFlag = try await database.fetchPreference(
-                id: "flags.goalTemplatesUIEnabled") == "true"
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
-            guard self.database === database, self.currentBudgetId == budgetId else { return }
-
-            // A card saved while these reads were in flight is newer than
-            // this snapshot; its write comes back on the next refresh.
-            if creditCardConfigs == creditCardsBefore {
-                creditCardConfigs = fetchedCreditCards
-            }
+            guard self.database === database else { return }
 
             accounts = fetchedAccounts
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
             payees = fetchedPayees
-            // A month selected while these reads were in flight owns the
-            // Budget tab now. Its fetch publishes separately, while the rest
-            // of this valid refresh snapshot must still reach the app.
-            if requestedBudgetMonth == displayedMonth {
-                currentBudgetMonth = fetchedBudgetMonth
-            }
-            widgetBudgetMonth = fetchedWidgetBudgetMonth
+            currentBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedBudgetMonth
             upcomingScheduledTransactionLength = fetchedUpcomingLength
-            goalTemplatesEnabled = fetchedGoalTemplatesFlag
-            goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
-            // Last in the batch: assigning this publishes a widget snapshot,
-            // which must see the balances above rather than the previous
-            // refresh's. Skipped when the user picked a currency in Settings
-            // while the reads above were in flight — that choice is newer than
-            // anything this snapshot holds, and the write it kicked off will
-            // come back on the next refresh.
-            if let fetchedCurrencyCode, currencyCode == currencyCodeBefore {
-                currencyCode = fetchedCurrencyCode
-                if let budgetId {
-                    cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
-                }
-            }
             dataVersion += 1
 
             await loadSchedules()
-            await loadBankSyncAccounts()
             publishWidgetSnapshot()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
@@ -2278,10 +1513,10 @@ final class BudgetStore: ObservableObject {
             // If the budget was switched mid-fetch, the failure belongs to
             // the old database — don't surface it over the new budget.
             guard self.database === database else { return }
-            self.error = "Failed to refresh data: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to refresh data: %@"), error.localizedDescription)
         }
     }
-    
+
     // MARK: - Backup Actions
 
     func refreshBackups() async {
@@ -2301,7 +1536,7 @@ final class BudgetStore: ObservableObject {
             self.error = error.localizedDescription
         }
     }
-    
+
     /// Automatic backup on app-background. Skipped while viewing a backup.
     /// Backgrounding happens seconds after a restore (the user checks another app),
     /// and makeBackup's first step would destroy the revert baseline.
@@ -2351,7 +1586,7 @@ final class BudgetStore: ObservableObject {
         await refreshBackups()
         isLoading = false
     }
-    
+
     /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
     /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
     func backupFileURL(_ backupId: String) -> URL? {
@@ -2495,7 +1730,7 @@ final class BudgetStore: ObservableObject {
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
     }
-    
+
     /// Create a category group, mirroring the web UI's "Add group": it lands
     /// after every existing group and starts out empty. Duplicate names are
     /// refused the way upstream refuses them.
@@ -2558,63 +1793,6 @@ final class BudgetStore: ObservableObject {
         return category
     }
 
-    /// Rename a category without changing its group, sort order, budget, or
-    /// transactions. `month` is the month the caller is displaying: the shared
-    /// refresh below republishes the *current calendar* month, so a caller
-    /// browsing any other month has to have it restored — otherwise its rows
-    /// and its title disagree and the next amount edit lands on the wrong
-    /// month.
-    func renameCategory(id: String, name: String, month: String) async throws {
-        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedName.isEmpty else {
-            throw BudgetStoreError.invalidCategoryName
-        }
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-
-        do {
-            try await syncClient.renameCategory(id: id, name: trimmedName)
-        } catch let error as BudgetDatabase.CategoryWriteError {
-            throw error
-        } catch {
-            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
-        }
-
-        await refreshDataOnly()
-        await fetchBudgetMonth(month)
-    }
-
-    func setCategoryHidden(id: String, hidden: Bool, month: String) async throws {
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-
-        do {
-            try await syncClient.setCategoryHidden(id: id, hidden: hidden)
-        } catch {
-            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
-        }
-
-        await refreshDataOnly()
-        await fetchBudgetMonth(month)
-    }
-
-    func setCategoryGroupHidden(id: String, hidden: Bool, month: String) async throws {
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-
-        do {
-            try await syncClient.setCategoryGroupHidden(id: id, hidden: hidden)
-        } catch {
-            throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
-        }
-
-        await refreshDataOnly()
-        await fetchBudgetMonth(month)
-    }
-    
     /// Money in and out across every account for one "yyyy-MM" month, for the
     /// accounts tab's summary group (GH #256). Nil when there's no budget open
     /// or the query failed, so the card keeps its last figures rather than
@@ -2642,13 +1820,12 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        unclearedOnly: Bool = false,
-        hideReconciled: Bool = false
+        unclearedOnly: Bool = false
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
+                unclearedOnly: unclearedOnly
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -2713,10 +1890,10 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         var existing = try database.existingFinancialIds(accountId: accountId)
-        
+
         // One rules/context fetch for the whole import, not one per row.
         let prepared = await syncClient.prepareRules()
-        
+
         var imported = 0
         var skipped = 0
         for candidate in candidates {
@@ -2758,684 +1935,6 @@ final class BudgetStore: ObservableObject {
     /// were imported before. Read-only convenience for `WalletImportView`.
     func walletFinancialIds(accountId: String) -> Set<String> {
         (try? database?.existingFinancialIds(accountId: accountId)) ?? []
-    }
-
-    // MARK: - Bank Sync (SimpleFIN & Apple Wallet)
-
-    /// Talks to a SimpleFIN bridge directly, with a key claimed on this
-    /// device. Only used when the server has no SimpleFIN of its own — see
-    /// `makeBankSyncProvider`.
-    private var simpleFINClient = SimpleFINClient()
-    private var simpleFINAccessKeyProvider = { SimpleFINCredentials.accessKey }
-
-    /// Reads Wallet (FinanceKit) accounts and transactions. Only answers on
-    /// iPhones with Wallet data and the FinanceKit entitlement; everywhere
-    /// else `availability()` says so and the Wallet half of bank sync stays
-    /// out of the way.
-    private var appleWalletStore: any AppleWalletReading = FinanceKitWalletStore()
-
-    /// FinanceKit identifiers are meaningful only on this device. Keeping the
-    /// links per budget in UserDefaults prevents unknown provider values from
-    /// reaching Actual's synced `accounts` rows.
-    private var appleWalletLinkDefaults = UserDefaults.standard
-
-    private func appleWalletLinksKey(for budgetId: String) -> String {
-        "appleWalletLinks_\(budgetId)"
-    }
-
-    // MARK: - Import start day
-
-    /// The setting shares the wallet links' defaults store — both are
-    /// per-budget, device-local state that must not reach the synced file.
-    private func bankSyncImportStartKey(for budgetId: String) -> String {
-        "bankSyncImportStart_\(budgetId)"
-    }
-
-    /// The person's chosen import start day (`YYYYMMDD`), or nil to follow
-    /// the default.
-    private var storedBankSyncImportStartDay: Int? {
-        guard let budgetId = currentBudgetId else { return nil }
-        return appleWalletLinkDefaults
-            .object(forKey: bankSyncImportStartKey(for: budgetId)) as? Int
-    }
-
-    func setBankSyncImportStartDay(_ day: Int) {
-        guard let budgetId = currentBudgetId else { return }
-        appleWalletLinkDefaults.set(day, forKey: bankSyncImportStartKey(for: budgetId))
-    }
-
-    /// The day imports reach back to for an account with no history of its
-    /// own: the person's chosen day, else the day the budget file began, else
-    /// the 90-day lookback several bank integrations won't serve more than.
-    func resolvedBankSyncImportStartDay() async -> Int {
-        if let chosen = storedBankSyncImportStartDay { return chosen }
-        if let began = try? await database?.earliestMessageDay() { return began }
-        return DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
-    }
-
-    private var appleWalletLinks: [String: String] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return appleWalletLinkDefaults.dictionary(
-                forKey: appleWalletLinksKey(for: budgetId)
-            ) as? [String: String] ?? [:]
-        }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            appleWalletLinkDefaults.set(newValue, forKey: appleWalletLinksKey(for: budgetId))
-        }
-    }
-
-    private func forgetAppleWalletLinks(for budgetId: String) {
-        appleWalletLinkDefaults.removeObject(forKey: appleWalletLinksKey(for: budgetId))
-    }
-
-    /// Whether Wallet data can be read here, as of the last check. Drives
-    /// which of the setup screen's Wallet states shows.
-    @Published private(set) var appleWalletAvailability: AppleWalletAvailability = .unsupported
-
-    func refreshAppleWalletAvailability() async {
-        appleWalletAvailability = await appleWalletStore.availability()
-    }
-
-    /// Ask the person for read access to Wallet. Returns whether it was
-    /// granted — FinanceKit shows its own consent sheet, so all that's left
-    /// here is remembering the answer.
-    @discardableResult
-    func connectAppleWallet() async throws -> Bool {
-        let granted = try await appleWalletStore.requestAccess()
-        appleWalletAvailability = await appleWalletStore.availability()
-        return granted
-    }
-
-    /// Every Wallet account (Apple Card, Apple Cash, Savings), for the
-    /// linking screen.
-    func fetchAppleWalletAccounts() async throws -> [AppleWalletAccount] {
-        try await appleWalletStore.accounts()
-    }
-
-    /// The last-resort import lookback, when no day was chosen and the budget
-    /// has no messages to date it by. 89 days ago through today inclusive is
-    /// 90 days, the window upstream settled on because several bank
-    /// integrations won't serve more.
-    private static let bankSyncMaxLookbackDays = 89
-
-    /// What one run of `syncBankAccounts` did.
-    struct BankSyncResult: Equatable {
-        var accountsSynced = 0
-        var added = 0
-        var updated = 0
-        /// The rows this run inserted (opening balances excluded), so the
-        /// automatic Wallet sync can post the new-transaction notification —
-        /// the detector behind `notifyAboutSyncedTransactions` only sees rows
-        /// authored by *other* devices, which imports made here are not.
-        var importedTransactions: [Transaction] = []
-        /// Anything worth telling the person about: a bank connection that
-        /// needs re-authenticating, an account SimpleFIN no longer knows.
-        /// A run can succeed for some accounts and report problems for others.
-        var problems: [String] = []
-
-        /// What to show when the run finishes. Problems come last so the
-        /// counts above them still read as what did work.
-        var summary: String {
-            var lines: [String] = []
-            if added > 0 {
-                lines.append("Imported \(added) new transaction\(added == 1 ? "" : "s").")
-            }
-            if updated > 0 {
-                lines.append("Matched \(updated) transaction\(updated == 1 ? "" : "s") you already had.")
-            }
-            // Only claim there was nothing to do when nothing went wrong
-            // either — otherwise the problems below say what happened.
-            if lines.isEmpty, problems.isEmpty {
-                lines.append(accountsSynced == 0
-                    ? "No linked accounts to sync."
-                    : "Everything is already up to date.")
-            }
-            return (lines + problems).joined(separator: "\n\n")
-        }
-    }
-
-    /// The last bank sync's outcome, waiting to be shown. Held here rather
-    /// than in a view because the sync is kicked off from a toolbar menu that
-    /// is gone by the time it finishes.
-    @Published var bankSyncSummary: String?
-
-    /// Whether the Actual server has a SimpleFIN connection of its own, as of
-    /// the last check. Refreshed by `refreshBankSyncSource()` and by every
-    /// sync.
-    @Published private(set) var serverProvidesBankSync = false
-
-    /// Whether a bank sync can run at all — through the server's connection or
-    /// one claimed on this device.
-    var canSyncBanks: Bool { serverProvidesBankSync || isSimpleFINConfigured }
-
-    /// Ask the server whether it does SimpleFIN, so the setup screen knows
-    /// which half of itself to show. Failures leave the flag alone: an
-    /// unreachable server isn't evidence either way.
-    func refreshBankSyncSource() async {
-        if let configured = try? await serverClient.simpleFINStatus() {
-            serverProvidesBankSync = configured == true
-        }
-    }
-
-    /// Where this sync's data comes from.
-    ///
-    /// The server's own connection wins whenever it has one. The two
-    /// credentials can't be shared — Actual keeps the server's access key in
-    /// its secrets store, deliberately out of the budget file — so preferring
-    /// the server is what keeps the web UI and this app in agreement: nobody
-    /// needs a second setup token, and a link made here is one the server can
-    /// actually service.
-    private func makeBankSyncProvider() async throws -> any BankSyncProvider {
-        let deviceKey = simpleFINAccessKeyProvider()
-        do {
-            // nil means the route isn't served here — an older server, or a
-            // proxy that strips it. Not a failure, just not an option.
-            if try await serverClient.simpleFINStatus() == true {
-                serverProvidesBankSync = true
-                return ActualServerBankSyncProvider(client: serverClient)
-            }
-            serverProvidesBankSync = false
-        } catch {
-            // The server couldn't be answered for. A key claimed on this
-            // device still reaches the bridge, so use it rather than failing.
-            guard let deviceKey else {
-                // With no key either: a server we genuinely couldn't reach is
-                // worth saying so, but anything else (no server configured, no
-                // session) just means bank sync isn't set up here.
-                if let serverError = error as? ActualServerError, serverError.isConnectionFailure {
-                    throw error
-                }
-                throw BudgetStoreError.bankSyncNotConfigured
-            }
-            return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
-        }
-        guard let deviceKey else { throw BudgetStoreError.bankSyncNotConfigured }
-        return SimpleFINDirectProvider(client: simpleFINClient, accessKey: deviceKey)
-    }
-
-    /// Run a sync and leave its outcome in `bankSyncSummary`. The button-shaped
-    /// entry point — `syncBankAccounts` is the one that throws.
-    func runBankSync(accountIds: [String] = []) async {
-        // A tap that lands while a sync is already running does nothing — the
-        // running sync posts its own summary, which would otherwise be
-        // clobbered by this call's empty one.
-        guard !isBankSyncing else { return }
-        do {
-            bankSyncSummary = try await syncBankAccounts(accountIds: accountIds).summary
-        } catch {
-            bankSyncSummary = error.localizedDescription
-        }
-    }
-
-    /// Exchange a SimpleFIN setup token for an access key this device keeps.
-    /// Only needed when the server has no SimpleFIN connection of its own.
-    /// Setup tokens are single-use, so this runs once per token.
-    func connectSimpleFIN(setupToken: String) async throws {
-        let accessKey = try await simpleFINClient.claimAccessKey(setupToken: setupToken)
-        try SimpleFINCredentials.save(accessKey)
-        isSimpleFINConfigured = true
-    }
-
-    /// Forget this device's access key. Accounts stay linked — the link lives
-    /// in the budget file, so the web UI (and this device, once a new token is
-    /// claimed) can still sync them.
-    func disconnectSimpleFIN() throws {
-        try SimpleFINCredentials.clear()
-        isSimpleFINConfigured = false
-    }
-
-    /// Every account the active connection covers, for the linking screen.
-    func fetchBankAccounts() async throws -> [SimpleFINAccount] {
-        try await makeBankSyncProvider().accounts()
-    }
-
-    func loadBankSyncAccounts() async {
-        guard let database else {
-            bankSyncAccounts = []
-            return
-        }
-        var synced = (try? await database.fetchBankSyncAccounts()) ?? []
-
-        // Early builds wrote financeKit links into the synced columns, where
-        // the ids mean nothing to any other device and today's unlink path
-        // can no longer reach them. Adopt each into the device-local store
-        // first, then clear the columns the way any unlink would. Idempotent:
-        // once cleared, there are no strays left to find.
-        let strays = synced.filter { $0.source == .financeKit }
-        if !strays.isEmpty, currentBudgetId != nil {
-            var links = appleWalletLinks
-            for stray in strays where links[stray.id] == nil {
-                links[stray.id] = stray.externalAccountId
-            }
-            appleWalletLinks = links
-            if let syncClient {
-                for stray in strays {
-                    try? await syncClient.unlinkAccount(accountId: stray.id)
-                }
-                synced = (try? await database.fetchBankSyncAccounts()) ?? []
-            } else {
-                // No sync client yet (restored budget): serve the link from
-                // the local store now, leave the columns for a later load.
-                synced.removeAll { $0.source == .financeKit }
-            }
-        }
-
-        let walletLinks = appleWalletLinks
-        guard !walletLinks.isEmpty else {
-            bankSyncAccounts = synced
-            return
-        }
-        let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
-        let budgetAccounts = (try? await database.fetchAccounts()) ?? accounts
-        bankSyncAccounts = budgetAccounts.compactMap { account in
-            if let linked = syncedById[account.id] { return linked }
-            guard let externalId = walletLinks[account.id] else { return nil }
-            return BankSyncAccount(
-                id: account.id,
-                name: account.name,
-                externalAccountId: externalId,
-                syncSource: BankSyncSource.financeKit.rawValue,
-                offBudget: account.offBudget,
-                closed: account.closed
-            )
-        }
-    }
-
-    /// The bank feed an account is wired up to, if any.
-    func bankSyncAccount(forAccountId accountId: String) -> BankSyncAccount? {
-        bankSyncAccounts.first { $0.id == accountId }
-    }
-
-    /// Import new Wallet transactions without a button press. Runs where a
-    /// refresh already happens — foregrounding, pull-to-refresh, background —
-    /// and only for FinanceKit accounts: their reads are local and free, while
-    /// SimpleFIN downloads stay behind an explicit sync. Quiet on purpose: no
-    /// summary alert for a sync nobody asked for, and a device that can't
-    /// serve the feed skips; a manual sync still reports problems.
-    @discardableResult
-    func autoSyncAppleWalletAccounts() async -> [Transaction] {
-        let walletIds = bankSyncAccounts
-            .filter { $0.source == .financeKit && !$0.closed }
-            .map(\.id)
-        guard !walletIds.isEmpty else { return [] }
-        guard await appleWalletStore.availability() == .authorized else { return [] }
-        guard let result = try? await syncBankAccounts(accountIds: walletIds),
-              !result.importedTransactions.isEmpty else { return [] }
-
-        return result.importedTransactions
-    }
-
-    func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
-        if remote.source == .financeKit {
-            guard currentBudgetId != nil else { throw BudgetStoreError.syncNotConfigured }
-            var links = appleWalletLinks
-            links[accountId] = remote.id
-            appleWalletLinks = links
-            await loadBankSyncAccounts()
-            return
-        }
-        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        try await syncClient.linkAccount(
-            accountId: accountId,
-            externalAccountId: remote.id,
-            source: remote.source,
-            institutionId: remote.institutionId,
-            institutionName: remote.institutionName
-        )
-        var links = appleWalletLinks
-        links.removeValue(forKey: accountId)
-        appleWalletLinks = links
-        await refreshDataOnly()
-    }
-
-    func unlinkBankAccount(accountId: String) async throws {
-        if bankSyncAccount(forAccountId: accountId)?.source == .financeKit {
-            var links = appleWalletLinks
-            links.removeValue(forKey: accountId)
-            appleWalletLinks = links
-            await loadBankSyncAccounts()
-            return
-        }
-        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        try await syncClient.unlinkAccount(accountId: accountId)
-        await refreshDataOnly()
-    }
-
-    /// Download and import transactions for the linked accounts.
-    /// - Parameter accountIds: which accounts to sync; empty syncs every
-    ///   linked one, which is what the accounts tab's sync button does.
-    @discardableResult
-    func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
-        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        // A second run on top of the first would re-download the same window
-        // and race the first one's writes.
-        guard !isBankSyncing else { return BankSyncResult() }
-
-        let linked = bankSyncAccounts.filter {
-            !$0.closed && (accountIds.isEmpty || accountIds.contains($0.id))
-        }
-        let simpleFinTargets = linked.filter { $0.source == .simpleFin }
-        var walletTargets = linked.filter { $0.source == .financeKit }
-        guard !(simpleFinTargets.isEmpty && walletTargets.isEmpty) else { return BankSyncResult() }
-
-        // Nothing may suspend between the isBankSyncing guard above and this
-        // write — an await in that window would let a second call slip past
-        // the guard and import everything twice.
-        isBankSyncing = true
-        defer { isBankSyncing = false }
-
-        var result = BankSyncResult()
-
-        // Wallet links and Wallet data both live only on this device. Where
-        // FinanceKit can't serve them, skip quietly unless access was revoked.
-        if !walletTargets.isEmpty {
-            switch await appleWalletStore.availability() {
-            case .authorized:
-                break
-            case .denied:
-                result.problems.append(
-                    "Wallet access is turned off. Allow Actuali to read Wallet in Settings, then sync again."
-                )
-                walletTargets = []
-            case .unsupported, .notDetermined:
-                walletTargets = []
-            }
-        }
-
-        let targets = simpleFinTargets + walletTargets
-        guard !targets.isEmpty else { return result }
-
-        // Three windows. A first import (no history) starts where the person
-        // chose — by default, the day the budget file began. An account whose
-        // history doesn't reach that day yet asks for it again every run until
-        // it does; dedup keeps the overlap safe, and deriving the reach this
-        // way means no run has to be the one that lands it. Ongoing syncs only
-        // need the stretch since the account's earliest transaction, still
-        // capped at the rolling 90-day floor — history already covers
-        // everything older, so re-scanning it buys nothing.
-        let importStart = await resolvedBankSyncImportStartDay()
-        let lookbackFloor = DayDate.today()
-            .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
-        var oldestDates: [String: Int] = [:]
-        for target in targets {
-            // Both "the read failed" and "the account has no transactions"
-            // mean the same thing here: start at the chosen day.
-            oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
-        }
-        func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
-            accounts.map {
-                guard let oldest = oldestDates[$0.id] else {
-                    return BankSyncTarget(externalId: $0.externalAccountId, startDay: importStart)
-                }
-                let incremental = max(lookbackFloor, oldest)
-                // Reach past existing history only while the chosen day sits
-                // below it. Note this is not `min(importStart, incremental)`:
-                // the default day is older than the 90-day floor for any
-                // budget past its first quarter, and that form would widen
-                // every ongoing sync to it.
-                return BankSyncTarget(
-                    externalId: $0.externalAccountId,
-                    startDay: importStart < oldest ? importStart : incremental
-                )
-            }
-        }
-
-        // Each source downloads on its own; with both in play, one failing is
-        // that source's problem, not the sync's — its targets fall through the
-        // loop below as "failed" while the other source's still import.
-        var downloaded = BankSyncDownloadSet()
-        var simpleFinProblems: [String] = []
-        var walletProblems: [String] = []
-        if !simpleFinTargets.isEmpty {
-            do {
-                let provider = try await makeBankSyncProvider()
-                let set = try await provider.download(downloadTargets(simpleFinTargets))
-                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                simpleFinProblems += set.problems
-            } catch {
-                guard !walletTargets.isEmpty else { throw error }
-                simpleFinProblems.append(error.localizedDescription)
-            }
-        }
-        if !walletTargets.isEmpty {
-            do {
-                let set = try await AppleWalletProvider(store: appleWalletStore)
-                    .download(downloadTargets(walletTargets))
-                downloaded.byAccount.merge(set.byAccount) { first, _ in first }
-                walletProblems += set.problems
-            } catch {
-                guard !simpleFinTargets.isEmpty else { throw error }
-                walletProblems.append(error.localizedDescription)
-            }
-        }
-
-        result.problems += simpleFinProblems + walletProblems
-        // One rules/context fetch for the whole run, not one per row.
-        let prepared = await syncClient.prepareRules()
-        let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
-        var statuses: [(accountId: String, lastSync: String?, status: String)] = []
-
-        for target in targets {
-            guard let download = downloaded.byAccount[target.externalAccountId] else {
-                // A connection-level problem already explains why nothing came
-                // back; don't also tell them to relink an account that's fine.
-                let sourceHasProblems = target.source == .financeKit
-                    ? !walletProblems.isEmpty
-                    : !simpleFinProblems.isEmpty
-                if target.source == .simpleFin && !sourceHasProblems {
-                    result.problems.append(
-                        "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
-                    )
-                }
-                // Missing Wallet data is device-local state, so don't stamp it
-                // into synced status columns. SimpleFIN is a shared feed, so
-                // its missing/failed state belongs there.
-                if target.source != .financeKit {
-                    statuses.append((target.id, nil,
-                                     sourceHasProblems ? "failed" : "account-missing"))
-                }
-                continue
-            }
-            // A problem doesn't mean nothing came through — import whatever
-            // did, and say what went wrong alongside it.
-            if let problem = download.problem {
-                result.problems.append("\(target.name): \(problem)")
-            }
-            do {
-                let outcome = try await importBankSync(
-                    download,
-                    into: target,
-                    existingOldestDay: oldestDates[target.id],
-                    prepared: prepared
-                )
-                result.added += outcome.added
-                result.updated += outcome.updated
-                result.importedTransactions += outcome.inserted
-                result.accountsSynced += 1
-                statuses.append((target.id, syncedAt, download.status))
-            } catch {
-                result.problems.append("\(target.name): \(error.localizedDescription)")
-                statuses.append((target.id, nil, "failed"))
-            }
-        }
-
-        // The same two columns every other Actual client stamps, so the web
-        // UI's "last synced" and status badge reflect this run. Never worth
-        // failing the sync over — the transactions are already in.
-        try? await syncClient.recordBankSyncStatus(statuses)
-
-        await refreshDataOnly()
-        return result
-    }
-
-    /// Fold one account's download into the budget: match what we already
-    /// have, insert what we don't.
-    private func importBankSync(
-        _ download: BankSyncDownload,
-        into target: BankSyncAccount,
-        existingOldestDay: Int?,
-        prepared: SyncClient.PreparedRules
-    ) async throws -> (added: Int, updated: Int, inserted: [Transaction]) {
-        guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
-
-        // The provider already dropped anything older than this account's own
-        // start day — one request covers every account, so it reaches back as
-        // far as the hungriest of them.
-        var candidates = download.candidates
-
-        // The opening balance counts as an import too (upstream folds its id
-        // into `added`), so a first sync never reports one fewer than it wrote.
-        var added = 0
-        if existingOldestDay == nil {
-            added += try await insertStartingBalance(
-                for: target,
-                currentBalanceCents: download.currentBalanceCents,
-                candidates: candidates
-            ) ? 1 : 0
-        }
-        guard let earliest = candidates.map(\.date).min(),
-              let latest = candidates.map(\.date).max() else { return (added, 0, []) }
-
-        // Resolve payees by name without creating any: the payee pass compares
-        // ids, and a name the budget doesn't have yet can't match anything.
-        // The payees the inserts need are created below, once it's settled
-        // which downloads are actually new.
-        //
-        // One async read for the whole account rather than a synchronous
-        // `payee(named:)` per candidate — this runs on the main actor, and a
-        // 90-day first sync is hundreds of rows. Keyed case-insensitively, the
-        // same way `findOrCreatePayee` and upstream's `getPayeeByName` match,
-        // so a bank that shouts "AMAZON" still resolves the budget's "Amazon".
-        let payeeIdsByName = Dictionary(
-            (try? await database.fetchPayees())?.map { ($0.name.lowercased(), $0.id) } ?? [],
-            uniquingKeysWith: { first, _ in first }
-        )
-        for index in candidates.indices {
-            candidates[index].payeeId = payeeIdsByName[candidates[index].payeeName.lowercased()]
-        }
-
-        let radius = BankSyncReconciler.fuzzyMatchDayRadius
-        let window = try await database.bankSyncWindow(
-            accountId: target.id,
-            from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
-            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
-        )
-
-        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
-
-        try await syncClient.applyBankSyncUpdates(plan.updates)
-
-        // Oldest first: sort_order is stamped at insert, so inserting in date
-        // order leaves the newest transaction at the top of the account.
-        var inserted: [Transaction] = []
-        for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
-            let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
-            let transaction = Transaction(
-                id: UUID().uuidString,
-                accountId: target.id,
-                date: candidate.date,
-                amount: candidate.amount,
-                payeeId: payeeId,
-                payeeName: candidate.payeeName,
-                categoryId: nil,
-                categoryName: nil,
-                notes: candidate.notes,
-                cleared: candidate.cleared,
-                reconciled: false,
-                transferId: nil,
-                isParent: false,
-                parentId: nil,
-                tombstone: false,
-                sortOrder: nil,  // Set to Date.now() during insert
-                importedPayee: candidate.payeeName,
-                financialId: candidate.importedId
-            )
-            try await syncClient.createTransaction(transaction, prepared: prepared)
-            inserted.append(transaction)
-        }
-
-        // Anything older than the history this account already had was folded
-        // into its opening balance when that was worked out. Importing those
-        // rows now would count them twice, so the opening gives back exactly
-        // what they carry: a backfill moves no balance, only detail.
-        if let existingOldestDay {
-            try await absorbIntoStartingBalance(
-                for: target,
-                backfilled: inserted.filter { $0.date < existingOldestDay }
-            )
-        }
-
-        return (added + plan.inserts.count, plan.updates.count, inserted)
-    }
-
-    /// Keep a backfill balance-neutral. Without this the account drifts from
-    /// the bank by the sum of everything the backfill reached, permanently —
-    /// the opening balance was already standing in for those rows.
-    ///
-    /// Only an opening balance can have absorbed them, so an account without
-    /// one is left alone: there, the older rows are money nothing ever counted
-    /// and the balance is right to move. Nor does the opening's date change —
-    /// it carries income for an on-budget account, and moving it would rewrite
-    /// a past budget month to tidy up a running balance.
-    private func absorbIntoStartingBalance(
-        for target: BankSyncAccount, backfilled: [Transaction]
-    ) async throws {
-        guard let database, let syncClient else { return }
-        let carried = backfilled.reduce(0) { $0 + $1.amount }
-        guard carried != 0 else { return }
-        guard let openingId = try await database.startingBalanceTransactionId(
-            accountId: target.id
-        ), var opening = try await database.fetchTransaction(id: openingId) else { return }
-
-        opening.amount -= carried
-        try await syncClient.updateTransaction(opening, changedFields: ["amount"])
-    }
-
-    /// Give a freshly linked account the opening balance its imported history
-    /// starts from. Actual has no stored balance field, so without this the
-    /// account would be short everything that happened before the sync window
-    /// (upstream `processBankSyncDownload`, initial sync).
-    /// Returns whether a transaction was written (a zero opening writes none).
-    @discardableResult
-    private func insertStartingBalance(
-        for target: BankSyncAccount,
-        currentBalanceCents: Int?,
-        candidates: [BankSyncCandidate]
-    ) async throws -> Bool {
-        guard let syncClient, let balance = currentBalanceCents else { return false }
-        // The balance is as of now, so what the account opened with is what's
-        // left once everything about to be imported is taken back off it.
-        let opening = balance - candidates.reduce(0) { $0 + $1.amount }
-        guard opening != 0 else { return false }
-
-        let payee = try await findOrCreatePayee(name: "Starting Balance")
-        let category = target.offBudget ? nil : startingBalanceCategory()
-
-        let transaction = Transaction(
-            id: UUID().uuidString,
-            accountId: target.id,
-            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
-            amount: opening,
-            payeeId: payee.id,
-            payeeName: payee.name,
-            categoryId: category?.id,
-            categoryName: category?.name,
-            notes: nil,
-            cleared: true,
-            reconciled: false,
-            transferId: nil,
-            isParent: false,
-            parentId: nil,
-            tombstone: false,
-            sortOrder: nil,
-            importedPayee: nil,
-            startingBalanceFlag: true
-        )
-        // Rules never see an opening balance, same as account creation's.
-        try await syncClient.createTransaction(transaction, applyRules: false)
-        return true
     }
 
     /// Create a paired transfer between two accounts. Writes both legs with linked
@@ -3680,7 +2179,7 @@ final class BudgetStore: ObservableObject {
                 } catch {
                     // Skip the parent when its children couldn't be read —
                     // tombstoning it anyway would orphan them.
-                    self.error = "Failed to delete transaction: \(error.localizedDescription)"
+                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
                     continue
                 }
             }
@@ -3691,7 +2190,7 @@ final class BudgetStore: ObservableObject {
         do {
             try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
         } catch {
-            self.error = "Failed to delete transaction: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
     }
@@ -3703,7 +2202,7 @@ final class BudgetStore: ObservableObject {
 
     /// Duplicate multiple transactions.
     func duplicateTransactions(_ transactions: [Transaction]) async {
-        guard syncClient != nil else {
+        guard let syncClient else {
             self.error = BudgetStoreError.syncNotConfigured.localizedDescription
             return
         }
@@ -3722,7 +2221,7 @@ final class BudgetStore: ObservableObject {
             do {
                 try await duplicateSingleTransaction(tx, sortOrder: baseSortOrder + Double(index))
             } catch {
-                self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
+                self.error = String(format: String(localized: "Failed to duplicate transaction: %@"), error.localizedDescription)
             }
         }
         await refreshDataOnly()
@@ -3853,20 +2352,22 @@ final class BudgetStore: ObservableObject {
             } catch {
                 // Skip the parent when its children can't be read — a parent
                 // that flips without them leaves the split inconsistent.
-                self.error = "Failed to update cleared status: \(error.localizedDescription)"
+                self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
             }
         }
         // The reconciled lock is silent otherwise: say which part of the
         // selection stayed put.
         let locked = transactions.filter { $0.reconciled && $0.cleared != cleared }.count
         if locked > 0 {
-            self.error = "\(locked) reconciled transaction\(locked == 1 ? "" : "s") stayed locked. Unlock from the status dot to change them."
+            self.error = locked == 1
+                ? String(format: String(localized: "%lld reconciled transaction stayed locked. Unlock from the status dot to change it."), Int64(locked))
+                : String(format: String(localized: "%lld reconciled transactions stayed locked. Unlock from the status dot to change them."), Int64(locked))
         }
         guard !updated.isEmpty else { return }
         do {
             try await syncClient.updateTransactions(updated, changedFields: ["cleared"])
         } catch {
-            self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
     }
@@ -3892,7 +2393,7 @@ final class BudgetStore: ObservableObject {
                 )
             }
         } catch {
-            self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
     }
 
@@ -3917,16 +2418,6 @@ final class BudgetStore: ObservableObject {
         return try? await database.balanceBreakdown(accountId: accountId)
     }
 
-    /// Total charges in cents for an account within a billing cycle window.
-    func fetchCycleSpend(accountId: String, start: DayDate, end: DayDate) async -> Int {
-        guard let database else { return 0 }
-        return (try? await database.fetchAccountSpend(
-            accountId: accountId,
-            fromDate: start.yyyymmdd,
-            toDate: end.yyyymmdd
-        )) ?? 0
-    }
-
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
     /// in the account (reconciled = true), like upstream's lockTransactions.
     /// Returns the number of rows locked; 0 with `error` set on failure.
@@ -3948,7 +2439,7 @@ final class BudgetStore: ObservableObject {
             await refreshDataOnly()
             return locked.count
         } catch {
-            self.error = "Failed to lock transactions: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to lock transactions: %@"), error.localizedDescription)
             return 0
         }
     }
@@ -3982,7 +2473,7 @@ final class BudgetStore: ObservableObject {
             try await createTransaction(adjustment)
             return true
         } catch {
-            self.error = "Failed to create adjustment: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to create adjustment: %@"), error.localizedDescription)
             return false
         }
     }
@@ -4116,16 +2607,7 @@ final class BudgetStore: ObservableObject {
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
-      @discardableResult
-    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
-        var form = form
-        // The add form hides categories for off-budget accounts; normalize
-        // here too so stale picker or split state cannot bypass that rule.
-        if original == nil, form.type != .transfer,
-           offBudgetAccountIds.contains(form.accountId) {
-            form.categoryId = nil
-            form.splits = []
-        }
+    func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws {
         let date = Transaction.yyyymmdd(from: form.date)
         let notes = form.notes.isEmpty ? nil : form.notes
 
@@ -4140,7 +2622,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form, otherAccountId: toAccountId,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return nil
+                    return
                 }
                 try await updateTransfer(
                     original: original,
@@ -4152,7 +2634,7 @@ final class BudgetStore: ObservableObject {
                     cleared: form.cleared,
                     categoryId: form.categoryId
                 )
-                return nil
+                return
             }
             try await createTransfer(
                 fromAccountId: form.accountId,
@@ -4162,7 +2644,6 @@ final class BudgetStore: ObservableObject {
                 notes: notes,
                 cleared: form.cleared
             )
-            return nil
 
         case .split(let amountCents, let lines):
             if let original {
@@ -4174,7 +2655,7 @@ final class BudgetStore: ObservableObject {
                         amountCents: amountCents, lines: lines,
                         date: date, notes: notes
                     )
-                    return nil
+                    return
                 }
                 // Editing a plain transaction into a split: the original row
                 // becomes the parent and the form's lines its children.
@@ -4185,7 +2666,7 @@ final class BudgetStore: ObservableObject {
                     amountCents: amountCents, lines: lines,
                     date: date, notes: notes
                 )
-                return nil
+                return
             }
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: nil)
             let payeeName = form.payeeName.isEmpty ? nil : form.payeeName
@@ -4252,7 +2733,6 @@ final class BudgetStore: ObservableObject {
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
             }
-            return nil
 
         case .standard(let amountCents):
             let payeeId = try await resolvePayeeId(name: form.payeeName, editing: original)
@@ -4267,7 +2747,7 @@ final class BudgetStore: ObservableObject {
                         original: original, form: form,
                         amountCents: amountCents, date: date, notes: notes
                     )
-                    return nil
+                    return
                 }
                 // Split parents: the amount is the children's sum and the
                 // category lives on the children — never overwrite either
@@ -4295,7 +2775,6 @@ final class BudgetStore: ObservableObject {
                     try await cascadeSharedFieldsToChildren(
                         of: updated, originalPayeeId: original.payeeId)
                 }
-                return nil
             } else {
                 let transaction = Transaction(
                     id: UUID().uuidString,
@@ -4320,7 +2799,6 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
-return transaction.id
             }
         }
     }
@@ -4790,9 +3268,7 @@ return transaction.id
             lastSyncTime = Date()
             logger.debug("sync() completed, refreshing data...")
             await refreshDataOnly()
-            // Pull-to-refresh doubles as the Wallet feed's refresh.
-            let walletTransactions = await autoSyncAppleWalletAccounts()
-            await notifyAboutSyncedTransactions(additional: walletTransactions)
+            await notifyAboutSyncedTransactions()
         }
         await work.value
     }
@@ -4841,10 +3317,7 @@ return transaction.id
         // an occurrence another client already covered.
         if success { await postDueSchedulesIfNeeded() }
         await refreshDataOnly()
-        // Coming to the foreground is when Wallet has new purchases to hand
-        // over, so the feeds import here without anyone pressing sync.
-        let walletTransactions = await autoSyncAppleWalletAccounts()
-        await notifyAboutSyncedTransactions(additional: walletTransactions)
+        await notifyAboutSyncedTransactions()
     }
 
     /// Headless sync for background refresh. On a cold background launch the
@@ -4861,10 +3334,6 @@ return transaction.id
         await client.automaticSync()
         lastSyncTime = Date()
         await refreshDataOnly()
-        // Wallet feeds import in the same background window, so a purchase
-        // reaches the budget — and can notify — without the app being opened.
-        let walletTransactions = await autoSyncAppleWalletAccounts()
-        await notifyAboutSyncedTransactions(additional: walletTransactions)
         return true
     }
 
@@ -4876,18 +3345,14 @@ return transaction.id
         return (try? await database.fetchTransaction(id: id)) ?? nil
     }
 
-    /// Detect transactions that arrived via the sync just completed, combine
-    /// them with any locally imported Wallet rows, and post one summary
-    /// notification. Shared by the foreground and
+    /// Detect transactions that arrived via the sync just completed and post
+    /// the summary notification for them. Shared by the foreground and
     /// background sync paths so behavior is uniform: a foreground sync posts
     /// the same notification a background refresh would (NotificationRouter's
     /// willPresent shows it as a banner in-app) instead of silently consuming
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
-    func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
-        await notifyAboutTransactions(await detectNewTransactionsForNotification() + additional)
-    }
-
-    private func notifyAboutTransactions(_ fresh: [Transaction]) async {
+    func notifyAboutSyncedTransactions() async {
+        let fresh = await detectNewTransactionsForNotification()
         // The sync that just ran refreshed the accounts cache, so names are
         // current even on a cold background launch.
         let accountNames = accounts.reduce(into: [String: String]()) {
@@ -4964,7 +3429,8 @@ return transaction.id
 
     @discardableResult
     private func postDueSchedulesIfNeeded() async -> Int {
-        guard let client = syncClient,
+        guard postScheduledTransactions,
+              let client = syncClient,
               let database,
               let budgetId = currentBudgetId else { return 0 }
         // Lazy-create; no suspension between this check and the cache write,
@@ -4987,9 +3453,9 @@ return transaction.id
         }
         return count
     }
-    
+
     // MARK: - Scheduled Transactions
-    
+
     /// Refresh the schedules cache and recompute every status. Statuses depend
     /// on today's date as well as on transactions, so they are derived here on
     /// every refresh rather than cached against a schedule row.
@@ -5041,7 +3507,7 @@ return transaction.id
         }
         return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
     }
-    
+
     @discardableResult
     func createSchedule(fields: ScheduleFormFields) async throws -> String {
         try await createSchedules([fields])[0]
@@ -5085,7 +3551,7 @@ return transaction.id
         try await syncClient.deleteSchedule(schedule)
         await refreshDataOnly()
     }
-    
+
     func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.skipScheduleNextDate(schedule)
@@ -5127,7 +3593,7 @@ return transaction.id
         try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
         await refreshDataOnly()
     }
-    
+
     /// Scan transaction history for repeating payments.
     func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
         guard let database else { return [] }
@@ -5158,10 +3624,8 @@ return transaction.id
     /// month (@State); this mirrors the latest request so an older in-flight
     /// fetch can't publish over a newer one after its await.
     private var requestedBudgetMonth: String?
-    private var budgetMonthRequestGeneration = 0
 
     func fetchBudgetMonth(_ month: String) async {
-        budgetMonthRequestGeneration += 1
         requestedBudgetMonth = month
         do {
             let fetched = try await database?.fetchBudgetMonth(month: month)
@@ -5189,7 +3653,7 @@ return transaction.id
             guard let previous = Self.shiftBudgetMonth(month, by: -1) else { break }
             month = previous
             guard let budget = try? await database.fetchBudgetMonth(month: previous),
-                  let priorCategory = budget.allCategoryBudgets.first(where: {
+                  let priorCategory = budget.categoryBudgets.first(where: {
                       $0.categoryId == category.categoryId
                   }) else { continue }
             result.append(priorCategory)
@@ -5238,30 +3702,6 @@ return transaction.id
         await fetchBudgetMonth(month)
     }
 
-    /// Turn "rollover overspending" on or off for a category (GH #372), then
-    /// refetch the month so the published flag and Available recompute.
-    /// Mirrors the web's balance menu: the flag is written from this month
-    /// through the last month the web would have created, so both clients
-    /// agree on which rows carry it. `now` pins the range's end for tests.
-    func setBudgetCarryover(month: String, categoryId: String, enabled: Bool, now: Date = Date()) async throws {
-        guard let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        try await syncClient.setBudgetCarryover(
-            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
-        await fetchBudgetMonth(month)
-    }
-
-    /// The months upstream `setCategoryCarryover` flags: `month` through the
-    /// latest month in the web's sheet, which `createAllBudgets` extends to
-    /// twelve months past today (`getBudgetRange`). A month already beyond
-    /// that gets flagged alone. Pure, so it stays callable off the main actor.
-    nonisolated static func carryoverMonths(from month: String, now: Date = Date()) -> [String] {
-        let latest = BudgetMonthMath.addMonths(BudgetMonthMath.currentMonth(now), 12)
-        let count = max(BudgetMonthMath.differenceInCalendarMonths(latest, month), 0)
-        return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
-    }
-
     /// Move budgeted funds between categories (GH #128), nil meaning the
     /// month's "To Budget" pool on that side. Writes through the sync engine
     /// (optimistic local-first), then refetches the month so both categories'
@@ -5284,431 +3724,6 @@ return transaction.id
             amount: amountCents
         )
         await fetchBudgetMonth(month)
-    }
-
-    // MARK: - Goal Templates (budget goals, GH #371)
-
-    /// Mirror of the web's `flags.goalTemplatesEnabled` synced preference.
-    /// Gates all goal UI, exactly as the web's feature flag does.
-    @Published private(set) var goalTemplatesEnabled = false
-
-    enum GoalTemplateAction {
-        case check
-        case apply
-        case overwrite
-    }
-
-    enum GoalTemplateOutcome: Equatable {
-        case applied(Int)
-        case upToDate
-        case checkPassed
-        case errors([String])
-        case failed(String)
-    }
-
-    /// Flip the synced feature flag (the web's Settings → Experimental
-    /// features toggle), so all clients agree on whether goals are on.
-    func setGoalTemplatesEnabled(_ enabled: Bool) async {
-        guard let syncClient else { return }
-        do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false")
-            goalTemplatesEnabled = enabled
-        } catch {
-            self.error = "Failed to update goal templates setting: \(error.localizedDescription)"
-        }
-    }
-
-    /// Check/apply/overwrite budget templates for a month — the port of
-    /// upstream's `budget/check-templates`, `budget/apply-goal-template` and
-    /// `budget/overwrite-goal-template` handlers. Passing `categoryId` scopes
-    /// the run to one category (`budget/apply-single-category-template`),
-    /// which always overwrites, hidden or not — same as the web.
-    func runGoalTemplates(
-        month: String,
-        action: GoalTemplateAction,
-        categoryId: String? = nil
-    ) async -> GoalTemplateOutcome {
-        guard let database, let syncClient else {
-            return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
-        }
-        do {
-            let rows = try await database.fetchGoalTemplateCategories()
-            let schedules = try await database.fetchSchedules()
-                .filter { $0.name?.isEmpty == false }
-                .map {
-                    GoalScheduleInfo(
-                        id: $0.id, name: $0.name, completed: $0.completed,
-                        amount: $0.amount, dateCondition: $0.dateCondition)
-                }
-
-            // Notes → templates. UI-managed categories (web template editor)
-            // keep their stored goal_def untouched.
-            var parsedNotes: [String: [GoalTemplate]] = [:]
-            for row in rows where !row.sourceIsUI {
-                if let note = row.note, GoalTemplateNotes.noteHasTemplates(note) {
-                    let templates = GoalTemplateNotes.parseTemplates(fromNote: note)
-                    if !templates.isEmpty { parsedNotes[row.id] = templates }
-                }
-            }
-
-            if action == .check {
-                return checkOutcome(rows: rows, parsedNotes: parsedNotes, schedules: schedules)
-            }
-
-            let scope: (String) -> Bool
-            if let categoryId {
-                scope = { $0 == categoryId }
-            } else {
-                scope = { _ in true }
-            }
-
-            // Store the parsed notes into goal_def (upstream storeTemplates),
-            // skipping unchanged categories to avoid CRDT churn — the end
-            // state is identical.
-            var storeUpdates: [(categoryId: String, goalDef: String?, source: String)] = []
-            for row in rows where scope(row.id) {
-                guard let templates = parsedNotes[row.id] else { continue }
-                let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:))
-                if stored != templates, let encoded = GoalTemplate.encodeArray(templates) {
-                    storeUpdates.append((row.id, encoded, "notes"))
-                }
-            }
-            try await syncClient.storeGoalDefs(storeUpdates)
-
-            // Orphaned defs: notes-managed categories whose notes lost their
-            // templates (upstream resetCategoryGoalDefsWithNoTemplates).
-            let resetIds = rows.filter {
-                scope($0.id) && !$0.sourceIsUI && $0.goalDef != nil && parsedNotes[$0.id] == nil
-            }.map(\.id)
-            try await database.resetGoalDefs(categoryIds: resetIds)
-
-            // Effective templates per category after the store above.
-            var categoryTemplates: [String: [GoalTemplate]] = parsedNotes
-            for row in rows where row.sourceIsUI {
-                if let stored = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)),
-                   !stored.isEmpty {
-                    categoryTemplates[row.id] = stored
-                }
-            }
-            if let categoryId {
-                categoryTemplates = categoryTemplates.filter { $0.key == categoryId }
-            }
-
-            let sheet = try await database.fetchGoalTemplateSheet(month: month)
-            let allCategories = rows.map {
-                GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
-            }
-            let processCategories: [GoalTemplateCategory]
-            if let categoryId {
-                processCategories = rows
-                    .filter { $0.id == categoryId }
-                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
-            } else {
-                processCategories = rows
-                    .filter { !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
-                    .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
-            }
-
-            let result = GoalTemplateEngine.run(
-                month: month,
-                force: action == .overwrite || categoryId != nil,
-                categoryTemplates: categoryTemplates,
-                categories: processCategories,
-                allCategories: allCategories,
-                schedules: schedules,
-                sheet: sheet)
-
-            switch result {
-            case .errors(let errors):
-                return .errors(errors)
-            case .upToDate(let goalResets):
-                try await syncClient.applyGoalTemplateWrites(
-                    month: month, budgets: [], goals: goalResets)
-                if !goalResets.isEmpty { await fetchBudgetMonth(month) }
-                return .upToDate
-            case .applied(let count, let budgets, let goals):
-                try await syncClient.applyGoalTemplateWrites(
-                    month: month, budgets: budgets, goals: goals)
-                await fetchBudgetMonth(month)
-                return .applied(count)
-            }
-        } catch {
-            logger.error("Goal template run failed: \(error.localizedDescription, privacy: .public)")
-            return .failed(error.localizedDescription)
-        }
-    }
-
-    // MARK: Automation editor (goalTemplatesUIEnabled beta)
-
-    /// Mirror of the web's `flags.goalTemplatesUIEnabled` synced preference —
-    /// gates the visual automations editor, on top of goalTemplatesEnabled.
-    @Published private(set) var goalTemplatesUIEnabled = false
-
-    func setGoalTemplatesUIEnabled(_ enabled: Bool) async {
-        guard let syncClient else { return }
-        do {
-            try await syncClient.setPreference(
-                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false")
-            goalTemplatesUIEnabled = enabled
-        } catch {
-            self.error = "Failed to update automations setting: \(error.localizedDescription)"
-        }
-    }
-
-    /// Everything the automations editor needs for one category — the port
-    /// of BudgetAutomationsModal's load phase.
-    struct AutomationEditorData {
-        var categoryName = ""
-        var entries: [AutomationEntry] = []
-        var cleanup = CleanupConfig()
-        /// Notes-managed category: saving from the editor migrates it to UI
-        /// management, with a warning shown first (web parity).
-        var needsMigration = false
-        /// The note's original template/cleanup lines, for the warning box.
-        var originalNoteLines = ""
-        /// Templates contain an error row the editor can't represent — the
-        /// web refuses to open the editor in this state.
-        var hasUnsupportedTemplates = false
-        var existingNote = ""
-        var schedules: [GoalScheduleInfo] = []
-        /// Percentage sources: special aliases plus income categories.
-        var incomeSources: [(id: String, name: String)] = []
-        var categoryNames: [String: String] = [:]
-        var cleanupGroups: [(id: String, name: String)] = []
-        /// Dry-run inputs, fetched once at load: unsaved edits stay local to
-        /// the editor, so the sheet snapshot can't drift while it's open.
-        var category = GoalTemplateCategory(id: "", name: "", isIncome: false)
-        var allCategories: [GoalTemplateCategory] = []
-        var sheet = GoalTemplateSheet()
-    }
-
-    func loadAutomationEditor(categoryId: String, month: String) async throws -> AutomationEditorData {
-        guard let database else { throw BudgetStoreError.syncNotConfigured }
-        let rows = try await database.fetchGoalTemplateCategories()
-        guard let row = rows.first(where: { $0.id == categoryId }) else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-
-        var data = AutomationEditorData()
-        data.categoryName = row.name
-        data.needsMigration = !row.sourceIsUI
-        data.existingNote = row.note ?? ""
-        data.schedules = try await database.fetchSchedules()
-            .filter { $0.name?.isEmpty == false }
-            .map {
-                GoalScheduleInfo(
-                    id: $0.id, name: $0.name, completed: $0.completed,
-                    amount: $0.amount, dateCondition: $0.dateCondition)
-            }
-        data.categoryNames = Dictionary(
-            uniqueKeysWithValues: rows.map { ($0.id, $0.name) })
-        data.incomeSources = rows.filter(\.isIncome).map { ($0.id, $0.name) }
-        data.cleanupGroups = try await database.fetchCleanupGroups()
-        data.category = GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome)
-        data.allCategories = rows.map {
-            GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
-        }
-        data.sheet = try await database.fetchGoalTemplateSheet(month: month)
-
-        var templates: [GoalTemplate]
-        var cleanup: [CleanupTemplate]
-        if data.needsMigration {
-            templates = (row.note).map(GoalTemplateNotes.parseTemplates(fromNote:)) ?? []
-            let parsedRows = (row.note).map(CleanupNotes.parseRows(fromNote:)) ?? []
-            // Resolve note-based pool names locally. New or tombstoned pools
-            // are written only if the user saves the editor.
-            let neededNames = Set(parsedRows.compactMap(\.groupName))
-            var nameToId = Dictionary(
-                data.cleanupGroups.map { ($0.name.lowercased(), $0.id) },
-                uniquingKeysWith: { first, _ in first })
-            for name in neededNames where nameToId[name.lowercased()] == nil {
-                let id = try await resolveCleanupGroup(name: name)
-                nameToId[name.lowercased()] = id
-                data.cleanupGroups.append((id, name))
-            }
-            cleanup = CleanupNotes.toTemplates(parsedRows) { nameToId[$0.lowercased()] }
-            data.originalNoteLines = (row.note ?? "")
-                .components(separatedBy: "\n")
-                .filter {
-                    let trimmed = $0.trimmingCharacters(in: .whitespaces)
-                    return trimmed.hasPrefix("#template") || trimmed.hasPrefix("#goal")
-                        || trimmed.lowercased().hasPrefix("#cleanup")
-                }
-                .joined(separator: "\n")
-        } else {
-            templates = row.goalDef.flatMap(GoalTemplate.decodeArray(fromJSON:)) ?? []
-            cleanup = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
-        }
-
-        data.hasUnsupportedTemplates = templates.contains { $0.type == .error }
-
-        // Text templates address income categories by name; the editor works
-        // with ids (web resolves the same way before building entries).
-        // Duplicate names are possible (categories in different groups);
-        // resolve to the first match rather than trapping.
-        let incomeNameToId = Dictionary(
-            data.incomeSources.map { ($0.name.lowercased(), $0.id) },
-            uniquingKeysWith: { first, _ in first })
-        templates = templates.map { template in
-            guard template.type == .percentage, let source = template.category,
-                  let id = incomeNameToId[source.lowercased()] else { return template }
-            var resolved = template
-            resolved.category = id
-            return resolved
-        }
-
-        if !data.hasUnsupportedTemplates {
-            data.entries = BudgetAutomations.migrateToEntries(templates, schedules: data.schedules)
-        }
-        data.cleanup = CleanupConfig.from(cleanup: cleanup)
-        return data
-    }
-
-    /// Projected budgeted amount and per-entry contributions — the editor's
-    /// live "Estimated monthly total" (upstream dry-run-category-template).
-    /// Pure computation over the load-time snapshot, so it can run on every
-    /// (debounced) edit without touching the database.
-    func dryRunAutomations(
-        month: String,
-        data: AutomationEditorData,
-        templates: [GoalTemplate]
-    ) -> (budgeted: Int, perTemplate: [Int]) {
-        GoalTemplateEngine.dryRun(
-            month: month,
-            category: data.category,
-            templates: templates,
-            allCategories: data.allCategories,
-            schedules: data.schedules,
-            sheet: data.sheet)
-    }
-
-    /// Save the editor's automations as UI-managed (source 'ui'), which is
-    /// also what completes a notes → UI migration.
-    func saveAutomations(
-        categoryId: String,
-        templates: [GoalTemplate],
-        cleanup: [CleanupTemplate],
-        cleanupGroups: [(id: String, name: String)]
-    ) async throws {
-        guard let database, let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        try await persistCleanupGroups(cleanup, named: cleanupGroups)
-        try await syncClient.storeCategoryAutomations(
-            categoryId: categoryId,
-            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
-            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
-            source: "ui")
-        try await database.tombstoneOrphanCleanupGroups()
-    }
-
-    /// Resolve a cleanup pool for local editor state without writing it.
-    func resolveCleanupGroup(name: String) async throws -> String {
-        guard let database else { throw BudgetStoreError.syncNotConfigured }
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        if let id = try await database.findCleanupGroupId(named: trimmed) {
-            return id
-        }
-        return UUID().uuidString.lowercased()
-    }
-
-    private func persistCleanupGroups(
-        _ cleanup: [CleanupTemplate],
-        named groups: [(id: String, name: String)]
-    ) async throws {
-        guard let database, let syncClient else {
-            throw BudgetStoreError.syncNotConfigured
-        }
-        let referenced = Set(cleanup.compactMap(\.groupId))
-        let live = Set(try await database.fetchCleanupGroups().map(\.id))
-        for group in groups where referenced.contains(group.id) && !live.contains(group.id) {
-            try await syncClient.upsertCleanupGroup(id: group.id, name: group.name)
-        }
-    }
-
-    /// The un-migrate note preview: existing note merged with the rendered
-    /// `#template`/`#goal`/`#cleanup` lines the automations produce.
-    func renderUnmigrateNote(
-        data: AutomationEditorData,
-        templates: [GoalTemplate],
-        cleanup: [CleanupTemplate]
-    ) -> String {
-        let categoryName: (String) -> String? = { data.categoryNames[$0] }
-        let groupName: (String) -> String? = { id in
-            data.cleanupGroups.first { $0.id == id }?.name
-        }
-        let rendered = [
-            AutomationSentences.renderNoteTemplates(templates, categoryName: categoryName),
-            CleanupNotes.toNotes(cleanup, groupName: groupName),
-        ].filter { !$0.isEmpty }.joined(separator: "\n")
-        return AutomationSentences.mergeIntoNote(
-            existingNote: data.existingNote, rendered: rendered)
-    }
-
-    /// Hand a UI-managed category back to notes: save the edited note, clear
-    /// the UI defs, and re-derive goal_def/cleanup_def from the note — the
-    /// web's "Save notes & un-migrate".
-    func unmigrateAutomations(categoryId: String, note: String) async throws {
-        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        try await syncClient.setNote(id: categoryId, note: note)
-
-        let templates = GoalTemplateNotes.noteHasTemplates(note)
-            ? GoalTemplateNotes.parseTemplates(fromNote: note) : []
-        let cleanupRows = CleanupNotes.parseRows(fromNote: note)
-        var cleanup: [CleanupTemplate] = []
-        var cleanupGroups: [(id: String, name: String)] = []
-        if !cleanupRows.isEmpty {
-            let neededNames = Set(cleanupRows.compactMap(\.groupName))
-            var nameToId: [String: String] = [:]
-            if let database {
-                for group in try await database.fetchCleanupGroups() {
-                    nameToId[group.name.lowercased()] = group.id
-                    cleanupGroups.append(group)
-                }
-            }
-            for name in neededNames where nameToId[name.lowercased()] == nil {
-                let id = try await resolveCleanupGroup(name: name)
-                nameToId[name.lowercased()] = id
-                cleanupGroups.append((id, name))
-            }
-            cleanup = CleanupNotes.toTemplates(cleanupRows) { nameToId[$0.lowercased()] }
-            try await persistCleanupGroups(cleanup, named: cleanupGroups)
-        }
-
-        try await syncClient.storeCategoryAutomations(
-            categoryId: categoryId,
-            goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
-            cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
-            source: "notes")
-        try await database?.tombstoneOrphanCleanupGroups()
-    }
-
-    /// Port of upstream `checkTemplateNotes`: surface unparseable lines and
-    /// schedule templates naming schedules that don't exist.
-    private func checkOutcome(
-        rows: [BudgetDatabase.GoalTemplateCategoryRow],
-        parsedNotes: [String: [GoalTemplate]],
-        schedules: [GoalScheduleInfo]
-    ) -> GoalTemplateOutcome {
-        let scheduleNames = Set(schedules.compactMap(\.name))
-        var errors: [String] = []
-        for row in rows {
-            guard let templates = parsedNotes[row.id] else { continue }
-            for template in templates {
-                if template.type == .error {
-                    if let message = template.error, message.contains("adjustment") {
-                        errors.append("\(row.name): \(template.line ?? "")\nError: \(message)")
-                    } else {
-                        errors.append("\(row.name): \(template.line ?? "")")
-                    }
-                } else if template.type == .schedule, let name = template.name,
-                          !scheduleNames.contains(name) {
-                    errors.append("\(row.name): Schedule \"\(name)\" does not exist")
-                }
-            }
-        }
-        return errors.isEmpty ? .checkPassed : .errors(errors)
     }
 
     // MARK: - Notes
@@ -5737,7 +3752,7 @@ return transaction.id
         }
         try await syncClient.setNote(id: id, note: note)
     }
-    
+
     // MARK: - Rules
 
     /// Live rules in engine order (GH #222). Loaded on demand by the Rules
@@ -5866,7 +3881,7 @@ return transaction.id
             }
         }
     }
-    
+
     /// Names for everything a rule summary might reference.
     var ruleSummary: RuleSummary {
         let categories = categoryGroups.flatMap(\.categories)
@@ -5883,7 +3898,7 @@ return transaction.id
 
     // MARK: - Currency Formatting
 
-    /// Format an amount in cents to a currency string using the budget's currency.
+    /// Format an amount in cents to a currency string using the budget's currency
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
@@ -5903,14 +3918,6 @@ return transaction.id
     private static let yearMonthFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM"
-        return formatter
-    }()
-
-    /// Upstream's currentDay() format, used for metadata.json's lastUploaded.
-    private static let yearMonthDayFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "yyyy-MM-dd"
         return formatter
     }()
 

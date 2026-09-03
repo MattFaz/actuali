@@ -43,7 +43,7 @@ struct NetWorthWidgetView: View {
                 .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
-                Text("Not enough data")
+                Text(String(localized: "Not enough data"))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

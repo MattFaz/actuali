@@ -112,7 +112,7 @@ struct BackgroundRefreshTests {
         #expect(task.completions == [true])
     }
 
-    @Test @MainActor func handleExpirationCancelsSyncAndStillCompletes() async {
+    @Test func handleExpirationCancelsSyncAndStillCompletes() async {
         let task = TaskSpy()
         let defaults = makeIsolatedDefaults()
 
@@ -140,7 +140,7 @@ struct BackgroundRefreshTests {
 
 private final class SubmitSpy: BackgroundTaskRequesting {
     var submitted: [BGTaskRequest] = []
-    var error: (any Error)?
+    var error: Error?
 
     func submit(_ taskRequest: BGTaskRequest) throws {
         if let error { throw error }

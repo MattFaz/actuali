@@ -27,7 +27,7 @@ struct DiscoverSchedulesView: View {
                             Text(payeeName(proposal.payeeId))
                                 .font(.body.weight(.medium))
                             Spacer()
-                            Text(budgetStore.displayBalance(proposal.amount))
+                            Text(budgetStore.formatCurrency(proposal.amount))
                                 .monospacedDigit()
                         }
                         Text(ScheduleDescription.recurring(proposal.config))

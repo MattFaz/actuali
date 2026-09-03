@@ -20,21 +20,22 @@ enum SyncError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Sync isn't configured. Open a budget first."
+            return String(localized: "Sync isn't configured. Open a budget first.")
         case .offline:
-            return "You're offline. Sync will resume automatically."
+            return String(localized: "You're offline. Sync will resume automatically.")
         case .outOfSync:
-            return "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover."
+            return String(format: String(localized: "Local data has drifted from the server and couldn't reconcile after several attempts. Tap %@ below to recover."),
+                          String(localized: "Reset Sync State"))
         case .encodingFailed:
-            return "Failed to encode the sync request."
+            return String(localized: "Failed to encode the sync request.")
         case .serverError(let message):
-            return "Server error: \(message)"
+            return String(format: String(localized: "Server error: %@"), message)
         case .budgetTableMissing:
-            return "This budget file has no budget table to write to."
+            return String(localized: "This budget file has no budget table to write to.")
         case .notesTableMissing:
-            return "This budget file has no notes table to write to."
+            return String(localized: "This budget file has no notes table to write to.")
         case .rulesTableMissing:
-            return "This budget file has no rules table to write to."
+            return String(localized: "This budget file has no rules table to write to.")
         }
     }
 }
@@ -92,10 +93,7 @@ actor SyncClient {
     /// client authors. NewTransactionDetector uses it to skip local writes.
     nonisolated var nodeId: String { clock.node }
 
-    // CurrentValueSubject synchronizes send/subscribe internally, so it's safe to
-    // touch from any isolation domain — but it isn't Sendable, so Swift 6 needs the
-    // `unsafe` opt-out to let it be nonisolated.
-    nonisolated(unsafe) let stateSubject = CurrentValueSubject<SyncState, Never>(.idle)
+    nonisolated let stateSubject = CurrentValueSubject<SyncState, Never>(.idle)
     nonisolated var statePublisher: AnyPublisher<SyncState, Never> {
         stateSubject.eraseToAnyPublisher()
     }
@@ -500,157 +498,6 @@ actor SyncClient {
         await automaticSync()
     }
     
-    // MARK: - Bank Sync
-
-    /// Point an account at a provider's account, so later syncs know where to
-    /// download its transactions from (optimistic local-first).
-    ///
-    /// Writes the same three columns the web UI's own link writes —
-    /// `account_id`, `account_sync_source`, `bank` — plus the institution row
-    /// `bank` points at, reusing an existing row for the institution when
-    /// there is one (upstream `findOrCreateBank`). Both clients therefore see
-    /// the same link, and either can sync or unlink the account.
-    func linkAccount(
-        accountId: String,
-        externalAccountId: String,
-        source: BankSyncSource,
-        institutionId: String,
-        institutionName: String
-    ) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("linkAccount() - id: \(accountId, privacy: .private)")
-
-        let existingBank = try await database.bank(withBankId: institutionId)
-        let bank = existingBank ?? Bank(
-            id: UUID().uuidString, bankId: institutionId, name: institutionName
-        )
-
-        var messages = try await messageGenerator.messages(
-            dataset: "accounts",
-            row: accountId,
-            fields: [
-                ("account_id", externalAccountId),
-                ("account_sync_source", source.rawValue),
-                ("bank", bank.id)
-            ]
-        )
-        if existingBank == nil {
-            messages += try await messageGenerator.messagesForInsert(bank)
-        }
-
-        for msg in try database.applyBankSyncLink(
-            accountId: accountId,
-            externalAccountId: externalAccountId,
-            syncSource: source.rawValue,
-            bank: bank,
-            messages: messages
-        ) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        await automaticSync()
-    }
-
-    /// Cut an account loose from its bank feed. The transactions it already
-    /// imported stay — only the link goes, matching the web UI's unlink, which
-    /// clears the cached balances and the status badge along with the pointer.
-    func unlinkAccount(accountId: String) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("unlinkAccount() - id: \(accountId, privacy: .private)")
-
-        let messages = try await messageGenerator.messages(
-            dataset: "accounts",
-            row: accountId,
-            fields: [
-                ("account_id", nil),
-                ("account_sync_source", nil),
-                ("bank", nil),
-                ("balance_current", nil),
-                ("balance_available", nil),
-                ("balance_limit", nil),
-                ("bank_sync_status", nil)
-            ]
-        )
-
-        for msg in try database.applyBankSyncUnlink(accountId: accountId, messages: messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        await automaticSync()
-    }
-
-    /// Record what a bank sync did on each account it touched — `last_sync`
-    /// and `bank_sync_status`, the two columns every Actual client stamps, so
-    /// a sync run here reads the same in the web UI.
-    func recordBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String)]
-    ) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        guard !statuses.isEmpty else { return }
-
-        var messages: [CRDTMessage] = []
-        for entry in statuses {
-            var fields: [(column: String, value: (any Sendable)?)] = [
-                ("bank_sync_status", entry.status)
-            ]
-            // Only stamp last_sync when there was a sync to stamp — see
-            // BudgetDatabase.applyBankSyncStatus.
-            if let lastSync = entry.lastSync {
-                fields.append(("last_sync", lastSync))
-            }
-            messages += try await messageGenerator.messages(
-                dataset: "accounts", row: entry.accountId, fields: fields
-            )
-        }
-
-        for msg in try database.applyBankSyncStatus(statuses, messages: messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
-    /// Fold a bank download into the transactions it matched (optimistic
-    /// local-first). One merkle/clock save and one sync for the whole batch,
-    /// like `updateTransactions`.
-    func applyBankSyncUpdates(_ updates: [BankSyncUpdate]) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        guard !updates.isEmpty else { return }
-
-        logger.debug("applyBankSyncUpdates() - \(updates.count, privacy: .public) rows")
-
-        var messages: [CRDTMessage] = []
-        for update in updates {
-            messages += try await messageGenerator.messages(
-                dataset: "transactions",
-                row: update.existingId,
-                fields: [
-                    ("financial_id", update.importedId),
-                    ("description", update.payeeId),
-                    ("imported_description", update.importedPayee),
-                    ("notes", update.notes),
-                    ("cleared", update.cleared ? 1 : 0)
-                ]
-            )
-        }
-
-        for msg in try database.applyBankSyncUpdates(updates, messages: messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
     /// Create a category group (optimistic local-first). Placement, the
     /// duplicate-name check and the row itself are the database's job — this
     /// turns what it wrote into CRDT messages.
@@ -722,55 +569,6 @@ actor SyncClient {
         await automaticSync()
 
         return insertion.category
-    }
-
-    /// Rename a category through the normal CRDT path so the local optimistic
-    /// edit and every synced client converge on the same name.
-    func renameCategory(id: String, name: String) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        try database.validateCategoryRename(id: id, name: name)
-        let messages = try await messageGenerator.messages(
-            dataset: Category.datasetName,
-            row: id,
-            fields: [("name", name)]
-        )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
-            merkle = merkle.inserting(message.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        await automaticSync()
-    }
-
-    func setCategoryHidden(id: String, hidden: Bool) async throws {
-        try await setHidden(dataset: Category.datasetName, id: id, hidden: hidden)
-    }
-
-    func setCategoryGroupHidden(id: String, hidden: Bool) async throws {
-        try await setHidden(dataset: CategoryGroup.datasetName, id: id, hidden: hidden)
-    }
-
-    private func setHidden(dataset: String, id: String, hidden: Bool) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        let messages = try await messageGenerator.messages(
-            dataset: dataset,
-            row: id,
-            fields: [("hidden", hidden ? 1 : 0)]
-        )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
-            merkle = merkle.inserting(message.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        await automaticSync()
     }
 
     /// Record a location for a payee (optimistic local-first). Callers are
@@ -854,53 +652,36 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
-    // MARK: - Synced Preferences
-
-    /// Generic writer for any preference key in Actual's `preferences` table.
-    /// Emits CRDT messages, applies locally, updates the Merkle tree, and pushes to server in background.
-    /// Passing `value: nil` sets the preference value to null / clears it.
-    func setPreference(key: String, value: String?) async throws {
+    /// Persist the currency code to the budget's `preferences` table (Actual's
+    /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
+    /// other clients. Without this, the picker only ever wrote to
+    /// UserDefaults — the value the app treats as authoritative on every DB
+    /// load was never updated, so it silently reverted to whatever the
+    /// server/PWA last set (GH #59).
+    func updateCurrencyCode(_ code: String) async throws {
         guard let database else { throw SyncError.notConfigured }
 
-        logger.debug("setPreference() - key: \(key, privacy: .public)")
+        logger.debug("updateCurrencyCode() - code: \(code, privacy: .public)")
 
-        let fields: [(column: String, value: (any Sendable)?)] = [("value", value)]
-        let messages = try await messageGenerator.messages(dataset: "preferences", row: key, fields: fields)
+        let fields: [(column: String, value: Any?)] = [("value", code)]
+        let messages = try await messageGenerator.messages(dataset: "preferences", row: "defaultCurrencyCode", fields: fields)
+        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
+        // 2. Apply locally (optimistic) through the same LWW upsert incoming
+        //    messages use, so a local edit and the identical edit arriving
+        //    from another device converge byte-for-byte.
         try database.applyMessages(messages)
 
+        // 3. Store messages and update merkle
         for msg in try database.insertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
         try saveClock()
+        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
+        // 4. Push to the server in the background
         scheduleAutomaticSync()
-    }
-
-    /// Persist the currency code to the budget's `preferences` table (Actual's
-    /// `defaultCurrencyCode`), so the choice survives a relaunch and syncs to
-    /// other clients (GH #59).
-    func updateCurrencyCode(_ code: String) async throws {
-        try await setPreference(key: "defaultCurrencyCode", value: code)
-    }
-
-    /// Persists or clears a credit card account configuration in the budget's `preferences` table
-    /// under `actuali:credit_card:<accountId>`, so it syncs across all devices.
-    ///
-    /// Upstream compatibility: Actual's `preferences` table (`packages/loot-core/src/server/preferences/app.ts`)
-    /// is a key-value store (`id TEXT PRIMARY KEY, value TEXT`) that treats unknown preference keys as passthrough
-    /// synced items without schema constraints or client-side side-effects.
-    func setCreditCardConfig(accountId: String, config: CreditCardConfig?) async throws {
-        let key = BudgetDatabase.creditCardPreferenceKey(for: accountId)
-        let jsonString: String?
-        if let config {
-            let data = try JSONEncoder().encode(config)
-            jsonString = String(data: data, encoding: .utf8)
-        } else {
-            jsonString = nil
-        }
-        try await setPreference(key: key, value: jsonString)
     }
 
     /// Set the budgeted amount for a category in a month (optimistic
@@ -918,7 +699,7 @@ actor SyncClient {
 
         // 1. Generate CRDT messages (before any DB write, so an HLC failure
         //    leaves nothing stranded)
-        var fields: [(column: String, value: (any Sendable)?)] = []
+        var fields: [(column: String, value: Any?)] = []
         if !cell.exists {
             fields.append(("month", cell.monthInt))
             fields.append(("category", categoryId))
@@ -964,7 +745,7 @@ actor SyncClient {
             guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
                 throw SyncError.budgetTableMissing
             }
-            var fields: [(column: String, value: (any Sendable)?)] = []
+            var fields: [(column: String, value: Any?)] = []
             if !cell.exists {
                 fields.append(("month", cell.monthInt))
                 fields.append(("category", categoryId))
@@ -988,209 +769,6 @@ actor SyncClient {
         logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
 
         // 4. Push to the server in the background
-        scheduleAutomaticSync()
-    }
-
-    /// Set a category's carryover ("rollover overspending") flag on every
-    /// month in `months`, optimistic local-first. Mirrors upstream
-    /// setCategoryCarryover / setCarryover (loot-core budget/actions.ts):
-    /// each month reuses its existing (month, category) row or creates the
-    /// {YYYYMM}-{categoryId} one, and the flag lands as 1/0. All months go
-    /// out in one message batch, like upstream's batchMessages.
-    func setBudgetCarryover(months: [String], categoryId: String, flag: Bool) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("setBudgetCarryover() - months: \(months.count, privacy: .public), category: \(categoryId, privacy: .private), flag: \(flag, privacy: .public)")
-
-        // 1. Generate CRDT messages for every month (before any DB write, so
-        //    an HLC failure leaves nothing stranded)
-        var messages: [CRDTMessage] = []
-        for month in months {
-            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
-                throw SyncError.budgetTableMissing
-            }
-            var fields: [(column: String, value: (any Sendable)?)] = []
-            if !cell.exists {
-                fields.append(("month", cell.monthInt))
-                fields.append(("category", categoryId))
-            }
-            fields.append(("carryover", flag ? 1 : 0))
-            messages += try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
-        }
-        logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
-
-        // 2. Apply locally (optimistic) through the same LWW upsert incoming
-        //    messages use, so a local edit and the identical edit arriving
-        //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-        logger.debug("Messages stored, merkle updated (hash: \(self.merkle.root.hash, privacy: .public))")
-
-        // 4. Push to the server in the background
-        scheduleAutomaticSync()
-    }
-
-    /// Store parsed goal templates into `categories.goal_def` (optimistic
-    /// local-first). Mirrors upstream `storeTemplates` (goal-template.ts): the
-    /// JSON template array plus a `template_settings` source marker, batched
-    /// into one message set. nil goalDef clears the column (a UI-managed
-    /// category being handed back to notes).
-    func storeGoalDefs(_ updates: [(categoryId: String, goalDef: String?, source: String)]) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        guard !updates.isEmpty else { return }
-
-        logger.debug("storeGoalDefs() - categories: \(updates.count, privacy: .public)")
-
-        var messages: [CRDTMessage] = []
-        for update in updates {
-            let fields: [(column: String, value: (any Sendable)?)] = [
-                ("goal_def", update.goalDef),
-                ("template_settings", "{\"source\": \"\(update.source)\"}"),
-            ]
-            messages += try await messageGenerator.messages(
-                dataset: "categories", row: update.categoryId, fields: fields)
-        }
-
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
-    /// Store one category's automations from the editor UI — goal_def,
-    /// cleanup_def and the template_settings source marker in one message
-    /// batch (upstream `budget/set-category-automations`). nil defs clear
-    /// the columns.
-    func storeCategoryAutomations(
-        categoryId: String,
-        goalDef: String?,
-        cleanupDef: String?,
-        source: String
-    ) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("storeCategoryAutomations() - source: \(source, privacy: .public)")
-
-        let fields: [(column: String, value: (any Sendable)?)] = [
-            ("goal_def", goalDef),
-            ("cleanup_def", cleanupDef),
-            ("template_settings", "{\"source\": \"\(source)\"}"),
-        ]
-        let messages = try await messageGenerator.messages(
-            dataset: "categories", row: categoryId, fields: fields)
-
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
-    /// Create (or revive) a cleanup pool row — upstream `resolveCleanupGroup`
-    /// writes the row through the sync engine so other clients see the pool.
-    func upsertCleanupGroup(id: String, name: String) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("upsertCleanupGroup() - name: \(name, privacy: .private)")
-
-        let fields: [(column: String, value: (any Sendable)?)] = [
-            ("name", name),
-            ("tombstone", 0),
-        ]
-        let messages = try await messageGenerator.messages(
-            dataset: "cleanup_groups", row: id, fields: fields)
-
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
-    /// Write the budget amounts and goal columns a template run produced, all
-    /// in one message batch (upstream's setBudgets + setGoals under a single
-    /// batchMessages). Both write the same (month, category) row, so the two
-    /// lists are merged per category before generating messages — creating
-    /// the row once with its month/category identity when it doesn't exist.
-    func applyGoalTemplateWrites(
-        month: String,
-        budgets: [GoalTemplateEngine.BudgetWrite],
-        goals: [GoalTemplateEngine.GoalWrite]
-    ) async throws {
-        guard let database else { throw SyncError.notConfigured }
-        guard !budgets.isEmpty || !goals.isEmpty else { return }
-
-        logger.debug("applyGoalTemplateWrites() - month: \(month, privacy: .public), budgets: \(budgets.count, privacy: .public), goals: \(goals.count, privacy: .public)")
-
-        let budgetsByCategory = Dictionary(uniqueKeysWithValues: budgets.map { ($0.category, $0) })
-        let goalsByCategory = Dictionary(uniqueKeysWithValues: goals.map { ($0.category, $0) })
-
-        var messages: [CRDTMessage] = []
-        for categoryId in Set(budgetsByCategory.keys).union(goalsByCategory.keys).sorted() {
-            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
-                throw SyncError.budgetTableMissing
-            }
-            var fields: [(column: String, value: (any Sendable)?)] = []
-            if !cell.exists {
-                fields.append(("month", cell.monthInt))
-                fields.append(("category", categoryId))
-            }
-            if let budget = budgetsByCategory[categoryId] {
-                fields.append(("amount", budget.amount))
-            }
-            if let goal = goalsByCategory[categoryId] {
-                fields.append(("goal", goal.goal))
-                // Upstream stores 1 or null, never 0.
-                fields.append(("long_goal", goal.longGoal ? 1 : nil))
-            }
-            messages += try await messageGenerator.messages(
-                dataset: cell.table, row: cell.rowId, fields: fields)
-        }
-
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
-        scheduleAutomaticSync()
-    }
-
-    /// Write one synced preference (the `preferences` table), e.g. the
-    /// `flags.goalTemplatesEnabled` feature flag — same shape as
-    /// `updateCurrencyCode`, which predates this generic path.
-    func setPreference(id: String, value: String) async throws {
-        guard let database else { throw SyncError.notConfigured }
-
-        logger.debug("setPreference() - id: \(id, privacy: .public)")
-
-        let messages = try await messageGenerator.messages(
-            dataset: "preferences", row: id, fields: [("value", value)])
-
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
-            merkle = merkle.inserting(msg.timestamp)
-        }
-        merkle = merkle.pruned()
-        try saveClock()
-
         scheduleAutomaticSync()
     }
 
@@ -1308,9 +886,9 @@ actor SyncClient {
         //    leaves nothing stranded)
         // .map flattens Int64? into Any? so a NULL base ts serializes through
         // CRDTValue's nil case ("0:"), the null loot-core's setNextDate writes.
-        let fields: [(column: String, value: (any Sendable)?)] = [
+        let fields: [(column: String, value: Any?)] = [
             ("local_next_date", newNextDate),
-            ("local_next_date_ts", baseNextDateTs.map { $0 as any Sendable }),
+            ("local_next_date_ts", baseNextDateTs.map { $0 as Any }),
         ]
         let messages = try await messageGenerator.messages(dataset: "schedules_next_date", row: nextDateRowId, fields: fields)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
@@ -1517,7 +1095,7 @@ actor SyncClient {
     /// Write plain columns on the schedule row (complete, restart).
     func updateScheduleColumns(
         scheduleId: String,
-        fields: [(column: String, value: (any Sendable)?)]
+        fields: [(column: String, value: Any?)]
     ) async throws {
         try await commit(ScheduleWriteBuilder.scheduleColumnsPlan(
             scheduleId: scheduleId, fields: fields))

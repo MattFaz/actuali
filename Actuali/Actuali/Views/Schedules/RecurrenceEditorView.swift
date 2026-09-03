@@ -186,7 +186,7 @@ struct RecurrenceEditorView: View {
             Text("On These Days")
         } footer: {
             if draft.patterns.isEmpty {
-                Text("Repeats on day \(draft.start.day) of the month. Add specific days to repeat more than once a month.")
+                Text(String(localized: "Repeats on day \(draft.start.day) of the month. Add specific days to repeat more than once a month."))
             } else {
                 Text(ScheduleDescription.recurring(draft.config))
             }

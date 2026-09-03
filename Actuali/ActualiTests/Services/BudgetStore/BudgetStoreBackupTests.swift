@@ -72,8 +72,7 @@ struct BudgetStoreBackupTests {
         let dir = manager.budgetDirectory(for: "b")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: "b").path)
-        let schema = BudgetStoreInitialSyncTests.upstreamSchema
-        try await dbQueue.write { try $0.execute(sql: schema) }
+        try await dbQueue.write { try $0.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema) }
         try JSONEncoder().encode(BudgetMetadata(
             id: "b", budgetName: "Seed", cloudFileId: "cf-1", groupId: "g-1",
             resetClock: nil, lastUploaded: nil, encryptKeyId: nil

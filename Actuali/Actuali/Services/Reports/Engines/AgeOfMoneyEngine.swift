@@ -60,12 +60,7 @@ enum AgeOfMoneyEngine {
             }
             .sorted { lhs, rhs in
                 if lhs.date != rhs.date { return lhs.date < rhs.date }
-                switch (lhs.sortOrder, rhs.sortOrder) {
-                case let (left?, right?) where left != right: return left > right
-                case (_?, nil): return true
-                case (nil, _?): return false
-                default: return lhs.id < rhs.id
-                }
+                return (lhs.sortOrder ?? 0, lhs.id) < (rhs.sortOrder ?? 0, rhs.id)
             }
 
         // FIFO drain (upstream calculateAgeOfMoney).

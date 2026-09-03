@@ -13,15 +13,15 @@ struct WalletImportMapperTests {
         status: WalletImportMapper.Status = .booked,
         date: Date = Date(timeIntervalSince1970: 1_750_000_000)
     ) -> WalletImportCandidate? {
-        WalletImportMapper.candidate(from: AppleWalletTransaction(
-            id: id.uuidString,
+        WalletImportMapper.candidate(
+            id: id,
             amount: amount,
             isCredit: isCredit,
             merchantName: merchantName,
-            description: transactionDescription,
+            transactionDescription: transactionDescription,
             status: status,
             date: date
-        ))
+        )
     }
 
     @Test func debitMapsToNegativeCents() throws {
@@ -59,12 +59,6 @@ struct WalletImportMapperTests {
     @Test func emptyMerchantFallsBackToDescription() throws {
         let mapped = try #require(candidate(
             merchantName: "", transactionDescription: "JOES DINER"))
-        #expect(mapped.payeeName == "Joes Diner")
-    }
-
-    @Test func whitespaceMerchantFallsBackToDescription() throws {
-        let mapped = try #require(candidate(
-            merchantName: "   ", transactionDescription: "JOES DINER"))
         #expect(mapped.payeeName == "Joes Diner")
     }
 

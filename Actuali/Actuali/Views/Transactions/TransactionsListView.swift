@@ -13,25 +13,6 @@ struct TransactionsListView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
-    /// Wraps `isSelecting` so every path that leaves selection mode — the
-    /// toolbar's Done button, or a row's long-press-to-exit — clears the
-    /// selected set the same way. Passed to rows instead of `$isSelecting`
-    /// directly so a long press while already selecting can safely toggle
-    /// off without leaving stale selected IDs behind.
-    private var selectionModeBinding: Binding<Bool> {
-        Binding(
-            get: { isSelecting },
-            set: { newValue in
-                withAnimation {
-                    isSelecting = newValue
-                    if !newValue {
-                        selectedTransactionIds.removeAll()
-                    }
-                }
-            }
-        )
-    }
-
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time.
@@ -41,8 +22,7 @@ struct TransactionsListView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
-                unclearedOnly: store.hideClearedTransactions,
-                hideReconciled: store.hideReconciledTransactions
+                unclearedOnly: store.hideClearedTransactions
             )
         }
         pager = created
@@ -60,21 +40,15 @@ struct TransactionsListView: View {
                     ContentUnavailableView.search(text: searchText)
                 } else if budgetStore.hideClearedTransactions {
                     ContentUnavailableView(
-                        "No Uncleared Transactions",
+                        String(localized: "No Uncleared Transactions"),
                         systemImage: "checkmark.circle",
-                        description: Text("Everything is cleared. Turn off Hide Cleared Transactions to see the rest.")
-                    )
-                } else if budgetStore.hideReconciledTransactions {
-                    ContentUnavailableView(
-                        "No Unreconciled Transactions",
-                        systemImage: "lock.fill",
-                        description: Text("Everything is reconciled. Turn off Hide Reconciled Transactions to see the rest.")
+                        description: Text(String(localized: "Everything is cleared. Turn off Hide Cleared Transactions to see the rest."))
                     )
                 } else {
                     ContentUnavailableView(
-                        "No Transactions",
+                        String(localized: "No Transactions"),
                         systemImage: "list.bullet.rectangle",
-                        description: Text("Transactions will appear here once you load a budget")
+                        description: Text(String(localized: "Transactions will appear here once you load a budget"))
                     )
                 }
             } else if let pager {
@@ -87,7 +61,7 @@ struct TransactionsListView: View {
                                     TransactionListRow(
                                         transaction: transaction,
                                         showDate: false,
-                                        isSelectionMode: selectionModeBinding,
+                                        isSelectionMode: isSelecting,
                                         isSelected: selectedTransactionIds.contains(transaction.id),
                                         editing: $editingTransaction,
                                         onToggleSelect: {
@@ -107,7 +81,7 @@ struct TransactionsListView: View {
                         ForEach(pager.transactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
-                                isSelectionMode: selectionModeBinding,
+                                isSelectionMode: isSelecting,
                                 isSelected: selectedTransactionIds.contains(transaction.id),
                                 editing: $editingTransaction,
                                 onToggleSelect: {
@@ -124,32 +98,24 @@ struct TransactionsListView: View {
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .readableWidth()
-        .navigationTitle("All Accounts")
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
+        .navigationTitle(String(localized: "All Accounts"))
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: String(localized: "Search transactions"))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button(isSelecting ? "Done" : "Select") {
-                    selectionModeBinding.wrappedValue.toggle()
+                    withAnimation {
+                        isSelecting.toggle()
+                        if !isSelecting {
+                            selectedTransactionIds.removeAll()
+                        }
+                    }
                 }
             }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
+                Toggle("Hide Cleared Transactions", isOn: $budgetStore.hideClearedTransactions)
             }
         }
         .safeAreaInset(edge: .bottom) {
@@ -183,9 +149,6 @@ struct TransactionsListView: View {
             // toggle flip needs.
             Task { await reload() }
         }
-        .onChange(of: budgetStore.hideReconciledTransactions) {
-            Task { await reload() }
-        }
         .refreshable {
             await budgetStore.sync()
             await reload()
@@ -211,16 +174,10 @@ struct TransactionListRow: View {
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
-    /// A binding, so a long press on the row opens selection mode for every
-    /// caller with no extra callback.
-    @Binding var isSelectionMode: Bool
+    var isSelectionMode: Bool = false
     var isSelected: Bool = false
     @Binding var editing: Transaction?
     var onToggleSelect: (() -> Void)? = nil
-
-    /// A counter, not a Bool: `.sensoryFeedback` needs a value that changes
-    /// on every long press, and the toolbar Select button must not fire it.
-    @State private var longPressCount = 0
 
     var body: some View {
         Button {
@@ -243,41 +200,12 @@ struct TransactionListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        // `highPriorityGesture`, not `simultaneousGesture`: this row's label
-        // contains its own nested Button (the cleared-status dot), and a
-        // merely-simultaneous long press doesn't stop that button's tap from
-        // also firing on release — a held cleared dot would toggle cleared
-        // status (or open its unlock confirmation) as a side effect of
-        // entering selection mode. High priority wins the touch outright
-        // once 0.5s is reached, so neither the nested button nor this row's
-        // own Button action fires; a tap shorter than that still passes
-        // through untouched. Because the row's own release action no longer
-        // fires either, this handler selects the row directly.
-        //
-        // A long press while already in selection mode exits it instead:
-        // `isSelectionMode` is bound to the shared selection-mode binding,
-        // so setting it false here clears the whole selected set the same
-        // way the toolbar's Done button does.
-        .highPriorityGesture(
-            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                longPressCount += 1
-                withAnimation {
-                    if isSelectionMode {
-                        isSelectionMode = false
-                    } else {
-                        isSelectionMode = true
-                        onToggleSelect?()
-                    }
-                }
-            }
-        )
-        .sensoryFeedback(.impact(weight: .medium), trigger: longPressCount)
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if !isSelectionMode {
                 Button(role: .destructive) {
                     Task { await budgetStore.deleteTransaction(transaction) }
                 } label: {
-                    Label("Delete", systemImage: "trash")
+                    Label(String(localized: "common.delete"), systemImage: "trash")
                 }
                 Button {
                     Task { await budgetStore.duplicateTransaction(transaction) }
@@ -288,7 +216,7 @@ struct TransactionListRow: View {
                 Button {
                     editing = transaction
                 } label: {
-                    Label("Edit", systemImage: "pencil")
+                    Label(String(localized: "common.edit"), systemImage: "pencil")
                 }
                 .tint(.yellow)
             }
@@ -319,20 +247,11 @@ struct TransactionPagingSentinel: View {
 struct TransactionGroupingToggle: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
-    private var isGrouped: Bool {
-        budgetStore.transactionDisplayMode == .groupedByDate
-    }
-
     var body: some View {
-        Toggle(isOn: Binding(
-            get: { isGrouped },
+        Toggle("Group by Date", isOn: Binding(
+            get: { budgetStore.transactionDisplayMode == .groupedByDate },
             set: { budgetStore.transactionDisplayMode = $0 ? .groupedByDate : .flat }
-        )) {
-            Label(
-                "Group by Date",
-                systemImage: isGrouped ? "calendar.badge.checkmark" : "calendar"
-            )
-        }
+        ))
     }
 }
 
@@ -413,13 +332,20 @@ struct TransactionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .accessibilityHint("Toggles cleared status")
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(transaction.reconciled
+                    ? String(localized: "Reconciled")
+                    : (transaction.cleared ? String(localized: "Cleared") : String(localized: "Uncleared")))
+                .accessibilityHint(String(localized: "Toggles cleared status"))
+                .accessibilityIdentifier(transaction.reconciled
+                    ? "transaction.status.reconciled"
+                    : (transaction.cleared ? "transaction.status.cleared" : "transaction.status.uncleared"))
                 .confirmationDialog(
-                    "This transaction is reconciled. Unlock it to make changes?",
+                    String(localized: "This transaction is reconciled. Unlock it to make changes?"),
                     isPresented: $confirmingUnlock,
                     titleVisibility: .visible
                 ) {
-                    Button("Unlock") { onToggleCleared() }
+                    Button(String(localized: "Unlock")) { onToggleCleared() }
                 }
             } else {
                 // Same footprint as the tappable variant so mixed lists
@@ -433,8 +359,8 @@ struct TransactionRow: View {
                 // Off-budget rows say "No payee": they're commonly payee-less
                 // (balance adjustments) and "Unknown" read as a bug (GH #123).
                 Text(transaction.payeeName
-                     ?? (transaction.isParent ? "Split"
-                         : (isInOffBudgetAccount ? "No payee" : "Unknown")))
+                     ?? (transaction.isParent ? String(localized: "Split")
+                         : (isInOffBudgetAccount ? String(localized: "No payee") : String(localized: "Unknown"))))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
@@ -473,15 +399,6 @@ struct TransactionRow: View {
             }
         }
         .padding(.vertical, 2)
-        .onChange(of: isSelectionMode) { _, active in
-            // The row's long-press gesture spans the cleared-status button
-            // too, so a hold on the dot can flip this row into selection
-            // mode while that button's own action is still landing. Selection
-            // mode removes the button and its confirmationDialog, so a
-            // pending confirmingUnlock would otherwise surface later with no
-            // toggle behind it.
-            if active { confirmingUnlock = false }
-        }
     }
 }
 
@@ -492,9 +409,8 @@ struct ClearedIndicator: View {
     var body: some View {
         Group {
             if reconciled {
-                Image(systemName: "lock.fill")
+                Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.blue)
-                    .imageScale(.large)
             } else if cleared {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.green)
@@ -504,7 +420,10 @@ struct ClearedIndicator: View {
             }
         }
         .font(.system(size: 14))
-        .accessibilityLabel(reconciled ? "Reconciled" : (cleared ? "Cleared" : "Uncleared"))
+        .accessibilityLabel(reconciled
+            ? String(localized: "Reconciled")
+            : (cleared ? String(localized: "Cleared") : String(localized: "Uncleared")))
+        .accessibilityIdentifier(reconciled ? "transaction.status.reconciled" : (cleared ? "transaction.status.cleared" : "transaction.status.uncleared"))
     }
 }
 

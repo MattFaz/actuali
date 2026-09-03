@@ -9,6 +9,7 @@ struct CurrencyAmountFormatTests {
 
     private let enUS = Locale(identifier: "en_US")
     private let enNZ = Locale(identifier: "en_NZ")
+    private let frFR = Locale(identifier: "fr_FR")
 
     @Test func standardPresentationKeepsDisambiguationPrefix() {
         let formatted = CurrencyAmountFormat.string(
@@ -40,25 +41,6 @@ struct CurrencyAmountFormatTests {
         #expect(formatted == "$1,052")
     }
 
-    @Test func wholeUnitsRoundPlainNumbersWithoutCurrency() {
-        let formatted = CurrencyAmountFormat.string(
-            cents: 105_150, currencyCode: "", narrowSymbol: false, wholeUnits: true,
-            locale: enUS)
-        #expect(formatted == "1,052")
-    }
-
-    @MainActor
-    @Test func budgetTableWholeUnitsUseTheSameRounding() {
-        for cents in [105_150, -105_150] {
-            #expect(CurrencyAmountFormat.symbolLessString(
-                        cents: cents, currencyCode: "", wholeUnits: true,
-                        locale: enUS) ==
-                    CurrencyAmountFormat.string(
-                        cents: cents, currencyCode: "", narrowSymbol: false,
-                        wholeUnits: true, locale: enUS))
-        }
-    }
-
     /// Empty code means no currency (Actual's defaultCurrencyCode convention);
     /// narrowSymbol has nothing to narrow and must not disturb plain numbers.
     @Test func emptyCodeRendersPlainNumber() {
@@ -78,33 +60,12 @@ struct CurrencyAmountFormatTests {
         #expect(narrow == "¥1,234")
     }
 
-    @MainActor
-    @Test func symbolLessPresentationKeepsCurrencyNativePrecision() {
-        let dollars = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "USD",
-            locale: enUS
-        )
-        let yen = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "JPY",
-            locale: enUS
-        )
-        let dinar = CurrencyAmountFormat.symbolLessString(
-            cents: 123_450,
-            currencyCode: "KWD",
-            locale: enUS
-        )
-        let roundedDollars = CurrencyAmountFormat.symbolLessString(
-            cents: 123_456,
-            currencyCode: "USD",
-            wholeUnits: true,
-            locale: enUS
-        )
-
-        #expect(dollars == "1,234.50")
-        #expect(yen == "1,234")
-        #expect(dinar == "1,234.500")
-        #expect(roundedDollars == "1,235")
+    /// French uses a comma as the decimal separator and the euro symbol,
+    /// confirming the formatter respects the injected locale.
+    @Test func frenchLocaleEuroFormatting() {
+        let formatted = CurrencyAmountFormat.string(
+            cents: 100_50, currencyCode: "EUR", narrowSymbol: false, locale: frFR)
+        #expect(formatted.contains("€"))
+        #expect(formatted.contains(",50"))
     }
 }

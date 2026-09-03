@@ -47,9 +47,9 @@ struct DashboardView: View {
     var body: some View {
         if widgets.isEmpty {
             ContentUnavailableView(
-                "No widgets",
+                String(localized: "No widgets"),
                 systemImage: "chart.bar.xaxis",
-                description: Text("Configure your dashboard in the Actual Budget webapp; it will sync here.")
+                description: Text(String(localized: "Configure your dashboard in the Actual Budget webapp; it will sync here."))
             )
         } else {
             ScrollView {

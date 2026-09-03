@@ -183,7 +183,7 @@ struct NewTransactionNotifierTests {
     /// Background refresh always runs (fresh data on open); the opt-in only
     /// gates the notification itself. Opted out, notify must not touch
     /// Notification Center at all — not even to ask for permission.
-    @Test @MainActor func notifyPostsNothingWhenNotificationsDisabled() async {
+    @Test func notifyPostsNothingWhenNotificationsDisabled() async {
         let center = NotificationCenterSpy()
 
         await NewTransactionNotifier.notify(
@@ -194,7 +194,7 @@ struct NewTransactionNotifierTests {
         #expect(center.added.isEmpty)
     }
 
-    @Test @MainActor func notifyPostsWhenNotificationsEnabled() async {
+    @Test func notifyPostsWhenNotificationsEnabled() async {
         let center = NotificationCenterSpy()
 
         await NewTransactionNotifier.notify(

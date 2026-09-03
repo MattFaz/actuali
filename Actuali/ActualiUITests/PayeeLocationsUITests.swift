@@ -24,13 +24,9 @@ final class PayeeLocationsUITests: XCTestCase {
     func testScreenIsReachableFromSettingsWhenServerSupportsLocations() throws {
         let app = XCUIApplication()
         // Demo data leaves serverURL empty, so the cache key has an empty suffix.
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4",
                                "-payeeLocationWritesEnabled_", "1"]
         app.launch()
-
-        let transactionSettings = app.buttons["Transactions & Automation"]
-        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
-        transactionSettings.tap()
 
         let row = app.buttons["Payee Locations"]
         scrollTo(row, in: app)
@@ -51,14 +47,10 @@ final class PayeeLocationsUITests: XCTestCase {
     @MainActor
     func testClearsOneLocationThenTheRest() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4",
                                "-payeeLocationWritesEnabled_", "1",
                                "-seedPayeeLocations"]
         app.launch()
-
-        let transactionSettings = app.buttons["Transactions & Automation"]
-        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
-        transactionSettings.tap()
 
         let row = app.buttons["Payee Locations"]
         scrollTo(row, in: app)
@@ -110,17 +102,10 @@ final class PayeeLocationsUITests: XCTestCase {
     @MainActor
     func testScreenIsHiddenWhenServerLacksLocationSupport() throws {
         let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData", "-initialTab", "4", "-serverURL", "",
-            "-payeeLocationWritesEnabled_", "0",
-        ]
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
-        let transactionSettings = app.buttons["Transactions & Automation"]
-        XCTAssertTrue(transactionSettings.waitForExistence(timeout: 5))
-        transactionSettings.tap()
-
-        // Walk the whole destination form; neither the row nor the toggle appears.
+        // Walk the whole Settings form; neither the row nor the toggle appears.
         let row = app.buttons["Payee Locations"]
         let toggle = app.switches["Record Payee Locations"]
         scrollTo(row, in: app)

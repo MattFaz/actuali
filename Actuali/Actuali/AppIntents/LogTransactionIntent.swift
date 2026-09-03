@@ -36,20 +36,6 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: "Cleared", default: true)
     var cleared: Bool
 
-    // Siri speaks a returned dialog, but Shortcuts and Wallet automations render
-    // it as a card the user must dismiss with "Done" — which #143 turned into the
-    // normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
-    // invocation surface, so the Siri App Shortcut opts in explicitly and every
-    // other caller stays silent; the success notification is the feedback there.
-    @Parameter(title: "Show Confirmation", default: false)
-    var showConfirmation: Bool
-
-    init() {}
-
-    init(showConfirmation: Bool) {
-        self.showConfirmation = showConfirmation
-    }
-
     static var parameterSummary: some ParameterSummary {
         Summary("Log \(\.$amount) at \(\.$payee) in \(\.$account)") {
             \.$cardHint
@@ -57,18 +43,7 @@ struct LogTransactionIntent: AppIntent {
             \.$date
             \.$isIncome
             \.$cleared
-            \.$showConfirmation
         }
-    }
-
-    nonisolated static func result(
-        dialogText: String,
-        showConfirmation: Bool
-    ) -> IntentResultContainer<Never, Never, Never, IntentDialog> {
-        var result = IntentResultContainer<Never, Never, Never, IntentDialog>
-            .result(dialog: IntentDialog(stringLiteral: dialogText))
-        if !showConfirmation { result.dialog = nil }
-        return result
     }
 
     @MainActor
@@ -162,11 +137,17 @@ struct LogTransactionIntent: AppIntent {
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol
             )
-            let verb = written.synced ? "Logged" : "Saved locally:"
-            let dialogText = displayPayee.isEmpty
-                ? "\(verb) \(amountString)"
-                : "\(verb) \(amountString) at \(displayPayee)"
-            return Self.result(dialogText: dialogText, showConfirmation: showConfirmation)
+            let dialogText: String
+            if written.synced {
+                dialogText = displayPayee.isEmpty
+                    ? String(format: String(localized: "Logged %@"), amountString)
+                    : String(format: String(localized: "Logged %@ at %@"), amountString, displayPayee)
+            } else {
+                dialogText = displayPayee.isEmpty
+                    ? String(format: String(localized: "Saved locally: %@"), amountString)
+                    : String(format: String(localized: "Saved locally: %@ at %@"), amountString, displayPayee)
+            }
+            return .result(dialog: IntentDialog(stringLiteral: dialogText))
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)
                 ?? .writeFailed(underlying: error.localizedDescription)

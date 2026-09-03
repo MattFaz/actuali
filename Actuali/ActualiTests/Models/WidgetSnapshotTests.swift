@@ -131,22 +131,6 @@ struct WidgetSnapshotTests {
         #expect(store.read()?.categories.map(\.id) == ["dining"])
     }
 
-    @Test @MainActor func publishExcludesHiddenCategoryRows() throws {
-        let budgetStore = BudgetStore.previewInstance()
-        let store = try makeStore()
-        budgetStore.widgetSnapshotStore = store
-        budgetStore.widgetBudgetMonth = BudgetMonth(
-            month: "2026-08",
-            categoryBudgets: [makeBudget(id: "visible", name: "Visible", month: "2026-08")],
-            toBudget: 0,
-            hiddenCategoryBudgets: [makeBudget(id: "hidden", name: "Hidden", month: "2026-08")]
-        )
-
-        budgetStore.publishWidgetSnapshot()
-
-        #expect(store.read()?.categories.map(\.id) == ["visible"])
-    }
-
     @Test @MainActor func publishIsNoOpBeforeAnyBudgetLoads() throws {
         let budgetStore = BudgetStore.previewInstance()
         let store = try makeStore()

@@ -31,7 +31,7 @@ struct RulesListView: View {
                 )
             } else if budgetStore.rules.isEmpty {
                 ContentUnavailableView {
-                    Label("No Rules", systemImage: "slider.horizontal.3")
+                    Label(String(localized: "rules.empty.title"), systemImage: "slider.horizontal.3")
                 } description: {
                     Text("Rules rewrite transactions as they're added — renaming payees, setting categories, and more.")
                 } actions: {

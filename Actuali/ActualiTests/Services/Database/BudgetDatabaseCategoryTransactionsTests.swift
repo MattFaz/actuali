@@ -257,8 +257,8 @@ struct BudgetDatabaseCategoryTransactionsTests {
                 INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', NULL);
 
                 INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                    ('t-may-salary',  'acct-1', 'cat-salary', 500000, 20260531),
-                    ('t-june-salary', 'acct-1', 'cat-salary', 500000, 20260615);
+                    ('t-may-salary',  'acct-1', 'cat-salary', 500_000, 20260531),
+                    ('t-june-salary', 'acct-1', 'cat-salary', 500_000, 20260615);
             """)
         }
 

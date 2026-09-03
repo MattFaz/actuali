@@ -11,8 +11,8 @@ struct CategoryBalanceWidget: Widget {
         ) { entry in
             CategoryBalanceWidgetView(entry: entry)
         }
-        .configurationDisplayName("Category Balances")
-        .description("Remaining available amount for your chosen categories.")
+        .configurationDisplayName(String(localized: "Category Balances"))
+        .description(String(localized: "Remaining available amount for your chosen categories."))
         .supportedFamilies([.systemSmall, .systemMedium])
     }
 }
@@ -93,7 +93,9 @@ struct CategoryBalanceWidgetView: View {
             Image(systemName: "chart.pie")
                 .font(.title3)
                 .foregroundStyle(.secondary)
-            Text(entry.hasSnapshot ? "No categories to show" : "Open Actuali to load your budget")
+            Text(entry.hasSnapshot
+                ? String(localized: "No categories to show")
+                : String(localized: "Open Actuali to load your budget"))
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -112,7 +114,7 @@ struct CategoryBalanceWidgetView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.5)
                 .foregroundStyle(amountColor(for: category))
-            Text("available")
+            Text(String(localized: "available"))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

@@ -21,15 +21,15 @@ struct ReportsTabView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if let loadError {
                     ContentUnavailableView(
-                        "Could not load reports",
+                        String(localized: "reports.error.load"),
                         systemImage: "exclamationmark.triangle",
                         description: Text(loadError)
                     )
                 } else if budgetStore.databaseForLogger == nil {
                     ContentUnavailableView(
-                        "No budget open",
+                        String(localized: "reports.empty.title"),
                         systemImage: "chart.bar.xaxis",
-                        description: Text("Open or sync a budget to see reports.")
+                        description: Text(String(localized: "reports.empty.description"))
                     )
                 } else {
                     VStack(spacing: 0) {
@@ -55,22 +55,12 @@ struct ReportsTabView: View {
             }
             // The dashboard picker is the page's header now, so the title
             // stays out of its way in the compact bar.
-            .navigationTitle("Reports")
+            .navigationTitle(String(localized: "reports.title"))
             .navigationBarTitleDisplayMode(.inline)
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
             .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) { await reload() }
-            // This is a resident tab: nothing rebuilds it on the way back from
-            // Settings, and `reload` has already written the resolved page into
-            // `selectedPageId` — which outranks the new default. So changing the
-            // setting has to switch the dashboard itself, or it appears to do
-            // nothing until the next launch. Clearing it (nil) re-resolves to
-            // the first page.
-            .onChange(of: budgetStore.defaultDashboardPageId) { _, newValue in
-                selectedPageId = newValue
-                Task { await reload() }
-            }
             .refreshable {
                 await budgetStore.sync()
                 await reload()
@@ -85,7 +75,7 @@ struct ReportsTabView: View {
     /// pre-dashboard-pages budgets that have no pages to switch between.
     private var dashboardPicker: some View {
         Menu {
-            Picker("Dashboard", selection: Binding(
+            Picker(String(localized: "Dashboard"), selection: Binding(
                 get: { selectedPageId ?? "" },
                 set: { newId in
                     selectedPageId = newId
@@ -98,7 +88,7 @@ struct ReportsTabView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? "Dashboard")
+                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? String(localized: "Dashboard"))
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -118,27 +108,20 @@ struct ReportsTabView: View {
             .contentShape(RoundedRectangle(cornerRadius: 12))
         }
         .disabled(pages.isEmpty)
-        .accessibilityLabel("Switch dashboard")
+        .accessibilityLabel(String(localized: "Switch dashboard"))
     }
 
     private func displayName(for page: DashboardPage) -> String {
-        page.name.isEmpty ? "Untitled" : page.name
+        page.name.isEmpty ? String(localized: "Untitled") : page.name
     }
 
-    /// Which page to show: a still-live explicit selection wins, then the
-    /// dashboard configured in Settings (GH #223), otherwise the first live
-    /// page (the web's ReportsDashboardRouter redirects to dashboardPages[0]),
-    /// otherwise nil so the pre-pages pageless fallback applies.
-    nonisolated static func resolvePageId(
-        selected: String?,
-        configuredDefault: String? = nil,
-        pages: [DashboardPage]
-    ) -> String? {
+    /// Which page to show: a still-live explicit selection wins, otherwise
+    /// the first live page (the web's ReportsDashboardRouter redirects to
+    /// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback
+    /// applies.
+    static func resolvePageId(selected: String?, pages: [DashboardPage]) -> String? {
         if let selected, pages.contains(where: { $0.id == selected }) {
             return selected
-        }
-        if let configuredDefault, pages.contains(where: { $0.id == configuredDefault }) {
-            return configuredDefault
         }
         return pages.first?.id
     }
@@ -150,11 +133,7 @@ struct ReportsTabView: View {
         }
         do {
             let fetchedPages = try await database.fetchDashboardPages()
-            let pageId = Self.resolvePageId(
-                selected: selectedPageId,
-                configuredDefault: budgetStore.defaultDashboardPageId,
-                pages: fetchedPages
-            )
+            let pageId = Self.resolvePageId(selected: selectedPageId, pages: fetchedPages)
             let fetched = try await database.fetchWidgets(pageId: pageId)
             self.pages = fetchedPages
             self.selectedPageId = pageId
