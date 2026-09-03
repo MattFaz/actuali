@@ -3317,10 +3317,17 @@ final class BudgetStore: ObservableObject {
         }
 
         let radius = BankSyncReconciler.fuzzyMatchDayRadius
+        // Actual stores this as a synced per-account preference. Its default
+        // is true for backwards compatibility, so an absent preference keeps
+        // the existing reimport behavior.
+        let reimportDeleted = (try await database.fetchPreference(
+            id: "sync-reimport-deleted-\(target.id)"
+        ) ?? "true") == "true"
         let window = try await database.bankSyncWindow(
             accountId: target.id,
             from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
-            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
+            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest,
+            includeTombstoned: !reimportDeleted
         )
 
         let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)

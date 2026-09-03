@@ -2857,18 +2857,26 @@ final class BudgetDatabase: Sendable {
     ///
     /// Split children are excluded: a download matches the parent (which
     /// carries the full amount), never one of its portions. Tombstoned rows
-    /// are excluded too, so a transaction the person deleted isn't quietly
-    /// resurrected by the next sync — it re-imports as new instead, which is
-    /// the outcome they'd get on the web UI.
-    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
+    /// are included only when the account's `reimportDeleted` setting is
+    /// disabled. In that mode matching the tombstone prevents the downloaded
+    /// transaction from being inserted again while leaving the row deleted.
+    func bankSyncWindow(
+        accountId: String,
+        from: Int,
+        to: Int,
+        includeTombstoned: Bool = false
+    ) async throws -> [BankSyncExistingTransaction] {
         try await dbQueue.read { db in
-            try Row.fetchAll(db, sql: """
+            let tombstoneFilter = includeTombstoned
+                ? ""
+                : "AND (tombstone = 0 OR tombstone IS NULL)"
+            return try Row.fetchAll(db, sql: """
                 SELECT id, date, amount, description, financial_id, imported_description,
                        notes, cleared, reconciled
                 FROM transactions
                 WHERE acct = ?
                   AND date IS NOT NULL AND date >= ? AND date <= ?
-                  AND (tombstone = 0 OR tombstone IS NULL)
+                  \(tombstoneFilter)
                   AND (isChild = 0 OR isChild IS NULL)
                 """, arguments: [accountId, from, to]).map { row in
                 BankSyncExistingTransaction(
