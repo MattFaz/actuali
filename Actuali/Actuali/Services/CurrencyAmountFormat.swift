@@ -41,7 +41,7 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    func formatter(currencyCode: String, wholeUnits: Bool) -> NumberFormatter {
+    private func numberFormatter(currencyCode: String, wholeUnits: Bool) -> NumberFormatter {
         let formatter = NumberFormatter()
         formatter.locale = locale
         formatter.numberStyle = .currency
@@ -55,24 +55,21 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         return formatter
     }
 
-    func decimalFormatter(wholeUnits: Bool) -> NumberFormatter {
-        let formatter = NumberFormatter()
-        formatter.locale = locale
-        formatter.numberStyle = .decimal
-        formatter.minimumFractionDigits = wholeUnits ? 0 : 2
-        formatter.maximumFractionDigits = wholeUnits ? 0 : 2
-        return formatter
-    }
-
     func format(number: NSNumber, wholeUnits: Bool, currencyCode: String?) -> String {
-        let formatter = currencyCode.map {
-            self.formatter(currencyCode: $0, wholeUnits: wholeUnits)
-        } ?? decimalFormatter(wholeUnits: wholeUnits)
+        let formatter: NumberFormatter
+        if let currencyCode {
+            formatter = numberFormatter(currencyCode: currencyCode, wholeUnits: wholeUnits)
+        } else {
+            formatter = NumberFormatter()
+            formatter.locale = locale
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = wholeUnits ? 0 : 2
+            formatter.maximumFractionDigits = wholeUnits ? 0 : 2
+        }
         return normalize(formatter.string(from: number) ?? "")
     }
 }
 
-/// Shared cents → display-string formatting for the budget's display currency.
 enum CurrencyAmountFormat {
 
     @MainActor private static var symbolLessFormatters: [String: NumberFormatter] = [:]
@@ -143,7 +140,7 @@ enum CurrencyAmountFormat {
         if let cached = symbolLessFormatters[key] {
             formatter = cached
         } else {
-            let created = numberFormat.formatter(
+            let created = numberFormat.numberFormatter(
                 currencyCode: currencyCode,
                 wholeUnits: wholeUnits
             )
@@ -151,9 +148,7 @@ enum CurrencyAmountFormat {
             formatter = created
         }
 
-        return numberFormat
-            .format(number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: currencyCode)
-            .replacingOccurrences(of: formatter.string(from: NSNumber(value: amount)) ?? "", with: formatter.string(from: NSNumber(value: amount)) ?? "")
+        return numberFormat.normalize(formatter.string(from: NSNumber(value: amount)) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
