@@ -42,10 +42,12 @@ enum WalletImportMapper {
         // Wallet merchant strings carry the same processor noise as the
         // Shortcuts flow ("SQ *", store numbers) — normalize the same way.
         let rawPayee: String
-        if let merchantName, !merchantName.isEmpty {
+        if let merchantName, !merchantName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             rawPayee = merchantName
-        } else {
+        } else if !transactionDescription.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             rawPayee = transactionDescription
+        } else {
+            rawPayee = String(localized: "Unknown")
         }
         let payee = MerchantNormalizer.normalize(rawPayee)
 

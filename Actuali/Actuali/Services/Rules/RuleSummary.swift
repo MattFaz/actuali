@@ -88,7 +88,7 @@ struct RuleSummary {
             case "category": return names.categories[text] ?? text
             case "category_group": return names.categoryGroups[text] ?? text
             case "account": return names.accounts[text] ?? text
-            default: return text.isEmpty ? "nothing" : text
+            default:
                 return text.isEmpty ? String(localized: "nothing") : text
             }
         }

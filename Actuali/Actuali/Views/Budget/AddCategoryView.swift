@@ -117,7 +117,7 @@ struct NewCategorySheet: View {
                 }
 
                 Section {
-                    Picker(String(localized: "Category"), selection: $groupId) {
+                    Picker("Group", selection: $groupId) {
                         ForEach(selectableGroups) { group in
                             Text(group.name).tag(group.id)
                         }
