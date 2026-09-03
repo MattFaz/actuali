@@ -24,9 +24,9 @@ enum AmountParser {
             || text.trimmingCharacters(in: .whitespacesAndNewlines).hasPrefix("-")
         token = token.trimmingCharacters(in: CharacterSet(charactersIn: "-.,'\u{2019}\u{202F}\u{00A0}"))
 
-        if let numberFormat,
-           let normalized = normalize(token, using: numberFormat),
-           let value = Double(normalized) {
+        if let numberFormat {
+            guard let normalized = normalize(token, using: numberFormat),
+                  let value = Double(normalized) else { return nil }
             return negative ? -value : value
         }
 
@@ -82,6 +82,7 @@ enum AmountParser {
                 seenDecimal = true
                 normalized.append(".")
             } else if groupingSeparators.contains(character) {
+                guard !seenDecimal else { return nil }
                 continue
             } else if character == "." || character == ","
                 || character == "'" || character == "\u{2019}"
