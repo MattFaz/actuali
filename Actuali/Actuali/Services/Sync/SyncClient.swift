@@ -903,6 +903,19 @@ actor SyncClient {
         try await setPreference(key: key, value: jsonString)
     }
 
+    /// Persists or clears card-to-account mappings in the budget's `preferences` table
+    /// under `actuali:card_mappings`, so it syncs across all devices.
+    func setCardAccountMappings(_ mappings: [String: String]) async throws {
+        let jsonString: String?
+        if !mappings.isEmpty {
+            let data = try JSONEncoder().encode(mappings)
+            jsonString = String(data: data, encoding: .utf8)
+        } else {
+            jsonString = nil
+        }
+        try await setPreference(key: BudgetDatabase.cardMappingsPreferenceKey, value: jsonString)
+    }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the

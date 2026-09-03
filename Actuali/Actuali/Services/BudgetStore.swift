@@ -201,6 +201,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
                 creditCardConfigs = [:]
+                cardAccountMappings = [:]
             }
         }
     }
@@ -257,6 +258,9 @@ final class BudgetStore: ObservableObject {
 
     /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
     @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
+
+    /// Synced card-to-account mappings loaded from the preferences table (keyword -> accountId).
+    @Published var cardAccountMappings: [String: String] = [:]
 
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
@@ -647,17 +651,53 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Mappings from card last-4 / bank keywords (e.g. "1234", "HSBC") -> accountId.
-    /// Persisted per budget in UserDefaults.
-    var cardAccountMappings: [String: String] {
-        get {
-            guard let budgetId = currentBudgetId else { return [:] }
-            return UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
+    /// Writes or removes a card-to-account mapping and persists it through SyncClient.
+    /// Passing nil or empty `accountId` removes the keyword mapping.
+    func setCardAccountMapping(keyword: String, accountId: String?) async {
+        guard currentBudgetId != nil else { return }
+        let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else { return }
+        var updated = cardAccountMappings
+        if let accountId, !accountId.isEmpty {
+            updated[cleaned] = accountId
+        } else {
+            updated.removeValue(forKey: cleaned)
         }
-        set {
-            guard let budgetId = currentBudgetId else { return }
-            UserDefaults.standard.set(newValue, forKey: "cardAccountMappings_\(budgetId)")
-            objectWillChange.send()
+        let previous = cardAccountMappings
+        cardAccountMappings = updated
+        guard let syncClient else {
+            cardAccountMappings = previous
+            error = "Card mappings need sync configured for this budget."
+            return
+        }
+        do {
+            try await syncClient.setCardAccountMappings(updated)
+        } catch {
+            cardAccountMappings = previous
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Removes multiple card-to-account mappings in a single batch write.
+    func deleteCardAccountMappings(keywords: [String]) async {
+        guard currentBudgetId != nil, !keywords.isEmpty else { return }
+        var updated = cardAccountMappings
+        for keyword in keywords {
+            let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
+            updated.removeValue(forKey: cleaned)
+        }
+        let previous = cardAccountMappings
+        cardAccountMappings = updated
+        guard let syncClient else {
+            cardAccountMappings = previous
+            error = "Card mappings need sync configured for this budget."
+            return
+        }
+        do {
+            try await syncClient.setCardAccountMappings(updated)
+        } catch {
+            cardAccountMappings = previous
+            self.error = error.localizedDescription
         }
     }
 
@@ -750,10 +790,18 @@ final class BudgetStore: ObservableObject {
     /// to the default account or an error the user can act on, while a wrong match logs
     /// money to the wrong account silently.
     func resolveAccountId(hint: String) async -> String? {
-        Self.resolveAccountId(
+        let mappings: [String: String]
+        if !cardAccountMappings.isEmpty {
+            mappings = cardAccountMappings
+        } else if let db = database {
+            mappings = (try? await db.fetchCardAccountMappings()) ?? [:]
+        } else {
+            mappings = cardAccountMappings
+        }
+        return Self.resolveAccountId(
             hint: hint,
             accounts: await accountsForIntent(),
-            cardMappings: cardAccountMappings
+            cardMappings: mappings
         )
     }
 
@@ -1953,6 +2001,7 @@ final class BudgetStore: ObservableObject {
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
+            let fetchedCardMappings = try await openedDb.fetchCardAccountMappings()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -2009,6 +2058,13 @@ final class BudgetStore: ObservableObject {
                 )
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
+
+            var legacyCardMappings: [String: String] = [:]
+            let savedCardMappings = UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") as? [String: String] ?? [:]
+            for (keyword, accountId) in savedCardMappings where fetchedCardMappings[keyword] == nil {
+                legacyCardMappings[keyword] = accountId
+            }
+            cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
             
             accounts = fetchedAccounts
             transactions = fetchedTransactions
@@ -2106,6 +2162,17 @@ final class BudgetStore: ObservableObject {
                             UserDefaults.standard.removeObject(forKey: prefix + budgetId)
                         }
                     }
+
+                    if !legacyCardMappings.isEmpty {
+                        do {
+                            try await syncClient.setCardAccountMappings(cardAccountMappings)
+                            UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
+                        } catch {
+                            logger.error("Card mappings migration failed: \(error.localizedDescription, privacy: .public)")
+                        }
+                    } else if !savedCardMappings.isEmpty {
+                        UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
+                    }
                 }
             }
 
@@ -2193,6 +2260,7 @@ final class BudgetStore: ObservableObject {
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
         let creditCardsBefore = creditCardConfigs
+        let cardMappingsBefore = cardAccountMappings
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2219,6 +2287,7 @@ final class BudgetStore: ObservableObject {
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await database.fetchCreditCardConfigs()
+            let fetchedCardMappings = try await database.fetchCardAccountMappings()
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
@@ -2237,6 +2306,9 @@ final class BudgetStore: ObservableObject {
             // this snapshot; its write comes back on the next refresh.
             if creditCardConfigs == creditCardsBefore {
                 creditCardConfigs = fetchedCreditCards
+            }
+            if cardAccountMappings == cardMappingsBefore {
+                cardAccountMappings = fetchedCardMappings
             }
 
             accounts = fetchedAccounts
