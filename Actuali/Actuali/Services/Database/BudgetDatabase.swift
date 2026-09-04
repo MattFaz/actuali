@@ -763,9 +763,40 @@ final class BudgetDatabase: Sendable {
                     var clauses = [
                         "\(payeeNameSQL) LIKE ? ESCAPE '\\'",
                         "c.name LIKE ? ESCAPE '\\'",
-                        "t.notes LIKE ? ESCAPE '\\'"
+                        "t.notes LIKE ? ESCAPE '\\'",
+                        "t.imported_description LIKE ? ESCAPE '\\'"
                     ]
-                    arguments.append(contentsOf: [pattern, pattern, pattern])
+
+                    arguments.append(contentsOf: [pattern, pattern, pattern, pattern])
+
+                    clauses.append("""
+                        EXISTS (
+                            SELECT 1
+                            FROM transactions child
+                            LEFT JOIN payee_mapping child_pm
+                                ON child_pm.id = child.description
+                            LEFT JOIN payees child_payee
+                                ON child_payee.id = child_pm.targetId
+                            LEFT JOIN category_mapping child_cm
+                                ON child_cm.id = child.category
+                            LEFT JOIN categories child_category
+                                ON child_category.id = COALESCE(
+                                    child_cm.transferId,
+                                    child.category
+                                )
+                            WHERE child.parent_id = t.id
+                              AND (child.tombstone = 0 OR child.tombstone IS NULL)
+                              AND (
+                                  child_payee.name LIKE ? ESCAPE '\\'
+                                  OR child.notes LIKE ? ESCAPE '\\'
+                                  OR child_category.name LIKE ? ESCAPE '\\'
+                                  OR child.imported_description LIKE ? ESCAPE '\\'
+                              )
+                        )
+                    """)
+
+                    arguments.append(contentsOf: [pattern, pattern, pattern, pattern])
+                    
                     if let range = matcher.amountCentsRange {
                         clauses.append("ABS(t.amount) BETWEEN ? AND ?")
                         arguments.append(range.lowerBound)
