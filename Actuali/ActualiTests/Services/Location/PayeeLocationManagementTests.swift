@@ -3,6 +3,13 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private struct LocationMessage: Sendable {
+    let row: String
+    let dataset: String
+    let column: String
+    let value: String
+}
+
 /// Backing queries and writes for the Payee Locations management screen
 /// (GH #147): list every payee that has recorded locations, and clear them
 /// one at a time or all at once.
@@ -152,13 +159,21 @@ struct PayeeLocationManagementTests {
 
         let queue = try DatabaseQueue(path: path.path)
         let messages = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
+            try Row.fetchAll(db, sql: "SELECT row, dataset, column, value FROM messages_crdt ORDER BY timestamp")
+                .map {
+                    LocationMessage(
+                        row: $0["row"],
+                        dataset: $0["dataset"],
+                        column: $0["column"],
+                        value: $0["value"]
+                    )
+                }
         }
         #expect(messages.count == 2)
-        #expect(Set(messages.map { $0["row"] as String }) == ["a", "b"])
-        #expect(Set(messages.map { $0["dataset"] as String }) == ["payee_locations"])
-        #expect(Set(messages.map { $0["column"] as String }) == ["tombstone"])
-        #expect(Set(messages.map { $0["value"] as String }) == ["N:1"])
+        #expect(Set(messages.map { $0.row }) == ["a", "b"])
+        #expect(Set(messages.map { $0.dataset }) == ["payee_locations"])
+        #expect(Set(messages.map { $0.column }) == ["tombstone"])
+        #expect(Set(messages.map { $0.value }) == ["N:1"])
     }
 
     /// Nothing to clear is a no-op, not an error and not a spurious sync.

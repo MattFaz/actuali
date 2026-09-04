@@ -162,7 +162,7 @@ struct ScheduleEditView: View {
                                         .foregroundStyle(.secondary)
                                 }
                                 Spacer()
-                                Text(budgetStore.formatCurrency(transaction.amount))
+                                Text(budgetStore.displayBalance(transaction.amount))
                                     .monospacedDigit()
                             }
                             .swipeActions {

@@ -3,6 +3,10 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private struct TransactionIdRow: Sendable {
+    let id: String
+}
+
 /// Answers /sync/sync either with a valid in-sync response or with a network
 /// failure, so the headless write path can be exercised against a reachable
 /// and an unreachable server.
@@ -194,8 +198,9 @@ struct TransactionLoggerSyncOutcomeTests {
         let queue = try DatabaseQueue(path: url.path)
         let rows = try await queue.read { db in
             try Row.fetchAll(db, sql: "SELECT id FROM transactions WHERE tombstone = 0")
+                .map { TransactionIdRow(id: $0["id"]) }
         }
         #expect(rows.count == 1)
-        #expect(rows.first?["id"] == result.transaction.id)
+        #expect(rows.first?.id == result.transaction.id)
     }
 }

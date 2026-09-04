@@ -173,8 +173,8 @@ struct BudgetDatabaseIncomeTests {
             VALUES ('acct-dead', 'Deleted', 0, 2.0, 1);
 
             INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
-                ('ghost-income', 'acct-dead', 'cat-salary',    77_000, 20260601, 0),
-                ('ghost-spend',  'acct-dead', 'cat-groceries', -8_000, 20260602, 0);
+                ('ghost-income', 'acct-dead', 'cat-salary',    77000, 20260601, 0),
+                ('ghost-spend',  'acct-dead', 'cat-groceries', -8000, 20260602, 0);
             """)
         try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
         try insertTransaction(db, date: 20260602, category: "cat-groceries", amount: -30_000)

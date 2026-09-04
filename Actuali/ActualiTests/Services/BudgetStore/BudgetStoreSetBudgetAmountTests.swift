@@ -3,6 +3,11 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private struct BudgetAmountRow: Sendable {
+    let id: String
+    let amount: Int
+}
+
 @MainActor
 struct BudgetStoreSetBudgetAmountTests {
 
@@ -136,12 +141,13 @@ struct BudgetStoreSetBudgetAmountTests {
 
         let queue = try DatabaseQueue(path: path.path)
         let rows = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM zero_budgets")
+            try Row.fetchAll(db, sql: "SELECT id, amount FROM zero_budgets")
+                .map { BudgetAmountRow(id: $0["id"], amount: $0["amount"]) }
         }
         #expect(rows.count == 1)
         let row = try #require(rows.first)
-        #expect(row["id"] == "202607-cat-groceries")
-        #expect(row["amount"] == 2550)
+        #expect(row.id == "202607-cat-groceries")
+        #expect(row.amount == 2550)
 
         // The published month must reflect the edit without a manual refresh.
         let month = try #require(store.currentBudgetMonth)

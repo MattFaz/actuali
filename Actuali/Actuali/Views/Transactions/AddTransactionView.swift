@@ -988,8 +988,9 @@ struct AmountInputField: UIViewRepresentable {
             items.append(item)
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
+        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
         items.append(UIBarButtonItem(
-            title: String(localized: "common.done"), style: .prominent,
+            title: String(localized: "common.done"), style: doneStyle,
             target: field, action: #selector(UIResponder.resignFirstResponder)
         ))
         toolbar.items = items

@@ -3,6 +3,13 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private struct TombstoneMessage: Sendable {
+    let dataset: String
+    let row: String
+    let column: String
+    let value: String
+}
+
 /// Deleting a payee location must tombstone the local row optimistically and
 /// replicate exactly one tombstone CRDT message (upstream's soft-delete shape).
 struct SyncClientDeletePayeeLocationTests {
@@ -59,14 +66,22 @@ struct SyncClientDeletePayeeLocationTests {
         #expect(tombstone == 1)
 
         let messages = try await queue.read { db in
-            try Row.fetchAll(db, sql: "SELECT * FROM messages_crdt ORDER BY timestamp")
+            try Row.fetchAll(db, sql: "SELECT dataset, row, column, value FROM messages_crdt ORDER BY timestamp")
+                .map {
+                    TombstoneMessage(
+                        dataset: $0["dataset"],
+                        row: $0["row"],
+                        column: $0["column"],
+                        value: $0["value"]
+                    )
+                }
         }
         #expect(messages.count == 1)
         let message = try #require(messages.first)
-        #expect(message["dataset"] == "payee_locations")
-        #expect(message["row"] == "loc-1")
-        #expect(message["column"] == "tombstone")
-        #expect(message["value"] == "N:1")
+        #expect(message.dataset == "payee_locations")
+        #expect(message.row == "loc-1")
+        #expect(message.column == "tombstone")
+        #expect(message.value == "N:1")
     }
 
     @Test func deleteThrowsWhenNotConfigured() async throws {

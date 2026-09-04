@@ -3,6 +3,13 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private struct AdjustmentRow: Sendable {
+    let amount: Int
+    let cleared: Int
+    let reconciled: Int
+    let account: String
+}
+
 /// Reconciliation flow (Discord request / actios-8oe7): cleared-balance
 /// query, dot-tap cleared toggling, locking cleared transactions, and the
 /// balance-adjustment transaction.
@@ -352,13 +359,20 @@ struct BudgetStoreReconciliationTests {
         let adjustment = try await #require(try queue.read { db in
             try Row.fetchOne(
                 db,
-                sql: "SELECT * FROM transactions WHERE notes = ?",
+                sql: "SELECT amount, cleared, reconciled, acct FROM transactions WHERE notes = ?",
                 arguments: ["Reconciliation balance adjustment"]
-            )
+            ).map {
+                AdjustmentRow(
+                    amount: $0["amount"],
+                    cleared: $0["cleared"],
+                    reconciled: $0["reconciled"],
+                    account: $0["acct"]
+                )
+            }
         })
-        #expect(adjustment["amount"] == 2000)
-        #expect(adjustment["cleared"] == 1)
-        #expect(adjustment["reconciled"] == 0)
-        #expect(adjustment["acct"] == "acct-1")
+        #expect(adjustment.amount == 2000)
+        #expect(adjustment.cleared == 1)
+        #expect(adjustment.reconciled == 0)
+        #expect(adjustment.account == "acct-1")
     }
 }
