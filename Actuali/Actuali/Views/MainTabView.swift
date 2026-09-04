@@ -141,7 +141,7 @@ struct AddTransactionTabView: View {
         } else {
             ContentUnavailableView(
                 "No Accounts",
-                systemImage: "banknote",
+                systemImage: "building.columns",
                 description: Text("Add an account to create transactions")
             )
         }
