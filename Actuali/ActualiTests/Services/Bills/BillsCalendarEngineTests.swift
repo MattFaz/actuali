@@ -163,9 +163,10 @@ struct BillsCalendarEngineTests {
         let account = Account(
             id: "acc-cc",
             name: "Amex Gold",
-            type: "credit",
-            offbudget: 0,
+            type: .credit,
+            offBudget: false,
             closed: false,
+            sortOrder: 0,
             balance: -45000 // owes $450.00
         )
         // Statement day 15, due offset 15 days -> statement Aug 15 -> due Aug 30 (before today) -> next statement Sept 15 -> due Sept 30
