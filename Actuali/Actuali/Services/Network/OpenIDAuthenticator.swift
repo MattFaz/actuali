@@ -39,6 +39,16 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     static let returnURL = "\(callbackScheme)://localhost"
 
     private var session: ASWebAuthenticationSession?
+    private let presentationWindow: ASPresentationAnchor
+
+    override init() {
+        presentationWindow = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .first { $0.isKeyWindow }
+            ?? ASPresentationAnchor()
+        super.init()
+    }
 
     /// Present the provider's authorization page and wait for the callback.
     /// - Parameter authorizationURL: the OP authorization URL returned by the server.
@@ -102,11 +112,6 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
     }
 
     nonisolated func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
-        MainActor.assumeIsolated {
-            UIApplication.shared.connectedScenes
-                .compactMap { $0 as? UIWindowScene }
-                .flatMap { $0.windows }
-                .first { $0.isKeyWindow } ?? ASPresentationAnchor()
-        }
+        presentationWindow
     }
 }

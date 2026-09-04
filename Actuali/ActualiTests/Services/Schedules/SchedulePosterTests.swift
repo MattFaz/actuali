@@ -8,7 +8,7 @@ import GRDB
 /// transaction row (so the poster's hasTransaction dedup guard sees it, same
 /// as production) and advanceScheduleNextDate applies the local_next_date
 /// override to the schedules_next_date row.
-private final class RecordingActions: SchedulePostingActions {
+private final class RecordingActions: SchedulePostingActions, @unchecked Sendable {
     let database: BudgetDatabase
     var created: [Transaction] = []
     var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] = []

@@ -5,7 +5,7 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "ScheduleP
 
 /// The two server-visible writes the poster performs, abstracted so tests can
 /// record them. `SyncClient` is the production conformance.
-protocol SchedulePostingActions {
+protocol SchedulePostingActions: Sendable {
     func createTransaction(_ transaction: Transaction) async throws
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws
 }
