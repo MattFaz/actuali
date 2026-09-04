@@ -55,6 +55,10 @@ struct BudgetView: View {
     /// string because @AppStorage can't hold a Set directly.
     @AppStorage("collapsedBudgetGroups") private var collapsedGroupsStorage = ""
 
+    private var usesCleanPresentation: Bool {
+        budgetStore.budgetDisplayStyle == .clean || budgetStore.budgetDisplayStyle == .compact
+    }
+
     private var collapsedGroups: Set<String> {
         Set(collapsedGroupsStorage.split(separator: ",").map(String.init))
     }
@@ -90,7 +94,7 @@ struct BudgetView: View {
                         // below. It sits above the List (not inside it) so it
                         // stays pinned while the table scrolls (GH #155).
                         Group {
-                            if budgetStore.budgetDisplayStyle == .clean {
+                            if usesCleanPresentation {
                                 CleanBudgetSummary(budget: budget)
                                     .padding(.horizontal, 16)
                                     .padding(.vertical, 8)
@@ -175,7 +179,7 @@ struct BudgetView: View {
 
                             ForEach(groupedCategories, id: \.id) { group in
                                 let isCollapsed = collapsedGroups.contains(group.id)
-                                if budgetStore.budgetDisplayStyle == .clean {
+                                if usesCleanPresentation {
                                     // Clean style: the group name sits above the
                                     // card as a section header, like the App
                                     // Store screenshots. The same collapse
@@ -267,7 +271,7 @@ struct BudgetView: View {
                         // The clean style keeps the stock section rhythm; the
                         // detailed table packs its group cards tighter.
                         .listSectionSpacing(
-                            budgetStore.budgetDisplayStyle == .clean ? .default : .custom(14)
+                            usesCleanPresentation ? .default : .custom(14)
                         )
                         .contentMargins(.horizontal, 4, for: .scrollContent)
                         // The rest of the gap under the pinned summary — this
@@ -278,7 +282,7 @@ struct BudgetView: View {
                         // group (GH #165).
                         .contentMargins(
                             .top,
-                            budgetStore.budgetDisplayStyle == .clean ? 20 : 16,
+                            usesCleanPresentation ? 20 : 16,
                             for: .scrollContent
                         )
                         // Let short rows (group headers) sit below the stock

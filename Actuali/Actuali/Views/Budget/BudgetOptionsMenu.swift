@@ -59,11 +59,24 @@ struct BudgetOptionsMenu: View {
             }
             .pickerStyle(.inline)
 
+            if budgetStore.budgetDisplayStyle == .compact {
+                Section {
+                    Toggle(isOn: $budgetStore.showCompactBudgetOverview) {
+                        Label("Show Overview", systemImage: "rectangle.topthird.inset.filled")
+                    }
+                    Toggle(isOn: $budgetStore.showCompactSpentColumn) {
+                        Label("Show Spent Column", systemImage: "tablecells.badge.ellipsis")
+                    }
+                }
+            }
+
             Picker(String(localized: "budget.options.layout"), selection: $budgetStore.budgetDisplayStyle) {
                 Label(String(localized: "budget.options.clean"), systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
                 Label(String(localized: "budget.options.detailed"), systemImage: "tablecells")
                     .tag(BudgetDisplayStyle.detailed)
+                Label(String(localized: "budget.options.compact"), systemImage: "rectangle.grid.1x2")
+                    .tag(BudgetDisplayStyle.compact)
             }
             .pickerStyle(.inline)
 

@@ -112,6 +112,20 @@ struct CustomHeader: Codable, Identifiable, Equatable {
 
 @MainActor
 final class BudgetStore: ObservableObject {
+    private var categoryFundingTask: Task<Void, Never>?
+
+    func enqueueCategoryFunding(savedTransactionId: String, defaults: UserDefaults) {
+        let previousTask = categoryFundingTask
+        categoryFundingTask = Task { @MainActor [weak self] in
+            _ = await previousTask?.result
+            guard let self else { return }
+            await CategoryFundingAutomation.process(
+                savedTransactionId: savedTransactionId,
+                using: self,
+                defaults: defaults
+            )
+        }
+    }
     // MARK: - Published State
 
     @Published var isLoading = false
@@ -281,6 +295,20 @@ final class BudgetStore: ObservableObject {
     @Published var budgetDisplayStyle: BudgetDisplayStyle = .clean {
         didSet {
             UserDefaults.standard.set(budgetDisplayStyle.rawValue, forKey: "budgetDisplayStyle")
+        }
+    }
+
+    /// Whether compact budget mode shows its pinned monthly overview.
+    @Published var showCompactBudgetOverview: Bool = true {
+        didSet {
+            UserDefaults.standard.set(showCompactBudgetOverview, forKey: "showCompactBudgetOverview")
+        }
+    }
+
+    /// Whether compact budget mode includes the optional Spent column.
+    @Published var showCompactSpentColumn: Bool = false {
+        didSet {
+            UserDefaults.standard.set(showCompactSpentColumn, forKey: "showCompactSpentColumn")
         }
     }
 
@@ -869,6 +897,10 @@ final class BudgetStore: ObservableObject {
            let style = BudgetDisplayStyle(rawValue: raw) {
             _budgetDisplayStyle = Published(initialValue: style)
         }
+        _showCompactBudgetOverview = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showCompactBudgetOverview") as? Bool ?? true)
+        _showCompactSpentColumn = Published(initialValue: UserDefaults.standard
+            .object(forKey: "showCompactSpentColumn") as? Bool ?? false)
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(initialValue: UserDefaults.standard

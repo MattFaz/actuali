@@ -8,6 +8,7 @@ struct AddTransactionView: View {
     @Environment(\.isPresented) private var isPresented
 
     private let editing: Transaction?
+    private let onSaved: ((String?) -> Void)?
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -47,6 +48,7 @@ struct AddTransactionView: View {
         cleared: Bool = false
     ) {
         self.editing = nil
+        self.onSaved = nil
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -61,11 +63,27 @@ struct AddTransactionView: View {
         _userPickedCategory = State(initialValue: categoryId != nil)
     }
 
+    init(accountId: String, onSaved: ((String?) -> Void)?) {
+        self.editing = nil
+        self.onSaved = onSaved
+        _selectedAccountId = State(initialValue: accountId)
+        _amount = State(initialValue: "")
+        _txType = State(initialValue: .expense)
+        _payeeName = State(initialValue: "")
+        _transferToAccountId = State(initialValue: nil)
+        _selectedCategoryId = State(initialValue: nil)
+        _notes = State(initialValue: "")
+        _date = State(initialValue: Date())
+        _cleared = State(initialValue: false)
+        _userPickedCategory = State(initialValue: false)
+    }
+
     /// Initializer for the "Edit" flow. Transfer legs load as transfers —
     /// From/To derive from the leg's sign (the opened row can be either side)
     /// with the partner account read off the transfer payee (GH #104).
     init(editing: Transaction) {
         self.editing = editing
+        self.onSaved = nil
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0

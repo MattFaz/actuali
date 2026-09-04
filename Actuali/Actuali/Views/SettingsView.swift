@@ -629,6 +629,13 @@ struct SettingsView: View {
                 }
 
                 Section {
+                    if budgetStore.currentBudgetId != nil {
+                        NavigationLink {
+                            TransactionAutomationSettingsView()
+                        } label: {
+                            Label("Transactions & Automation", systemImage: "gearshape.2")
+                        }
+                    }
                     NavigationLink {
                         WalletAutomationView()
                     } label: {

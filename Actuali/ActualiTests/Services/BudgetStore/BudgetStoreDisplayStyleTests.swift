@@ -19,6 +19,9 @@ struct BudgetStoreDisplayStyleTests {
         #expect(UserDefaults.standard.string(forKey: "budgetDisplayStyle") == "detailed")
         store.budgetDisplayStyle = .clean
         #expect(UserDefaults.standard.string(forKey: "budgetDisplayStyle") == "clean")
+        store.budgetDisplayStyle = .compact
+        #expect(UserDefaults.standard.string(forKey: "budgetDisplayStyle") == "compact")
+        store.budgetDisplayStyle = .clean
     }
 
     /// Raw values round-trip, and unknown raw values (from a future build)

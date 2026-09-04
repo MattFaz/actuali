@@ -7,4 +7,5 @@ import Foundation
 enum BudgetDisplayStyle: String, CaseIterable {
     case clean
     case detailed
+    case compact
 }
