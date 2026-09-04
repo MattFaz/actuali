@@ -83,13 +83,13 @@ struct MainTabView: View {
             Tab(value: 0) {
                 AccountsListView()
             } label: {
-                Label("Accounts", systemImage: "banknote")
+                Label("Accounts", systemImage: "building.columns")
             }
 
             Tab(value: 2) {
                 AddTransactionTabView()
             } label: {
-                Label("Add", systemImage: "plus.circle.fill")
+                Label("Add", systemImage: "plus")
             }
 
             Tab(value: 3) {
