@@ -149,7 +149,7 @@ enum CurrencyAmountFormat {
                 number: NSNumber(value: amount), wholeUnits: wholeUnits, currencyCode: nil)
         }
 
-        let key = "\(locale.identifier)|\(currencyCode)|\(wholeUnits)|\(numberFormat.rawValue)"
+        let key = "\(currencyCode)|\(wholeUnits)|\(numberFormat.rawValue)"
         let formatter: NumberFormatter
         if let cached = symbolLessFormatters[key] {
             formatter = cached
