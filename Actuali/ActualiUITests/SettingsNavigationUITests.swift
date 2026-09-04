@@ -72,4 +72,64 @@ final class SettingsNavigationUITests: XCTestCase {
             navigationBar.buttons.element(boundBy: 0).tap()
         }
     }
+
+    @MainActor
+    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4"
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Other Budget"].exists)
+        XCTAssertFalse(app.buttons["Encrypted Budget"].exists)
+
+        selected.tap()
+
+        let other = app.buttons["Other Budget"]
+        XCTAssertTrue(other.waitForExistence(timeout: 5))
+
+        let encrypted = app.buttons["Encrypted Budget"]
+        XCTAssertTrue(encrypted.waitForExistence(timeout: 5))
+        XCTAssertTrue(encrypted.images.firstMatch.waitForExistence(timeout: 5))
+
+        other.tap()
+
+        XCTAssertFalse(app.buttons["Encrypted Budget"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["budget-selection-selected"].exists)
+    }
+
+    @MainActor
+    func testBudgetSelectionLongPressShowsManagementActions() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-connectedServerSettings",
+            "-budgetSelectionFixture",
+            "-initialTab",
+            "4"
+        ]
+        app.launch()
+
+        let row = app.buttons["Connection & Data"]
+        XCTAssertTrue(row.waitForExistence(timeout: 5))
+        row.tap()
+
+        let selected = app.buttons["budget-selection-selected"]
+        XCTAssertTrue(selected.waitForExistence(timeout: 5))
+        selected.press(forDuration: 1.0)
+
+        XCTAssertTrue(app.buttons["Remove from This Device"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Delete from Server…"].waitForExistence(timeout: 5))
+    }
 }
