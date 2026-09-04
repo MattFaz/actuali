@@ -151,7 +151,44 @@ struct CompactBudgetGroupHeader: View {
     }
 
     var body: some View {
-        Button(action: onToggleCollapse) {
+        Group {
+            if let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show" : "Hide",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    headerContent
+                } primaryAction: {
+                    onToggleCollapse()
+                }
+            } else {
+                Button(action: onToggleCollapse) {
+                    headerContent
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("compactBudgetGroup.\(name)")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(
+            onSetHidden == nil
+                ? "Toggles the group's categories"
+                : "Tap to toggle the group's categories; touch and hold for options"
+        )
+        .foregroundStyle(.primary)
+        .background(Color(.secondarySystemBackground))
+        .opacity(isHidden ? 0.5 : 1)
+        .listRowInsets(EdgeInsets())
+    }
+
+    @ViewBuilder private var headerContent: some View {
+        HStack(spacing: 0) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 8) {
@@ -199,28 +236,11 @@ struct CompactBudgetGroupHeader: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("compactBudgetGroup.\(name)")
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
-        .foregroundStyle(.primary)
-        .background(Color(.secondarySystemBackground))
-        .listRowInsets(EdgeInsets())
-        .opacity(isHidden ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var title: some View {
@@ -482,7 +502,44 @@ struct CompactIncomeGroupHeader: View {
     }
 
     var body: some View {
-        Button(action: onToggleCollapse) {
+        Group {
+            if let onSetHidden {
+                Menu {
+                    Button {
+                        onSetHidden(!isHidden)
+                    } label: {
+                        Label(
+                            isHidden ? "Show" : "Hide",
+                            systemImage: isHidden ? "eye" : "eye.slash"
+                        )
+                    }
+                } label: {
+                    headerContent
+                } primaryAction: {
+                    onToggleCollapse()
+                }
+            } else {
+                Button(action: onToggleCollapse) {
+                    headerContent
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("compactIncomeSection")
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityHint(
+            onSetHidden == nil
+                ? "Toggles the income categories"
+                : "Tap to toggle the income categories; touch and hold for options"
+        )
+        .foregroundStyle(.primary)
+        .background(Color(.secondarySystemBackground))
+        .opacity(isHidden ? 0.5 : 1)
+        .listRowInsets(EdgeInsets())
+    }
+
+    @ViewBuilder private var headerContent: some View {
+        HStack(spacing: 0) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 8) {
@@ -524,28 +581,11 @@ struct CompactIncomeGroupHeader: View {
                     }
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier("compactIncomeSection")
-        .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the income categories")
-        .foregroundStyle(.primary)
-        .background(Color(.secondarySystemBackground))
-        .listRowInsets(EdgeInsets())
-        .opacity(isHidden ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .contentShape(Rectangle())
     }
 
     private var title: some View {

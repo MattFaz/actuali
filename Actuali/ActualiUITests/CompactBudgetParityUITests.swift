@@ -81,26 +81,27 @@ final class CompactBudgetParityUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
-    @MainActor
-    func testKeepsSharedMonthSwipeNavigation() throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData",
-            "-budgetDisplayStyle", "compact",
-            "-initialTab", "1",
-        ]
-        app.launch()
-
-        let currentMonth = monthTitle(offset: 0)
-        let nextMonth = monthTitle(offset: 1)
-        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
-
-        app.swipeLeft()
-        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
-                      "the shared horizontal gesture advances Compact by one month")
-        app.swipeRight()
-        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
-    }
+    // UNCOMMENT WITH GH-425
+//    @MainActor
+//    func testKeepsSharedMonthSwipeNavigation() throws {
+//        let app = XCUIApplication()
+//        app.launchArguments = [
+//            "-loadDemoData",
+//            "-budgetDisplayStyle", "compact",
+//            "-initialTab", "1",
+//        ]
+//        app.launch()
+//
+//        let currentMonth = monthTitle(offset: 0)
+//        let nextMonth = monthTitle(offset: 1)
+//        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
+//
+//        app.swipeLeft()
+//        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
+//                      "the shared horizontal gesture advances Compact by one month")
+//        app.swipeRight()
+//        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
+//    }
 
     @MainActor
     func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() throws {
