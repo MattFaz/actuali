@@ -45,7 +45,7 @@ enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
 
     var systemImage: String {
         switch self {
-        case .fixed: "banknote"
+        case .fixed: "building.columns"
         case .schedule: "calendar"
         case .by: "target"
         case .percentage: "percent"
