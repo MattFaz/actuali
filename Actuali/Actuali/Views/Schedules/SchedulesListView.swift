@@ -112,6 +112,13 @@ struct SchedulesListView: View {
         .searchable(text: $searchText, prompt: "Search schedules")
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    BillsCalendarView()
+                } label: {
+                    Label("Calendar", systemImage: "calendar")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Toggle("Show Completed", isOn: $showCompleted)
 
