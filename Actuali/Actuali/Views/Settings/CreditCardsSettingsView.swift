@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 /// View for managing credit card accounts and their monthly billing cycles.
 struct CreditCardsSettingsView: View {
@@ -11,6 +12,34 @@ struct CreditCardsSettingsView: View {
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
+    @State private var dueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
+    @State private var notificationPermissionDenied = false
+
+    private var dueRemindersBinding: Binding<Bool> {
+        Binding(
+            get: { dueNotificationsEnabled },
+            set: { enabled in
+                dueNotificationsEnabled = enabled
+                CreditCardNotificationSettings().isEnabled = enabled
+                Task {
+                    if enabled {
+                        let center = UNUserNotificationCenter.current()
+                        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+                        notificationPermissionDenied = !granted
+                    } else {
+                        notificationPermissionDenied = false
+                    }
+                    await budgetStore.scheduleCreditCardDueNotifications()
+                }
+            }
+        )
+    }
+
+    private func refreshNotificationPermissionState() async {
+        guard dueNotificationsEnabled else { return }
+        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
+        notificationPermissionDenied = status == .denied
+    }
 
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
@@ -21,18 +50,21 @@ struct CreditCardsSettingsView: View {
         })
     }
 
-    /// Soonest payment first. The name tie-break is what makes this a total
-    /// order: `daysUntilDue` clamps at 0, so every past-due card ties there, and
-    /// the input arrives from a `Dictionary` whose order is reseeded per launch.
-    /// `today` is sampled once rather than per comparison so the ordering can't
-    /// change underneath `sorted` at midnight.
+    /// Soonest payment first for cards with an unpaid balance; accounts with
+    /// zero (or positive/overpaid) balance sort at the very end. The name
+    /// tie-break makes this a total order: `daysUntilDue` clamps at 0, so every
+    /// past-due card ties there, and the input arrives from a `Dictionary` whose
+    /// order is reseeded per launch. `today` is sampled once rather than per
+    /// comparison so the ordering can't change underneath `sorted` at midnight.
     nonisolated static func sortedCards(
         _ cards: [(account: Account, cycle: CreditCardCycle)],
         today: DayDate = .today()
     ) -> [(account: Account, cycle: CreditCardCycle)] {
         cards.sorted {
-            ($0.cycle.daysUntilDue(for: today), $0.account.name)
-                < ($1.cycle.daysUntilDue(for: today), $1.account.name)
+            let zero0 = $0.account.balance >= 0 ? 1 : 0
+            let zero1 = $1.account.balance >= 0 ? 1 : 0
+            return (zero0, $0.cycle.daysUntilDue(for: today), $0.account.name)
+                < (zero1, $1.cycle.daysUntilDue(for: today), $1.account.name)
         }
     }
 
@@ -113,7 +145,28 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
+
+            Section {
+                Toggle("Payment Due Reminders", isOn: dueRemindersBinding)
+
+                if notificationPermissionDenied {
+                    Button("Open Settings to Allow Notifications") {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    }
+                }
+            } header: {
+                Text("Reminders")
+            } footer: {
+                if notificationPermissionDenied {
+                    Text("Notifications are turned off for Actuali in the Settings app, so due date reminders can't be delivered.")
+                } else {
+                    Text("Get reminded 7, 5, 3, and 1 day before payment is due if a card has an unpaid balance.")
+                }
+            }
         }
+        .task { await refreshNotificationPermissionState() }
         .navigationTitle("Credit Cards")
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSheet) {

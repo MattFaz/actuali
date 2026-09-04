@@ -715,6 +715,7 @@ final class BudgetStore: ObservableObject {
             creditCardConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
+        await scheduleCreditCardDueNotifications()
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -732,6 +733,23 @@ final class BudgetStore: ObservableObject {
     func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
         return creditCardCycle(for: accountId)
+    }
+
+    /// Schedules or cancels credit card payment due date reminder notifications
+    /// based on the current accounts, credit card cycles, and user preference.
+    func scheduleCreditCardDueNotifications() async {
+        var cycles: [String: CreditCardCycle] = [:]
+        for accountId in activeCreditCardStatementDays.keys {
+            if let cycle = creditCardCycle(for: accountId) {
+                cycles[accountId] = cycle
+            }
+        }
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: accounts,
+            cycles: cycles,
+            currencyCode: currencyCode,
+            narrowSymbol: useNarrowCurrencySymbol
+        )
     }
 
     /// Credit still available on a tracked card: the limit less what is owed.
@@ -4899,6 +4917,7 @@ return transaction.id
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
     func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
         await notifyAboutTransactions(await detectNewTransactionsForNotification() + additional)
+        await scheduleCreditCardDueNotifications()
     }
 
     private func notifyAboutTransactions(_ fresh: [Transaction]) async {
