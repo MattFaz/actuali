@@ -29,6 +29,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         return app
     }
 
+    @MainActor
     private func selectViewStyle(_ style: String, in app: XCUIApplication) {
         let picker = app.buttons.matching(
             NSPredicate(format: "label BEGINSWITH 'View Style'")

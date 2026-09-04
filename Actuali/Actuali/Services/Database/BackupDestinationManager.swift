@@ -3,6 +3,12 @@ import os
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BackupDestination")
 
+// Apple's documentation guarantees: "The UserDefaults class is thread-safe."
+// The SDK does not annotate UserDefaults with Sendable, so we provide an
+// unchecked conformance to allow passing UserDefaults instances across actor boundaries.
+// ponytail: Upgrade path is dropping this conformance once the SDK marks UserDefaults Sendable.
+extension UserDefaults: @unchecked @retroactive Sendable {}
+
 enum BackupDestinationError: LocalizedError {
     case accessDenied
 
