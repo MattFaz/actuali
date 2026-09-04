@@ -28,11 +28,13 @@ struct BankSyncReconcilerTests {
         importedPayee: String? = nil,
         notes: String? = nil,
         cleared: Bool = false,
-        reconciled: Bool = false
+        reconciled: Bool = false,
+        tombstone: Bool = false
     ) -> BankSyncExistingTransaction {
         BankSyncExistingTransaction(
             id: id, date: date, amount: amount, payeeId: payeeId, importedId: importedId,
-            importedPayee: importedPayee, notes: notes, cleared: cleared, reconciled: reconciled
+            importedPayee: importedPayee, notes: notes, cleared: cleared,
+            reconciled: reconciled, tombstone: tombstone
         )
     }
 
@@ -70,6 +72,20 @@ struct BankSyncReconcilerTests {
         let update = try #require(plan.updates.first)
         #expect(update.existingId == "tx-1")
         #expect(update.cleared)
+    }
+
+    @Test func aLiveIdMatchWinsOverADeletedOne() throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(cleared: true)],
+            existing: [
+                existing(id: "tx-deleted", importedId: "sf-1", tombstone: true),
+                existing(id: "tx-live", importedId: "sf-1")
+            ],
+            reimportDeleted: false
+        )
+
+        #expect(try #require(plan.updates.first).existingId == "tx-live")
+        #expect(plan.updates.first?.cleared == true)
     }
 
     /// The id match beats the fuzzy window even when the window has a nearer

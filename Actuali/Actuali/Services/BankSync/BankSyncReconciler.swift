@@ -89,11 +89,17 @@ enum BankSyncReconciler {
         // duplicate it.
         var pending: [(candidate: BankSyncCandidate, match: BankSyncExistingTransaction?, window: [BankSyncExistingTransaction])] = []
         for candidate in candidates {
-            if let match = existing.first(where: {
+            let liveMatch = existing.first(where: {
                 $0.importedId == candidate.importedId
-                    && (!$0.tombstone || !reimportDeleted)
+                    && !$0.tombstone
                     && !matchedIds.contains($0.id)
-            }) {
+            })
+            let deletedMatch = reimportDeleted ? nil : existing.first(where: {
+                $0.importedId == candidate.importedId
+                    && $0.tombstone
+                    && !matchedIds.contains($0.id)
+            })
+            if let match = liveMatch ?? deletedMatch {
                 matchedIds.insert(match.id)
                 pending.append((candidate, match, []))
                 continue
