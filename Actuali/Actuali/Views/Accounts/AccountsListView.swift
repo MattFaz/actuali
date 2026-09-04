@@ -246,7 +246,7 @@ struct AccountsListView: View {
                     } else {
                         ContentUnavailableView(
                             "Account Unavailable",
-                            systemImage: "banknote",
+                            systemImage: "building.columns",
                             description: Text("Pick another account from the list.")
                         )
                     }
@@ -255,7 +255,7 @@ struct AccountsListView: View {
                 case nil:
                     ContentUnavailableView(
                         "No Account Selected",
-                        systemImage: "banknote",
+                        systemImage: "building.columns",
                         description: Text("Pick an account from the list.")
                     )
                 }
