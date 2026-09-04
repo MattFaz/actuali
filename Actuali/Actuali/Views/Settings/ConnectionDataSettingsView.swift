@@ -276,11 +276,16 @@ private struct BudgetSelectionSettingsSection: View {
     @State private var showingBudgetPicker = false
     @State private var newBudgetName = ""
 
+    /// The open budget's server fileId — currentBudgetId is the internal id,
+    /// so map through the local metadata.
     private func currentCloudFileId(in locals: [BudgetMetadata]) -> String? {
         guard let budgetId = budgetStore.currentBudgetId else { return nil }
         return locals.first { $0.id == budgetId }?.cloudFileId
     }
 
+    /// The open budget when the server list doesn't include it (still loading,
+    /// or the file was deleted from another client). It keeps a row so the
+    /// selection stays visible and the local copy stays removable.
     private func unlistedCurrentBudget(in locals: [BudgetMetadata]) -> BudgetStore.RemoteBudget? {
         guard let budgetId = budgetStore.currentBudgetId,
               let metadata = locals.first(where: { $0.id == budgetId }),
@@ -304,6 +309,7 @@ private struct BudgetSelectionSettingsSection: View {
     }
 
     var body: some View {
+        // One directory read per render; every row check below shares it.
         let localBudgets = BudgetFileManager.shared.listLocalBudgets()
 
         Section {
@@ -313,17 +319,17 @@ private struct BudgetSelectionSettingsSection: View {
                 budgetPickerForNoSelection()
             }
 
-            Button("Create New Budget") {
-                newBudgetName = ""
-                showingCreateBudgetPrompt = true
-            }
-            .disabled(budgetStore.isLoading || budgetStore.downloadingBudgetId != nil)
-
             if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
                 Button("Refresh Budgets") {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
             }
+
+            Button("Create New Budget") {
+                newBudgetName = ""
+                showingCreateBudgetPrompt = true
+            }
+            .disabled(budgetStore.isLoading || budgetStore.downloadingBudgetId != nil)
         } header: {
             Text("Budget Selection")
         } footer: {
@@ -435,9 +441,12 @@ private struct BudgetSelectionSettingsSection: View {
             }
         }
         .popover(isPresented: $showingBudgetPicker) {
+            let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != selectedBudget.id }
+            let unlistedBudget = unlistedCurrentBudget(in: locals)
+
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    ForEach(budgetStore.remoteBudgets.filter { $0.id != selectedBudget.id }) { otherBudget in
+                    ForEach(otherBudgets) { otherBudget in
                         Button {
                             showingBudgetPicker = false
                             openBudget(otherBudget)
@@ -462,20 +471,19 @@ private struct BudgetSelectionSettingsSection: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let unlisted = unlistedCurrentBudget(in: locals),
-                       unlisted.id != selectedBudget.id,
-                       !budgetStore.remoteBudgets.contains(where: { $0.id == unlisted.id }) {
+                    if let unlistedBudget,
+                       unlistedBudget.id != selectedBudget.id {
                         Button {
                             showingBudgetPicker = false
-                            openBudget(unlisted)
+                            openBudget(unlistedBudget)
                         } label: {
                             HStack {
-                                if unlisted.isEncrypted {
+                                if unlistedBudget.isEncrypted {
                                     Image(systemName: "lock.fill")
                                         .foregroundStyle(.secondary)
                                 }
 
-                                Text(unlisted.name)
+                                Text(unlistedBudget.name)
                                     .foregroundStyle(.primary)
                                     .lineLimit(1)
 
@@ -489,7 +497,7 @@ private struct BudgetSelectionSettingsSection: View {
                         .buttonStyle(.plain)
                     }
 
-                    if budgetStore.remoteBudgets.filter({ $0.id != selectedBudget.id }).isEmpty {
+                    if otherBudgets.isEmpty && unlistedBudget == nil {
                         Text("No other budgets")
                             .foregroundStyle(.secondary)
                             .padding(16)
@@ -542,6 +550,8 @@ private struct BudgetSelectionSettingsSection: View {
         }
     }
 
+    /// One-time nudge after connecting: surface budget selection so a fresh
+    /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
         if budgetStore.currentBudgetId == nil && !budgetStore.remoteBudgets.isEmpty {
             showingBudgetSelectPrompt = true
