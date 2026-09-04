@@ -252,7 +252,7 @@ struct BillsCalendarView: View {
 
                 ForEach(days, id: \.yyyymmdd) { day in
                     let dayItems = itemsByDate[day] ?? []
-                    CalendarDayCell(
+                    BillsCalendarDayCell(
                         day: day,
                         isToday: day == today,
                         isSelected: selectedDate == day,
@@ -399,7 +399,7 @@ struct BillsCalendarView: View {
 
 // MARK: - Calendar Day Cell
 
-private struct CalendarDayCell: View {
+private struct BillsCalendarDayCell: View {
     let day: DayDate
     let isToday: Bool
     let isSelected: Bool
