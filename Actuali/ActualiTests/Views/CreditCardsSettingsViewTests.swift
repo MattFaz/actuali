@@ -53,6 +53,27 @@ struct CreditCardsSettingsViewTests {
         #expect(CreditCardsSettingsView.sortedCards([]).isEmpty)
     }
 
+    @Test func cardsWithZeroBalanceSortAtTheEnd() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let soon = CreditCardCycle(statementDay: 15) // due in 10d
+        let later = CreditCardCycle(statementDay: 25) // due in 20d
+
+        let paidSoon = Account(id: "1", name: "Paid Soon", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+        let unpaidLater = Account(id: "2", name: "Unpaid Later", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: -5000)
+        let unpaidSoon = Account(id: "3", name: "Unpaid Soon", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: -10000)
+        let paidLater = Account(id: "4", name: "Paid Later", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+
+        let cards = [
+            (account: paidSoon, cycle: soon),
+            (account: unpaidLater, cycle: later),
+            (account: unpaidSoon, cycle: soon),
+            (account: paidLater, cycle: later),
+        ]
+
+        let sorted = CreditCardsSettingsView.sortedCards(cards, today: today)
+        #expect(sorted.map(\.account.name) == ["Unpaid Soon", "Unpaid Later", "Paid Soon", "Paid Later"])
+    }
+
     // MARK: - Urgency color
 
     @Test func urgencyColorSwitchesAtThreeAndSevenDays() {
