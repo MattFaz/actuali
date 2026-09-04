@@ -97,13 +97,16 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
             destination = await Self.destination(for: newTransactionRoute, in: BudgetStore.shared)
             return
         }
-        route(userInfo: content.userInfo)
+        route(userInfo: content.userInfo, categoryIdentifier: content.categoryIdentifier)
     }
 
-    /// Maps a tapped log notification's payload to pending UI state. Internal
+    /// Maps a tapped notification's payload to pending UI state. Internal
     /// so unit tests can drive it without a real UNNotificationResponse.
-    func route(userInfo: [AnyHashable: Any]) {
-        if let prefill = TransactionPrefill(userInfo: userInfo) {
+    func route(userInfo: [AnyHashable: Any], categoryIdentifier: String? = nil) {
+        if categoryIdentifier == CreditCardDueNotifier.categoryIdentifier,
+           let accountId = userInfo[CreditCardDueNotifier.accountIdKey] as? String {
+            pendingAccountNavigation = accountId
+        } else if let prefill = TransactionPrefill(userInfo: userInfo) {
             pendingPrefill = prefill
         } else if TransactionLoggedMarker.isPresent(in: userInfo) {
             pendingAllAccountsNavigation = true

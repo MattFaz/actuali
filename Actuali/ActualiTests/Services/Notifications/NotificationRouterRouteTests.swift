@@ -33,4 +33,15 @@ struct NotificationRouterRouteTests {
         #expect(router.pendingPrefill == nil)
         #expect(router.pendingAllAccountsNavigation == false)
     }
+
+    @Test func creditCardDueNotificationSetsAccountNavigation() {
+        let router = NotificationRouter()
+        router.route(
+            userInfo: [CreditCardDueNotifier.accountIdKey: "card-123"],
+            categoryIdentifier: CreditCardDueNotifier.categoryIdentifier
+        )
+        #expect(router.pendingAccountNavigation == "card-123")
+        #expect(router.pendingPrefill == nil)
+        #expect(router.pendingAllAccountsNavigation == false)
+    }
 }
