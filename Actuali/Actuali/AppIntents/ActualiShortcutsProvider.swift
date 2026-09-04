@@ -15,7 +15,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Log a transaction in \(.applicationName)",
             ],
             shortTitle: "Log Transaction",
-            systemImageName: "plus.circle.fill"
+            systemImageName: "plus"
         )
 
         AppShortcut(
