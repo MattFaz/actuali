@@ -2852,25 +2852,32 @@ final class BudgetDatabase: Sendable {
     }
 
     /// The transactions a download could be matching, projected down to the
-    /// columns `BankSyncReconciler` reads. Bounded by date because matching
-    /// only ever looks a week either side of a downloaded transaction.
+    /// columns `BankSyncReconciler` reads. Fuzzy candidates are bounded by
+    /// date; exact provider IDs are included account-wide.
     ///
     /// Split children are excluded: a download matches the parent (which
     /// carries the full amount), never one of its portions. Tombstoned rows
-    /// are excluded too, so a transaction the person deleted isn't quietly
-    /// resurrected by the next sync — it re-imports as new instead, which is
-    /// the outcome they'd get on the web UI.
-    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
+    /// are included so the reconciler can apply the account's
+    /// `reimportDeleted` setting: they are usable only as exact-ID dedupe keys.
+    func bankSyncWindow(
+        accountId: String,
+        from: Int,
+        to: Int,
+        importedIds: Set<String>
+    ) async throws -> [BankSyncExistingTransaction] {
         try await dbQueue.read { db in
-            try Row.fetchAll(db, sql: """
+            let placeholders = Array(repeating: "?", count: importedIds.count).joined(separator: ", ")
+            var arguments: [any DatabaseValueConvertible] = [accountId, from, to]
+            arguments.append(contentsOf: importedIds.map { $0 as any DatabaseValueConvertible })
+            return try Row.fetchAll(db, sql: """
                 SELECT id, date, amount, description, financial_id, imported_description,
-                       notes, cleared, reconciled
+                       notes, cleared, reconciled, tombstone
                 FROM transactions
                 WHERE acct = ?
-                  AND date IS NOT NULL AND date >= ? AND date <= ?
-                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND ((date IS NOT NULL AND date >= ? AND date <= ?)
+                       OR financial_id IN (\(placeholders)))
                   AND (isChild = 0 OR isChild IS NULL)
-                """, arguments: [accountId, from, to]).map { row in
+                """, arguments: StatementArguments(arguments)).map { row in
                 BankSyncExistingTransaction(
                     id: row["id"],
                     date: row["date"] ?? 0,
@@ -2880,7 +2887,8 @@ final class BudgetDatabase: Sendable {
                     importedPayee: row["imported_description"],
                     notes: row["notes"],
                     cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1
+                    reconciled: row["reconciled"] == 1,
+                    tombstone: row["tombstone"] == 1
                 )
             }
         }

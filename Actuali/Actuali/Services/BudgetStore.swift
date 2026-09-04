@@ -3285,16 +3285,7 @@ final class BudgetStore: ObservableObject {
         // far as the hungriest of them.
         var candidates = download.candidates
 
-        // The opening balance counts as an import too (upstream folds its id
-        // into `added`), so a first sync never reports one fewer than it wrote.
         var added = 0
-        if existingOldestDay == nil {
-            added += try await insertStartingBalance(
-                for: target,
-                currentBalanceCents: download.currentBalanceCents,
-                candidates: candidates
-            ) ? 1 : 0
-        }
         guard let earliest = candidates.map(\.date).min(),
               let latest = candidates.map(\.date).max() else { return (added, 0, []) }
 
@@ -3317,13 +3308,35 @@ final class BudgetStore: ObservableObject {
         }
 
         let radius = BankSyncReconciler.fuzzyMatchDayRadius
+        // Actual stores this as a synced per-account preference. Its default
+        // is true for backwards compatibility, so an absent preference keeps
+        // the existing reimport behavior.
+        let reimportDeleted = (try await database.fetchPreference(
+            id: "sync-reimport-deleted-\(target.id)"
+        ) ?? "true") == "true"
         let window = try await database.bankSyncWindow(
             accountId: target.id,
             from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
-            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
+            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest,
+            importedIds: Set(candidates.map(\.importedId))
         )
 
-        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: window,
+            reimportDeleted: reimportDeleted
+        )
+
+        // The opening balance counts as an import too (upstream folds its id
+        // into `added`). Only subtract rows this sync will actually insert.
+        if existingOldestDay == nil {
+            added += try await insertStartingBalance(
+                for: target,
+                currentBalanceCents: download.currentBalanceCents,
+                imported: plan.inserts,
+                startingDay: earliest
+            ) ? 1 : 0
+        }
 
         try await syncClient.applyBankSyncUpdates(plan.updates)
 
@@ -3402,12 +3415,13 @@ final class BudgetStore: ObservableObject {
     private func insertStartingBalance(
         for target: BankSyncAccount,
         currentBalanceCents: Int?,
-        candidates: [BankSyncCandidate]
+        imported: [BankSyncCandidate],
+        startingDay: Int
     ) async throws -> Bool {
         guard let syncClient, let balance = currentBalanceCents else { return false }
         // The balance is as of now, so what the account opened with is what's
         // left once everything about to be imported is taken back off it.
-        let opening = balance - candidates.reduce(0) { $0 + $1.amount }
+        let opening = balance - imported.reduce(0) { $0 + $1.amount }
         guard opening != 0 else { return false }
 
         let payee = try await findOrCreatePayee(name: "Starting Balance")
@@ -3416,7 +3430,7 @@ final class BudgetStore: ObservableObject {
         let transaction = Transaction(
             id: UUID().uuidString,
             accountId: target.id,
-            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
+            date: startingDay,
             amount: opening,
             payeeId: payee.id,
             payeeName: payee.name,
