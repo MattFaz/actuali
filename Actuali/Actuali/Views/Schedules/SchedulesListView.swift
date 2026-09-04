@@ -124,6 +124,13 @@ struct SchedulesListView: View {
         .searchable(text: $searchText, prompt: ReportStrings.text("Search schedules", locale: locale))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    BillsCalendarView()
+                } label: {
+                    Label("Calendar", systemImage: "calendar")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
                     Toggle(ReportStrings.text("Show Completed", locale: locale), isOn: $showCompleted)
 
