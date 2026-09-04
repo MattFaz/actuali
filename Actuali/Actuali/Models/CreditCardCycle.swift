@@ -26,14 +26,6 @@ struct CreditCardCycle: Equatable, Hashable {
         }
     }
 
-    /// Fixed day of the month if configured, otherwise nil.
-    var dueDay: Int? {
-        switch paymentDue {
-        case .daysAfter: return nil
-        case .dayOfMonth(let day): return day
-        }
-    }
-
     /// Applied to cards configured before the offset became per-card.
     static let defaultDueOffsetDays = 15
 
@@ -44,11 +36,6 @@ struct CreditCardCycle: Equatable, Hashable {
     init(statementDay: Int, paymentDue: PaymentDue = .daysAfter(Self.defaultDueOffsetDays)) {
         self.statementDay = statementDay
         self.paymentDue = paymentDue
-    }
-
-    /// Backward-compatible initializer for callers and tests passing `dueOffsetDays`.
-    init(statementDay: Int, dueOffsetDays: Int) {
-        self.init(statementDay: statementDay, paymentDue: .daysAfter(dueOffsetDays))
     }
 
     /// Clamps statement day to the given month's actual length.
@@ -113,17 +100,11 @@ struct CreditCardCycle: Equatable, Hashable {
         // payment covers the cycle now running.
         var due = dueDate(forStatement: cycleRange(for: today).end)
         var statement = previousStatementDate(for: today)
-        // A statement can only be pending while its due date is within
-        // the due window of today. For day-of-month, the payment window spans
-        // at most one cycle, so 2 iterations bounds the walk.
-        let maxIterations: Int
-        switch paymentDue {
-        case .daysAfter(let days):
-            maxIterations = days / 28 + 1
-        case .dayOfMonth:
-            maxIterations = 2
-        }
-        for _ in 0...maxIterations {
+        // A statement can only be pending while its due date is within the due
+        // window of today, which spans at most one cycle per whole month of
+        // offset. A fixed day of the month never exceeds one cycle, and the 15
+        // this returns for that rule already bounds the walk.
+        for _ in 0...(dueOffsetDays / 28 + 1) {
             let statementDue = dueDate(forStatement: statement)
             guard today <= statementDue else { break }
             due = statementDue

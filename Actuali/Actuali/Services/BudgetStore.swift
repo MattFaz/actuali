@@ -675,11 +675,6 @@ final class BudgetStore: ObservableObject {
         creditCardConfigs.mapValues(\.dueOffsetDays)
     }
 
-    /// Mappings from accountId -> day of the month payment is due, if configured.
-    var creditCardDueDays: [String: Int] {
-        creditCardConfigs.compactMapValues(\.dueDay)
-    }
-
     /// Mappings from accountId -> credit limit in cents (positive). Optional per
     /// card: without one there is no available-credit figure to show.
     var creditCardLimits: [String: Int] {
@@ -710,7 +705,12 @@ final class BudgetStore: ObservableObject {
             case .daysAfter(let days):
                 return CreditCardConfig(statementDay: $0, dueOffsetDays: days, dueDay: nil, limit: limit)
             case .dayOfMonth(let day):
-                return CreditCardConfig(statementDay: $0, dueOffsetDays: CreditCardCycle.defaultDueOffsetDays, dueDay: day, limit: limit)
+                // Older builds ignore `dueDay` and fall back to `dueOffsetDays`.
+                // Store the real gap so they stay close to the correct date.
+                let cycle = CreditCardCycle(statementDay: $0, paymentDue: .dayOfMonth(day))
+                let statement = cycle.previousStatementDate()
+                let offset = max(1, statement.days(until: cycle.dueDate(forStatement: statement)))
+                return CreditCardConfig(statementDay: $0, dueOffsetDays: offset, dueDay: day, limit: limit)
             }
         }
         creditCardConfigs[accountId] = config
@@ -725,21 +725,6 @@ final class BudgetStore: ObservableObject {
             creditCardConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
-    }
-
-    /// Backward-compatible overload for callers passing `dueOffsetDays`.
-    func setCreditCard(
-        accountId: String,
-        statementDay: Int?,
-        dueOffsetDays: Int,
-        limit: Int?
-    ) async {
-        await setCreditCard(
-            accountId: accountId,
-            statementDay: statementDay,
-            paymentDue: .daysAfter(dueOffsetDays),
-            limit: limit
-        )
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
