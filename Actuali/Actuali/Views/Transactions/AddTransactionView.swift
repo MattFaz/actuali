@@ -1343,7 +1343,7 @@ if string.count > 1,
                 }
                 let value = Double("\(sign)\(whole).\(fractionDigits)") ?? 0
                 return numberFormat.format(
-                    number: 0,
+                    number: NSNumber(value: value),
                     wholeUnits: false,
                     currencyCode: nil
                 )
