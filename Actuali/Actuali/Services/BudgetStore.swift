@@ -2294,8 +2294,8 @@ final class BudgetStore: ObservableObject {
                     cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
                 }
             }
-            if numberFormat == numberFormatBefore {
-                numberFormat = fetchedNumberFormat.flatMap(ActualNumberFormat.init(rawValue:)) ?? .commaDot
+            if let fetchedNumberFormat, numberFormat == numberFormatBefore {
+                numberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
             }
             dataVersion += 1
 
