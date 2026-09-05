@@ -1006,6 +1006,7 @@ struct AmountInputField: UIViewRepresentable {
         context.coordinator.textField = field
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.sync(fromDisplay: text)
+        context.coordinator.applyDisplay(to: field)
         return field
     }
 
