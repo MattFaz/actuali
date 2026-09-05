@@ -67,30 +67,6 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
     private static let formatterLock = NSLock()
     private static var formatterCache: [String: NumberFormatter] = [:]
 
-    private func cachedFormatter(currencyCode: String?, wholeUnits: Bool) -> NumberFormatter {
-        let key = "\(rawValue)|\(currencyCode ?? \"\")|\(wholeUnits)"
-        Self.formatterLock.lock()
-        defer { Self.formatterLock.unlock() }
-
-        if let formatter = Self.formatterCache[key] {
-            return formatter
-        }
-
-        let formatter: NumberFormatter
-        if let currencyCode {
-            formatter = numberFormatter(currencyCode: currencyCode, wholeUnits: wholeUnits)
-        } else {
-            formatter = NumberFormatter()
-            formatter.locale = locale
-            formatter.numberStyle = .decimal
-            formatter.minimumFractionDigits = wholeUnits ? 0 : 2
-            formatter.maximumFractionDigits = wholeUnits ? 0 : 2
-        }
-
-        Self.formatterCache[key] = formatter
-        return formatter
-    }
-
     private func cachedString(
         from number: NSNumber,
         currencyCode: String?,
