@@ -61,8 +61,23 @@ struct ActualiApp: App {
                     }
                     if CommandLine.arguments.contains("-budgetSelectionFixture") {
                         if let budgetId = budgetStore.currentBudgetId,
-                           let local = BudgetFileManager.shared.listLocalBudgets().first(where: { $0.id == budgetId }),
-                           let cloudFileId = local.cloudFileId {
+                           let local = BudgetFileManager.shared.listLocalBudgets().first(where: { $0.id == budgetId }) {
+                            // The demo budget is local-only, so stamp a cloud file id on first.
+                            // Without one, no row reads as selected and the picker never appears.
+                            let cloudFileId = local.cloudFileId ?? "debug-current-budget"
+                            if local.cloudFileId == nil {
+                                let stamped = BudgetMetadata(
+                                    id: local.id,
+                                    budgetName: local.budgetName,
+                                    cloudFileId: cloudFileId,
+                                    groupId: local.groupId,
+                                    resetClock: local.resetClock,
+                                    lastUploaded: local.lastUploaded,
+                                    encryptKeyId: local.encryptKeyId
+                                )
+                                try? JSONEncoder().encode(stamped)
+                                    .write(to: BudgetFileManager.shared.metadataPath(for: local.id))
+                            }
                             budgetStore.remoteBudgets = [
                                 BudgetStore.RemoteBudget(
                                     id: cloudFileId,
