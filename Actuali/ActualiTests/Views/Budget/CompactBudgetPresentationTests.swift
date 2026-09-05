@@ -14,6 +14,7 @@ struct CompactBudgetPresentationTests {
             let visibleHeader = CompactBudgetGroupHeader(
                 name: "Emergency Savings",
                 isCollapsed: false,
+                onSetHidden: { _ in },
                 totals: totals,
                 showsSpent: showsSpent,
                 onToggleCollapse: {}
@@ -23,6 +24,7 @@ struct CompactBudgetPresentationTests {
             let hiddenHeader = CompactBudgetGroupHeader(
                 name: "Emergency Savings",
                 isCollapsed: false,
+                onSetHidden: { _ in },
                 totals: nil,
                 showsSpent: showsSpent,
                 onToggleCollapse: {}

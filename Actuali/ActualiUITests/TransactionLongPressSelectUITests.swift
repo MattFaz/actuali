@@ -16,16 +16,18 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
         allAccounts.tap()
 
-        let doneButton = app.buttons["Select"]
-        XCTAssertTrue(doneButton.waitForExistence(timeout: 10))
+        let selectionModeButton = app.buttons["transactions.selectionMode"]
+        XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 10))
+        XCTAssertEqual(selectionModeButton.label, "Select")
 
-        // Transaction rows are the buttons in the list; the first button
-        // after the navigation controls is the first demo transaction row.
-        let row = app.buttons.element(boundBy: 1)
+        let row = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'transactionRow.'")
+        ).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.press(forDuration: 0.9)
 
-        XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 2))
+        XCTAssertTrue(selectionModeButton.waitForExistence(timeout: 2))
+        XCTAssertEqual(selectionModeButton.label, "Done")
         XCTAssertTrue(app.buttons["Delete 1 Selected"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["Delete 1 Selected"].isEnabled)
     }
