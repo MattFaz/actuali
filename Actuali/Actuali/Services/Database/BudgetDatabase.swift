@@ -765,7 +765,28 @@ final class BudgetDatabase: Sendable {
                         "c.name LIKE ? ESCAPE '\\'",
                         "t.notes LIKE ? ESCAPE '\\'"
                     ]
+
                     arguments.append(contentsOf: [pattern, pattern, pattern])
+                        // ponytail: Keep split-child matching in SQL so pagination still
+                        // spans full history; the correlated EXISTS only probes children
+                        // belonging to the current parent row.
+                    clauses.append("""
+                        EXISTS (
+                            SELECT 1
+                            FROM transactions child
+                            LEFT JOIN payee_mapping cpm ON cpm.id = child.description
+                            LEFT JOIN payees cpay ON cpay.id = cpm.targetId
+                            WHERE child.parent_id = t.id
+                              AND (child.tombstone = 0 OR child.tombstone IS NULL)
+                              AND (
+                                  cpay.name LIKE ? ESCAPE '\\'
+                                  OR child.notes LIKE ? ESCAPE '\\'
+                              )
+                        )
+                    """)
+
+                    arguments.append(contentsOf: [pattern, pattern])
+                    
                     if let range = matcher.amountCentsRange {
                         clauses.append("ABS(t.amount) BETWEEN ? AND ?")
                         arguments.append(range.lowerBound)
