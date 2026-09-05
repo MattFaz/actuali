@@ -140,8 +140,7 @@ enum CurrencyAmountFormat {
         cents: Int,
         currencyCode: String,
         wholeUnits: Bool = false,
-        numberFormat: ActualNumberFormat = .commaDot,
-        locale: Locale = .autoupdatingCurrent
+        numberFormat: ActualNumberFormat = .commaDot
     ) -> String {
         let amount = Double(cents) / 100.0
         guard !currencyCode.isEmpty else {
