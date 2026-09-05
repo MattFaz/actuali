@@ -346,6 +346,7 @@ struct AddTransactionView: View {
                             .contentShape(Rectangle()) // Ensures the whole row is tappable
                         }
                         .buttonStyle(.plain)
+                        .accessibilityIdentifier("addTransaction.payee")
                         .sheet(isPresented: $showPayeePicker) {
                             PayeePickerView(
                                 payeeName: payeeName,
