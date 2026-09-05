@@ -16,7 +16,7 @@ final class TransactionLogger {
         var errorDescription: String? {
             switch self {
             case .noBudgetLoaded:
-                return "Open Actuali and select a budget first."
+                return String(localized: "Open Actuali and select a budget first.")
             }
         }
     }

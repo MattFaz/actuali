@@ -10,11 +10,11 @@ enum HLCError: Error, Equatable, LocalizedError {
     var errorDescription: String? {
         switch self {
         case .clockDrift:
-            return "Maximum clock drift exceeded. Check this device's date and time settings."
+            return String(localized: "Maximum clock drift exceeded. Check this device's date and time settings.")
         case .counterOverflow:
-            return "Timestamp counter overflow."
+            return String(localized: "Timestamp counter overflow.")
         case .invalidTimestamp:
-            return "Timestamp is not valid."
+            return String(localized: "Timestamp is not valid.")
         }
     }
 }

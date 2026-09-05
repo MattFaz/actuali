@@ -45,9 +45,9 @@ struct CreditCardsSettingsView: View {
 
     var body: some View {
         List {
-            Section("Configured Credit Cards") {
+            Section(String(localized: "Configured Credit Cards")) {
                 if configuredCards.isEmpty {
-                    Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates.")
+                    Text(String(localized: "Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
@@ -94,7 +94,7 @@ struct CreditCardsSettingsView: View {
 
             if budgetStore.syncDetachedByRestore {
                 Section {
-                    Text("Credit card settings sync with your budget. Re-download this budget to change them.")
+                    Text(String(localized: "Credit card settings sync with your budget. Re-download this budget to change them."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -109,12 +109,12 @@ struct CreditCardsSettingsView: View {
                         selectedLimitText = ""
                         showingAddSheet = true
                     } label: {
-                        Label("Add Credit Card", systemImage: "plus")
+                        Label(String(localized: "Add Credit Card"), systemImage: "plus")
                     }
                 }
             }
         }
-        .navigationTitle("Credit Cards")
+        .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSheet) {
             cardSheet(isEditing: false)
@@ -134,30 +134,30 @@ struct CreditCardsSettingsView: View {
                 Section {
                     if isEditing {
                         if let account = budgetStore.accounts.first(where: { $0.id == selectedAccountId }) {
-                            LabeledContent("Account", value: account.name)
+                            LabeledContent(String(localized: "Account"), value: account.name)
                         }
                     } else {
-                        Picker("Account", selection: $selectedAccountId) {
+                        Picker(String(localized: "Account"), selection: $selectedAccountId) {
                             ForEach(unconfiguredAccounts) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
                     }
 
-                    Picker("Statement Closing Day", selection: $selectedStatementDay) {
+                    Picker(String(localized: "Statement Closing Day"), selection: $selectedStatementDay) {
                         ForEach(1...31, id: \.self) { day in
                             Text(dayOrdinal(day)).tag(day)
                         }
                     }
 
-                    Picker("Payment Due After", selection: $selectedDueOffset) {
+                    Picker(String(localized: "Payment Due After"), selection: $selectedDueOffset) {
                         ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
-                            Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                            Text(days == 1 ? String(localized: "1 Day") : String(format: String(localized: "%lld days"), Int64(days))).tag(days)
                         }
                     }
 
                     HStack {
-                        Text("Credit Limit")
+                        Text(String(localized: "Credit Limit"))
                         Spacer()
                         AmountInputField(
                             text: $selectedLimitText,
@@ -166,14 +166,14 @@ struct CreditCardsSettingsView: View {
                         )
                     }
                 } header: {
-                    Text("Card Details")
+                    Text(String(localized: "Card Details"))
                 } footer: {
-                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
+                    Text(String(localized: "The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip."))
                 }
 
                 if isEditing {
                     Section {
-                        Button("Remove Credit Card Tracking", role: .destructive) {
+                        Button(String(localized: "Remove Credit Card Tracking"), role: .destructive) {
                             Task {
                                 await budgetStore.setCreditCard(
                                     accountId: selectedAccountId,
@@ -186,17 +186,17 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
-            .navigationTitle(isEditing ? "Edit Card" : "Add Credit Card")
+            .navigationTitle(isEditing ? String(localized: "Edit Card") : String(localized: "Add Credit Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(String(localized: "Cancel")) {
                         showingAddSheet = false
                         editingAccountId = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(String(localized: "Save")) {
                         Task {
                             await budgetStore.setCreditCard(
                                 accountId: selectedAccountId,
@@ -296,7 +296,7 @@ struct CreditCardCycleRow: View {
 
             // Row 2: cycle spend + days left + due pill
             HStack {
-                Text("Spend \(budgetStore.displayBalance(cycleSpend)) · \(cycle.daysRemainingInCycle())d left")
+                        Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -316,8 +316,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(account.name), balance \(budgetStore.displayBalance(account.balance)), "
-                + "cycle spend \(budgetStore.displayBalance(cycleSpend)), \(cycle.dueSummary())"
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), cycle.dueSummary())
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

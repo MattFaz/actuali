@@ -26,7 +26,7 @@ final class TransactionLongPressSelectUITests: XCTestCase {
         row.press(forDuration: 0.9)
 
         XCTAssertTrue(app.buttons["Done"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Delete 1 Selected"].waitForExistence(timeout: 2))
-        XCTAssertTrue(app.buttons["Delete 1 Selected"].isEnabled)
+        XCTAssertTrue(app.buttons["Delete 1 selected transaction"].waitForExistence(timeout: 2))
+        XCTAssertTrue(app.buttons["Delete 1 selected transaction"].isEnabled)
     }
 }

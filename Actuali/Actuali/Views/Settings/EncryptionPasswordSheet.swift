@@ -19,7 +19,7 @@ struct EncryptionPasswordSheet: View {
                 } header: {
                     Text("End-to-End Encrypted")
                 } footer: {
-                    Text("“\(budget.name)” is end-to-end encrypted. Enter its encryption password to open it on this device. This is separate from your server password.")
+                    Text(String(format: String(localized: "“%@” is end-to-end encrypted. Enter its encryption password to open it on this device. This is separate from your server password."), budget.name))
                 }
 
                 if let errorText {

@@ -26,7 +26,11 @@ struct GetCategoryBalanceIntent: AppIntent {
         }
 
         let formattedAvailable = store.displayBalance(categoryBudget.available)
-        let dialogText = "\(categoryBudget.categoryName) has \(formattedAvailable) available"
+        let dialogText = String(
+            format: String(localized: "%@ has %@ available"),
+            categoryBudget.categoryName,
+            formattedAvailable
+        )
         return .result(value: formattedAvailable, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

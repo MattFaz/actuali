@@ -25,8 +25,9 @@ struct ParseAndQueueTransactionIntent: AppIntent {
         let pending = parsed.toPendingImport()
         PendingImportStore.shared.add(pending)
 
-        let payeeText = parsed.payee ?? "unknown"
+        let payeeText = parsed.payee ?? String(localized: "Unknown")
         let amountText = parsed.amount.map { String(format: "%.2f", $0) } ?? "?"
-        return .result(dialog: "Queued \(amountText) at \(payeeText) for review")
+        let dialogText = String(localized: "Queued \(amountText) at \(payeeText) for review")
+        return .result(dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

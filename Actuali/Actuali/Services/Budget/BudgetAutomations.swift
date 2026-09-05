@@ -17,29 +17,29 @@ enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
 
     var label: String {
         switch self {
-        case .fixed: "Fixed amount"
-        case .schedule: "Cover schedule"
-        case .by: "Save by date"
-        case .percentage: "% of income"
-        case .historical: "From history"
-        case .limit: "Balance cap"
-        case .refill: "Refill to cap"
-        case .remainder: "Whatever is left"
-        case .goal: "Long-term goal"
+        case .fixed: String(localized: "Fixed amount")
+        case .schedule: String(localized: "Cover schedule")
+        case .by: String(localized: "Save by date")
+        case .percentage: String(localized: "% of income")
+        case .historical: String(localized: "From history")
+        case .limit: String(localized: "Balance cap")
+        case .refill: String(localized: "Refill to cap")
+        case .remainder: String(localized: "Whatever is left")
+        case .goal: String(localized: "Long-term goal")
         }
     }
 
     var explanation: String {
         switch self {
-        case .fixed: "Add a set amount every month, week, day, or year."
-        case .schedule: "Save up for a scheduled transaction."
-        case .by: "Spread a target amount across the months until a deadline."
-        case .percentage: "A share of this month's or last month's income."
-        case .historical: "Use past months: average, a specific month, or a copy."
-        case .limit: "Stop budgeting to this category once the balance reaches a cap."
-        case .refill: "Top the category back up to the balance cap each month."
-        case .remainder: "Split any remaining To Budget across these categories."
-        case .goal: "Set a long-term savings target. This changes the coloring of the balance on the budget page to be based on progress towards the target rather than the current month funding progress."
+        case .fixed: String(localized: "Add a set amount every month, week, day, or year.")
+        case .schedule: String(localized: "Save up for a scheduled transaction.")
+        case .by: String(localized: "Spread a target amount across the months until a deadline.")
+        case .percentage: String(localized: "A share of this month's or last month's income.")
+        case .historical: String(localized: "Use past months: average, a specific month, or a copy.")
+        case .limit: String(localized: "Stop budgeting to this category once the balance reaches a cap.")
+        case .refill: String(localized: "Top the category back up to the balance cap each month.")
+        case .remainder: String(localized: "Split any remaining To Budget across these categories.")
+        case .goal: String(localized: "Set a long-term savings target. This changes the coloring of the balance on the budget page to be based on progress towards the target rather than the current month funding progress.")
         }
     }
 

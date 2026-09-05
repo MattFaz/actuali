@@ -212,7 +212,7 @@ struct BudgetAutomationsSheet: View {
                 Text("Contributions")
             } footer: {
                 if !contributionEntries.isEmpty {
-                    Text("Estimated monthly total: \(budgetStore.displayBalance(totalMonthly))")
+                        Text(String(format: String(localized: "Estimated monthly total: %@"), budgetStore.displayBalance(totalMonthly)))
                 }
             }
 

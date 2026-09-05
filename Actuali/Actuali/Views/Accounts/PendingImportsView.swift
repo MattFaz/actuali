@@ -137,7 +137,7 @@ struct PendingImportsView: View {
             await MainActor.run {
                 isProcessing = false
                 if failedCount > 0 {
-                    errorMessage = "\(failedCount) transaction(s) could not be approved. Please check their details."
+                    errorMessage = String(localized: "\(failedCount) transaction(s) could not be approved. Please check their details.")
                 }
             }
         }
@@ -222,7 +222,7 @@ private struct PendingImportRow: View {
 
             HStack {
                 if let hint = item.cardHint {
-                    Text("Card ••\(hint)")
+                    Text(String(format: String(localized: "Card ••%@"), hint))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }

@@ -32,7 +32,7 @@ final class HideDecimalPlacesUITests: XCTestCase {
         let balancesWereHidden = hideBalances.value as? String == "1"
 
         defer {
-            app.tabBars.buttons["More"].tap()
+            app.tabBars.buttons["Settings"].tap()
             XCTAssertTrue(toggle.waitForExistence(timeout: 5))
             if (toggle.value as? String == "1") != decimalPlacesWasHidden {
                 tapSwitch(toggle)

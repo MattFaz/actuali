@@ -12,8 +12,8 @@ enum UncategorizedTapAction: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .categoryPicker: return "Category Picker"
-        case .transactionEditor: return "Transaction Editor"
+        case .categoryPicker: return String(localized: "Category Picker")
+        case .transactionEditor: return String(localized: "Transaction Editor")
         }
     }
     

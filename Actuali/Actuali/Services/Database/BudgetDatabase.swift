@@ -1223,13 +1223,13 @@ final class BudgetDatabase: Sendable {
         var errorDescription: String? {
             switch self {
             case .duplicateGroupName(let name):
-                return "A category group named \"\(name)\" already exists"
+                return String(localized: "A category group named \"\(name)\" already exists")
             case .duplicateCategoryName(let name, let groupName):
-                return "\(groupName) already has a category named \"\(name)\""
+                return String(localized: "\(groupName) already has a category named \"\(name)\"")
             case .groupNotFound:
-                return "That category group no longer exists"
+                return String(localized: "That category group no longer exists")
             case .categoryNotFound:
-                return "That category no longer exists"
+                return String(localized: "That category no longer exists")
             }
         }
     }

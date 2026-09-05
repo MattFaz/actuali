@@ -41,9 +41,9 @@ struct Rule: Identifiable, Equatable, Hashable {
 
         var label: String {
             switch self {
-            case .pre: return "Pre"
-            case .default: return "Default"
-            case .post: return "Post"
+            case .pre: return String(localized: "Pre")
+            case .default: return String(localized: "Default")
+            case .post: return String(localized: "Post")
             }
         }
     }
@@ -56,7 +56,7 @@ struct Rule: Identifiable, Equatable, Hashable {
             self = raw?.lowercased() == "or" ? .or : .and
         }
 
-        var label: String { self == .and ? "all" : "any" }
+        var label: String { self == .and ? String(localized: "all") : String(localized: "any") }
     }
 
     struct Condition: Equatable, Hashable {

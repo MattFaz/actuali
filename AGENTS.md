@@ -118,6 +118,12 @@ Rules:
 - Comments explain *why* (constraints, upstream parity, non-obvious invariants), not *what* the next line does.
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
 
+### Localization
+
+- Every user-facing string must come from `Localizable.xcstrings` through `String(localized:)` or a localized SwiftUI initializer; this includes accessibility labels, errors, notifications, AppIntents, and service messages.
+- Add all seven supported locale values when introducing a catalog key, keep format placeholders identical, and run `python3 dev/scripts/validate-localization.py`.
+- When adding a language, update both the catalog and the Xcode `knownRegions` metadata, then extend the validator's supported locale list.
+
 Not lazy about:
 - Input validation at trust boundaries, error handling that prevents data loss, security, accessibility, or anything explicitly requested.
 - Lazy code without its check is unfinished: every behavior change needs test coverage (Swift Testing `@Test` / `#expect`), as the Testing section states. Do not skip the test because the change is small.

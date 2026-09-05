@@ -11,7 +11,7 @@ struct ScheduleStatusBadge: View {
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(status.tint.opacity(0.14), in: Capsule())
-            .accessibilityLabel("Status: \(ScheduleDescription.statusLabel(status))")
+            .accessibilityLabel(String(format: String(localized: "Status: %@"), ScheduleDescription.statusLabel(status)))
     }
 }
 

@@ -101,7 +101,7 @@ struct MainTabView: View {
             Tab(value: 4) {
                 SettingsView()
             } label: {
-                Label("More", systemImage: "ellipsis")
+                Label(String(localized: "Settings"), systemImage: "gearshape")
             }
         }
     }
@@ -133,10 +133,10 @@ struct AddTransactionTabView: View {
                         showingDefaultAccountAlert = true
                     }
                 }
-                .alert("Default Account Unavailable", isPresented: $showingDefaultAccountAlert) {
-                    Button("OK") {}
+                .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
+                    Button(String(localized: "OK")) {}
                 } message: {
-                    Text("Your default account is no longer available. Please configure a new default in More → Transactions & Automation.")
+                    Text(String(localized: "Your default account is no longer available. Please configure a new default in Settings."))
                 }
         } else {
             ContentUnavailableView(

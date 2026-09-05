@@ -67,7 +67,7 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "plus.square.on.square")
                     .font(.subheadline.weight(.semibold))
             }
-            .accessibilityLabel("Duplicate \(selectedCount) Selected")
+                .accessibilityLabel(String(localized: "Duplicate \(selectedCount) selected transactions"))
             .disabled(selectedCount == 0)
 
             Button(role: .destructive) {
@@ -76,7 +76,7 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "trash")
                     .font(.subheadline.weight(.semibold))
             }
-            .accessibilityLabel("Delete \(selectedCount) Selected")
+                .accessibilityLabel(String(localized: "Delete \(selectedCount) selected transactions"))
             .disabled(selectedCount == 0)
         }
         .padding(.horizontal, 16)
@@ -92,11 +92,11 @@ struct TransactionBulkActionBar: View {
             selectedIds.formIntersection(transactions.map(\.id))
         }
         .confirmationDialog(
-            "Delete \(selectedCount) transaction(s)?",
+            String(localized: "Delete \(selectedCount) transactions?"),
             isPresented: $showingConfirmDelete,
             titleVisibility: .visible
         ) {
-            Button("Delete \(selectedCount) Transaction\(selectedCount == 1 ? "" : "s")", role: .destructive) {
+            Button(String(localized: "Delete \(selectedCount) transactions"), role: .destructive) {
                 let selected = selectedTransactions
                 Task {
                     await budgetStore.deleteTransactions(selected)

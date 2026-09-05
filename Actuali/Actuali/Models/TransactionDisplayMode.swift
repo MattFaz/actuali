@@ -8,8 +8,8 @@ enum TransactionDisplayMode: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .flat: return "Flat List"
-        case .groupedByDate: return "Grouped by Date"
+        case .flat: return String(localized: "Flat List")
+        case .groupedByDate: return String(localized: "Grouped by Date")
         }
     }
 

@@ -16,13 +16,13 @@ final class PendingImportApprover {
         var errorDescription: String? {
             switch self {
             case .invalidAmount:
-                return "Transaction amount is missing or invalid."
+                return String(localized: "Transaction amount is missing or invalid.")
             case .noAccountAvailable:
-                return "No matching or default account available."
+                return String(localized: "No matching or default account available.")
             case .accountClosed:
-                return "The target account is closed."
+                return String(localized: "The target account is closed.")
             case .writeFailed(let message):
-                return "Failed to save transaction: \(message)"
+                return String(localized: "Failed to save transaction: \(message)")
             }
         }
     }

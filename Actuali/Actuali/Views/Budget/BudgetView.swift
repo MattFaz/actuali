@@ -176,13 +176,13 @@ struct BudgetView: View {
                         ContentUnavailableView(
                             "Select a Budget",
                             systemImage: "chart.pie",
-                            description: Text("You're connected. Choose a budget in More → Connection & Data to load it here.")
+                            description: Text(String(localized: "You're connected. Choose a budget in Settings → Connection & Data to load it here."))
                         )
                     } else {
                         ContentUnavailableView(
                             "No Budget Loaded",
                             systemImage: "chart.pie",
-                            description: Text("Go to More → Connection & Data to connect to your Actual Budget server")
+                            description: Text(String(localized: "Go to Settings → Connection & Data to connect to your Actual Budget server"))
                         )
                     }
                 }
@@ -613,16 +613,16 @@ struct BudgetView: View {
             switch outcome {
             case .applied(let count):
                 templateResult = .init(
-                    title: "Templates Applied",
-                    message: "Successfully applied templates to \(count) categor\(count == 1 ? "y" : "ies").")
+                    title: String(localized: "Templates Applied"),
+                    message: String(localized: "Successfully applied templates to \(count) categories."))
             case .upToDate:
                 templateResult = .init(
-                    title: "Templates Applied",
-                    message: "All templates are up to date.")
+                    title: String(localized: "Templates Applied"),
+                    message: String(localized: "All templates are up to date."))
             case .checkPassed:
                 templateResult = .init(
-                    title: "Check Passed",
-                    message: "All templates passed the check.")
+                    title: String(localized: "Check Passed"),
+                    message: String(localized: "All templates passed the check."))
             case .errors(let errors):
                 templateResult = .init(
                     title: "Template Errors",
@@ -1045,7 +1045,7 @@ struct BudgetCheckInStrip: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Show \(title(for: filter)) categories")
+                    .accessibilityLabel(String(format: String(localized: "Show %@ categories"), title(for: filter)))
                     .accessibilityIdentifier("budgetFilter-\(filter.rawValue)")
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
@@ -1113,7 +1113,7 @@ struct CategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Details for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Details for %@"), category.categoryName))
                 Spacer(minLength: 4)
                 Button {
                     onEditBudget(category)
@@ -1124,7 +1124,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Edit budgeted amount for %@"), category.categoryName))
                 Button {
                     onShowTransactions(category, category.month)
                 } label: {
@@ -1134,7 +1134,7 @@ struct CategoryBudgetRow: View {
                     )
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                .accessibilityLabel(String(format: String(localized: "Transactions for %@ in %@"), category.categoryName, MonthPicker.title(for: category.month)))
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain cell.
                 Button {
@@ -1148,8 +1148,8 @@ struct CategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
+                    ? String(format: String(localized: "Cover overspending for %@"), category.categoryName)
+                    : String(format: String(localized: "Move money from %@"), category.categoryName))
                 .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
@@ -1172,7 +1172,7 @@ struct CategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1225,7 +1225,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Details for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Details for %@"), category.categoryName))
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -1238,8 +1238,8 @@ struct CleanCategoryBudgetRow: View {
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
+                    ? String(format: String(localized: "Cover overspending for %@"), category.categoryName)
+                    : String(format: String(localized: "Move money from %@"), category.categoryName))
                 .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
@@ -1262,7 +1262,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "Edit budgeted amount for %@"), category.categoryName))
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
@@ -1281,7 +1281,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                .accessibilityLabel(String(format: String(localized: "Transactions for %@ in %@"), category.categoryName, MonthPicker.title(for: category.month)))
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
@@ -1290,7 +1290,7 @@ struct CleanCategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1341,13 +1341,13 @@ struct CategoryRowContextMenu: ViewModifier {
             // the balance pill.
             if category.available != 0 {
                 Button { onMoveMoney(category) } label: {
-                    Label(category.isOverspent ? "Cover Overspending" : "Move Money",
+                    Label(category.isOverspent ? String(localized: "Cover Overspending") : String(localized: "Move Money"),
                           systemImage: "arrow.left.arrow.right")
                 }
             }
             if let onSetHidden {
                 Button { onSetHidden(!isHidden) } label: {
-                    Label(isHidden ? "Show Category" : "Hide Category",
+                    Label(isHidden ? String(localized: "Show Category") : String(localized: "Hide Category"),
                           systemImage: isHidden ? "eye" : "eye.slash")
                 }
             }
@@ -1690,7 +1690,7 @@ struct BudgetGroupHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Toggles the group's categories")
+            .accessibilityHint(String(localized: "Toggles the group's categories"))
 
             if budgetStore.budgetDisplayStyle == .clean, let onSetHidden {
                 Menu {
@@ -1698,7 +1698,7 @@ struct BudgetGroupHeader: View {
                         onSetHidden(!isHidden)
                     } label: {
                         Label(
-                            isHidden ? "Show Group" : "Hide Group",
+                            isHidden ? String(localized: "Show Group") : String(localized: "Hide Group"),
                             systemImage: isHidden ? "eye" : "eye.slash"
                         )
                     }
@@ -1706,7 +1706,7 @@ struct BudgetGroupHeader: View {
                     Image(systemName: "ellipsis")
                         .frame(minWidth: 32, minHeight: 44)
                 }
-                .accessibilityLabel("Options for \(name)")
+                .accessibilityLabel(String(format: String(localized: "Options for %@"), name))
             }
         }
         .opacity(isHidden ? 0.5 : 1)
@@ -1715,7 +1715,7 @@ struct BudgetGroupHeader: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1726,11 +1726,11 @@ struct BudgetGroupHeader: View {
     /// label, so the totals have to be spoken here or they're lost. Currency
     /// formatting, not the table's symbol-less cells, reads better aloud.
     private var accessibilityLabel: String {
-        let state = isCollapsed ? "collapsed" : "expanded"
+        let state = isCollapsed ? String(localized: "collapsed") : String(localized: "expanded")
         if let receivedTotal {
-            return "\(name), \(state), received \(budgetStore.displayBalance(receivedTotal))"
+            return String(format: String(localized: "%@, %@, received %@"), name, state, budgetStore.displayBalance(receivedTotal))
         }
-        guard let totals else { return "\(name), \(state)" }
+        guard let totals else { return String(format: String(localized: "%@, %@"), name, state) }
         return Self.totalsAccessibilityLabel(
             name: name,
             isCollapsed: isCollapsed,
@@ -1747,7 +1747,7 @@ struct BudgetGroupHeader: View {
         spent: String,
         balance: String
     ) -> String {
-        "\(name), \(isCollapsed ? "collapsed" : "expanded"), budgeted \(budgeted), spent \(spent), balance \(balance)"
+        String(format: String(localized: "%@, %@, budgeted %@, spent %@, balance %@"), name, isCollapsed ? String(localized: "collapsed") : String(localized: "expanded"), budgeted, spent, balance)
     }
 
     private func receivedText(_ amount: Int) -> String {
@@ -1782,7 +1782,7 @@ struct IncomeCategoryRow: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("All transactions for \(income.categoryName)")
+                .accessibilityLabel(String(format: String(localized: "All transactions for %@"), income.categoryName))
 
                 Spacer()
 
@@ -1798,7 +1798,7 @@ struct IncomeCategoryRow: View {
                     }
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
+                .accessibilityLabel(String(format: String(localized: "Transactions for %@ in %@"), income.categoryName, MonthPicker.title(for: income.month)))
             }
             if showsBudgeted {
                 Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
@@ -1818,7 +1818,7 @@ struct IncomeCategoryRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1948,7 +1948,7 @@ struct CategoryBudgetDetailSheet: View {
                     }
                     },
                     header: {
-                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                        Text(isTracking ? String(localized: "Quick Budget") : String(localized: "Quick Assign"))
                     },
                     footer: {
                         Text("Suggestions use this category's existing Actual history and replace the amount shown above.")
@@ -2001,22 +2001,22 @@ struct CategoryBudgetDetailSheet: View {
         Section(
             content: {
                 if let goal = category.goal, let difference = category.differenceToGoal {
-                    LabeledContent("Status") {
+                    LabeledContent(String(localized: "Status")) {
                         if difference == 0 {
                             Text("Fully Funded").foregroundStyle(.green)
                         } else if difference > 0 {
-                            Text("Overfunded (\(budgetStore.displayBalance(difference)))")
+                            Text(String(format: String(localized: "Overfunded (%@)"), budgetStore.displayBalance(difference)))
                                 .foregroundStyle(.green)
                         } else {
-                            Text("Underfunded (\(budgetStore.displayBalance(difference)))")
+                            Text(String(format: String(localized: "Underfunded (%@)"), budgetStore.displayBalance(difference)))
                                 .foregroundStyle(.orange)
                         }
                     }
-                    LabeledContent("Goal Type", value: category.longGoal ? "Goal" : "Automation")
-                    LabeledContent("Goal") {
+                    LabeledContent(String(localized: "Goal Type"), value: category.longGoal ? String(localized: "Goal") : String(localized: "Automation"))
+                    LabeledContent(String(localized: "Goal")) {
                         Text(budgetStore.displayBalance(goal)).monospacedDigit()
                     }
-                    LabeledContent(category.longGoal ? "Balance" : "Budgeted") {
+                    LabeledContent(category.longGoal ? String(localized: "Balance") : String(localized: "Budgeted")) {
                         Text(budgetStore.displayBalance(category.goalTrackedAmount))
                             .monospacedDigit()
                     }
@@ -2190,7 +2190,7 @@ struct CategoryProgressBar: View {
         // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
-        .accessibilityLabel("\(state.statusText), spent \(Int((fraction * 100).rounded())) percent")
+        .accessibilityLabel(String(format: String(localized: "%@, spent %lld percent"), state.statusText, Int64((fraction * 100).rounded())))
     }
 }
 

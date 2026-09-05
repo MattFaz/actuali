@@ -88,7 +88,7 @@ struct CategoryTransactionsView: View {
         ContentUnavailableView(
             "No Transactions",
             systemImage: "list.bullet.rectangle",
-            description: Text("Nothing in \(destination.categoryName) for \(scopeTitle.lowercased() == "all time" ? "any month" : scopeTitle)")
+            description: Text(String(format: String(localized: "Nothing in %@ for %@"), destination.categoryName, scopeTitle.lowercased() == "all time" ? String(localized: "any month") : scopeTitle))
         )
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
@@ -143,7 +143,7 @@ struct CategoryTransactionsView: View {
             Spacer()
             // Sums the filtered rows so the total matches what's on screen
             // while searching.
-            Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
+            Text(String(format: String(localized: "Total %@"), budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount })))
         }
     }
 

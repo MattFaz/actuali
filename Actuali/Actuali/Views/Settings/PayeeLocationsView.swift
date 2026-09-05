@@ -93,7 +93,7 @@ struct PayeeLocationDetailView: View {
                         delete(offsets.map { locations[$0] })
                     }
                 } footer: {
-                    Text("Swipe a location to remove it. Removing every location stops \(payee.name) being suggested when you're nearby.")
+                    Text(String(format: String(localized: "Swipe a location to remove it. Removing every location stops %@ being suggested when you're nearby."), payee.name))
                 }
 
                 Section {
