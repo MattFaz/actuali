@@ -273,7 +273,6 @@ private struct BudgetSelectionSettingsSection: View {
     @State private var budgetToRemoveLocally: BudgetStore.RemoteBudget?
     @State private var budgetToDeleteFromServer: BudgetStore.RemoteBudget?
     @State private var showingCreateBudgetPrompt = false
-    @State private var showingBudgetPicker = false
     @State private var newBudgetName = ""
 
     /// The open budget's server fileId — currentBudgetId is the internal id,
@@ -399,9 +398,28 @@ private struct BudgetSelectionSettingsSection: View {
         locals: [BudgetMetadata]
     ) -> some View {
         let hasLocalCopy = locals.contains { $0.cloudFileId == budget.id }
+        let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != budget.id }
 
-        return Button {
-            showingBudgetPicker = true
+        return Menu {
+            ForEach(otherBudgets) { otherBudget in
+                Button {
+                    openBudget(otherBudget)
+                } label: {
+                    HStack {
+                        if otherBudget.isEncrypted {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Text(otherBudget.name)
+                    }
+                }
+            }
+
+            if otherBudgets.isEmpty {
+                Button("No other budgets") {}
+                    .disabled(true)
+            }
         } label: {
             HStack {
                 if budget.isEncrypted {
@@ -415,7 +433,7 @@ private struct BudgetSelectionSettingsSection: View {
 
                 Spacer()
 
-                if budgetStore.downloadingBudgetId == budget.id {
+                if budgetStore.downloadingBudgetId != nil {
                     ProgressView()
                 } else {
                     Image(systemName: "chevron.up.chevron.down")
@@ -426,7 +444,6 @@ private struct BudgetSelectionSettingsSection: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
         .disabled(budgetStore.downloadingBudgetId != nil)
         .accessibilityIdentifier("budget-selection-selected")
         .contextMenu {
@@ -439,75 +456,6 @@ private struct BudgetSelectionSettingsSection: View {
             Button("Delete from Server…", systemImage: "trash", role: .destructive) {
                 budgetToDeleteFromServer = budget
             }
-        }
-        .popover(isPresented: $showingBudgetPicker) {
-            let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != budget.id }
-            let unlistedBudget = unlistedCurrentBudget(in: locals)
-
-            ScrollView {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(otherBudgets) { otherBudget in
-                        Button {
-                            showingBudgetPicker = false
-                            openBudget(otherBudget)
-                        } label: {
-                            HStack {
-                                if otherBudget.isEncrypted {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Text(otherBudget.name)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if let unlistedBudget,
-                       unlistedBudget.id != budget.id {
-                        Button {
-                            showingBudgetPicker = false
-                            openBudget(unlistedBudget)
-                        } label: {
-                            HStack {
-                                if unlistedBudget.isEncrypted {
-                                    Image(systemName: "lock.fill")
-                                        .foregroundStyle(.secondary)
-                                }
-
-                                Text(unlistedBudget.name)
-                                    .foregroundStyle(.primary)
-                                    .lineLimit(1)
-
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-
-                    if otherBudgets.isEmpty && unlistedBudget == nil {
-                        Text("No other budgets")
-                            .foregroundStyle(.secondary)
-                            .padding(16)
-                    }
-                }
-            }
-            .frame(minWidth: 240, maxHeight: 320)
-            .padding(.vertical, 8)
-            .presentationCompactAdaptation(.popover)
-            .accessibilityIdentifier("budget-selection-picker")
         }
     }
 
@@ -559,6 +507,9 @@ private struct BudgetSelectionSettingsSection: View {
     }
 }
 
+/// Retype-to-confirm sheet for the irreversible half of budget deletion.
+/// A sheet rather than an alert so the Delete button can stay disabled until
+/// the typed name matches (mirrors EncryptionPasswordSheet).
 private struct DeleteServerBudgetSheet: View {
     let budget: BudgetStore.RemoteBudget
     @ObservedObject var budgetStore: BudgetStore
