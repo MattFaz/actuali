@@ -40,6 +40,13 @@ final class HideDecimalPlacesUITests: XCTestCase {
             if (hideBalances.value as? String == "1") != balancesWereHidden {
                 tapSwitch(hideBalances)
             }
+            // The preferences outlive the app, so a restore that silently
+            // missed reformats amounts for every later test on this
+            // simulator. Wait for it rather than discovering it there.
+            expectation(
+                for: NSPredicate(format: "value == %@", decimalPlacesWasHidden ? "1" : "0"),
+                evaluatedWith: toggle)
+            waitForExpectations(timeout: 3)
         }
 
         if !decimalPlacesWasHidden { tapSwitch(toggle) }

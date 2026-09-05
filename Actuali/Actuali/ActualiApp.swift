@@ -27,6 +27,14 @@ struct ActualiApp: App {
             status.lastScheduleAttempt = nil
             status.lastScheduleError = nil
         }
+        // ScheduleRowUITests asserts the row's exact amount string, and the
+        // Privacy preferences that reformat it persist across the whole UI
+        // suite's simulator — HideDecimalPlacesUITests turns one on and can
+        // fail to restore it. Pin them so the fixture renders one way.
+        if CommandLine.arguments.contains("-showScheduleRowFixture") {
+            BudgetStore.shared.hideBalances = false
+            BudgetStore.shared.hideDecimalPlaces = false
+        }
         #endif
     }
 
