@@ -57,6 +57,13 @@ struct ScheduleDescriptionTests {
         #expect(text == "Every month on the 1st and 3rd Monday")
     }
 
+    @Test func lastWeekdayDoesNotRepeatTheWeekdayName() {
+        let text = ScheduleDescription.recurring(config([
+            "patterns": [["type": "MO", "value": 1], ["type": "MO", "value": -1]]
+        ]))
+        #expect(text == "Every month on the 1st and last Monday")
+    }
+
     @Test func mixedWeekdaysNameEachOne() {
         let text = ScheduleDescription.recurring(config([
             "patterns": [["type": "MO", "value": 1], ["type": "FR", "value": 2]]

@@ -121,9 +121,7 @@ enum ScheduleDescription {
             }
             let dayName = isSameDay ? "" : " " + weekdayName(forCode: pattern.type)
             if pattern.value == -1 {
-                return isSameDay
-                    ? String(format: String(localized: "last %@"), weekdayName(forCode: pattern.type))
-                    : String(localized: "last") + dayName
+                return String(localized: "last") + dayName
             }
             return ordinal(pattern.value) + dayName
         }
