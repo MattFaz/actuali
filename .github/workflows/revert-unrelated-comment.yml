@@ -22,15 +22,18 @@ jobs:
           from pathlib import Path
           path = Path('Actuali/Actuali/Services/Database/BudgetDatabase.swift')
           text = path.read_text()
-          old = '''                // tracking `total-saved`: income = budgeted amounts across
-                // income categories, expenses = across the rest (loot-core tracking.ts).
-          '''
-          new = '''                // tracking `total-saved`: budgeted income minus budgeted
-                // expenses for the month (loot-core tracking.ts).
-          '''
-          if old not in text:
+          marker = "income = budgeted amounts across"
+          start = text.find(marker)
+          if start == -1:
               raise SystemExit('Expected unrelated comment not found')
-          path.write_text(text.replace(old, new, 1))
+          line_start = text.rfind('\n', 0, start) + 1
+          block_end = text.find('\n', text.find('\n', start) + 1) + 1
+          lines = text[line_start:block_end].splitlines(keepends=True)
+          replacement = ''.join(
+              ('                // tracking `total-saved`: budgeted income minus budgeted\n',
+               '                // expenses for the month (loot-core tracking.ts).\n')
+          )
+          path.write_text(text[:line_start] + replacement + text[block_end:])
           workflow = Path('.github/workflows/revert-unrelated-comment.yml')
           workflow.unlink()
           PY
