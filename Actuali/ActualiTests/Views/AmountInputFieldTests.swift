@@ -172,15 +172,18 @@ struct AmountInputFieldTests {
         #expect(box.value == "1234.56")
     }
     
-    @Test func pastingAnOversizedNumberFallsBackInsteadOfCrashing() {
+    @Test func pastingAnOversizedNumberIsRejectedInsteadOfCrashing() {
         let (coordinator, textField, box) = makeField()
-        _ = coordinator.textField(
+    
+        let accepted = coordinator.textField(
             textField,
             shouldChangeCharactersIn: NSRange(location: 0, length: 0),
             replacementString: "1,000,000,000,000,000,000,000"
         )
-
-        #expect(Double(box.value) != nil)
+    
+        #expect(accepted == false)
+        #expect(box.value == "")
+        #expect(textField.text == "")
     }
 
     @Test func pastingGroupedDecimalInConventionalModeKeepsSignAndCents() {
