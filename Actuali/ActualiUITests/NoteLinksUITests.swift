@@ -11,7 +11,7 @@ final class NoteLinksUITests: XCTestCase {
     @MainActor
     func testCategoryNoteRendersTappableLink() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1"]
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),
@@ -49,17 +49,26 @@ final class NoteLinksUITests: XCTestCase {
 
         // The editor surfaces the draft's link as a tappable row beneath the
         // text, since the editable text itself can't be tapped as a link.
-        // (a SwiftUI Link in a Form row is exposed as a button, not a link)
-        XCTAssertTrue(app.buttons["noteLinkRow"].waitForExistence(timeout: 5),
+        // SwiftUI exposes a Link in a Form row as different element types
+        // across supported iOS versions, so the identifier is the contract.
+        XCTAssertTrue(app.descendants(matching: .any)["noteLinkRow"].waitForExistence(timeout: 5),
                       "link row missing from note editor")
         app.buttons["Cancel"].tap()
         XCTAssertTrue(editor.waitForNonExistence(timeout: 5), "editor did not dismiss")
 
         // Tapping the link itself leaves the app for the URL instead of
         // opening the editor.
-        let link = app.links["Rewards portal"]
-        XCTAssertTrue(link.waitForExistence(timeout: 5), "inline link not exposed")
-        link.tap()
+        if #available(iOS 26, *) {
+            let link = app.links["Rewards portal"]
+            XCTAssertTrue(link.waitForExistence(timeout: 5), "inline link not exposed")
+            link.tap()
+        } else {
+            let link = app.descendants(matching: .any)["categoryNoteLink.0"]
+            XCTAssertTrue(link.waitForExistence(timeout: 5), "inline link not exposed")
+            // The iOS 18 accessibility representation makes the link
+            // discoverable, while the visual attributed text owns its tap.
+            noteRow.coordinate(withNormalizedOffset: CGVector(dx: 0.25, dy: 0.75)).tap()
+        }
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10),
                       "tapping the note link did not open the URL")

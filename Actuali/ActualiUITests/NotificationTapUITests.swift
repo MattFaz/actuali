@@ -50,11 +50,11 @@ final class NotificationTapUITests: XCTestCase {
         XCTAssertEqual(app.state, .runningForeground, "app crashed after tapping the notification")
 
         // And the prefilled sheet should be showing (payee carried through).
-        let prefilfledPayee = app.textFields.matching(
-            NSPredicate(format: "value == 'Debug Payee'")
-        ).firstMatch
-        XCTAssertTrue(prefilfledPayee.waitForExistence(timeout: 5),
+        let prefilledPayee = app.buttons["addTransaction.payee"]
+        XCTAssertTrue(prefilledPayee.waitForExistence(timeout: 5),
                       "prefilled add-transaction sheet not shown")
+        XCTAssertTrue(prefilledPayee.label.contains("Debug Payee"),
+                      "notification payee was not carried into the sheet")
     }
 
     /// Tapping the "Logged transaction" success notification should land on
