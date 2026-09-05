@@ -60,7 +60,7 @@ struct BudgetStoreNumberFormatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, in: manager)
 
-        store.numberFormat = .indian
+        store.numberFormat = .commaDotIn
         await store.loadLocalBudget(id)
 
         #expect(store.numberFormat == .commaDot)
@@ -71,7 +71,7 @@ struct BudgetStoreNumberFormatTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(id: id, numberFormat: "not-a-real-format", in: manager)
 
-        store.numberFormat = .indian
+        store.numberFormat = .commaDotIn
         await store.loadLocalBudget(id)
 
         #expect(store.numberFormat == .commaDot)
@@ -94,7 +94,7 @@ struct BudgetStoreNumberFormatTests {
         await store.loadLocalBudget(id)
         #expect(store.numberFormat == .dotComma)
 
-        try await updateNumberFormat(.commaDotIn.rawValue, id: id, in: manager)
+        try updateNumberFormat(.commaDotIn.rawValue, id: id, in: manager)
         store.numberFormat = .dotComma
         await store.resetSyncState()
 
@@ -119,9 +119,9 @@ struct BudgetStoreNumberFormatTests {
 
     private func updateNumberFormat(
         _ value: String?, id: String, in manager: BudgetFileManager
-    ) async throws {
+    ) throws {
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: id).path)
-        try await dbQueue.write { db in
+        try dbQueue.write { db in
             if let value {
                 try db.execute(
                     sql: "INSERT OR REPLACE INTO preferences (id, value) VALUES ('numberFormat', ?)",
