@@ -1,5 +1,9 @@
 name: Sync fork
 
+on:
+  schedule:
+    - cron: '0 * * * *'   # daily at 06:00 UTC
+=======
 # Keeps a fork's main up to date with upstream. Ships from upstream so every
 # fork inherits it; the job guard below makes it a no-op on upstream itself,
 # which has no parent to sync from.
