@@ -86,7 +86,7 @@ struct BudgetStoreCreditLimitTests {
             #expect(store.creditCardLimits["acct_card"] == nil)
 
             // ...while setting a limit updates the stored config.
-            await store.setCreditCard(accountId: "acct_card", statementDay: 3, dueOffsetDays: 25, limit: 1_000_000)
+            await store.setCreditCard(accountId: "acct_card", statementDay: 3, paymentDue: .daysAfter(25), limit: 1_000_000)
             #expect(store.creditCardLimits["acct_card"] == 1_000_000)
         }
     }

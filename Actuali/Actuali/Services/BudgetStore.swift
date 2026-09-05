@@ -695,13 +695,23 @@ final class BudgetStore: ObservableObject {
     func setCreditCard(
         accountId: String,
         statementDay: Int?,
-        dueOffsetDays: Int = CreditCardCycle.defaultDueOffsetDays,
+        paymentDue: CreditCardCycle.PaymentDue = .daysAfter(CreditCardCycle.defaultDueOffsetDays),
         limit: Int?
     ) async {
         guard currentBudgetId != nil else { return }
         let previous = creditCardConfigs[accountId]
         let config: CreditCardConfig? = statementDay.map {
-            CreditCardConfig(statementDay: $0, dueOffsetDays: dueOffsetDays, limit: limit)
+            switch paymentDue {
+            case .daysAfter(let days):
+                return CreditCardConfig(statementDay: $0, dueOffsetDays: days, dueDay: nil, limit: limit)
+            case .dayOfMonth(let day):
+                // Older builds ignore `dueDay` and fall back to `dueOffsetDays`.
+                // Store the real gap so they stay close to the correct date.
+                let cycle = CreditCardCycle(statementDay: $0, paymentDue: .dayOfMonth(day))
+                let statement = cycle.previousStatementDate()
+                let offset = max(1, statement.days(until: cycle.dueDate(forStatement: statement)))
+                return CreditCardConfig(statementDay: $0, dueOffsetDays: offset, dueDay: day, limit: limit)
+            }
         }
         creditCardConfigs[accountId] = config
         guard let syncClient else {
@@ -718,10 +728,10 @@ final class BudgetStore: ObservableObject {
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
-        guard let day = creditCardStatementDays[accountId] else { return nil }
+        guard let config = creditCardConfigs[accountId] else { return nil }
         return CreditCardCycle(
-            statementDay: day,
-            dueOffsetDays: creditCardDueOffsets[accountId] ?? CreditCardCycle.defaultDueOffsetDays
+            statementDay: config.statementDay,
+            paymentDue: config.paymentDue
         )
     }
 

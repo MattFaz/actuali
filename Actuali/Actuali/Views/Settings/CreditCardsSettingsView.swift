@@ -3,11 +3,18 @@ import SwiftUI
 /// View for managing credit card accounts and their monthly billing cycles.
 struct CreditCardsSettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    enum DueDateMode: String, CaseIterable {
+        case daysAfter = "Days After"
+        case dayOfMonth = "Day of Month"
+    }
+
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
     @State private var selectedStatementDay = 15
+    @State private var selectedDueMode: DueDateMode = .daysAfter
     @State private var selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+    @State private var selectedDueDay = 1
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
@@ -61,7 +68,16 @@ struct CreditCardsSettingsView: View {
                         Button {
                             selectedAccountId = item.account.id
                             selectedStatementDay = item.cycle.statementDay
-                            selectedDueOffset = item.cycle.dueOffsetDays
+                            switch item.cycle.paymentDue {
+                            case .daysAfter(let days):
+                                selectedDueMode = .daysAfter
+                                selectedDueOffset = days
+                                selectedDueDay = 1
+                            case .dayOfMonth(let day):
+                                selectedDueMode = .dayOfMonth
+                                selectedDueDay = day
+                                selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+                            }
                             selectedLimitText = limitText(for: item.account.id)
                             editingAccountId = item.account.id
                         } label: {
@@ -105,7 +121,9 @@ struct CreditCardsSettingsView: View {
                             selectedAccountId = first.id
                         }
                         selectedStatementDay = 15
+                        selectedDueMode = .daysAfter
                         selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+                        selectedDueDay = 1
                         selectedLimitText = ""
                         showingAddSheet = true
                     } label: {
@@ -150,9 +168,24 @@ struct CreditCardsSettingsView: View {
                         }
                     }
 
-                    Picker("Payment Due After", selection: $selectedDueOffset) {
-                        ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
-                            Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                    Picker("Payment Due", selection: $selectedDueMode) {
+                        ForEach(DueDateMode.allCases, id: \.self) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if selectedDueMode == .daysAfter {
+                        Picker("Payment Due After", selection: $selectedDueOffset) {
+                            ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
+                                Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                            }
+                        }
+                    } else {
+                        Picker("Payment Due Day", selection: $selectedDueDay) {
+                            ForEach(1...31, id: \.self) { day in
+                                Text(dayOrdinal(day)).tag(day)
+                            }
                         }
                     }
 
@@ -168,7 +201,7 @@ struct CreditCardsSettingsView: View {
                 } header: {
                     Text("Card Details")
                 } footer: {
-                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
+                    Text("The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
                 }
 
                 if isEditing {
@@ -198,10 +231,13 @@ struct CreditCardsSettingsView: View {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") {
                         Task {
+                            let paymentDue: CreditCardCycle.PaymentDue = (selectedDueMode == .dayOfMonth)
+                                ? .dayOfMonth(selectedDueDay)
+                                : .daysAfter(selectedDueOffset)
                             await budgetStore.setCreditCard(
                                 accountId: selectedAccountId,
                                 statementDay: selectedStatementDay,
-                                dueOffsetDays: selectedDueOffset,
+                                paymentDue: paymentDue,
                                 limit: enteredLimitCents
                             )
                         }

@@ -4,14 +4,27 @@ import Foundation
 /// Stored per-budget in UserDefaults (lazy / lightweight: `[accountId: statementDay]`
 /// plus `[accountId: dueOffsetDays]`).
 struct CreditCardCycle: Equatable, Hashable {
+    /// How the payment due date is calculated: either relative to statement closing,
+    /// or a fixed calendar day of the month.
+    enum PaymentDue: Equatable, Hashable, Sendable {
+        case daysAfter(Int)
+        case dayOfMonth(Int)
+    }
+
     /// Day of the month the statement closes (1...31).
     let statementDay: Int
 
-    /// Days between the statement closing and the payment due date. The
-    /// interest-free period is set by the issuer, not the network — US cards
-    /// cluster around 21-25 days while Australian ones commonly run 25 or 45 —
-    /// so it is configured per card rather than assumed.
-    let dueOffsetDays: Int
+    /// Payment due rule for this card.
+    let paymentDue: PaymentDue
+
+    /// Days between statement closing and payment due date when using relative offset,
+    /// or `defaultDueOffsetDays` when using a fixed day of the month.
+    var dueOffsetDays: Int {
+        switch paymentDue {
+        case .daysAfter(let days): return days
+        case .dayOfMonth: return Self.defaultDueOffsetDays
+        }
+    }
 
     /// Applied to cards configured before the offset became per-card.
     static let defaultDueOffsetDays = 15
@@ -20,9 +33,9 @@ struct CreditCardCycle: Equatable, Hashable {
     /// in `upcomingDueDate`.
     static let maxDueOffsetDays = 60
 
-    init(statementDay: Int, dueOffsetDays: Int = Self.defaultDueOffsetDays) {
+    init(statementDay: Int, paymentDue: PaymentDue = .daysAfter(Self.defaultDueOffsetDays)) {
         self.statementDay = statementDay
-        self.dueOffsetDays = dueOffsetDays
+        self.paymentDue = paymentDue
     }
 
     /// Clamps statement day to the given month's actual length.
@@ -61,6 +74,20 @@ struct CreditCardCycle: Equatable, Hashable {
         cycleRange(for: today).start.adding(days: -1)
     }
 
+    /// Calculates the payment due date corresponding to a given statement closing date.
+    func dueDate(forStatement statement: DayDate) -> DayDate {
+        switch paymentDue {
+        case .daysAfter(let days):
+            return statement.adding(days: days)
+        case .dayOfMonth(let day):
+            // If dueDay > statementDay: payment is due in the same month as statement closing (e.g. 5th -> 25th).
+            // If dueDay <= statementDay: payment is due in the following month (e.g. 15th -> 1st).
+            let month = (day > statementDay) ? statement : statement.adding(months: 1)
+            let clamped = min(day, DayDate.lastDay(year: month.year, month: month.month))
+            return DayDate(year: month.year, month: month.month, day: clamped)
+        }
+    }
+
     /// Next upcoming payment due date.
     ///
     /// Statements close monthly but the due offset can run longer than a cycle
@@ -71,13 +98,14 @@ struct CreditCardCycle: Equatable, Hashable {
     func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
         // Fallback: everything already closed is paid or past due, so the next
         // payment covers the cycle now running.
-        var due = cycleRange(for: today).end.adding(days: dueOffsetDays)
+        var due = dueDate(forStatement: cycleRange(for: today).end)
         var statement = previousStatementDate(for: today)
-        // A statement can only be pending while its due date is within
-        // `dueOffsetDays` of today, which spans at most one cycle per whole
-        // month of offset — the extra step is the one that ends the walk.
+        // A statement can only be pending while its due date is within the due
+        // window of today, which spans at most one cycle per whole month of
+        // offset. A fixed day of the month never exceeds one cycle, and the 15
+        // this returns for that rule already bounds the walk.
         for _ in 0...(dueOffsetDays / 28 + 1) {
-            let statementDue = statement.adding(days: dueOffsetDays)
+            let statementDue = dueDate(forStatement: statement)
             guard today <= statementDue else { break }
             due = statementDue
             statement = previousStatementDate(for: statement)
