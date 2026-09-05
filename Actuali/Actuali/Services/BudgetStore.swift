@@ -796,7 +796,9 @@ final class BudgetStore: ObservableObject {
         let activeIds = Set(activeAccounts.map(\.id))
 
         // 1. Mapping keywords the hint contains. Longest key first so "1234" beats "12"
-        //    and multi-match resolution is deterministic (Dictionary order isn't).
+        //    and multi-match resolution is deterministic (Dictionary order isn't). Only
+//    hint-contains-key: the reverse direction would let a one-character hint
+//    match any keyword.
         let mappingsByLongestKey = cardMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
@@ -1845,8 +1847,9 @@ final class BudgetStore: ObservableObject {
     ///
     /// ponytail: creation requires the server to be reachable. Upstream
     /// tolerates a failed upload because possiblyUpload retries later, but
-    /// Actuali has no re-upload path yet, so a failed registration fails the
-    /// whole create and removes the local files. The upgrade path is a general
+    /// Actuali has no re-upload path yet, so a local-only file would be
+    /// stranded unsyncable — instead a failed registration fails the whole
+    /// create and removes the local files. The upgrade path is a general
     /// upload-on-sync retry.
     func createBudget(named rawName: String) async {
         let name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2312,7 +2315,7 @@ final class BudgetStore: ObservableObject {
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
     }
-    
+
     // MARK: - Backup Actions
     
     func refreshBackups() async {
@@ -2547,7 +2550,6 @@ final class BudgetStore: ObservableObject {
                 name: trimmedName
             )
         } catch let error as BudgetDatabase.CategoryWriteError {
-            // Already phrased for the person who typed the name.
             throw error
         } catch {
             throw BudgetStoreError.categoryGroupCreationFailed(error.localizedDescription)
@@ -3488,7 +3490,7 @@ final class BudgetStore: ObservableObject {
     /// `transferId`s and uses the existing transfer payee for each side.
     /// - Parameters:
     ///   - fromAccountId: account the money leaves (negative leg)
-    ///   - toAccountId: account the money arrives (positive leg)
+    ///   - toAccountId: account the money arrives in (positive leg)
     ///   - amountCents: positive cents amount
     ///   - date: YYYYMMDD
     ///   - notes: shared notes (applied to both legs)

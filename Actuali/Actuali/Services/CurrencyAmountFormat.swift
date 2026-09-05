@@ -166,7 +166,7 @@ enum CurrencyAmountFormat {
     ///   - cents: Signed amount in cents (e.g., 1050 = $10.50).
     ///   - currencyCode: ISO code; empty means no currency — amounts render
     ///     as plain numbers, matching Actual's defaultCurrencyCode convention.
-    ///   - narrowSymbol: Use the narrow symbol ("$" instead of NZ$"/"US$"),
+    ///   - narrowSymbol: Use the narrow symbol ("$" instead of "NZ$"/"US$"),
     ///     the Settings "Symbol Only" option (GH #83).
     ///   - wholeUnits: Round to whole units, for compact chart annotations
     ///     where cents add noise.
@@ -252,7 +252,7 @@ enum CurrencyAmountFormat {
 
     /// Formats with the budget currency's native precision while omitting its
     /// symbol. The budget tables supply the currency and meaning through their
-    /// column headers, leaving more room for category names.
+    /// column headers, leaving more horizontal room for category names.
     @MainActor
     static func symbolLessString(
         cents: Int,

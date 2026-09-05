@@ -313,6 +313,8 @@ struct AmountInputFieldTests {
         #expect(Double(box.value) == 18)
     }
 
+    /// A fractional result still carries its cents — the whole-number display
+    /// is about not inventing a fraction, not about dropping one.
     @Test func conventionalModeKeepsCentsOnFractionalResult() {
         let (coordinator, textField, box) = makeField(conventionalAmountEntry: true)
         type("5", into: coordinator, textField)
@@ -323,6 +325,8 @@ struct AmountInputFieldTests {
         #expect(box.value == "2.50")
     }
 
+    /// A prefilled whole amount must survive the round trip through
+    /// `sync(fromDisplay:)` — the field is handed "%.2f" strings by callers.
     @Test func conventionalModeEditsPrefilledWholeAmount() {
         let (coordinator, textField, box) = makeField(
             initial: "324", conventionalAmountEntry: true
@@ -351,12 +355,14 @@ struct AmountInputFieldTests {
         #expect(box.value == "-2.50")
     }
 
+    // Reconcile can show a negative balance, so the true signed result stands.
     @Test func prefilledNegativeAmountKeepsSignWhenEdited() {
         let (coordinator, textField, box) = makeField(initial: "-123.4", allowsNegative: true)
         type("5", into: coordinator, textField)
         #expect(box.value == "-123.45")
     }
 
+    // Tapping the field selects all; the next digit replaces everything.
     @Test func fullReplaceResetsSign() {
         let (coordinator, textField, box) = makeField(initial: "-123.45", allowsNegative: true)
         _ = coordinator.textField(
@@ -396,6 +402,8 @@ struct AmountInputFieldTests {
         #expect(box.value == "18.50")
     }
 
+    /// The Save button is an ordinary form row, so it never ends editing —
+    /// the binding has to be parseable while the expression is still visible.
     @Test func bindingHoldsEvaluatedValueMidExpression() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
@@ -437,6 +445,7 @@ struct AmountInputFieldTests {
         #expect(box.value == "10.00")
     }
 
+    /// "12.50 ×" then Done must not multiply by an implied zero.
     @Test func danglingOperatorCollapsesToRunningTotal() {
         let (coordinator, textField, box) = makeField()
         type("1250", into: coordinator, textField)
@@ -492,6 +501,7 @@ struct AmountInputFieldTests {
         #expect(box.value == "0.09")
     }
 
+    /// Reconcile can show a negative balance, so the true signed result stands.
     @Test func negativeResultKeepsItsSignWhereAllowed() {
         let (coordinator, textField, box) = makeField(allowsNegative: true)
         type("500", into: coordinator, textField)
@@ -501,6 +511,8 @@ struct AmountInputFieldTests {
         #expect(box.value == "-15.00")
     }
 
+    /// Elsewhere the sign comes from the expense/income toggle, so the field
+    /// carries the magnitude rather than silently zeroing the entry.
     @Test func negativeResultBecomesMagnitudeWhereSignIsNotAllowed() {
         let (coordinator, textField, box) = makeField()
         type("500", into: coordinator, textField)

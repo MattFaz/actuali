@@ -1007,7 +1007,7 @@ struct AmountInputField: UIViewRepresentable {
         context.coordinator.textField = field
         context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.sync(fromDisplay: text)
-        context.coordinator.applyDisplay(to: field)
+        context.coordinator.renderDisplay(to: field)
         return field
     }
 
@@ -1030,8 +1030,9 @@ struct AmountInputField: UIViewRepresentable {
         if text != context.coordinator.lastPublishedText {
             uiView.text = text
             context.coordinator.sync(fromDisplay: text)
+            context.coordinator.renderDisplay(to: uiView)
         } else if formatChanged {
-            context.coordinator.applyDisplay(to: uiView)
+            context.coordinator.renderDisplay(to: uiView)
         }
     }
 
@@ -1404,6 +1405,12 @@ struct AmountInputField: UIViewRepresentable {
             let value = normalized(resolvedValue())
             let whole = parent.conventionalAmountEntry && value == value.rounded()
             return String(format: whole ? "%.0f" : "%.2f", value)
+        }
+
+        /// Display-only sibling of applyDisplay: makeUIView and external binding updates
+        /// must not publish state while SwiftUI is updating the view hierarchy.
+        fileprivate func renderDisplay(to textField: UITextField) {
+            textField.text = computeFieldText()
         }
 
         fileprivate func applyDisplay(to textField: UITextField) {
