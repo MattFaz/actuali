@@ -3,6 +3,11 @@ import Testing
 @testable import Actuali
 
 struct AppleWalletSyncTests {
+    #if targetEnvironment(simulator)
+    @Test func simulatorWalletAvailabilityDoesNotOpenFinanceStore() async {
+        #expect(await FinanceKitWalletStore().availability() == .unsupported)
+    }
+    #endif
 
     private func transaction(
         id: String = "11111111-1111-1111-1111-111111111111",

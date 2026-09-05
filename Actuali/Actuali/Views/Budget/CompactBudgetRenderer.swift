@@ -301,16 +301,6 @@ struct CompactCategoryBudgetRow: View {
         .listRowBackground(Color(.systemBackground))
         .accessibilityIdentifier("compactBudgetCategory.\(category.categoryId)")
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
         .modifier(CategoryRowContextMenu(
             category: category,
             isHidden: isHidden,
@@ -675,14 +665,13 @@ struct CompactIncomeCategoryRow: View {
         .listRowBackground(Color(.systemBackground))
         .accessibilityIdentifier("compactIncomeCategory.\(income.categoryId)")
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        .contextMenu {
             if let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
                     Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
                 }
-                .tint(isHidden ? .accentColor : .secondary)
             }
         }
     }

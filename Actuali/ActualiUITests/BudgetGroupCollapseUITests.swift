@@ -7,7 +7,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testGroupRowCollapsesAndExpandsCategories() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -34,7 +34,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testToolbarMenuCollapsesAndExpandsAllGroups() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -123,7 +123,13 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         let headerY = essentials.frame.minY
         let rowY = category.frame.minY
         let start = category.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -70)))
+        // Stop before lifting so momentum cannot scroll past the entire group.
+        start.press(
+            forDuration: 0.05,
+            thenDragTo: start.withOffset(CGVector(dx: 0, dy: -70)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.2
+        )
 
         let headerTravel = headerY - essentials.frame.minY
         let rowTravel = rowY - category.frame.minY

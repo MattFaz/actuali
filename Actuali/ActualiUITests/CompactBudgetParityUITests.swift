@@ -10,6 +10,7 @@ final class CompactBudgetParityUITests: XCTestCase {
             "-showCompactSpentColumn", "YES",
             "-showBudgetProgressBars", "NO",
             "-showCategoryStatusDots", "NO",
+            "-useNarrowCurrencySymbol", "YES",
             "-initialTab", "1",
         ]
         app.launch()
@@ -81,27 +82,26 @@ final class CompactBudgetParityUITests: XCTestCase {
         app.buttons["Cancel"].tap()
     }
 
-    // UNCOMMENT WITH GH-425
-//    @MainActor
-//    func testKeepsSharedMonthSwipeNavigation() throws {
-//        let app = XCUIApplication()
-//        app.launchArguments = [
-//            "-loadDemoData",
-//            "-budgetDisplayStyle", "compact",
-//            "-initialTab", "1",
-//        ]
-//        app.launch()
-//
-//        let currentMonth = monthTitle(offset: 0)
-//        let nextMonth = monthTitle(offset: 1)
-//        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
-//
-//        app.swipeLeft()
-//        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
-//                      "the shared horizontal gesture advances Compact by one month")
-//        app.swipeRight()
-//        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
-//    }
+    @MainActor
+    func testKeepsSharedMonthSwipeNavigation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData",
+            "-budgetDisplayStyle", "compact",
+            "-initialTab", "1",
+        ]
+        app.launch()
+
+        let currentMonth = monthTitle(offset: 0)
+        let nextMonth = monthTitle(offset: 1)
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
+
+        app.swipeLeft()
+        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
+                      "the shared horizontal gesture advances Compact by one month")
+        app.swipeRight()
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
+    }
 
     @MainActor
     func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() throws {
@@ -214,6 +214,34 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Salary"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.staticTexts[currentMonthTitle()].exists,
                       "Received opens transactions for the displayed month")
+    }
+
+    @MainActor
+    func testIncomeContextMenuHidesAndShowsCategory() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "compact",
+            "-showHiddenCategories", "YES", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salary = app.buttons["All transactions for Salary"]
+        scrollUntilHittable(salary, in: app)
+        XCTAssertTrue(salary.isHittable)
+        salary.press(forDuration: 1)
+        let hide = app.buttons["Hide"].firstMatch
+        XCTAssertTrue(hide.waitForExistence(timeout: 5))
+        hide.tap()
+
+        // Hidden rows stay visible in this mode, so the inverse action must appear.
+        scrollUntilHittable(salary, in: app)
+        salary.press(forDuration: 1)
+        let show = app.buttons["Show"].firstMatch
+        XCTAssertTrue(show.waitForExistence(timeout: 5))
+        show.tap()
+
+        salary.press(forDuration: 1)
+        XCTAssertTrue(hide.waitForExistence(timeout: 5))
     }
 
     @MainActor

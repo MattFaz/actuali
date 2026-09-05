@@ -11,7 +11,7 @@ final class NoteLinksUITests: XCTestCase {
     @MainActor
     func testCategoryNoteRendersTappableLink() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "1"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1"]
         app.launch()
 
         XCTAssertTrue(app.tabBars.buttons["Budget"].waitForExistence(timeout: 10),

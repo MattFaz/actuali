@@ -1,30 +1,6 @@
 import XCTest
 
 final class SettingsNavigationUITests: XCTestCase {
-    //Due to FinanceKit requiring an Entitlement request from Apple
-    //this check was added to prevent local development from crashing
-    //when the active development team has not applied for that entitlement
-    private func appDeclaresFinanceKitEntitlement() throws -> Bool {
-        let url = try XCTUnwrap(
-            Bundle(for: SettingsNavigationUITests.self).url(
-                forResource: "Actuali",
-                withExtension: "entitlements"
-            )
-        )
-        let data = try Data(contentsOf: url)
-        let propertyList = try PropertyListSerialization.propertyList(from: data, format: nil)
-        let entitlements = try XCTUnwrap(propertyList as? [String: Any])
-
-        switch entitlements["com.apple.developer.financekit"] {
-        case let enabled as Bool:
-            return enabled
-        case let values as [String]:
-            return values.contains("financial-data")
-        default:
-            return false
-        }
-    }
-
     @MainActor
     private func assertExpectedContent(for destination: String, in app: XCUIApplication) {
         let content: XCUIElement
@@ -70,8 +46,6 @@ final class SettingsNavigationUITests: XCTestCase {
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
 
-        let hasFinanceKitEntitlement = try appDeclaresFinanceKitEntitlement()
-
         for destination in [
             "Connection & Data",
             "Budget View",
@@ -83,10 +57,6 @@ final class SettingsNavigationUITests: XCTestCase {
             "Bank Sync (SimpleFIN & Wallet)",
             "About"
         ] {
-            if destination == "Bank Sync (SimpleFIN & Wallet)", !hasFinanceKitEntitlement {
-                continue
-            }
-
             let row = app.buttons[destination]
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
