@@ -763,39 +763,30 @@ final class BudgetDatabase: Sendable {
                     var clauses = [
                         "\(payeeNameSQL) LIKE ? ESCAPE '\\'",
                         "c.name LIKE ? ESCAPE '\\'",
-                        "t.notes LIKE ? ESCAPE '\\'",
-                        "t.imported_description LIKE ? ESCAPE '\\'"
+                        "t.notes LIKE ? ESCAPE '\\'"
                     ]
 
-                    arguments.append(contentsOf: [pattern, pattern, pattern, pattern])
+                    arguments.append(contentsOf: [pattern, pattern, pattern])
 
                     clauses.append("""
+                        // ponytail: Keep split-child matching in SQL so pagination still
+                        // spans full history; the correlated EXISTS only probes children
+                        // belonging to the current parent row.
                         EXISTS (
                             SELECT 1
                             FROM transactions child
-                            LEFT JOIN payee_mapping child_pm
-                                ON child_pm.id = child.description
-                            LEFT JOIN payees child_payee
-                                ON child_payee.id = child_pm.targetId
-                            LEFT JOIN category_mapping child_cm
-                                ON child_cm.id = child.category
-                            LEFT JOIN categories child_category
-                                ON child_category.id = COALESCE(
-                                    child_cm.transferId,
-                                    child.category
-                                )
+                            LEFT JOIN payee_mapping cpm ON cpm.id = child.description
+                            LEFT JOIN payees cpay ON cpay.id = cpm.targetId
                             WHERE child.parent_id = t.id
                               AND (child.tombstone = 0 OR child.tombstone IS NULL)
                               AND (
-                                  child_payee.name LIKE ? ESCAPE '\\'
+                                  cpay.name LIKE ? ESCAPE '\\'
                                   OR child.notes LIKE ? ESCAPE '\\'
-                                  OR child_category.name LIKE ? ESCAPE '\\'
-                                  OR child.imported_description LIKE ? ESCAPE '\\'
                               )
                         )
                     """)
 
-                    arguments.append(contentsOf: [pattern, pattern, pattern, pattern])
+                    arguments.append(contentsOf: [pattern, pattern])
                     
                     if let range = matcher.amountCentsRange {
                         clauses.append("ABS(t.amount) BETWEEN ? AND ?")
@@ -2060,8 +2051,8 @@ final class BudgetDatabase: Sendable {
             if walk.isEnvelope {
                 sheet.availableStart = walk.toBudget
             } else {
-                // tracking `total-saved`: budgeted income minus budgeted
-                // expenses for the month (loot-core tracking.ts).
+                // tracking `total-saved`: income = budgeted amounts across
+                // income categories, expenses = across the rest (loot-core tracking.ts).
                 let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
                 var saved = 0
                 for (categoryId, budgetRow) in targetBudgets {
