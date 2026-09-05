@@ -74,6 +74,22 @@ enum AmountParser {
             groupingSeparators = ["'", "\u{2019}"]
         }
 
+        let integerPart = token.prefix { $0 != decimalSeparator }
+        let hasGroupingSeparator = integerPart.contains(where: groupingSeparators.contains)
+        if hasGroupingSeparator {
+            let groups = integerPart.split(whereSeparator: groupingSeparators.contains)
+            guard groups.count > 1 else { return nil }
+
+            let usesStandardGrouping = groups.dropFirst().allSatisfy { $0.count == 3 }
+            let usesIndianGrouping = groups.count > 2
+                && groups.dropFirst().dropLast().allSatisfy { $0.count == 2 }
+                && groups.last?.count == 3
+                && (1...3).contains(groups[0].count)
+            guard (1...3).contains(groups[0].count),
+                  usesStandardGrouping || (numberFormat == .commaDot || numberFormat == .commaDotIn) && usesIndianGrouping
+            else { return nil }
+        }
+
         var seenDecimal = false
         var normalized = ""
         for character in token {
