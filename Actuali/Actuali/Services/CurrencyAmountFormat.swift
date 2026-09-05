@@ -84,7 +84,8 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
 
         return formatter
     }
-
+     /// The NSLock serializes every access to the non-Sendable NumberFormatter
+     /// dictionary (and each format call), so sharing across actors is safe.
     private final class FormatterCache: @unchecked Sendable {
         private let lock = NSLock()
         private var formatters: [String: NumberFormatter] = [:]
