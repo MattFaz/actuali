@@ -1,6 +1,5 @@
 name: Sync fork
 
-<<<<<<< HEAD
 on:
   schedule:
     - cron: '0 * * * *'   # daily at 06:00 UTC
@@ -17,16 +16,12 @@ on:
 on:
   schedule:
     - cron: '0 6 * * *'    # daily at 06:00 UTC
->>>>>>> main
   workflow_dispatch:       # lets you run it manually too
 
 jobs:
   sync:
-<<<<<<< HEAD
-=======
     # Upstream is not a fork, so `gh repo sync` has nothing to sync from.
     if: github.repository != 'MattFaz/actuali'
->>>>>>> main
     runs-on: ubuntu-latest
     permissions:
       contents: write
