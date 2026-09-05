@@ -64,9 +64,16 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
         return formatter
     }
 
-    func format(number: NSNumber, wholeUnits: Bool, currencyCode: String?) -> String {
-        if currencyCode == nil && number.doubleValue == 0 {
-            return wholeUnits ? "0" : "0\(decimalSeparator)00"
+    private static let formatterLock = NSLock()
+    private static var formatterCache: [String: NumberFormatter] = [:]
+
+    private func cachedFormatter(currencyCode: String?, wholeUnits: Bool) -> NumberFormatter {
+        let key = "\(rawValue)|\(currencyCode ?? \"\")|\(wholeUnits)"
+        Self.formatterLock.lock()
+        defer { Self.formatterLock.unlock() }
+
+        if let formatter = Self.formatterCache[key] {
+            return formatter
         }
 
         let formatter: NumberFormatter
@@ -79,7 +86,49 @@ enum ActualNumberFormat: String, CaseIterable, Identifiable, Sendable {
             formatter.minimumFractionDigits = wholeUnits ? 0 : 2
             formatter.maximumFractionDigits = wholeUnits ? 0 : 2
         }
-        return normalize(formatter.string(from: number) ?? "")
+
+        Self.formatterCache[key] = formatter
+        return formatter
+    }
+
+    private func cachedString(
+        from number: NSNumber,
+        currencyCode: String?,
+        wholeUnits: Bool
+    ) -> String {
+        let key = "\(rawValue)|\(currencyCode ?? \"\")|\(wholeUnits)"
+        Self.formatterLock.lock()
+        defer { Self.formatterLock.unlock() }
+
+        let formatter: NumberFormatter
+        if let cached = Self.formatterCache[key] {
+            formatter = cached
+        } else {
+            if let currencyCode {
+                formatter = numberFormatter(currencyCode: currencyCode, wholeUnits: wholeUnits)
+            } else {
+                formatter = NumberFormatter()
+                formatter.locale = locale
+                formatter.numberStyle = .decimal
+                formatter.minimumFractionDigits = wholeUnits ? 0 : 2
+                formatter.maximumFractionDigits = wholeUnits ? 0 : 2
+            }
+            Self.formatterCache[key] = formatter
+        }
+
+        return formatter.string(from: number) ?? ""
+    }
+
+    func format(number: NSNumber, wholeUnits: Bool, currencyCode: String?) -> String {
+        if currencyCode == nil && number.doubleValue == 0 {
+            return wholeUnits ? "0" : "0\(decimalSeparator)00"
+        }
+
+        return normalize(cachedString(
+            from: number,
+            currencyCode: currencyCode,
+            wholeUnits: wholeUnits
+        ))
     }
 }
 
