@@ -767,11 +767,10 @@ final class BudgetDatabase: Sendable {
                     ]
 
                     arguments.append(contentsOf: [pattern, pattern, pattern])
-
-                    clauses.append("""
                         // ponytail: Keep split-child matching in SQL so pagination still
                         // spans full history; the correlated EXISTS only probes children
                         // belonging to the current parent row.
+                    clauses.append("""
                         EXISTS (
                             SELECT 1
                             FROM transactions child
