@@ -441,7 +441,7 @@ private struct BudgetSelectionSettingsSection: View {
             }
         }
         .popover(isPresented: $showingBudgetPicker) {
-            let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != selectedBudget.id }
+            let otherBudgets = budgetStore.remoteBudgets.filter { $0.id != budget.id }
             let unlistedBudget = unlistedCurrentBudget(in: locals)
 
             ScrollView {
@@ -472,7 +472,7 @@ private struct BudgetSelectionSettingsSection: View {
                     }
 
                     if let unlistedBudget,
-                       unlistedBudget.id != selectedBudget.id {
+                       unlistedBudget.id != budget.id {
                         Button {
                             showingBudgetPicker = false
                             openBudget(unlistedBudget)
