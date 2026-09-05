@@ -363,17 +363,6 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
-                CompactBudgetGroupHeader(
-                    name: group.name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
-                    totals: budgetStore.showGroupTotals ? group.totals : nil,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: { toggleCollapsed(group.id) }
-                )
                 if !isCollapsed {
                     ForEach(group.categories) { category in
                         CompactCategoryBudgetRow(
@@ -393,6 +382,18 @@ struct BudgetView: View {
                         )
                     }
                 }
+            } header: {
+                CompactBudgetGroupHeader(
+                    name: group.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: { toggleCollapsed(group.id) }
+                )
             }
         }
     }
@@ -479,19 +480,6 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
-                CompactIncomeGroupHeader(
-                    name: name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: onSetHidden,
-                    totalBudgeted: budget.totalBudgetedIncome,
-                    totalReceived: budget.totalIncome,
-                    showsBudgeted: budget.isTrackingBudget,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: {
-                        toggleCollapsed(Self.incomeGroupCollapseID)
-                    }
-                )
                 if !isCollapsed {
                     ForEach(categories) { income in
                         CompactIncomeCategoryRow(
@@ -507,6 +495,20 @@ struct BudgetView: View {
                         )
                     }
                 }
+            } header: {
+                CompactIncomeGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: onSetHidden,
+                    totalBudgeted: budget.totalBudgetedIncome,
+                    totalReceived: budget.totalIncome,
+                    showsBudgeted: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    }
+                )
             }
         }
     }
@@ -1871,6 +1873,7 @@ struct CategoryBudgetDetailSheet: View {
                     TextField("Category Name", text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
+                        .accessibilityIdentifier("categoryEditor.name")
                 }
 
                 if note.supported {
@@ -1886,6 +1889,7 @@ struct CategoryBudgetDetailSheet: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
+                        .accessibilityIdentifier("categoryEditor.note")
                     }
                 }
 
@@ -1908,6 +1912,7 @@ struct CategoryBudgetDetailSheet: View {
                         }
                     ))
                     .disabled(isSavingRollover)
+                    .accessibilityIdentifier("categoryEditor.rollover")
                 } footer: {
                     Text(isTracking
                         ? "Carry this category's balance into next month. Applies from \(MonthPicker.title(for: category.month)) onward."
@@ -1923,6 +1928,7 @@ struct CategoryBudgetDetailSheet: View {
                         Text(budgetStore.displayBalance(category.budgeted))
                             .monospacedDigit()
                     }
+                    .accessibilityIdentifier("categoryEditor.currentAmount")
 
                     if quickAssignSuggestions.isEmpty {
                         Text("No suggestions available")
@@ -1944,11 +1950,13 @@ struct CategoryBudgetDetailSheet: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isApplyingSuggestion)
+                            .accessibilityIdentifier("categoryEditor.quickAssign.\(suggestion.kind.rawValue)")
                         }
                     }
                     },
                     header: {
                         Text(isTracking ? "Quick Budget" : "Quick Assign")
+                            .accessibilityIdentifier("categoryEditor.quickAssignHeader")
                     },
                     footer: {
                         Text("Suggestions use this category's existing Actual history and replace the amount shown above.")

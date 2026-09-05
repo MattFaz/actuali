@@ -7,7 +7,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testGroupRowCollapsesAndExpandsCategories() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -34,7 +34,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testToolbarMenuCollapsesAndExpandsAllGroups() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
@@ -77,16 +77,72 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
     @MainActor
     func testDetailedGroupSwipeHidesAndShowsExpenseGroup() throws {
-        try assertGroupSwipeHidesAndShowsExpenseGroup(displayStyle: "detailed")
+        try assertGroupHidesAndShowsExpenseGroup(displayStyle: "detailed")
     }
 
     @MainActor
-    func testCompactGroupSwipeHidesAndShowsExpenseGroup() throws {
-        try assertGroupSwipeHidesAndShowsExpenseGroup(displayStyle: "compact")
+    func testCompactGroupContextMenuHidesAndShowsExpenseGroup() throws {
+        try assertGroupHidesAndShowsExpenseGroup(displayStyle: "compact")
     }
 
     @MainActor
-    private func assertGroupSwipeHidesAndShowsExpenseGroup(displayStyle: String) throws {
+    func testCompactGroupHeaderStaysPinnedWhileCategoriesScroll() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "compact",
+            "-hideZeroBudgetCategories", "NO", "-showCompactBudgetOverview", "NO",
+            "-showBudgetCheckInStrip", "NO", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let essentials = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
+        ).firstMatch
+        XCTAssertTrue(essentials.waitForExistence(timeout: 10))
+        if essentials.label.contains("collapsed") {
+            essentials.tap()
+        }
+        XCTAssertEqual(
+            essentials.frame.minX,
+            app.frame.minX,
+            accuracy: 1,
+            "the compact section header should not inherit List's default inset"
+        )
+        XCTAssertEqual(
+            essentials.frame.maxX,
+            app.frame.maxX,
+            accuracy: 1,
+            "the compact section header should remain edge-to-edge"
+        )
+
+        let category = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Details for Internet")
+        ).firstMatch
+        XCTAssertTrue(category.waitForExistence(timeout: 10))
+
+        let headerY = essentials.frame.minY
+        let rowY = category.frame.minY
+        let start = category.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        // Stop before lifting so momentum cannot scroll past the entire group.
+        start.press(
+            forDuration: 0.05,
+            thenDragTo: start.withOffset(CGVector(dx: 0, dy: -70)),
+            withVelocity: .slow,
+            thenHoldForDuration: 0.2
+        )
+
+        let headerTravel = headerY - essentials.frame.minY
+        let rowTravel = rowY - category.frame.minY
+        XCTAssertGreaterThan(rowTravel, 30, "the category rows should scroll")
+        XCTAssertGreaterThan(
+            rowTravel,
+            headerTravel + 30,
+            "the category row should continue under the pinned compact group header"
+        )
+    }
+
+    @MainActor
+    private func assertGroupHidesAndShowsExpenseGroup(displayStyle: String) throws {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", displayStyle,
@@ -100,19 +156,39 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         XCTAssertTrue(essentials.waitForExistence(timeout: 10))
         if displayStyle == "compact" {
             XCTAssertFalse(app.buttons["Options for Essentials"].exists)
+
+            let expanded = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Essentials, expanded")
+            ).firstMatch
+            let collapsed = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH %@", "Essentials, collapsed")
+            ).firstMatch
+            if collapsed.exists {
+                collapsed.tap()
+            }
+            XCTAssertTrue(expanded.waitForExistence(timeout: 5))
+            expanded.tap()
+            XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
+            collapsed.tap()
+            XCTAssertTrue(expanded.waitForExistence(timeout: 5))
         }
 
-        setGroupHidden(true, app: app, group: essentials)
+        setGroupHidden(true, displayStyle: displayStyle, app: app, group: essentials)
         XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
 
         let optionsMenu = app.buttons["Budget options"]
         optionsMenu.tap()
-        let showHidden = app.buttons["Show Hidden Categories"]
+        let showHidden = app.buttons.matching(
+            NSPredicate(
+                format: "label IN %@",
+                ["Show Hidden Categories", "Hidden Categories"]
+            )
+        ).firstMatch
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
         showHidden.tap()
         XCTAssertTrue(essentials.waitForExistence(timeout: 5))
 
-        setGroupHidden(false, app: app, group: essentials)
+        setGroupHidden(false, displayStyle: displayStyle, app: app, group: essentials)
 
         optionsMenu.tap()
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
@@ -124,11 +200,25 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     private func setGroupHidden(
         _ hidden: Bool,
+        displayStyle: String,
         app: XCUIApplication,
         group: XCUIElement
     ) {
-        group.swipeLeft()
-        app.buttons[hidden ? "Hide" : "Show"].tap()
+        let wasCollapsed = group.label.contains("collapsed")
+
+        if displayStyle == "compact" {
+            group.press(forDuration: 1)
+        } else {
+            group.swipeLeft()
+        }
+        XCTAssertEqual(
+            group.label.contains("collapsed"),
+            wasCollapsed,
+            "revealing a group action must not toggle its collapse state"
+        )
+        let action = app.buttons[hidden ? "Hide" : "Show"].firstMatch
+        XCTAssertTrue(action.waitForExistence(timeout: 5))
+        action.tap()
     }
 
     @MainActor
