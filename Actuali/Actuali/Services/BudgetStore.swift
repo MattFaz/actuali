@@ -3315,6 +3315,13 @@ final class BudgetStore: ObservableObject {
         // FinanceKit link is device-local, so nothing could ever turn
         // reimports off there. A Wallet transaction id is a stable UUID, so a
         // deleted row with the same id *is* that transaction (GH #435).
+        //
+        // ponytail: with the default flipped, nothing in the app turns
+        // reimports back on for a Wallet account — a deleted Wallet row can't
+        // be recovered through sync, and unlink/relink doesn't help because
+        // the tombstone keeps its financial_id and still matches by exact id.
+        // Upgrade path: a per-account toggle on the Wallet setup screen that
+        // writes this same preference, which this lookup already honors.
         let reimportDefault = target.source == .financeKit ? "false" : "true"
         let reimportDeleted = (try await database.fetchPreference(
             id: "sync-reimport-deleted-\(target.id)"
