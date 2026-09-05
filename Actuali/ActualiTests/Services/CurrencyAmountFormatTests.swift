@@ -51,8 +51,7 @@ struct CurrencyAmountFormatTests {
     @Test func budgetTableWholeUnitsUseTheSameRounding() {
         for cents in [105_150, -105_150] {
             #expect(CurrencyAmountFormat.symbolLessString(
-                        cents: cents, currencyCode: "", wholeUnits: true,
-                        locale: enUS) ==
+                        cents: cents, currencyCode: "", wholeUnits: true) ==
                     CurrencyAmountFormat.string(
                         cents: cents, currencyCode: "", narrowSymbol: false,
                         wholeUnits: true, locale: enUS))
@@ -91,24 +90,20 @@ struct CurrencyAmountFormatTests {
     @Test func symbolLessPresentationKeepsCurrencyNativePrecision() {
         let dollars = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "USD",
-            locale: enUS
+            currencyCode: "USD"
         )
         let yen = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "JPY",
-            locale: enUS
+            currencyCode: "JPY"
         )
         let dinar = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "KWD",
-            locale: enUS
+            currencyCode: "KWD"
         )
         let roundedDollars = CurrencyAmountFormat.symbolLessString(
             cents: 123_456,
             currencyCode: "USD",
-            wholeUnits: true,
-            locale: enUS
+            wholeUnits: true
         )
 
         #expect(dollars == "1,234.50")
