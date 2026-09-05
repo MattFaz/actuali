@@ -1153,12 +1153,18 @@ struct AmountInputField: UIViewRepresentable {
             // that complete value before feeding characters through the
             // calculator-mode digit shifter; otherwise a grouping comma is
             // mistaken for the decimal point ("450,046.23" became "450.04").
-            if string.count > 1,
-               let pastedValue = AmountParser.parse(
-                   string,
-                   numberFormat: numberFormat
-               ),
-               Transaction.cents(fromDollars: pastedValue) != nil {
+            // A multi-character replacement is a paste, never keystrokes. Parse it
+            // as a whole value or refuse it: the digit shifter reads a grouping
+            // separator as a decimal point ("1.234,56" became 1.23).
+            if string.count > 1 {
+                guard let pastedValue = AmountParser.parse(
+                    string,
+                    numberFormat: numberFormat
+                ) ?? AmountParser.parse(string),
+                Transaction.cents(fromDollars: pastedValue) != nil else {
+                    return false
+                }
+            
                 setOperand(to: pastedValue)
             } else if string.isEmpty {
                 handleBackspace()
