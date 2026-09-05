@@ -51,8 +51,7 @@ struct CurrencyAmountFormatTests {
     @Test func budgetTableWholeUnitsUseTheSameRounding() {
         for cents in [105_150, -105_150] {
             #expect(CurrencyAmountFormat.symbolLessString(
-                        cents: cents, currencyCode: "", wholeUnits: true,
-                        locale: enUS) ==
+                        cents: cents, currencyCode: "", wholeUnits: true) ==
                     CurrencyAmountFormat.string(
                         cents: cents, currencyCode: "", narrowSymbol: false,
                         wholeUnits: true, locale: enUS))
@@ -78,33 +77,123 @@ struct CurrencyAmountFormatTests {
         #expect(narrow == "¥1,234")
     }
 
+    @Test func zeroKeepsCurrencyNativePrecision() {
+        let yen = CurrencyAmountFormat.string(
+            cents: 0, currencyCode: "JPY", narrowSymbol: true, locale: enUS)
+        let dinar = CurrencyAmountFormat.string(
+            cents: 0, currencyCode: "KWD", narrowSymbol: true, locale: enUS)
+        #expect(yen == "¥0")
+        #expect(dinar == "KWD 0.000")
+    }
+
     @MainActor
     @Test func symbolLessPresentationKeepsCurrencyNativePrecision() {
         let dollars = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "USD",
-            locale: enUS
+            currencyCode: "USD"
         )
         let yen = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "JPY",
-            locale: enUS
+            currencyCode: "JPY"
         )
         let dinar = CurrencyAmountFormat.symbolLessString(
             cents: 123_450,
-            currencyCode: "KWD",
-            locale: enUS
+            currencyCode: "KWD"
         )
         let roundedDollars = CurrencyAmountFormat.symbolLessString(
             cents: 123_456,
             currencyCode: "USD",
-            wholeUnits: true,
-            locale: enUS
+            wholeUnits: true
         )
 
         #expect(dollars == "1,234.50")
         #expect(yen == "1,234")
         #expect(dinar == "1,234.500")
         #expect(roundedDollars == "1,235")
+    }
+
+    @Test func actualNumberFormatsMatchExpectedGrouping() {
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .commaDot,
+            locale: enUS
+        ) == "$1,000.33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .dotComma,
+            locale: enUS
+        ) == "$1.000,33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .spaceComma,
+            locale: enUS
+        ) == "$1\u{202F}000,33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .apostropheDot,
+            locale: enUS
+        ) == "$1\u{2019}000.33")
+
+        #expect(CurrencyAmountFormat.string(
+            cents: 100_000_033,
+            currencyCode: "USD",
+            narrowSymbol: true,
+            numberFormat: .commaDotIn,
+            locale: enUS
+        ) == "$10,00,000.33")
+    }
+
+    @Test func zeroUsesSelectedNumberFormat() {
+        let expected: [(ActualNumberFormat, String)] = [
+            (.commaDot, "$0.00"),
+            (.dotComma, "$0,00"),
+            (.spaceComma, "$0,00"),
+            (.apostropheDot, "$0.00"),
+            (.commaDotIn, "$0.00")
+        ]
+
+        for (format, value) in expected {
+            #expect(CurrencyAmountFormat.string(
+                cents: 0,
+                currencyCode: "USD",
+                narrowSymbol: true,
+                numberFormat: format,
+                locale: enUS
+            ) == value)
+        }
+    }
+
+    @Test func zeroWholeUnitsStaysZero() {
+        for format in ActualNumberFormat.allCases {
+            #expect(CurrencyAmountFormat.string(
+                cents: 0,
+                currencyCode: "USD",
+                narrowSymbol: true,
+                wholeUnits: true,
+                numberFormat: format,
+                locale: enUS
+            ) == "$0")
+        }
+    }
+
+    @Test func numberFormatRawValuesMatchActualPreferenceKeys() {
+        #expect(ActualNumberFormat.allCases.map(\.rawValue) == [
+            "comma-dot",
+            "dot-comma",
+            "space-comma",
+            "apostrophe-dot",
+            "comma-dot-in"
+        ])
     }
 }

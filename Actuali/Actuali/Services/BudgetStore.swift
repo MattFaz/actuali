@@ -267,6 +267,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Number formatting follows Actual's synced `numberFormat` preference.
+    /// It deliberately has no UserDefaults fallback: the budget's synced
+    /// preference is the source of truth, with `.commaDot` as the Actual default.
+    @Published var numberFormat: ActualNumberFormat = .commaDot {
+        didSet {
+            publishWidgetSnapshot()
+        }
+    }
+
     private static func currencyCodeCacheKey(for budgetId: String) -> String {
         "currencyCode.\(budgetId)"
     }
@@ -300,6 +309,19 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else { return }
         do {
             try await syncClient.updateCurrencyCode(code)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// User-initiated number formatting changes use the same generic synced
+    /// preference path as other Actual preferences. No local persistence is
+    /// needed because the budget database is authoritative.
+    func setNumberFormat(_ format: ActualNumberFormat) async {
+        numberFormat = format
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(key: "numberFormat", value: format.rawValue)
         } catch {
             self.error = error.localizedDescription
         }
@@ -775,8 +797,8 @@ final class BudgetStore: ObservableObject {
 
         // 1. Mapping keywords the hint contains. Longest key first so "1234" beats "12"
         //    and multi-match resolution is deterministic (Dictionary order isn't). Only
-        //    hint-contains-key: the reverse direction would let a one-character hint
-        //    match any keyword.
+//    hint-contains-key: the reverse direction would let a one-character hint
+//    match any keyword.
         let mappingsByLongestKey = cardMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
@@ -1951,6 +1973,7 @@ final class BudgetStore: ObservableObject {
             // Nil means the budget has no currency preference; an empty value
             // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
+            let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedAccounts = try await openedDb.fetchAccounts()
@@ -1991,6 +2014,12 @@ final class BudgetStore: ObservableObject {
                 cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
             } else if let cached = cachedCurrencyCode(for: budgetId) {
                 currencyCode = cached
+            }
+            if let fetchedNumberFormat,
+               let parsedNumberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) {
+                numberFormat = parsedNumberFormat
+            } else {
+                numberFormat = .commaDot
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
@@ -2192,6 +2221,7 @@ final class BudgetStore: ObservableObject {
         guard let database else { return }
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
+        let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
@@ -2222,6 +2252,7 @@ final class BudgetStore: ObservableObject {
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
+            let fetchedNumberFormat = try await database.fetchPreference(id: "numberFormat")
             // Same story for the goal-templates flags — the web's Experimental
             // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(
@@ -2266,6 +2297,9 @@ final class BudgetStore: ObservableObject {
                     cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
                 }
             }
+            if let fetchedNumberFormat, numberFormat == numberFormatBefore {
+                numberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
+            }
             dataVersion += 1
 
             await loadSchedules()
@@ -2281,9 +2315,9 @@ final class BudgetStore: ObservableObject {
             self.error = "Failed to refresh data: \(error.localizedDescription)"
         }
     }
-    
-    // MARK: - Backup Actions
 
+    // MARK: - Backup Actions
+    
     func refreshBackups() async {
         guard let budgetId = currentBudgetId else {
             backups = []
@@ -2516,7 +2550,6 @@ final class BudgetStore: ObservableObject {
                 name: trimmedName
             )
         } catch let error as BudgetDatabase.CategoryWriteError {
-            // Already phrased for the person who typed the name.
             throw error
         } catch {
             throw BudgetStoreError.categoryGroupCreationFailed(error.localizedDescription)
@@ -2548,6 +2581,7 @@ final class BudgetStore: ObservableObject {
                 categoryGroupId: groupId
             )
         } catch let error as BudgetDatabase.CategoryWriteError {
+            // Already phrased for the person who typed the name.
             throw error
         } catch {
             throw BudgetStoreError.categoryCreationFailed(error.localizedDescription)
@@ -4334,7 +4368,7 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
-return transaction.id
+                return transaction.id
             }
         }
     }
@@ -4907,10 +4941,14 @@ return transaction.id
         let accountNames = accounts.reduce(into: [String: String]()) {
             $0[$1.id] = $1.name
         }
-        await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
-                                            narrowSymbol: useNarrowCurrencySymbol,
-                                            accountNames: accountNames,
-                                            offBudgetAccountIds: offBudgetAccountIds)
+        await NewTransactionNotifier.notify(
+            about: fresh,
+            currencyCode: currencyCode,
+            narrowSymbol: useNarrowCurrencySymbol,
+            numberFormat: numberFormat,
+            accountNames: accountNames,
+            offBudgetAccountIds: offBudgetAccountIds
+        )
     }
 
     /// Transactions that arrived via sync since the last check (advances the
@@ -5902,14 +5940,16 @@ return transaction.id
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol)
+                                    narrowSymbol: useNarrowCurrencySymbol,
+                                    numberFormat: numberFormat)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true)
+                                    narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true,
+                                    numberFormat: numberFormat)
     }
 
     // MARK: - Helpers

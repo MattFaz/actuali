@@ -33,6 +33,48 @@ struct AmountParserTests {
         #expect(AmountParser.parse("1.234.567") == 1234567.0)
     }
 
+    @Test func selectedCommaDotTreatsCommaAsGrouping() {
+        #expect(AmountParser.parse("1,234", numberFormat: .commaDot) == 1234.0)
+        #expect(AmountParser.parse("1,234.56", numberFormat: .commaDot) == 1234.56)
+        #expect(AmountParser.parse("10,00,000.33", numberFormat: .commaDot) == 1000000.33)
+        #expect(AmountParser.parse("12,34", numberFormat: .commaDot) == nil)
+    }
+
+    @Test func selectedDotCommaTreatsCommaAsDecimal() {
+        #expect(AmountParser.parse("1,234", numberFormat: .dotComma) == 1.234)
+        #expect(AmountParser.parse("1.234,56", numberFormat: .dotComma) == 1234.56)
+        #expect(AmountParser.parse("1,23", numberFormat: .dotComma) == 1.23)
+        #expect(AmountParser.parse("12.50", numberFormat: .dotComma) == nil)
+    }
+
+    @Test func selectedSpaceCommaTreatsNarrowSpaceAsGrouping() {
+        #expect(AmountParser.parse("1\u{202F}234,56", numberFormat: .spaceComma) == 1234.56)
+        #expect(AmountParser.parse("1\u{00A0}234,56", numberFormat: .spaceComma) == 1234.56)
+    }
+
+    @Test func selectedApostropheDotTreatsApostropheAsGrouping() {
+        #expect(AmountParser.parse("1\u{2019}234.56", numberFormat: .apostropheDot) == 1234.56)
+        #expect(AmountParser.parse("1'234.56", numberFormat: .apostropheDot) == 1234.56)
+    }
+
+    @Test func selectedIndianFormatUsesIndianGrouping() {
+        #expect(AmountParser.parse("12,34,567.89", numberFormat: .commaDotIn) == 1234567.89)
+        #expect(AmountParser.parse("1,234.56", numberFormat: .commaDotIn) == 1234.56)
+    }
+
+    @Test func selectedFormatRejectsConflictingSeparatorsInsteadOfGuessing() {
+        #expect(AmountParser.parse("1,234.56", numberFormat: .dotComma) == nil)
+        #expect(AmountParser.parse("1.234,56", numberFormat: .commaDot) == nil)
+        #expect(AmountParser.parse("1'234,56", numberFormat: .dotComma) == nil)
+        #expect(AmountParser.parse("1.234.56", numberFormat: .apostropheDot) == nil)
+    }
+
+    @Test func selectedFormatPreservesZeroAndNegativeValues() {
+        #expect(AmountParser.parse("0,00", numberFormat: .dotComma) == 0.0)
+        #expect(AmountParser.parse("-1.234,56", numberFormat: .dotComma) == -1234.56)
+        #expect(AmountParser.parse("-1\u{2019}234.56", numberFormat: .apostropheDot) == -1234.56)
+    }
+
     @Test func treatsZeroIntegerPartAsDecimal() {
         #expect(AmountParser.parse("0,234") == 0.234)
         #expect(AmountParser.parse("0.50") == 0.5)

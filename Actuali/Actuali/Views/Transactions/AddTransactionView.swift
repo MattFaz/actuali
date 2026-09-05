@@ -909,6 +909,7 @@ private struct SplitLineRow: View {
 /// mid-expression (the Save button is an ordinary row and doesn't end
 /// editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var text: String
     /// When true, digits are entered as a conventional decimal amount instead
     /// of shifting into cents.
@@ -942,7 +943,9 @@ struct AmountInputField: UIViewRepresentable {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
         field.keyboardType = .decimalPad
-        field.placeholder = conventionalAmountEntry ? "0" : "0.00"
+        field.placeholder = budgetStore.numberFormat.format(
+            number: NSNumber(value: 0), wholeUnits: conventionalAmountEntry, currencyCode: nil
+        )
         field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
@@ -1002,12 +1005,24 @@ struct AmountInputField: UIViewRepresentable {
         container.addSubview(toolbar)
         field.inputAccessoryView = container
         context.coordinator.textField = field
+        context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.sync(fromDisplay: text)
+        context.coordinator.renderDisplay(to: field)
         return field
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
+        context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+
+        if formatChanged {
+            uiView.placeholder = budgetStore.numberFormat.format(
+                number: NSNumber(value: 0),
+                wholeUnits: conventionalAmountEntry,
+                currencyCode: nil
+            )
+        }
         // Compare against what the coordinator last wrote out rather than the
         // field's own text: mid-expression the field reads "12.50 + 6.00"
         // while the binding holds "18.50", and that mismatch is expected.
@@ -1015,6 +1030,9 @@ struct AmountInputField: UIViewRepresentable {
         if text != context.coordinator.lastPublishedText {
             uiView.text = text
             context.coordinator.sync(fromDisplay: text)
+            context.coordinator.renderDisplay(to: uiView)
+        } else if formatChanged {
+            context.coordinator.renderDisplay(to: uiView)
         }
     }
 
@@ -1078,6 +1096,7 @@ struct AmountInputField: UIViewRepresentable {
         /// Everything to the left of the pending operator, already evaluated.
         private var accumulatedValue: Double?
         private var pendingOperator: Operator?
+        var numberFormat: ActualNumberFormat = .commaDot
 
         init(_ parent: AmountInputField) {
             self.parent = parent
@@ -1135,9 +1154,18 @@ struct AmountInputField: UIViewRepresentable {
             // that complete value before feeding characters through the
             // calculator-mode digit shifter; otherwise a grouping comma is
             // mistaken for the decimal point ("450,046.23" became "450.04").
-            if string.count > 1,
-               let pastedValue = AmountParser.parse(string),
-               Transaction.cents(fromDollars: pastedValue) != nil {
+            // A multi-character replacement is a paste, never keystrokes. Parse it
+            // as a whole value or refuse it: the digit shifter reads a grouping
+            // separator as a decimal point ("1.234,56" became 1.23).
+            if string.count > 1 {
+                guard let pastedValue = AmountParser.parse(
+                    string,
+                    numberFormat: numberFormat
+                ) ?? AmountParser.parse(string),
+                Transaction.cents(fromDollars: pastedValue) != nil else {
+                    return false
+                }
+            
                 setOperand(to: pastedValue)
             } else if string.isEmpty {
                 handleBackspace()
@@ -1222,7 +1250,16 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         private func currentOperandValue() -> Double {
-            Double(computeOperandDisplay()) ?? 0
+            let unsigned: Double
+            if hasDecimalPoint {
+                let whole = integerDigits.isEmpty ? "0" : integerDigits
+                unsigned = Double("\(whole).\(fractionDigits)") ?? 0
+            } else if parent.conventionalAmountEntry {
+                unsigned = Double(integerDigits.isEmpty ? "0" : integerDigits) ?? 0
+            } else {
+                unsigned = Double(Int(integerDigits) ?? 0) / 100.0
+            }
+            return isNegative ? -unsigned : unsigned
         }
 
         /// Rounds to cents and drops the sign where the field can't show one
@@ -1305,22 +1342,47 @@ struct AmountInputField: UIViewRepresentable {
             }
             if hasDecimalPoint {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
-                return sign + whole + "." + fractionDigits
+                if fractionDigits.isEmpty {
+                    let wholeValue = Double("\(sign)\(whole)") ?? 0
+                    return numberFormat.format(
+                        number: NSNumber(value: wholeValue),
+                        wholeUnits: true,
+                        currencyCode: nil
+                    ) + numberFormat.decimalSeparator
+                }
+                let value = Double("\(sign)\(whole).\(fractionDigits)") ?? 0
+                return numberFormat.format(
+                    number: NSNumber(value: value),
+                    wholeUnits: false,
+                    currencyCode: nil
+                )
             }
             if parent.conventionalAmountEntry {
-                return sign + integerDigits
+                let value = Double("\(sign)\(integerDigits)") ?? 0
+                return numberFormat.format(
+                    number: NSNumber(value: value),
+                    wholeUnits: true,
+                    currencyCode: nil
+                )
             }
             let cents = Int(integerDigits) ?? 0
-            let dollars = cents / 100
-            let pennies = cents % 100
-            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            let dollars = Double(cents) / 100.0
+            return numberFormat.format(
+                number: NSNumber(value: isNegative ? -dollars : dollars),
+                wholeUnits: false,
+                currencyCode: nil
+            )
         }
 
         /// An evaluated value as the field shows it: two decimals, except in
         /// conventional entry where a whole result stays whole.
         private func displayValue(_ value: Double) -> String {
             let whole = parent.conventionalAmountEntry && value == value.rounded()
-            return String(format: whole ? "%.0f" : "%.2f", value)
+            return numberFormat.format(
+                number: NSNumber(value: value),
+                wholeUnits: whole,
+                currencyCode: nil
+            )
         }
 
         /// What the field shows: the running total and armed operator, if any,
@@ -1339,13 +1401,19 @@ struct AmountInputField: UIViewRepresentable {
         /// What the binding carries: always a plain decimal, so callers can
         /// parse it at any moment — including mid-expression.
         private func computeBoundText() -> String {
-            guard pendingOperator != nil, accumulatedValue != nil else {
-                return computeOperandDisplay()
-            }
-            return displayValue(normalized(resolvedValue()))
+            guard hasTypedOperand || pendingOperator != nil else { return "" }
+            let value = normalized(resolvedValue())
+            let whole = parent.conventionalAmountEntry && value == value.rounded()
+            return String(format: whole ? "%.0f" : "%.2f", value)
         }
 
-        private func applyDisplay(to textField: UITextField) {
+        /// Display-only sibling of applyDisplay: makeUIView and external binding updates
+        /// must not publish state while SwiftUI is updating the view hierarchy.
+        fileprivate func renderDisplay(to textField: UITextField) {
+            textField.text = computeFieldText()
+        }
+
+        fileprivate func applyDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
             let bound = computeBoundText()
             lastPublishedText = bound
