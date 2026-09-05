@@ -105,6 +105,7 @@ final class SettingsNavigationUITests: XCTestCase {
 
         other.tap()
 
+        XCTAssertFalse(app.buttons["Other Budget"].waitForExistence(timeout: 2))
         XCTAssertFalse(app.buttons["Encrypted Budget"].waitForExistence(timeout: 2))
         XCTAssertTrue(app.buttons["budget-selection-selected"].exists)
     }
