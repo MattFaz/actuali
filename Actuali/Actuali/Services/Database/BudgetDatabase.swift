@@ -2051,8 +2051,8 @@ final class BudgetDatabase: Sendable {
             if walk.isEnvelope {
                 sheet.availableStart = walk.toBudget
             } else {
-                // tracking `total-saved`: income = budgeted amounts across
-                // income categories, expenses = across the rest (loot-core tracking.ts).
+                // tracking `total-saved`: budgeted income minus budgeted
+                // expenses for the month (loot-core tracking.ts).
                 let targetBudgets = walk.budgetByMonthCat[targetMonthInt] ?? [:]
                 var saved = 0
                 for (categoryId, budgetRow) in targetBudgets {
