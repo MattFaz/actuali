@@ -3310,10 +3310,15 @@ final class BudgetStore: ObservableObject {
         let radius = BankSyncReconciler.fuzzyMatchDayRadius
         // Actual stores this as a synced per-account preference. Its default
         // is true for backwards compatibility, so an absent preference keeps
-        // the existing reimport behavior.
+        // the existing reimport behavior — except for Wallet accounts: the
+        // web UI only offers the toggle to accounts it linked, and a
+        // FinanceKit link is device-local, so nothing could ever turn
+        // reimports off there. A Wallet transaction id is a stable UUID, so a
+        // deleted row with the same id *is* that transaction (GH #435).
+        let reimportDefault = target.source == .financeKit ? "false" : "true"
         let reimportDeleted = (try await database.fetchPreference(
             id: "sync-reimport-deleted-\(target.id)"
-        ) ?? "true") == "true"
+        ) ?? reimportDefault) == "true"
         let window = try await database.bankSyncWindow(
             accountId: target.id,
             from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
