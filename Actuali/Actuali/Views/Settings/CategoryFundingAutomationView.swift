@@ -19,26 +19,26 @@ struct CategoryFundingAutomationView: View {
     var body: some View {
         Form {
             Section {
-                Picker("Account", selection: $configuration.accountId) {
-                    Text("None").tag(String?.none)
+                Picker(String(localized: "Account"), selection: $configuration.accountId) {
+                    Text(String(localized: "None")).tag(String?.none)
                     ForEach(budgetStore.accounts.filter { !$0.closed && !$0.offBudget }, id: \.id) { account in
                         Text(account.name).tag(Optional(account.id))
                     }
                 }
             } header: {
-                Text("Trigger")
+                Text(String(localized: "Trigger"))
             }
 
             Section {
-                Toggle("Enable Automation", isOn: $configuration.isEnabled)
+                Toggle(String(localized: "Enable Automation"), isOn: $configuration.isEnabled)
                     .disabled(configuration.accountId == nil)
             } footer: {
-                Text("When a new expense is manually entered from the selected account and would overdraw its category, Actuali automatically funds only the amount needed to cover that expense.")
+                Text(String(localized: "When a new expense is manually entered from the selected account and would overdraw its category, Actuali automatically funds only the amount needed to cover that expense."))
             }
 
             Section {
-                Picker("Funding Source", selection: $configuration.fundingSource) {
-                    Text("To Budget").tag(CategoryFundingSource.toBudget)
+                Picker(String(localized: "Funding Source"), selection: $configuration.fundingSource) {
+                    Text(String(localized: "To Budget")).tag(CategoryFundingSource.toBudget)
 
                     ForEach(fundingCategories, id: \.id) { category in
                         Text(category.name)
@@ -46,12 +46,12 @@ struct CategoryFundingAutomationView: View {
                     }
                 }
             } header: {
-                Text("Funding")
+                Text(String(localized: "Funding"))
             } footer: {
-                Text("To Budget is the default. You can also fund the category from another budget category that has available money.")
+                Text(String(localized: "To Budget is the default. You can also fund the category from another budget category that has available money."))
             }
         }
-        .navigationTitle("Category Funding")
+        .navigationTitle(String(localized: "Category Funding"))
         .navigationBarTitleDisplayMode(.inline)
         .task {
             configuration = CategoryFundingAutomation.loadConfiguration(for: budgetStore.currentBudgetId)

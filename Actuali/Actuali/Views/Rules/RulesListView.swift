@@ -25,17 +25,17 @@ struct RulesListView: View {
                 ProgressView()
             } else if !budgetStore.rulesSupported {
                 ContentUnavailableView(
-                    "Rules Unavailable",
+                    String(localized: "Rules Unavailable"),
                     systemImage: "slider.horizontal.3",
-                    description: Text("This budget file has no rules table. Open it in Actual once to add one.")
+                    description: Text(String(localized: "This budget file has no rules table. Open it in Actual once to add one."))
                 )
             } else if budgetStore.rules.isEmpty {
                 ContentUnavailableView {
-                    Label("No Rules", systemImage: "slider.horizontal.3")
+                    Label(String(localized: "No Rules"), systemImage: "slider.horizontal.3")
                 } description: {
-                    Text("Rules rewrite transactions as they're added — renaming payees, setting categories, and more.")
+                    Text(String(localized: "Rules rewrite transactions as they're added — renaming payees, setting categories, and more."))
                 } actions: {
-                    Button("Create Rule") { isCreating = true }
+                    Button(String(localized: "Create Rule")) { isCreating = true }
                 }
             } else {
                 rulesList
@@ -111,7 +111,7 @@ struct RulesListView: View {
                 }
             }
         }
-        .searchable(text: $searchText, prompt: "Search rules")
+        .searchable(text: $searchText, prompt: String(localized: "Search rules"))
     }
 
     private func delete(_ rule: Rule) {

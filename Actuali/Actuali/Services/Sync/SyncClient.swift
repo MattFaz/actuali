@@ -20,21 +20,21 @@ enum SyncError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Sync isn't configured. Open a budget first."
+            return String(localized: "Sync isn't configured. Open a budget first.")
         case .offline:
-            return "You're offline. Sync will resume automatically."
+            return String(localized: "You're offline. Sync will resume automatically.")
         case .outOfSync:
-            return "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover."
+            return String(localized: "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover.")
         case .encodingFailed:
-            return "Failed to encode the sync request."
+            return String(localized: "Failed to encode the sync request.")
         case .serverError(let message):
-            return "Server error: \(message)"
+            return String(localized: "Server error: \(message)")
         case .budgetTableMissing:
-            return "This budget file has no budget table to write to."
+            return String(localized: "This budget file has no budget table to write to.")
         case .notesTableMissing:
-            return "This budget file has no notes table to write to."
+            return String(localized: "This budget file has no notes table to write to.")
         case .rulesTableMissing:
-            return "This budget file has no rules table to write to."
+            return String(localized: "This budget file has no rules table to write to.")
         }
     }
 }

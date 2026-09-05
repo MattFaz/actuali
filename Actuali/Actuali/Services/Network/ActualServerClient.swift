@@ -17,23 +17,24 @@ enum ActualServerError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidURL:
-            return "Invalid server URL"
+            return String(localized: "Invalid server URL")
         case .invalidFallbackURL:
-            return "Invalid fallback server URL"
+            return String(localized: "Invalid fallback server URL")
         case .invalidResponse:
-            return "Invalid response from server"
+            return String(localized: "Invalid response from server")
         case .authProxyBlocked:
-            return "The server responded with a login page instead of data — it looks like it's behind an authentication proxy (e.g. Cloudflare Access). Add the proxy's credentials under Custom HTTP headers, then try again."
+            return String(localized: "The server responded with a login page instead of data — it looks like it's behind an authentication proxy (e.g. Cloudflare Access). Add the proxy's credentials under Custom HTTP headers, then try again.")
         case .httpError(let code, let message):
-            return "HTTP error \(code): \(message ?? "Unknown error")"
+            let fallbackMessage = message ?? String(localized: "Unknown error")
+            return String(format: String(localized: "HTTP error %lld: %@"), Int64(code), fallbackMessage)
         case .unauthorized:
-            return "Unauthorized - please log in again"
+            return String(localized: "Unauthorized - please log in again")
         case .networkError(let error):
             return Self.connectionFailureMessage(for: error)
         case .decodingError(let error):
-            return "Failed to decode response: \(error.localizedDescription)"
+            return String(localized: "Failed to decode response: \(error.localizedDescription)")
         case .fileNotFound:
-            return "Budget file not found"
+            return String(localized: "Budget file not found")
         }
     }
 
@@ -54,48 +55,26 @@ enum ActualServerError: LocalizedError {
     /// which tell the user nothing about what to change.
     static func connectionFailureMessage(for error: any Error) -> String {
         guard let urlError = error as? URLError else {
-            return "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help."
+            return String(localized: "Couldn't connect to your server: \(error.localizedDescription) See \(helpLink) for help.")
         }
 
         switch urlError.code {
         case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasUnknownRoot:
-            return """
-                Couldn't make a secure connection to your server — iOS doesn't trust its security \
-                certificate. This usually means the server is using its own self-signed certificate. \
-                See \(helpLink) for how to fix it.
-                """
+            return String(format: String(localized: "Couldn't make a secure connection to your server — iOS doesn't trust its security certificate. This usually means the server is using its own self-signed certificate. See %@ for how to fix it."), helpLink)
         case .serverCertificateHasBadDate, .serverCertificateNotYetValid:
-            return """
-                Your server's security certificate has expired, so iOS blocked the connection. \
-                Renewing the certificate on the server will fix this. See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Your server's security certificate has expired, so iOS blocked the connection. Renewing the certificate on the server will fix this. See %@ for help."), helpLink)
         case .appTransportSecurityRequiresSecureConnection:
-            return """
-                Actuali can only connect over a secure address. Check that your server URL starts \
-                with https:// — see \(helpLink) for help.
-                """
+            return String(format: String(localized: "Actuali can only connect over a secure address. Check that your server URL starts with https:// — see %@ for help."), helpLink)
         case .cannotFindHost, .dnsLookupFailed:
-            return """
-                Couldn't find a server at that address. Check the server URL for typos. \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't find a server at that address. Check the server URL for typos. See %@ for help."), helpLink)
         case .cannotConnectToHost:
-            return """
-                Couldn't reach your server. If it's only available on your home network, connect to \
-                that network and try again. See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't reach your server. If it's only available on your home network, connect to that network and try again. See %@ for help."), helpLink)
         case .notConnectedToInternet:
-            return "Your device isn't connected to the internet."
+            return String(localized: "Your device isn't connected to the internet.")
         case .timedOut:
-            return """
-                Your server took too long to respond. It may be offline, or blocked on this network. \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Your server took too long to respond. It may be offline, or blocked on this network. See %@ for help."), helpLink)
         default:
-            return """
-                Couldn't connect to your server: \(urlError.localizedDescription) \
-                See \(helpLink) for help.
-                """
+            return String(format: String(localized: "Couldn't connect to your server: %@ See %@ for help."), urlError.localizedDescription, helpLink)
         }
     }
 }

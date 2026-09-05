@@ -81,12 +81,12 @@ struct RecurrenceEditorView: View {
 
     var body: some View {
         Form {
-            Section("Repeats") {
-                Picker("Frequency", selection: $draft.frequency) {
-                    Text("Daily").tag(RecurConfig.Frequency.daily)
-                    Text("Weekly").tag(RecurConfig.Frequency.weekly)
-                    Text("Monthly").tag(RecurConfig.Frequency.monthly)
-                    Text("Yearly").tag(RecurConfig.Frequency.yearly)
+            Section(String(localized: "Repeats")) {
+                Picker(String(localized: "Frequency"), selection: $draft.frequency) {
+                    Text(String(localized: "Daily")).tag(RecurConfig.Frequency.daily)
+                    Text(String(localized: "Weekly")).tag(RecurConfig.Frequency.weekly)
+                    Text(String(localized: "Monthly")).tag(RecurConfig.Frequency.monthly)
+                    Text(String(localized: "Yearly")).tag(RecurConfig.Frequency.yearly)
                 }
                 .onChange(of: draft.frequency) { _, frequency in
                     // Patterns are monthly-only; leaving them on another
@@ -96,54 +96,54 @@ struct RecurrenceEditorView: View {
 
                 Stepper(value: $draft.interval, in: 1...365) {
                     HStack {
-                        Text("Every")
+                        Text(String(localized: "Every"))
                         Spacer()
                         Text(intervalLabel).foregroundStyle(.secondary)
                     }
                 }
 
-                DatePicker("Starting", selection: startBinding, displayedComponents: .date)
+                DatePicker(String(localized: "Starting"), selection: startBinding, displayedComponents: .date)
             }
 
             if draft.supportsPatterns {
                 patternSection
             }
 
-            Section("Ends") {
-                Picker("Ends", selection: $draft.endMode) {
-                    Text("Never").tag("never")
-                    Text("After").tag("after_n_occurrences")
-                    Text("On Date").tag("on_date")
+            Section(String(localized: "Ends")) {
+                Picker(String(localized: "Ends"), selection: $draft.endMode) {
+                    Text(String(localized: "Never")).tag("never")
+                    Text(String(localized: "After")).tag("after_n_occurrences")
+                    Text(String(localized: "On Date")).tag("on_date")
                 }
                 .pickerStyle(.segmented)
 
                 if draft.endMode == "after_n_occurrences" {
                     Stepper(value: $draft.endOccurrences, in: 1...999) {
                         HStack {
-                            Text("Occurrences")
+                            Text(String(localized: "Occurrences"))
                             Spacer()
                             Text("\(draft.endOccurrences)").foregroundStyle(.secondary)
                         }
                     }
                 }
                 if draft.endMode == "on_date" {
-                    DatePicker("End Date", selection: endDateBinding, displayedComponents: .date)
+                    DatePicker(String(localized: "End Date"), selection: endDateBinding, displayedComponents: .date)
                 }
             }
 
             Section {
-                Toggle("Skip Weekends", isOn: $draft.skipWeekend)
+                Toggle(String(localized: "Skip Weekends"), isOn: $draft.skipWeekend)
                 if draft.skipWeekend {
-                    Picker("Move To", selection: $draft.weekendSolveMode) {
-                        Text("Friday Before").tag("before")
-                        Text("Monday After").tag("after")
+                    Picker(String(localized: "Move To"), selection: $draft.weekendSolveMode) {
+                        Text(String(localized: "Friday Before")).tag("before")
+                        Text(String(localized: "Monday After")).tag("after")
                     }
                 }
             } footer: {
-                Text("An occurrence that lands on a weekend moves to the nearest weekday.")
+                Text(String(localized: "An occurrence that lands on a weekend moves to the nearest weekday."))
             }
 
-            Section("Next Dates") {
+            Section(String(localized: "Next Dates")) {
                 UpcomingDatesList(config: draft.config)
             }
         }
@@ -159,7 +159,7 @@ struct RecurrenceEditorView: View {
             ForEach(draft.patterns.indices, id: \.self) { index in
                 HStack {
                     Picker("", selection: patternValueBinding(index)) {
-                        Text("Last").tag(RecurrenceDraft.lastValue)
+                        Text(String(localized: "Last")).tag(RecurrenceDraft.lastValue)
                         ForEach(valueRange(index), id: \.self) { value in
                             Text(ScheduleDescription.ordinal(value)).tag(value)
                         }
@@ -167,7 +167,7 @@ struct RecurrenceEditorView: View {
                     .labelsHidden()
 
                     Picker("", selection: patternTypeBinding(index)) {
-                        Text("Day").tag("day")
+                        Text(String(localized: "Day")).tag("day")
                         ForEach(Self.weekdayCodes, id: \.self) { code in
                             Text(ScheduleDescription.weekdayName(forCode: code)).tag(code)
                         }
@@ -180,13 +180,13 @@ struct RecurrenceEditorView: View {
             Button {
                 draft.addPattern()
             } label: {
-                Label("Add Day", systemImage: "plus.circle")
+                Label(String(localized: "Add Day"), systemImage: "plus.circle")
             }
         } header: {
-            Text("On These Days")
+            Text(String(localized: "On These Days"))
         } footer: {
             if draft.patterns.isEmpty {
-                Text("Repeats on day \(draft.start.day) of the month. Add specific days to repeat more than once a month.")
+                Text(String(format: String(localized: "Repeats on day %lld of the month. Add specific days to repeat more than once a month."), draft.start.day))
             } else {
                 Text(ScheduleDescription.recurring(draft.config))
             }
@@ -205,10 +205,10 @@ struct RecurrenceEditorView: View {
     private var intervalLabel: String {
         let unit: String
         switch draft.frequency {
-        case .daily: unit = draft.interval == 1 ? "day" : "days"
-        case .weekly: unit = draft.interval == 1 ? "week" : "weeks"
-        case .monthly: unit = draft.interval == 1 ? "month" : "months"
-        case .yearly: unit = draft.interval == 1 ? "year" : "years"
+        case .daily: unit = draft.interval == 1 ? String(localized: "day") : String(localized: "days")
+        case .weekly: unit = draft.interval == 1 ? String(localized: "week") : String(localized: "weeks")
+        case .monthly: unit = draft.interval == 1 ? String(localized: "month") : String(localized: "months")
+        case .yearly: unit = draft.interval == 1 ? String(localized: "year") : String(localized: "years")
         }
         return draft.interval == 1 ? unit : "\(draft.interval) \(unit)"
     }
@@ -247,7 +247,7 @@ struct UpcomingDatesList: View {
     var body: some View {
         let dates = ScheduleRecurrence.upcomingDates(for: config, count: count)
         if dates.isEmpty {
-            Text("This pattern has no upcoming dates.")
+            Text(String(localized: "This pattern has no upcoming dates."))
                 .foregroundStyle(.secondary)
         } else {
             ForEach(dates, id: \.yyyymmdd) { date in

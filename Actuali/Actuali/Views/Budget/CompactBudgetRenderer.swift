@@ -111,7 +111,7 @@ private struct CompactOverviewAmount: View {
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
             .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
-            .accessibilityLabel("\(stat.label), \(budgetStore.displayBalance(stat.amount))")
+            .accessibilityLabel(String(format: String(localized: "%@, %@"), stat.label, budgetStore.displayBalance(stat.amount)))
     }
 
     private var resultColor: Color {
@@ -206,7 +206,7 @@ struct CompactBudgetGroupHeader: View {
         .buttonStyle(.plain)
         .accessibilityIdentifier("compactBudgetGroup.\(name)")
         .accessibilityLabel(accessibilityLabel)
-        .accessibilityHint("Toggles the group's categories")
+        .accessibilityHint(String(localized: "Toggles the group's categories"))
         .foregroundStyle(.primary)
         .background(Color(.secondarySystemBackground))
         .listRowInsets(EdgeInsets())
@@ -216,7 +216,7 @@ struct CompactBudgetGroupHeader: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -234,14 +234,14 @@ struct CompactBudgetGroupHeader: View {
     }
 
     private var accessibilityLabel: String {
-        let state = isCollapsed ? "collapsed" : "expanded"
-        guard let totals else { return "\(name), \(state)" }
-        var amounts = ["budgeted \(budgetStore.displayBalance(totals.budgeted))"]
+        let state = isCollapsed ? String(localized: "collapsed") : String(localized: "expanded")
+        guard let totals else { return String(format: String(localized: "%@, %@"), name, state) }
+        var amounts = [String(format: String(localized: "budgeted %@"), budgetStore.displayBalance(totals.budgeted))]
         if showsSpent {
-            amounts.append("spent \(budgetStore.displayBalance(totals.spent))")
+            amounts.append(String(format: String(localized: "spent %@"), budgetStore.displayBalance(totals.spent)))
         }
-        amounts.append("balance \(budgetStore.displayBalance(totals.balance))")
-        return "\(name), \(state), \(amounts.joined(separator: ", "))"
+        amounts.append(String(format: String(localized: "balance %@"), budgetStore.displayBalance(totals.balance)))
+        return String(format: String(localized: "%@, %@, %@"), name, state, amounts.joined(separator: ", "))
     }
 }
 
@@ -286,7 +286,7 @@ struct CompactCategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -541,7 +541,7 @@ struct CompactIncomeGroupHeader: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -640,7 +640,7 @@ struct CompactIncomeCategoryRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(isHidden ? String(localized: "Show") : String(localized: "Hide"), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -658,7 +658,7 @@ struct CompactIncomeCategoryRow: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .buttonStyle(.plain)
-        .accessibilityLabel("All transactions for \(income.categoryName)")
+        .accessibilityLabel(String(format: String(localized: "All transactions for %@"), income.categoryName))
     }
 
     private func stackedReadOnlyAmount(label: String, amount: Int) -> some View {

@@ -33,32 +33,32 @@ struct TransactionAutomationSettingsView: View {
                 // offline budgets. Shortcuts and Wallet automation can't post
                 // without it (GH #122).
                 if budgetStore.currentBudgetId != nil {
-                    Picker("Default Account", selection: $budgetStore.defaultAccountId) {
-                        Text("None").tag(nil as String?)
+                    Picker(String(localized: "Default Account"), selection: $budgetStore.defaultAccountId) {
+                        Text(String(localized: "None")).tag(nil as String?)
                         ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
                             Text(account.name).tag(account.id as String?)
                         }
                     }
                 } else {
-                    Text("Load a budget to choose a default account.")
+                    Text(String(localized: "Load a budget to choose a default account."))
                         .foregroundStyle(.secondary)
                 }
 
-                Toggle("Conventional Amount Entry", isOn: $budgetStore.conventionalAmountEntry)
+                Toggle(String(localized: "Conventional Amount Entry"), isOn: $budgetStore.conventionalAmountEntry)
             } header: {
-                Text("Defaults")
+                Text(String(localized: "Defaults"))
             } footer: {
-                Text("New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen. Conventional Amount Entry types 324 as 324.00 instead of filling cents first.")
+                Text(String(localized: "New transactions, Siri Shortcuts, and Wallet automation use the Default Account when no account is chosen. Conventional Amount Entry types 324 as 324.00 instead of filling cents first."))
             }
 
-            Section("Transaction Behavior") {
-                Picker("View Transactions As", selection: $budgetStore.transactionDisplayMode) {
+            Section(String(localized: "Transaction Behavior")) {
+                Picker(String(localized: "View Transactions As"), selection: $budgetStore.transactionDisplayMode) {
                     ForEach(TransactionDisplayMode.allCases) { mode in
                         Text(mode.label).tag(mode)
                     }
                 }
 
-                Picker("Uncategorized Action", selection: $budgetStore.uncategorizedTapAction) {
+                Picker(String(localized: "Uncategorized Action"), selection: $budgetStore.uncategorizedTapAction) {
                     ForEach(UncategorizedTapAction.allCases) { action in
                         Text(action.label).tag(action)
                     }
@@ -69,11 +69,11 @@ struct TransactionAutomationSettingsView: View {
                 // Meaningless against servers that predate payee
                 // locations (< 26.4.0), so hidden there.
                 if budgetStore.payeeLocationWritesEnabled {
-                    Toggle("Record Payee Locations", isOn: $budgetStore.recordPayeeLocations)
+                    Toggle(String(localized: "Record Payee Locations"), isOn: $budgetStore.recordPayeeLocations)
 
                     // Clearing needs the same >= 26.4.0 server, so this
                     // lives inside the gate too (GH #147).
-                    NavigationLink("Payee Locations") {
+                    NavigationLink(String(localized: "Payee Locations")) {
                         PayeeLocationsView()
                     }
                 }
@@ -83,7 +83,7 @@ struct TransactionAutomationSettingsView: View {
                         CardAccountMappingsView()
                     } label: {
                         HStack {
-                            Text("Card & Account Mappings")
+                            Text(String(localized: "Card & Account Mappings"))
                             Spacer()
                             if !budgetStore.cardAccountMappings.isEmpty {
                                 Text("\(budgetStore.cardAccountMappings.count)")
@@ -96,7 +96,7 @@ struct TransactionAutomationSettingsView: View {
                         CreditCardsSettingsView()
                     } label: {
                         HStack {
-                            Text("Credit Cards & Billing Cycles")
+                            Text(String(localized: "Credit Cards & Billing Cycles"))
                             Spacer()
                             // Same predicate the screen itself lists, so the
                             // badge can't promise cards the list won't show.
@@ -111,36 +111,36 @@ struct TransactionAutomationSettingsView: View {
 
                 if !budgetStore.payeeLocationWritesEnabled
                     && budgetStore.currentBudgetId == nil {
-                    Text("Load a budget to manage transaction accounts.")
+                    Text(String(localized: "Load a budget to manage transaction accounts."))
                         .foregroundStyle(.secondary)
                 }
             } header: {
-                Text("Payees & Accounts")
+                Text(String(localized: "Payees & Accounts"))
             } footer: {
                 if !budgetStore.payeeLocationWritesEnabled
                     && budgetStore.currentBudgetId != nil
                     && budgetStore.isConnected {
-                    Text("Payee locations require Actual Server 26.4.0 or later.")
+                    Text(String(localized: "Payee locations require Actual Server 26.4.0 or later."))
                 }
             }
 
             Section {
-                Toggle("New Transaction Alerts", isOn: transactionNotificationsBinding)
+                Toggle(String(localized: "New Transaction Alerts"), isOn: transactionNotificationsBinding)
 
                 if notificationPermissionDenied {
-                    Button("Open Settings to Allow Notifications") {
+                    Button(String(localized: "Open Settings to Allow Notifications")) {
                         if let url = URL(string: UIApplication.openSettingsURLString) {
                             UIApplication.shared.open(url)
                         }
                     }
                 }
             } header: {
-                Text("Notifications")
+                Text(String(localized: "Notifications"))
             } footer: {
                 if notificationPermissionDenied {
-                    Text("Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered.")
+                    Text(String(localized: "Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered."))
                 } else {
-                    Text("Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh.")
+                    Text(String(localized: "Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh."))
                 }
             }
 
@@ -149,38 +149,38 @@ struct TransactionAutomationSettingsView: View {
                     NavigationLink {
                         CategoryFundingAutomationView()
                     } label: {
-                        Label("Category Funding Settings", systemImage: "arrow.up.circle")
+                        Label(String(localized: "Category Funding Settings"), systemImage: "arrow.up.circle")
                     }
                 } else {
-                    Text("Load a budget to configure Category Funding.")
+                    Text(String(localized: "Load a budget to configure Category Funding."))
                         .foregroundStyle(.secondary)
                 }
 
                 NavigationLink {
                     WalletAutomationView()
                 } label: {
-                    Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
+                    Label(String(localized: "Log Wallet Payments Automatically"), systemImage: "wallet.pass")
                 }
 
                 if WalletImportView.isSupported {
                     Button {
                         showingWalletImport = true
                     } label: {
-                        Label("Import Wallet Transactions", systemImage: "square.and.arrow.down")
+                        Label(String(localized: "Import Wallet Transactions"), systemImage: "square.and.arrow.down")
                     }
                 }
             } header: {
-                Text("Automations")
+                Text(String(localized: "Automations"))
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text(String(localized: "Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly."))
                 } else {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
+                    Text(String(localized: "Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet."))
                 }
             }
         }
         .readableWidth()
-        .navigationTitle("Transactions & Automation")
+        .navigationTitle(String(localized: "Transactions & Automation"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
         .task { await refreshNotificationPermissionState() }

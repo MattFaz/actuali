@@ -101,7 +101,7 @@ struct SchedulesListView: View {
                         }
                     } footer: {
                         if completedCount > 0 && !showCompleted {
-                            Text("\(completedCount) completed schedule\(completedCount == 1 ? "" : "s") hidden.")
+                            Text(String(localized: "\(completedCount) completed schedules hidden."))
                         }
                     }
                 }
@@ -109,7 +109,7 @@ struct SchedulesListView: View {
         }
         .navigationTitle("Scheduled Transactions")
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Search schedules")
+        .searchable(text: $searchText, prompt: String(localized: "Search schedules"))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {

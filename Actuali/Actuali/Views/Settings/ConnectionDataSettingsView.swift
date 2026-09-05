@@ -20,7 +20,7 @@ struct ConnectionDataSettingsView: View {
             }
         }
         .readableWidth()
-        .navigationTitle("Connection & Data")
+        .navigationTitle(String(localized: "Connection & Data"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
     }
@@ -58,24 +58,24 @@ private struct ServerConnectionSettingsSection: View {
 
     private var serverConnectionHeader: some View {
         HStack {
-            Text("Connection")
+            Text(String(localized: "Connection"))
             Spacer()
             if budgetStore.isConnected {
                 if editingServerConnection {
-                    Button("Cancel", role: .cancel) {
+                    Button(String(localized: "Cancel"), role: .cancel) {
                         editingServerConnection = false
                     }
                     .disabled(savingServerConnection)
                     Divider()
                         .frame(height: 16)
-                    Button("Save") { saveServerConnection() }
+                    Button(String(localized: "Save")) { saveServerConnection() }
                         .disabled(
                             editedServerURL.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                                 || budgetStore.isLoading
                                 || savingServerConnection
                         )
                 } else {
-                    Button("Edit") { beginEditingServerConnection() }
+                    Button(String(localized: "Edit")) { beginEditingServerConnection() }
                 }
             }
         }
@@ -88,17 +88,17 @@ private struct ServerConnectionSettingsSection: View {
         serverURL: Binding<String>,
         fallbackServerURL: Binding<String>
     ) -> some View {
-        TextField("Server URL", text: serverURL)
+        TextField(String(localized: "Server URL"), text: serverURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
-            .accessibilityHint("Example: https://actual.example.com")
+            .accessibilityHint(String(localized: "Example: https://actual.example.com"))
 
-        TextField("Fallback server URL (optional)", text: fallbackServerURL)
+            TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
-            .accessibilityHint("Used when the primary server cannot be reached")
+            .accessibilityHint(String(localized: "Used when the primary server cannot be reached"))
     }
 
     var body: some View {
@@ -110,11 +110,11 @@ private struct ServerConnectionSettingsSection: View {
                         fallbackServerURL: $editedFallbackServerURL
                     )
                 } else {
-                    LabeledContent("Server URL", value: budgetStore.serverURL)
+                    LabeledContent(String(localized: "Server URL"), value: budgetStore.serverURL)
                     LabeledContent(
-                        "Fallback Server URL",
+                        String(localized: "Fallback Server URL"),
                         value: budgetStore.fallbackServerURL.isEmpty
-                            ? "None"
+                            ? String(localized: "None")
                             : budgetStore.fallbackServerURL
                     )
                 }
@@ -127,18 +127,18 @@ private struct ServerConnectionSettingsSection: View {
 
             if budgetStore.isConnected {
                 HStack {
-                    Text("Status")
+                    Text(String(localized: "Status"))
                     Spacer()
                     HStack(spacing: 4) {
                         Circle()
                             .fill(.green)
                             .frame(width: 8, height: 8)
-                        Text("Connected")
+                        Text(String(localized: "Connected"))
                             .foregroundStyle(.secondary)
                     }
                 }
 
-                Button("Disconnect", role: .destructive) {
+                Button(String(localized: "Disconnect"), role: .destructive) {
                     showingDisconnectConfirm = true
                 }
             } else {
@@ -149,8 +149,8 @@ private struct ServerConnectionSettingsSection: View {
                     || budgetStore.passwordLoginActive
                     || budgetStore.requiresServerPassword {
                     let placeholder = budgetStore.requiresServerPassword && !budgetStore.passwordLoginActive
-                        ? "Server password (first sign-in)"
-                        : "Password"
+                        ? String(localized: "Server password (first sign-in)")
+                        : String(localized: "Password")
                     HStack {
                         if isPasswordVisible {
                             TextField(placeholder, text: $password)
@@ -173,11 +173,11 @@ private struct ServerConnectionSettingsSection: View {
                                 .foregroundStyle(.secondary)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(isPasswordVisible ? "Hide password" : "Show password")
+                        .accessibilityLabel(isPasswordVisible ? String(localized: "Hide password") : String(localized: "Show password"))
                     }
                 }
 
-                Button("Connect") {
+                Button(String(localized: "Connect")) {
                     Task {
                         await budgetStore.connect()
                         guard budgetStore.error == nil else { return }
@@ -196,7 +196,7 @@ private struct ServerConnectionSettingsSection: View {
                 .disabled(budgetStore.serverURL.isEmpty || budgetStore.isLoading)
 
                 if budgetStore.supportsOpenIDLogin {
-                    Button("Sign in with OpenID") {
+                    Button(String(localized: "Sign in with OpenID")) {
                         Task {
                             await budgetStore.loginWithOpenID(
                                 firstTimePassword: password.isEmpty ? nil : password
@@ -209,11 +209,11 @@ private struct ServerConnectionSettingsSection: View {
                     )
                 }
 
-                Menu("Try the demo budget") {
-                    Button("Envelope budget") {
+                Menu(String(localized: "Try the demo budget")) {
+                    Button(String(localized: "Envelope budget")) {
                         Task { await budgetStore.loadDemoData() }
                     }
-                    Button("Tracking budget") {
+                    Button(String(localized: "Tracking budget")) {
                         Task { await budgetStore.loadDemoData(tracking: true) }
                     }
                 }
@@ -223,7 +223,7 @@ private struct ServerConnectionSettingsSection: View {
                     CustomHeadersEditor(headers: $budgetStore.customHeaders)
                 } label: {
                     HStack {
-                        Text("Custom HTTP headers")
+                        Text(String(localized: "Custom HTTP headers"))
                         Spacer()
                         let count = budgetStore.customHeaders.filter {
                             !$0.name.trimmingCharacters(in: .whitespaces).isEmpty
@@ -243,17 +243,17 @@ private struct ServerConnectionSettingsSection: View {
             }
         }
         .confirmationDialog(
-            "Disconnect and remove data?",
+            String(localized: "Disconnect and remove data?"),
             isPresented: $showingDisconnectConfirm,
             titleVisibility: .visible
         ) {
-            Button("Disconnect & Remove Data", role: .destructive) {
+            Button(String(localized: "Disconnect & Remove Data"), role: .destructive) {
                 budgetStore.logout()
                 password = ""
             }
-            Button("Cancel", role: .cancel) {}
+            Button(String(localized: "Cancel"), role: .cancel) {}
         } message: {
-            Text("Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected.")
+            Text(String(localized: "Signs out and deletes this device's copy of your budgets. Any changes that haven't synced to the server yet will be lost. Your data on the server is not affected."))
         }
         // Re-hide before iOS snapshots the screen for the app switcher, so a
         // revealed password doesn't land in that on-disk snapshot.
@@ -379,7 +379,7 @@ private struct BudgetSelectionSettingsSection: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { budget in
-            Text("Removes “\(budget.name)” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again.")
+                Text(String(format: String(localized: "Removes “%@” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again."), budget.name))
         }
         .task {
             await budgetStore.fetchRemoteBudgets()
@@ -480,7 +480,7 @@ private struct DeleteServerBudgetSheet: View {
                 } header: {
                     Text("Delete from Server")
                 } footer: {
-                    Text("This permanently deletes “\(budget.name)” from your Actual server for every device that uses it, along with this device's copy and its local backups. This cannot be undone.\n\nType the budget's name to confirm.")
+                    Text(String(format: String(localized: "This permanently deletes “%@” from your Actual server for every device that uses it, along with this device's copy and its local backups. This cannot be undone.\n\nType the budget's name to confirm."), budget.name))
                 }
 
                 if let errorText {

@@ -116,6 +116,15 @@ struct BudgetAutomationsTests {
         #expect(try sentence("#goal 1000") == "Long-term goal of $1000")
     }
 
+    @Test func sentenceUsesLocalizedPeriodUnits() throws {
+        let template = try parse("#template 100 repeat every 2 weeks starting 2024-01-01")
+        let sentence = AutomationSentences.sentence(
+            for: template,
+            amount: { "$\(AutomationSentences.trimTrailingZeros($0))" },
+            categoryName: { _ in nil })
+        #expect(sentence.contains("2 weeks"))
+    }
+
     // MARK: - Note rendering (unparse) round trip
 
     @Test func renderedNoteLinesReparseToTheSameTemplates() throws {

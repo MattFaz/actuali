@@ -12,15 +12,15 @@ enum OpenIDAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return "Sign-in was cancelled"
+            return String(localized: "Sign-in was cancelled")
         case .missingToken:
-            return "The server did not return a sign-in token"
+            return String(localized: "The server did not return a sign-in token")
         case .noWindow:
-            return "Sign-in needs an open window. Try again with the app in the foreground."
+            return String(localized: "Sign-in needs an open window. Try again with the app in the foreground.")
         case .server(let reason):
-            return "Sign-in failed: \(reason)"
+            return String(localized: "Sign-in failed: \(reason)")
         case .sessionFailed(let error):
-            return "Sign-in failed: \(error.localizedDescription)"
+            return String(localized: "Sign-in failed: \(error.localizedDescription)")
         }
     }
 }

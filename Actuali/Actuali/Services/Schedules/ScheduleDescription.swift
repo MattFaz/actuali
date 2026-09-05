@@ -8,12 +8,12 @@ enum ScheduleDescription {
 
     static func statusLabel(_ status: ScheduleStatus) -> String {
         switch status {
-        case .completed: "Completed"
-        case .paid: "Paid"
-        case .due: "Due"
-        case .upcoming: "Upcoming"
-        case .missed: "Missed"
-        case .scheduled: "Scheduled"
+        case .completed: String(localized: "Completed")
+        case .paid: String(localized: "Paid")
+        case .due: String(localized: "Due")
+        case .upcoming: String(localized: "Upcoming")
+        case .missed: String(localized: "Missed")
+        case .scheduled: String(localized: "Scheduled")
         }
     }
 
@@ -24,8 +24,8 @@ enum ScheduleDescription {
         switch condition {
         case .fixed(let day): Self.mediumDate(day)
         case .recurring(let config): recurring(config)
-        case .unsupported: "Unsupported repeat"
-        case nil: "No date"
+        case .unsupported: String(localized: "Unsupported repeat")
+        case nil: String(localized: "No date")
         }
     }
 
@@ -38,43 +38,54 @@ enum ScheduleDescription {
         switch config.endMode {
         case "after_n_occurrences":
             let count = config.endOccurrences ?? 1
-            endSuffix = count == 1 ? "once" : "\(count) times"
+            endSuffix = count == 1
+                ? String(localized: "once")
+                : String(format: String(localized: "%lld times"), Int64(count))
         case "on_date":
-            if let end = config.endDate { endSuffix = "until \(mediumDate(end))" }
+            if let end = config.endDate {
+                endSuffix = String(format: String(localized: "until %@"), mediumDate(end))
+            }
         default:
             break
         }
 
         let weekendSuffix = config.skipWeekend
-            ? (config.weekendSolveMode == "after" ? "(after weekend)" : "(before weekend)")
+            ? (config.weekendSolveMode == "after" ? String(localized: "(after weekend)") : String(localized: "(before weekend)"))
             : ""
 
         var suffix = ""
-        if !endSuffix.isEmpty { suffix += ", \(endSuffix)" }
+        if !endSuffix.isEmpty { suffix += String(format: String(localized: ", %@"), endSuffix) }
         if !weekendSuffix.isEmpty { suffix += " \(weekendSuffix)" }
 
         let body: String
         switch config.frequency {
         case .daily:
-            body = interval != 1 ? "Every \(interval) days" : "Every day"
+            body = interval != 1
+                ? String(format: String(localized: "Every %lld days"), Int64(interval))
+                : String(localized: "Every day")
         case .weekly:
             let day = weekdayName(config.start.weekday)
-            body = interval != 1 ? "Every \(interval) weeks on \(day)" : "Every week on \(day)"
+            body = interval != 1
+                ? String(format: String(localized: "Every %lld weeks on %@"), Int64(interval), day)
+                : String(format: String(localized: "Every week on %@"), day)
         case .monthly:
             let range = monthlyRange(config)
             if range.isEmpty {
                 let day = ordinal(config.start.day)
                 body = interval != 1
-                    ? "Every \(interval) months on the \(day)"
-                    : "Every month on the \(day)"
+                    ? String(format: String(localized: "Every %lld months on the %@"), Int64(interval), day)
+                    : String(format: String(localized: "Every month on the %@"), day)
             } else {
                 body = interval != 1
-                    ? "Every \(interval) months on the \(range)"
-                    : "Every month on the \(range)"
+                    ? String(format: String(localized: "Every %lld months on the %@"), Int64(interval), range)
+                    : String(format: String(localized: "Every month on the %@"), range)
             }
         case .yearly:
-            let day = "\(shortMonthName(config.start.month)) \(ordinal(config.start.day))"
-            body = interval != 1 ? "Every \(interval) years on \(day)" : "Every year on \(day)"
+            let day = Transaction.date(fromYYYYMMDD: config.start.yyyymmdd)
+                .formatted(.dateTime.month(.abbreviated).day(.defaultDigits))
+            body = interval != 1
+                ? String(format: String(localized: "Every %lld years on %@"), Int64(interval), day)
+                : String(format: String(localized: "Every year on %@"), day)
         }
 
         return (body + suffix).trimmingCharacters(in: .whitespaces)
@@ -106,17 +117,22 @@ enum ScheduleDescription {
 
         let parts: [String] = patterns.map { pattern in
             if pattern.type == "day" {
-                return pattern.value == -1 ? "last day" : ordinal(pattern.value)
+                return pattern.value == -1 ? String(localized: "last day") : ordinal(pattern.value)
             }
             let dayName = isSameDay ? "" : " " + weekdayName(forCode: pattern.type)
-            return pattern.value == -1 ? "last" + dayName : ordinal(pattern.value) + dayName
+            if pattern.value == -1 {
+                return isSameDay
+                    ? String(format: String(localized: "last %@"), weekdayName(forCode: pattern.type))
+                    : String(localized: "last") + dayName
+            }
+            return ordinal(pattern.value) + dayName
         }
 
         var range: String
         if parts.count > 2 {
-            range = parts.dropLast().joined(separator: ", ") + ", and " + (parts.last ?? "")
+            range = parts.dropLast().joined(separator: ", ") + String(localized: ", and ") + (parts.last ?? "")
         } else {
-            range = parts.joined(separator: " and ")
+            range = parts.joined(separator: String(localized: " and "))
         }
         if isSameDay {
             range += " " + weekdayName(forCode: first.type)
@@ -138,24 +154,24 @@ enum ScheduleDescription {
     }
 
     /// 1 = Sunday ... 7 = Saturday, matching `DayDate.weekday`.
-    static func weekdayName(_ weekday: Int) -> String {
-        let names = ["Sunday", "Monday", "Tuesday", "Wednesday",
-                     "Thursday", "Friday", "Saturday"]
+    static func weekdayName(_ weekday: Int, locale: Locale = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        let names = calendar.weekdaySymbols
         let index = weekday - 1
         return names.indices.contains(index) ? names[index] : ""
     }
 
     /// "SU".."SA" — the pattern-type codes used in a recurrence config.
-    static func weekdayName(forCode code: String) -> String {
-        let names = ["SU": "Sunday", "MO": "Monday", "TU": "Tuesday",
-                     "WE": "Wednesday", "TH": "Thursday", "FR": "Friday",
-                     "SA": "Saturday"]
-        return names[code] ?? code
+    static func weekdayName(forCode code: String, locale: Locale = .current) -> String {
+        let weekdays = ["SU": 1, "MO": 2, "TU": 3, "WE": 4, "TH": 5, "FR": 6, "SA": 7]
+        return weekdays[code].map { weekdayName($0, locale: locale) } ?? code
     }
 
-    static func shortMonthName(_ month: Int) -> String {
-        let names = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
-                     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+    static func shortMonthName(_ month: Int, locale: Locale = .current) -> String {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.locale = locale
+        let names = calendar.shortMonthSymbols
         let index = month - 1
         return names.indices.contains(index) ? names[index] : ""
     }

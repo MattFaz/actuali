@@ -34,7 +34,7 @@ final class BudgetTabBadgeUITests: XCTestCase {
 
         // Turning the Settings toggle off must hide the badge even while a
         // category is overspent, and turning it back on must restore it.
-        app.tabBars.buttons["More"].tap()
+        app.tabBars.buttons["Settings"].tap()
         let budgetView = app.buttons["Budget View"]
         XCTAssertTrue(budgetView.waitForExistence(timeout: 5), "Budget View settings not found")
         budgetView.tap()

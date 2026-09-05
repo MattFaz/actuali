@@ -5,7 +5,7 @@ extension XCTestCase {
     /// retained the destination from an earlier tab visit.
     @MainActor
     func openBudgetViewSettings(in app: XCUIApplication) {
-        app.tabBars.buttons["More"].tap()
+        app.tabBars.buttons["Settings"].tap()
         if app.navigationBars["Budget View"].waitForExistence(timeout: 2) {
             return
         }

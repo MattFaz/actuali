@@ -31,12 +31,12 @@ enum ScheduleWriteError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .dateRequired: "A date is required."
-        case .amountRequired: "A valid amount is required."
-        case .duplicateName(let name): "Another schedule is already called “\(name)”."
-        case .unsupportedRecurrence: "This repeat pattern isn't supported."
-        case .notRecurring: "Only a repeating schedule can be skipped."
-        case .noAccount: "This schedule has no account, so it can't post a transaction."
+        case .dateRequired: String(localized: "A date is required.")
+        case .amountRequired: String(localized: "A valid amount is required.")
+        case .duplicateName(let name): String(localized: "Another schedule is already called “\(name)”.")
+        case .unsupportedRecurrence: String(localized: "This repeat pattern isn't supported.")
+        case .notRecurring: String(localized: "Only a repeating schedule can be skipped.")
+        case .noAccount: String(localized: "This schedule has no account, so it can't post a transaction.")
         }
     }
 }

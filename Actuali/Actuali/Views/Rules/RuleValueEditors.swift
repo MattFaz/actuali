@@ -288,7 +288,7 @@ struct RuleValueEditor: View {
             NavigationLink {
                 RuleIdMultiPicker(field: field, value: $value)
             } label: {
-                LabeledContent("Values", value: "\(value.listValue?.count ?? 0) selected")
+                LabeledContent(String(localized: "Values"), value: String(localized: "\(value.listValue?.count ?? 0) selected"))
             }
         } else {
             Picker("Value", selection: Binding(

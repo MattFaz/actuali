@@ -20,6 +20,12 @@ xcodebuild -project Actuali/Actuali.xcodeproj -scheme Actuali \
 
 The sync engine tests (`Actuali/ActualiTests/SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget — please keep them passing.
 
+## Localization
+
+All user-facing text must use the String Catalog through `String(localized:)` or a localized SwiftUI initializer. Do not add hard-coded English text to views, accessibility labels, errors, notifications, AppIntents, or services.
+
+When adding a string, add translations for all supported locales in `Actuali/Actuali/Localizable.xcstrings`, preserve every format placeholder, and run `python3 dev/scripts/validate-localization.py`. For a new language, update the Xcode project regions and the validator's supported locale list together.
+
 ## Issues
 
 Bug reports and feature requests are welcome — please open a GitHub issue.

@@ -29,11 +29,11 @@ enum AutomationSentences {
         guard let adjustment = template.adjustment, let type = template.adjustmentType else {
             return ""
         }
-        let direction = adjustment >= 0 ? "increased" : "decreased"
+        let direction = adjustment >= 0 ? String(localized: "increased") : String(localized: "decreased")
         let value = abs(adjustment)
         let formatted = type == .percent
             ? "\(trimTrailingZeros(value))%" : amount(value)
-        return ", \(direction) by \(formatted)"
+        return String(format: String(localized: ", %@ by %@"), direction, formatted)
     }
 
     /// The list row / tooltip sentence for one template. `amount` formats a
@@ -51,79 +51,83 @@ enum AutomationSentences {
             let unit = template.period?.period ?? .month
             let unitName: String
             switch unit {
-            case .day: unitName = plural(count, "day", "days")
-            case .week: unitName = plural(count, "week", "weeks")
-            case .month: unitName = plural(count, "month", "months")
-            case .year: unitName = plural(count, "year", "years")
+            case .day: unitName = plural(count, String(localized: "day"), String(localized: "days"))
+            case .week: unitName = plural(count, String(localized: "week"), String(localized: "weeks"))
+            case .month: unitName = plural(count, String(localized: "month"), String(localized: "months"))
+            case .year: unitName = plural(count, String(localized: "year"), String(localized: "years"))
             }
             return count == 1
-                ? "Budget \(value) every \(unitName)"
-                : "Budget \(value) every \(count) \(unitName)"
+                ? String(format: String(localized: "Budget %@ every %@"), value, unitName)
+                : String(format: String(localized: "Budget %@ every %lld %@"), value, Int64(count), unitName)
 
         case .by, .spend:
             let value = amount(template.amount ?? 0)
             let month = monthLabel(template.month)
-            var sentence = "Save \(value) by \(month)"
+            var sentence = String(format: String(localized: "Save %@ by %@"), value, month)
             if template.type == .spend {
-                sentence += ", early spending from \(monthLabel(template.from))"
+                sentence += String(format: String(localized: ", early spending from %@"), monthLabel(template.from))
             }
             if template.annual == true {
                 let repeats = template.repeatCount ?? 1
-                sentence += ", repeating every \(repeats == 1 ? "year" : "\(repeats) years")"
+                sentence += repeats == 1
+                    ? String(localized: ", repeating every year")
+                    : String(format: String(localized: ", repeating every %lld years"), Int64(repeats))
             } else if let repeats = template.repeatCount, repeats > 0 {
-                sentence += ", repeating every \(repeats == 1 ? "month" : "\(repeats) months")"
+                sentence += repeats == 1
+                    ? String(localized: ", repeating every month")
+                    : String(format: String(localized: ", repeating every %lld months"), Int64(repeats))
             }
             return sentence
 
         case .schedule:
             guard let name = template.name, !name.isEmpty else {
-                return "Budget for a schedule"
+                return String(localized: "Budget for a schedule")
             }
             let base = template.full == true
-                ? "Cover the occurrences of the schedule ‘\(name)’ this month"
-                : "Save up for the schedule ‘\(name)’"
+                ? String(format: String(localized: "Cover the occurrences of the schedule ‘%@’ this month"), name)
+                : String(format: String(localized: "Save up for the schedule ‘%@’"), name)
             return base + adjustmentSuffix(template, amount: amount)
 
         case .percentage:
             let percent = trimTrailingZeros(template.percent ?? 0)
-            let when = template.previous == true ? "last month" : "this month"
+            let when = template.previous == true ? String(localized: "last month") : String(localized: "this month")
             let source = template.category ?? ""
             switch source.lowercased() {
             case "all income":
-                return "Budget \(percent)% of total income \(when)"
+                return String(format: String(localized: "Budget %@%% of total income %@"), percent, when)
             case "available funds":
-                return "Budget \(percent)% of available funds to budget \(when)"
+                return String(format: String(localized: "Budget %@%% of available funds to budget %@"), percent, when)
             default:
                 let name = categoryName(source) ?? source
-                return "Budget \(percent)% of ‘\(name)’ \(when)"
+                return String(format: String(localized: "Budget %@%% of ‘%@’ %@"), percent, name, when)
             }
 
         case .copy:
             let lookBack = template.lookBack ?? 0
-            return "Budget the same amount as \(lookBack) \(plural(lookBack, "month", "months")) ago"
+            return String(format: String(localized: "Budget the same amount as %lld %@ ago"), Int64(lookBack), plural(lookBack, String(localized: "month"), String(localized: "months")))
 
         case .average:
             let months = template.numMonths ?? 0
-            let base = "Budget the average of the last \(months) complete \(plural(months, "month", "months"))"
+            let base = String(format: String(localized: "Budget the average of the last %lld complete %@"), Int64(months), plural(months, String(localized: "month"), String(localized: "months")))
             return base + adjustmentSuffix(template, amount: amount)
 
         case .remainder:
-            return "Share remaining funds to budget (weight \(trimTrailingZeros(template.weight ?? 1)))"
+            return String(format: String(localized: "Share remaining funds to budget (weight %@)"), trimTrailingZeros(template.weight ?? 1))
 
         case .goal:
-            return "Long-term goal of \(amount(template.amount ?? 0))"
+            return String(format: String(localized: "Long-term goal of %@"), amount(template.amount ?? 0))
 
         case .refill:
-            return "Refill to balance limit"
+            return String(localized: "Refill to balance limit")
 
         case .limit:
-            guard let limit = template.limit else { return "Set a balance limit" }
+            guard let limit = template.limit else { return String(localized: "Set a balance limit") }
             let value = amount(limit.amount)
-            let cap = limit.hold ? "soft cap" : "hard cap"
+            let cap = limit.hold ? String(localized: "soft cap") : String(localized: "hard cap")
             switch limit.period {
-            case .daily: return "Set a balance limit of \(value)/day (\(cap))"
-            case .weekly: return "Set a balance limit of \(value)/week (\(cap))"
-            case .monthly: return "Set a balance limit of \(value)/month (\(cap))"
+            case .daily: return String(format: String(localized: "Set a balance limit of %@/day (%@)"), value, cap)
+            case .weekly: return String(format: String(localized: "Set a balance limit of %@/week (%@)"), value, cap)
+            case .monthly: return String(format: String(localized: "Set a balance limit of %@/month (%@)"), value, cap)
             }
 
         case .simple, .error:

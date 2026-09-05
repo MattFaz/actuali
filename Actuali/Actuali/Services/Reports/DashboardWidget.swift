@@ -293,20 +293,20 @@ enum DashboardWidget: Equatable {
 
     var typeLabel: String {
         switch self {
-        case .summary: return "Summary"
-        case .netWorth: return "Net Worth"
-        case .cashFlow: return "Cash Flow"
-        case .spending: return "Spending"
-        case .markdown: return "Notes"
-        case .ageOfMoney: return "Age of Money"
-        case .formula: return "Formula"
-        case .customReport: return "Custom Report"
-        case .calendar: return "Calendar"
-        case .crossover: return "Crossover"
-        case .budgetAnalysis: return "Budget Analysis"
-        case .sankey: return "Sankey"
-        case .balanceForecast: return "Balance Forecast"
-        case .monteCarlo: return "Monte Carlo"
+        case .summary: return String(localized: "Summary")
+        case .netWorth: return String(localized: "Net Worth")
+        case .cashFlow: return String(localized: "Cash Flow")
+        case .spending: return String(localized: "Spending")
+        case .markdown: return String(localized: "Notes")
+        case .ageOfMoney: return String(localized: "Age of Money")
+        case .formula: return String(localized: "Formula")
+        case .customReport: return String(localized: "Custom Report")
+        case .calendar: return String(localized: "Calendar")
+        case .crossover: return String(localized: "Crossover")
+        case .budgetAnalysis: return String(localized: "Budget Analysis")
+        case .sankey: return String(localized: "Sankey")
+        case .balanceForecast: return String(localized: "Balance Forecast")
+        case .monteCarlo: return String(localized: "Monte Carlo")
         case .unsupported(_, let type): return type
         }
     }

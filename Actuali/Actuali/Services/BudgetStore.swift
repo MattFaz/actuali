@@ -41,65 +41,65 @@ enum BudgetStoreError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .syncNotConfigured:
-            return "Sync not configured"
+            return String(localized: "error.syncNotConfigured")
         case .transferAccountsMatch:
-            return "Transfer source and destination must differ"
+            return String(localized: "error.transferAccountsMatch")
         case .transferAmountNotPositive:
-            return "Transfer amount must be positive"
+            return String(localized: "error.transferAmountNotPositive")
         case .transferPayeeMissing:
-            return "Transfer payee not found for selected accounts"
+            return String(localized: "error.transferPayeeMissing")
         case .transferCategoriesMatch:
-            return "Money must move between two different categories"
+            return String(localized: "error.transferCategoriesMatch")
         case .transferAmountExceedsSource:
-            return "That source does not have enough available money"
+            return String(localized: "error.transferAmountExceedsSource")
         case .invalidAmount:
-            return "Invalid amount"
+            return String(localized: "error.invalidAmount")
         case .missingTransferDestination:
-            return "Select a destination account"
+            return String(localized: "error.missingTransferDestination")
         case .payeeCreationFailed(let message):
-            return "Failed to create payee: \(message)"
+            return String(format: String(localized: "error.payeeCreationFailed %@"), message)
         case .transferPartnerMissing:
-            return "The other side of this transfer no longer exists"
+            return String(localized: "error.transferPartnerMissing")
         case .cannotConvertToTransfer:
-            return "Can't turn a split transaction into a transfer"
+            return String(localized: "error.cannotConvertToTransfer")
         case .cannotConvertToSplit:
-            return "Can't convert an existing transaction into a split"
+            return String(localized: "error.cannotConvertToSplit")
         case .splitNeedsTwoLines:
-            return "A split needs at least two lines"
+            return String(localized: "error.splitNeedsTwoLines")
         case .splitAmountMismatch:
-            return "Split amounts must add up to the total"
+            return String(localized: "error.splitAmountMismatch")
         case .invalidAccountName:
-            return "Enter an account name"
+            return String(localized: "error.invalidAccountName")
         case .accountCreationFailed(let message):
-            return "Failed to create account: \(message)"
+            return String(format: String(localized: "error.accountCreationFailed %@"), message)
         case .invalidCategoryName:
-            return "Enter a category name"
+            return String(localized: "error.invalidCategoryName")
         case .invalidCategoryGroupName:
-            return "Enter a category group name"
+            return String(localized: "error.invalidCategoryGroupName")
         case .categoryCreationFailed(let message):
-            return "Failed to create category: \(message)"
+            return String(format: String(localized: "error.categoryCreationFailed %@"), message)
         case .categoryUpdateFailed(let message):
-            return "Failed to update category: \(message)"
+            return String(format: String(localized: "error.categoryUpdateFailed %@"), message)
         case .categoryGroupCreationFailed(let message):
-            return "Failed to create category group: \(message)"
+            return String(format: String(localized: "error.categoryGroupCreationFailed %@"), message)
         case .ruleNeedsCondition:
-            return "Add at least one condition."
+            return String(localized: "error.ruleNeedsCondition")
         case .ruleNeedsAction:
-            return "Add at least one action."
+            return String(localized: "error.ruleNeedsAction")
         case .ruleInvalidCondition(let field, let op):
-            return "\"\(RuleSchema.label(op: op))\" can't be used with \(RuleSchema.label(field: field))."
+            return String(format: String(localized: "error.ruleInvalidCondition %@ %@"), RuleSchema.label(op: op), RuleSchema.label(field: field))
         case .ruleInvalidAction:
-            return "Choose a field for every action."
+            return String(localized: "error.ruleInvalidAction")
         case .ruleEmptyValue(let field):
-            return "\(RuleSchema.label(field: field).capitalized) needs a value."
+            return String(format: String(localized: "error.ruleEmptyValue %@"), RuleSchema.label(field: field).capitalized)
         case .ruleInvalidPattern(let pattern):
-            return "\"\(pattern)\" isn't a valid regular expression."
+            return String(format: String(localized: "error.ruleInvalidPattern %@"), pattern)
         case .ruleOwnedBySchedule:
-            return "This rule belongs to a schedule. Delete the schedule instead."
+            return String(localized: "error.ruleOwnedBySchedule")
         case .ruleNotSerializable:
-            return "This rule contains a value that can't be saved. Check the amounts."
+            return String(localized: "error.ruleNotSerializable")
         case .bankSyncNotConfigured:
-            return "SimpleFIN isn't set up yet. Connect it in More → Manage → Bank Sync (SimpleFIN & Wallet)."
+            return String(localized: "error.bankSyncNotConfigured")
         }
     }
 }
@@ -4941,7 +4941,7 @@ return transaction.id
 
     /// The toast copy for a completed posting pass.
     static func schedulePostNoticeText(count: Int) -> String {
-        "Posted \(count) scheduled transaction\(count == 1 ? "" : "s")"
+        String(localized: "Posted \(count) scheduled transactions")
     }
 
     /// Mirror sync state into the published property, and post due schedules

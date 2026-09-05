@@ -186,7 +186,7 @@ struct PayeePickerView: View {
                             HStack {
                                 Image(systemName: "plus.circle")
                                     .foregroundStyle(.tint)
-                                Text("Use \"\(trimmedSearchText)\"")
+                                Text(String(format: String(localized: "Use \"%@\""), trimmedSearchText))
                                     .foregroundStyle(.primary)
                                 Spacer()
                             }

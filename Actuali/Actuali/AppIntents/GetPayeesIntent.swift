@@ -17,8 +17,7 @@ struct GetPayeesIntent: AppIntent {
         let payees = await store.payeesForIntent().filter { !$0.tombstone }
         let entities = payees.map { PayeeEntity(id: $0.id, name: $0.name) }
 
-        let count = entities.count
-        let dialogText = "Found \(count) payee\(count == 1 ? "" : "s") in Actuali."
+        let dialogText = String(localized: "Found \(entities.count) payees in Actuali.")
         return .result(value: entities, dialog: IntentDialog(stringLiteral: dialogText))
     }
 }

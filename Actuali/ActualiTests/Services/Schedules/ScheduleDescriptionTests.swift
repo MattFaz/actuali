@@ -77,7 +77,7 @@ struct ScheduleDescriptionTests {
 
     @Test func yearly() {
         #expect(ScheduleDescription.recurring(
-            config(["frequency": "yearly"])) == "Every year on Aug 13th")
+            config(["frequency": "yearly"])) == "Every year on Aug 13")
     }
 
     @Test func endModeSuffixes() {
@@ -95,5 +95,11 @@ struct ScheduleDescriptionTests {
             "frequency": "daily", "skipWeekend": true, "weekendSolveMode": "before"
         ]))
         #expect(text == "Every day (before weekend)")
+    }
+
+    @Test func localizedWeekdayAndMonthNamesUseTheRequestedLocale() {
+        let french = Locale(identifier: "fr_FR")
+        #expect(ScheduleDescription.weekdayName(forCode: "TH", locale: french) == "jeudi")
+        #expect(ScheduleDescription.shortMonthName(8, locale: french) == "août")
     }
 }

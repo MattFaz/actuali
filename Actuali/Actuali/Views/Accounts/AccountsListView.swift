@@ -111,7 +111,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "On Budget",
+                                    identifier: "on-budget",
+                                    title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded
                                 )
@@ -128,7 +129,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Off Budget",
+                                    identifier: "off-budget",
+                                    title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded
                                 )
@@ -145,7 +147,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Closed Accounts",
+                                    identifier: "closed",
+                                    title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded
                                 )
@@ -190,7 +193,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "On Budget",
+                                    identifier: "on-budget",
+                                    title: String(localized: "On Budget"),
                                     total: onBudgetTotal,
                                     isExpanded: $isOnBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -207,7 +211,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Off Budget",
+                                    identifier: "off-budget",
+                                    title: String(localized: "Off Budget"),
                                     total: offBudgetTotal,
                                     isExpanded: $isOffBudgetExpanded,
                                     totalTrailingPadding: 0
@@ -224,7 +229,8 @@ struct AccountsListView: View {
                                 }
                             } header: {
                                 AccountSectionHeader(
-                                    title: "Closed Accounts",
+                                    identifier: "closed",
+                                    title: String(localized: "Closed Accounts"),
                                     total: closedTotal,
                                     isExpanded: $isClosedExpanded,
                                     totalTrailingPadding: 0
@@ -245,18 +251,18 @@ struct AccountsListView: View {
                         AccountDetailView(account: account)
                     } else {
                         ContentUnavailableView(
-                            "Account Unavailable",
+                            String(localized: "Account Unavailable"),
                             systemImage: "banknote",
-                            description: Text("Pick another account from the list.")
+                            description: Text(String(localized: "Pick another account from the list."))
                         )
                     }
                 case .allAccounts:
                     TransactionsListView()
                 case nil:
                     ContentUnavailableView(
-                        "No Account Selected",
+                        String(localized: "No Account Selected"),
                         systemImage: "banknote",
-                        description: Text("Pick an account from the list.")
+                        description: Text(String(localized: "Pick an account from the list."))
                     )
                 }
             }
@@ -277,21 +283,21 @@ struct AccountsListView: View {
             // A budget is loaded, it just has no accounts (yet) —
             // "go connect a server" would be wrong advice here (GH #122).
             ContentUnavailableView(
-                "No Accounts",
+                String(localized: "No Accounts"),
                 systemImage: "dollarsign.circle",
-                description: Text("This budget doesn't have any accounts yet. Create one in Actual Budget, then sync.")
+                description: Text(String(localized: "This budget doesn't have any accounts yet. Create one in Actual Budget, then sync."))
             )
         } else if budgetStore.isConnected {
             ContentUnavailableView(
-                "Select a Budget",
+                String(localized: "Select a Budget"),
                 systemImage: "dollarsign.circle",
-                description: Text("You're connected. Choose a budget in More → Connection & Data to load it here.")
+                description: Text(String(localized: "You're connected. Choose a budget in Settings → Connection & Data to load it here."))
             )
         } else {
             ContentUnavailableView(
-                "No Budget Loaded",
+                String(localized: "No Budget Loaded"),
                 systemImage: "dollarsign.circle",
-                description: Text("Go to More → Connection & Data to connect to your Actual Budget server")
+                description: Text(String(localized: "Go to Settings → Connection & Data to connect to your Actual Budget server"))
             )
         }
     }
@@ -317,7 +323,7 @@ struct AccountsListView: View {
                     } label: {
                         Image(systemName: "plus")
                     }
-                    .accessibilityLabel("Add Account")
+                    .accessibilityLabel(String(localized: "accounts.add.title"))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
@@ -325,25 +331,25 @@ struct AccountsListView: View {
                             Button {
                                 Task { await budgetStore.runBankSync() }
                             } label: {
-                                Label("Sync Bank Accounts", systemImage: "building.columns")
+                                Label(String(localized: "Sync Bank Accounts"), systemImage: "building.columns")
                             }
                             .disabled(budgetStore.isBankSyncing)
                         }
                         Button {
                             showingCreditCards = true
                         } label: {
-                            Label("Credit Cards", systemImage: "creditcard")
+                            Label(String(localized: "Credit Cards"), systemImage: "creditcard")
                         }
                         Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
-                            Label("Hide Closed", systemImage: "archivebox")
+                            Label(String(localized: "Hide Closed"), systemImage: "archivebox")
                         }
-                        .accessibilityLabel("Hide Closed Accounts")
+                        .accessibilityLabel(String(localized: "Hide Closed Accounts"))
                     } label: {
                         Image(systemName: "ellipsis.circle")
                     }
-                    .accessibilityLabel("Accounts options")
-                    .accessibilityHint("Account list display options")
+                    .accessibilityLabel(String(localized: "Accounts options"))
+                    .accessibilityHint(String(localized: "Account list display options"))
                 }
                 if pendingImportStore.count > 0 {
                     ToolbarItem(placement: .primaryAction) {
@@ -361,7 +367,7 @@ struct AccountsListView: View {
                                 }
                         }
                         .accessibilityLabel("Pending imports")
-                        .accessibilityValue("\(pendingImportStore.count) pending")
+                        .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
                     }
                 }
                 ToolbarItem(placement: .primaryAction) {
@@ -376,7 +382,7 @@ struct AccountsListView: View {
             // menu is long gone by the time the download finishes, and this
             // stack's pushed account views sit above this alert anyway.
             .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
-                Button("OK", role: .cancel) { budgetStore.bankSyncSummary = nil }
+                    Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
             } message: {
                 Text(budgetStore.bankSyncSummary ?? "")
             }
@@ -390,7 +396,7 @@ struct AccountsListView: View {
                         .environmentObject(budgetStore)
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
-                                Button("Done") { showingCreditCards = false }
+                                Button(String(localized: "common.done")) { showingCreditCards = false }
                             }
                         }
                 }
@@ -507,7 +513,7 @@ struct AccountsSummaryCard: View {
         let balance = budgetStore.displayBalance(totalBalance)
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text("All Accounts")
+                Text(String(localized: "All Accounts"))
                     .font(.headline)
                 Spacer()
                 Text(balance)
@@ -556,6 +562,7 @@ struct AccountsSummaryCard: View {
 /// anywhere on the header expands/collapses that section.
 struct AccountSectionHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    let identifier: String
     let title: String
     let total: Int
     @Binding var isExpanded: Bool
@@ -596,15 +603,17 @@ struct AccountSectionHeader: View {
         // be disabled outright, and a collapsed section is otherwise
         // indistinguishable from an empty one. Same convention as the budget
         // tab's group headers ("Essentials, collapsed").
-        .accessibilityLabel("\(title), \(expandedState), \(totalText)")
-        .accessibilityIdentifier("\(title), \(expandedState)")
+        .accessibilityLabel(String(format: String(localized: "accounts.group.accessibility"), title, expandedState, totalText))
+        .accessibilityIdentifier("account.group.\(identifier)")
         // Hints describe the result of the action, not the gesture itself —
         // VoiceOver already announces this as double-tap-activatable.
-        .accessibilityHint(isExpanded ? "Collapses this section" : "Expands this section")
+        .accessibilityHint(isExpanded
+            ? String(localized: "Collapses this section")
+            : String(localized: "Expands this section"))
     }
 
     private var expandedState: String {
-        isExpanded ? "expanded" : "collapsed"
+        isExpanded ? String(localized: "expanded") : String(localized: "collapsed")
     }
 }
 
