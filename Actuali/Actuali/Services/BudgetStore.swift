@@ -99,7 +99,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .ruleNotSerializable:
             return "This rule contains a value that can't be saved. Check the amounts."
         case .bankSyncNotConfigured:
-            return "SimpleFIN isn't set up yet. Connect it in More → Transactions & Automation first."
+            return "SimpleFIN isn't set up yet. Connect it in More → Manage → Bank Sync (SimpleFIN & Wallet)."
         }
     }
 }
@@ -372,7 +372,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(transactionDisplayMode.rawValue, forKey: TransactionDisplayMode.defaultsKey)
         }
     }
-    
+
     /// What tapping a row in the Uncategorized list opens.
     /// Persisted to UserDefaults, defaults to the category picker.
     @Published var uncategorizedTapAction: UncategorizedTapAction = .categoryPicker {
@@ -494,6 +494,14 @@ final class BudgetStore: ObservableObject {
     @Published var hideClearedTransactions: Bool = false {
         didSet {
             UserDefaults.standard.set(hideClearedTransactions, forKey: "hideClearedTransactions")
+        }
+    }
+
+    /// Whether transaction lists hide transactions locked by reconciliation.
+    /// Persisted to UserDefaults, defaults to off (GH #355).
+    @Published var hideReconciledTransactions: Bool = false {
+        didSet {
+            UserDefaults.standard.set(hideReconciledTransactions, forKey: "hideReconciledTransactions")
         }
     }
 
@@ -619,6 +627,23 @@ final class BudgetStore: ObservableObject {
                 UserDefaults.standard.removeObject(forKey: "defaultDashboardPageId_\(budgetId)")
             }
             objectWillChange.send()
+        }
+    }
+
+    /// Budget month last viewed in this budget. This stays on the device, like
+    /// the account and dashboard defaults above, rather than syncing as budget data.
+    var lastViewedBudgetMonth: String? {
+        get {
+            guard let budgetId = currentBudgetId else { return nil }
+            return UserDefaults.standard.string(forKey: "lastViewedBudgetMonth_\(budgetId)")
+        }
+        set {
+            guard let budgetId = currentBudgetId else { return }
+            if let newValue {
+                UserDefaults.standard.set(newValue, forKey: "lastViewedBudgetMonth_\(budgetId)")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "lastViewedBudgetMonth_\(budgetId)")
+            }
         }
     }
 
@@ -810,6 +835,21 @@ final class BudgetStore: ObservableObject {
             return try await database.fetchNearbyPayees(latitude: latitude, longitude: longitude)
         } catch {
             logger.error("fetchNearbyPayees failed: \(error.localizedDescription, privacy: .public)")
+            return []
+        }
+    }
+    
+    /// Most frequently used payees from the last 12 weeks, for the
+    /// Add Transaction payee picker. Failures degrade to no suggestions.
+    func fetchCommonPayees() async -> [Payee] {
+        guard let database else { return [] }
+
+        do {
+            return try await database.fetchCommonPayees()
+        } catch {
+            logger.error(
+                "fetchCommonPayees failed: \(error.localizedDescription, privacy: .public)"
+            )
             return []
         }
     }
@@ -1119,6 +1159,10 @@ final class BudgetStore: ObservableObject {
     /// for a budget detached by a backup restore).
     var isSyncConfiguredForTesting: Bool { syncClient != nil }
 
+    /// Test-only: pause a load after its month snapshots are fetched so a
+    /// month request can race the final publish deterministically.
+    var budgetMonthsFetchedForTesting: (() async -> Void)?
+
     /// Test-only: release the open database and sync client the way the app's
     /// file-mutating paths (disconnect, downloadBudget) do, so a test can
     /// delete a budget's temp directory without unlinking db.sqlite out from
@@ -1201,6 +1245,8 @@ final class BudgetStore: ObservableObject {
             .bool(forKey: "showHiddenCategories"))
         _hideClearedTransactions = Published(initialValue: defaults
             .bool(forKey: "hideClearedTransactions"))
+        _hideReconciledTransactions = Published(initialValue: defaults
+            .bool(forKey: "hideReconciledTransactions"))
         _hideClosedAccounts = Published(initialValue: defaults
             .bool(forKey: "hideClosedAccounts"))
 
@@ -1889,7 +1935,7 @@ final class BudgetStore: ObservableObject {
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
         error = nil
-        let requestedMonthBeforeLoad = requestedBudgetMonth
+        let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
 
         var db: BudgetDatabase?
@@ -1913,7 +1959,16 @@ final class BudgetStore: ObservableObject {
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
             let currentMonth = currentMonthString()
-            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: currentMonth)
+            let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
+                ? lastViewedBudgetMonth ?? currentMonth
+                : requestedBudgetMonth ?? lastViewedBudgetMonth ?? currentMonth
+            let fetchedBudgetMonth = try await openedDb.fetchBudgetMonth(month: displayedMonth)
+            let fetchedWidgetBudgetMonth = displayedMonth == currentMonth
+                ? fetchedBudgetMonth
+                : try await openedDb.fetchBudgetMonth(month: currentMonth)
+            #if DEBUG
+            await budgetMonthsFetchedForTesting?()
+            #endif
             let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
                 id: "flags.goalTemplatesEnabled") == "true"
             let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
@@ -1963,11 +2018,11 @@ final class BudgetStore: ObservableObject {
             // A month selected while the database reads were in flight is
             // newer than this initial current-month snapshot. Leave that
             // request and its fetch result intact instead of replacing it.
-            if requestedBudgetMonth == requestedMonthBeforeLoad {
-                requestedBudgetMonth = currentMonth
+            if budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad {
+                requestedBudgetMonth = displayedMonth
                 currentBudgetMonth = fetchedBudgetMonth
             }
-            widgetBudgetMonth = fetchedBudgetMonth
+            widgetBudgetMonth = fetchedWidgetBudgetMonth
             goalTemplatesEnabled = fetchedGoalTemplatesFlag
             goalTemplatesUIEnabled = fetchedGoalTemplatesUIFlag
             dataVersion += 1
@@ -2587,12 +2642,13 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        unclearedOnly: Bool = false
+        unclearedOnly: Bool = false,
+        hideReconciled: Bool = false
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: unclearedOnly
+                unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
             ) ?? []
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a superseded .task(id:)
@@ -3229,16 +3285,7 @@ final class BudgetStore: ObservableObject {
         // far as the hungriest of them.
         var candidates = download.candidates
 
-        // The opening balance counts as an import too (upstream folds its id
-        // into `added`), so a first sync never reports one fewer than it wrote.
         var added = 0
-        if existingOldestDay == nil {
-            added += try await insertStartingBalance(
-                for: target,
-                currentBalanceCents: download.currentBalanceCents,
-                candidates: candidates
-            ) ? 1 : 0
-        }
         guard let earliest = candidates.map(\.date).min(),
               let latest = candidates.map(\.date).max() else { return (added, 0, []) }
 
@@ -3261,13 +3308,35 @@ final class BudgetStore: ObservableObject {
         }
 
         let radius = BankSyncReconciler.fuzzyMatchDayRadius
+        // Actual stores this as a synced per-account preference. Its default
+        // is true for backwards compatibility, so an absent preference keeps
+        // the existing reimport behavior.
+        let reimportDeleted = (try await database.fetchPreference(
+            id: "sync-reimport-deleted-\(target.id)"
+        ) ?? "true") == "true"
         let window = try await database.bankSyncWindow(
             accountId: target.id,
             from: DayDate(yyyymmdd: earliest)?.adding(days: -radius).yyyymmdd ?? earliest,
-            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest
+            to: DayDate(yyyymmdd: latest)?.adding(days: radius).yyyymmdd ?? latest,
+            importedIds: Set(candidates.map(\.importedId))
         )
 
-        let plan = BankSyncReconciler.plan(candidates: candidates, existing: window)
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: window,
+            reimportDeleted: reimportDeleted
+        )
+
+        // The opening balance counts as an import too (upstream folds its id
+        // into `added`). Only subtract rows this sync will actually insert.
+        if existingOldestDay == nil {
+            added += try await insertStartingBalance(
+                for: target,
+                currentBalanceCents: download.currentBalanceCents,
+                imported: plan.inserts,
+                startingDay: earliest
+            ) ? 1 : 0
+        }
 
         try await syncClient.applyBankSyncUpdates(plan.updates)
 
@@ -3346,12 +3415,13 @@ final class BudgetStore: ObservableObject {
     private func insertStartingBalance(
         for target: BankSyncAccount,
         currentBalanceCents: Int?,
-        candidates: [BankSyncCandidate]
+        imported: [BankSyncCandidate],
+        startingDay: Int
     ) async throws -> Bool {
         guard let syncClient, let balance = currentBalanceCents else { return false }
         // The balance is as of now, so what the account opened with is what's
         // left once everything about to be imported is taken back off it.
-        let opening = balance - candidates.reduce(0) { $0 + $1.amount }
+        let opening = balance - imported.reduce(0) { $0 + $1.amount }
         guard opening != 0 else { return false }
 
         let payee = try await findOrCreatePayee(name: "Starting Balance")
@@ -3360,7 +3430,7 @@ final class BudgetStore: ObservableObject {
         let transaction = Transaction(
             id: UUID().uuidString,
             accountId: target.id,
-            date: candidates.map(\.date).min() ?? Transaction.yyyymmdd(from: Date()),
+            date: startingDay,
             amount: opening,
             payeeId: payee.id,
             payeeName: payee.name,
@@ -5102,8 +5172,10 @@ return transaction.id
     /// month (@State); this mirrors the latest request so an older in-flight
     /// fetch can't publish over a newer one after its await.
     private var requestedBudgetMonth: String?
+    private var budgetMonthRequestGeneration = 0
 
     func fetchBudgetMonth(_ month: String) async {
+        budgetMonthRequestGeneration += 1
         requestedBudgetMonth = month
         do {
             let fetched = try await database?.fetchBudgetMonth(month: month)
@@ -5178,6 +5250,30 @@ return transaction.id
         }
         try await syncClient.setBudgetAmount(month: month, categoryId: categoryId, amount: amountCents)
         await fetchBudgetMonth(month)
+    }
+
+    /// Turn "rollover overspending" on or off for a category (GH #372), then
+    /// refetch the month so the published flag and Available recompute.
+    /// Mirrors the web's balance menu: the flag is written from this month
+    /// through the last month the web would have created, so both clients
+    /// agree on which rows carry it. `now` pins the range's end for tests.
+    func setBudgetCarryover(month: String, categoryId: String, enabled: Bool, now: Date = Date()) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        try await syncClient.setBudgetCarryover(
+            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
+        await fetchBudgetMonth(month)
+    }
+
+    /// The months upstream `setCategoryCarryover` flags: `month` through the
+    /// latest month in the web's sheet, which `createAllBudgets` extends to
+    /// twelve months past today (`getBudgetRange`). A month already beyond
+    /// that gets flagged alone. Pure, so it stays callable off the main actor.
+    nonisolated static func carryoverMonths(from month: String, now: Date = Date()) -> [String] {
+        let latest = BudgetMonthMath.addMonths(BudgetMonthMath.currentMonth(now), 12)
+        let count = max(BudgetMonthMath.differenceInCalendarMonths(latest, month), 0)
+        return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
     }
 
     /// Move budgeted funds between categories (GH #128), nil meaning the

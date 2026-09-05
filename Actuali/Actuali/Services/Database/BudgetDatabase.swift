@@ -678,15 +678,15 @@ final class BudgetDatabase: Sendable {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page. `unclearedOnly` drops cleared rows (which
-    /// includes reconciled ones — locking requires cleared first) in SQL for
-    /// the same reason: pages stay full-sized and cover full history.
+    /// just the loaded page. `unclearedOnly` and `hideReconciled` filter in
+    /// SQL for the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
-        unclearedOnly: Bool = false
+        unclearedOnly: Bool = false,
+        hideReconciled: Bool = false
     ) async throws -> [Transaction] {
         try await dbQueue.read { db in
             // The list's display payee: own payee first (transfer payees show
@@ -746,6 +746,10 @@ final class BudgetDatabase: Sendable {
 
             if unclearedOnly {
                 sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
+            }
+
+            if hideReconciled {
+                sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
             }
 
             if let search {
@@ -1390,6 +1394,48 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Payees used most often in the last 12 weeks, matching Actual's
+    /// `getCommonPayees()` behavior. Suggestions are ordered by usage count,
+    /// then by payee name.
+    func fetchCommonPayees() async throws -> [Payee] {
+        try await dbQueue.read { db in
+            let twelveWeeksAgo = Calendar.current.date(
+                byAdding: .weekOfYear,
+                value: -12,
+                to: Date()
+            ) ?? Date()
+
+            let cutoffDate = Transaction.yyyymmdd(from: twelveWeeksAgo)
+
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT
+                    p.id,
+                    p.name,
+                    p.transfer_acct,
+                    COUNT(t.id) AS usage_count
+                FROM payees p
+                JOIN payee_mapping pm ON pm.targetId = p.id
+                JOIN transactions t ON t.description = pm.id
+                WHERE LENGTH(p.name) > 0
+                  AND p.transfer_acct IS NULL
+                  AND (p.tombstone = 0 OR p.tombstone IS NULL)
+                  AND t.date > ?
+                  AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                  AND (t.isChild = 0 OR t.isChild IS NULL)
+                GROUP BY p.id
+                ORDER BY usage_count DESC, p.name COLLATE NOCASE ASC
+                LIMIT 10
+                """, arguments: [cutoffDate])
+
+            return rows.map { row in
+                Payee(
+                    id: row["id"],
+                    name: row["name"] ?? "Unknown",
+                    transferAccountId: row["transfer_acct"]
+                )
+            }
+        }
+    }
     // MARK: - Transaction Category History
 
     /// Returns the category id of the most recent non-tombstoned transaction for `payeeId`
@@ -1700,7 +1746,8 @@ final class BudgetDatabase: Sendable {
                     hidden: cat.hidden == 1,
                     groupHidden: group.hidden == 1,
                     goal: targetBudgets[cat.id]?.goal,
-                    longGoal: targetBudgets[cat.id]?.longGoal == 1
+                    longGoal: targetBudgets[cat.id]?.longGoal == 1,
+                    carryoverEnabled: targetBudgets[cat.id]?.flag == true
                 )
             }
 
@@ -2805,25 +2852,32 @@ final class BudgetDatabase: Sendable {
     }
 
     /// The transactions a download could be matching, projected down to the
-    /// columns `BankSyncReconciler` reads. Bounded by date because matching
-    /// only ever looks a week either side of a downloaded transaction.
+    /// columns `BankSyncReconciler` reads. Fuzzy candidates are bounded by
+    /// date; exact provider IDs are included account-wide.
     ///
     /// Split children are excluded: a download matches the parent (which
     /// carries the full amount), never one of its portions. Tombstoned rows
-    /// are excluded too, so a transaction the person deleted isn't quietly
-    /// resurrected by the next sync — it re-imports as new instead, which is
-    /// the outcome they'd get on the web UI.
-    func bankSyncWindow(accountId: String, from: Int, to: Int) async throws -> [BankSyncExistingTransaction] {
+    /// are included so the reconciler can apply the account's
+    /// `reimportDeleted` setting: they are usable only as exact-ID dedupe keys.
+    func bankSyncWindow(
+        accountId: String,
+        from: Int,
+        to: Int,
+        importedIds: Set<String>
+    ) async throws -> [BankSyncExistingTransaction] {
         try await dbQueue.read { db in
-            try Row.fetchAll(db, sql: """
+            let placeholders = Array(repeating: "?", count: importedIds.count).joined(separator: ", ")
+            var arguments: [any DatabaseValueConvertible] = [accountId, from, to]
+            arguments.append(contentsOf: importedIds.map { $0 as any DatabaseValueConvertible })
+            return try Row.fetchAll(db, sql: """
                 SELECT id, date, amount, description, financial_id, imported_description,
-                       notes, cleared, reconciled
+                       notes, cleared, reconciled, tombstone
                 FROM transactions
                 WHERE acct = ?
-                  AND date IS NOT NULL AND date >= ? AND date <= ?
-                  AND (tombstone = 0 OR tombstone IS NULL)
+                  AND ((date IS NOT NULL AND date >= ? AND date <= ?)
+                       OR financial_id IN (\(placeholders)))
                   AND (isChild = 0 OR isChild IS NULL)
-                """, arguments: [accountId, from, to]).map { row in
+                """, arguments: StatementArguments(arguments)).map { row in
                 BankSyncExistingTransaction(
                     id: row["id"],
                     date: row["date"] ?? 0,
@@ -2833,7 +2887,8 @@ final class BudgetDatabase: Sendable {
                     importedPayee: row["imported_description"],
                     notes: row["notes"],
                     cleared: row["cleared"] == 1,
-                    reconciled: row["reconciled"] == 1
+                    reconciled: row["reconciled"] == 1,
+                    tombstone: row["tombstone"] == 1
                 )
             }
         }

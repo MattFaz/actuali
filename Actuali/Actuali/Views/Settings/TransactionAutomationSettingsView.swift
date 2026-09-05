@@ -107,15 +107,11 @@ struct TransactionAutomationSettingsView: View {
                             }
                         }
                     }
-
-                    NavigationLink("Rules") {
-                        RulesListView()
-                    }
                 }
 
                 if !budgetStore.payeeLocationWritesEnabled
                     && budgetStore.currentBudgetId == nil {
-                    Text("Load a budget to manage transaction accounts and rules.")
+                    Text("Load a budget to manage transaction accounts.")
                         .foregroundStyle(.secondary)
                 }
             } header: {
@@ -126,18 +122,6 @@ struct TransactionAutomationSettingsView: View {
                     && budgetStore.isConnected {
                     Text("Payee locations require Actual Server 26.4.0 or later.")
                 }
-            }
-
-            Section {
-                NavigationLink {
-                    SchedulesListView()
-                } label: {
-                    Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
-                }
-            } header: {
-                Text("Scheduled Transactions")
-            } footer: {
-                Text("Scheduled transactions that are due are posted automatically when the app opens — the same as opening the Actual web app. Transactions are created on your server.")
             }
 
             Section {
@@ -173,12 +157,6 @@ struct TransactionAutomationSettingsView: View {
                 }
 
                 NavigationLink {
-                    BankSyncSetupView()
-                } label: {
-                    Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
-                }
-
-                NavigationLink {
                     WalletAutomationView()
                 } label: {
                     Label("Log Wallet Payments Automatically", systemImage: "wallet.pass")
@@ -195,9 +173,9 @@ struct TransactionAutomationSettingsView: View {
                 Text("Automations")
             } footer: {
                 if WalletImportView.isSupported {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN, log tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
+                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet, or import Apple Card, Apple Cash and Savings transactions directly.")
                 } else {
-                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. You can also connect SimpleFIN or log tap-to-pay purchases from Apple Wallet.")
+                    Text("Category Funding runs only for manual expenses entered from the selected account and funds only the required shortfall. Set up a Shortcuts automation that logs tap-to-pay purchases from Apple Wallet.")
                 }
             }
         }

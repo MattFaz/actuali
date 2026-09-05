@@ -53,7 +53,8 @@ struct AccountDetailView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
-                unclearedOnly: store.hideClearedTransactions
+                unclearedOnly: store.hideClearedTransactions,
+                hideReconciled: store.hideReconciledTransactions
             )
         }
         pager = created
@@ -291,8 +292,10 @@ struct AccountDetailView: View {
                         Text(searchQuery != nil
                             ? "No matching transactions"
                             : budgetStore.hideClearedTransactions
-                                ? "No uncleared transactions"
-                                : "No transactions")
+                            ? "No uncleared transactions"
+                                : budgetStore.hideReconciledTransactions
+                                    ? "No unreconciled transactions"
+                                    : "No transactions")
                             .foregroundStyle(.secondary)
                     }
                 }
@@ -361,6 +364,14 @@ struct AccountDetailView: View {
                     Label(
                         "Hide Cleared Transactions",
                         systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
+                    )
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
+                    Label(
+                        "Hide Reconciled Transactions",
+                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
                     )
                 }
             }
@@ -447,6 +458,9 @@ struct AccountDetailView: View {
         .onChange(of: budgetStore.hideClearedTransactions) {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.hideReconciledTransactions) {
             Task { await reload() }
         }
         .onChange(of: budgetStore.creditCardStatementDays[account.id]) {

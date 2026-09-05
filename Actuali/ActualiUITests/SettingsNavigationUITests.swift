@@ -19,6 +19,14 @@ final class SettingsNavigationUITests: XCTestCase {
             ).firstMatch
         case "Privacy":
             content = app.switches["Hide Balances"]
+        case "Scheduled Transactions":
+            content = app.searchFields["Search schedules"]
+        case "Rules":
+            // The demo budget does not include a rules table, so RulesListView
+            // shows its unavailable placeholder instead of the Add Rule button.
+            content = app.staticTexts["Rules Unavailable"]
+        case "Bank Sync (SimpleFIN & Wallet)":
+            content = app.textFields["Setup token"]
         case "About":
             content = app.staticTexts["Version"]
         default:
@@ -44,13 +52,18 @@ final class SettingsNavigationUITests: XCTestCase {
             "Transactions & Automation",
             "Display",
             "Privacy",
+            "Scheduled Transactions",
+            "Rules",
+            "Bank Sync (SimpleFIN & Wallet)",
             "About"
         ] {
             let row = app.buttons[destination]
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
             row.tap()
 
-            let navigationBar = app.navigationBars[destination]
+            let navigationBar = app.navigationBars[
+                destination == "Bank Sync (SimpleFIN & Wallet)" ? "Bank Sync" : destination
+            ]
             XCTAssertTrue(
                 navigationBar.waitForExistence(timeout: 5),
                 "\(destination) screen did not open"

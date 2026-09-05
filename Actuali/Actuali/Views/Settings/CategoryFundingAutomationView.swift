@@ -25,6 +25,7 @@ struct CategoryFundingAutomationView: View {
                         Text(account.name).tag(Optional(account.id))
                     }
                 }
+                .accessibilityIdentifier("categoryFunding.accountPicker")
             } header: {
                 Text("Trigger")
             }

@@ -176,6 +176,7 @@ struct BudgetStoreBankSyncTests {
                 )
                 """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
+            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
             try db.execute(sql: """
                 CREATE TABLE banks (
                     id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
@@ -204,6 +205,31 @@ struct BudgetStoreBankSyncTests {
             }
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
+    }
+
+    private func seedDeletedTransaction(
+        at url: URL,
+        importedId: String = "sf-deleted",
+        daysAgo: Int = 5,
+        disableReimport: Bool = true
+    ) async throws {
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        let date = Self.expectedDay(daysAgo)
+        try await queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions
+                    (id, acct, date, amount, imported_description, financial_id,
+                     tombstone, cleared, sort_order)
+                VALUES ('tx-deleted', ?, ?, -3345, 'Deleted Merchant', ?, 1, 1, 1)
+                """, arguments: [accountId, date, importedId])
+            if disableReimport {
+                try db.execute(
+                    sql: "INSERT INTO preferences (id, value) VALUES (?, 'false')",
+                    arguments: ["sync-reimport-deleted-\(accountId)"]
+                )
+            }
+        }
     }
 
     private func makeStore(
@@ -344,6 +370,104 @@ struct BudgetStoreBankSyncTests {
         #expect(second.added == 0)
         #expect(second.updated == 0)
         #expect(try rows(path: url, where: "financial_id = 'sf-1'").count == 1)
+    }
+
+    @Test func disabledReimportDeletedTransactionsKeepsDeletedRowsDeleted() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        // The opening balance is still created for a new account, but the
+        // deleted bank transaction must not be inserted again.
+        #expect(result.added == 1)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 0").isEmpty)
+        #expect(try row(
+            path: url,
+            sql: "SELECT tombstone FROM transactions WHERE financial_id = 'sf-deleted'"
+        )?["tombstone"] as Int? == 1)
+        #expect(try row(
+            path: url,
+            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        )?["amount"] as Int? == 10_000)
+    }
+
+    @Test func defaultReimportSettingStillReimportsDeletedTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, disableReimport: false)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        // An unset preference defaults to Actual's backwards-compatible
+        // behavior: the deleted row is ignored and a new one is imported.
+        #expect(result.added == 2)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted'").count == 2)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 0").count == 1)
+    }
+
+    @Test func disabledReimportDoesNotFuzzyMatchADeletedTransactionWithANewBankId() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, importedId: "sf-old-id")
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-new-id", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        // A changed provider id is not proof that this is the deleted
+        // transaction. The tombstone must be excluded from fuzzy matching, so
+        // this download is imported as a new visible transaction.
+        #expect(result.added == 2)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-old-id'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-id' AND tombstone = 0").count == 1)
+    }
+
+    @Test func disabledReimportDoesNotLetDeletedRowsStealNearbyNewTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-new-charge", "posted": \(Self.daysAgo(8)),
+             "amount": "-33.45", "payee": "New Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 2)
+        #expect(result.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-new-charge' AND tombstone = 0").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 1").count == 1)
+    }
+
+    @Test func disabledReimportMatchesExactIdOutsideTheFuzzyWindow() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, daysAgo: 13)
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-deleted", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1) // opening balance only
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-deleted' AND tombstone = 0").isEmpty)
     }
 
     /// A transaction entered by hand before the bank posted it should be

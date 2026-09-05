@@ -198,7 +198,14 @@ struct BudgetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
+            .onAppear {
+                selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
+            }
+            .onChange(of: budgetStore.currentBudgetId) { _, _ in
+                selectedMonth = budgetStore.lastViewedBudgetMonth ?? Self.currentMonthString()
+            }
             .onChange(of: selectedMonth) { _, newMonth in
+                budgetStore.lastViewedBudgetMonth = newMonth
                 Task {
                     await budgetStore.fetchBudgetMonth(newMonth)
                 }
@@ -356,17 +363,6 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
-                CompactBudgetGroupHeader(
-                    name: group.name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
-                    totals: budgetStore.showGroupTotals ? group.totals : nil,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: { toggleCollapsed(group.id) }
-                )
                 if !isCollapsed {
                     ForEach(group.categories) { category in
                         CompactCategoryBudgetRow(
@@ -386,6 +382,18 @@ struct BudgetView: View {
                         )
                     }
                 }
+            } header: {
+                CompactBudgetGroupHeader(
+                    name: group.name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group.isHidden,
+                    onSetHidden: {
+                        setCategoryGroupHidden(group.id, hidden: $0)
+                    },
+                    totals: budgetStore.showGroupTotals ? group.totals : nil,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: { toggleCollapsed(group.id) }
+                )
             }
         }
     }
@@ -472,19 +480,6 @@ struct BudgetView: View {
             }
         case .compact:
             Section {
-                CompactIncomeGroupHeader(
-                    name: name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: onSetHidden,
-                    totalBudgeted: budget.totalBudgetedIncome,
-                    totalReceived: budget.totalIncome,
-                    showsBudgeted: budget.isTrackingBudget,
-                    showsSpent: budgetStore.showCompactSpentColumn,
-                    onToggleCollapse: {
-                        toggleCollapsed(Self.incomeGroupCollapseID)
-                    }
-                )
                 if !isCollapsed {
                     ForEach(categories) { income in
                         CompactIncomeCategoryRow(
@@ -500,6 +495,20 @@ struct BudgetView: View {
                         )
                     }
                 }
+            } header: {
+                CompactIncomeGroupHeader(
+                    name: name,
+                    isCollapsed: isCollapsed,
+                    isHidden: group?.hidden == true,
+                    onSetHidden: onSetHidden,
+                    totalBudgeted: budget.totalBudgetedIncome,
+                    totalReceived: budget.totalIncome,
+                    showsBudgeted: budget.isTrackingBudget,
+                    showsSpent: budgetStore.showCompactSpentColumn,
+                    onToggleCollapse: {
+                        toggleCollapsed(Self.incomeGroupCollapseID)
+                    }
+                )
             }
         }
     }
@@ -1135,9 +1144,7 @@ struct CategoryBudgetRow: View {
                 } label: {
                     BudgetAmountPill(
                         text: budgetStore.displayBudgetCell(category.available),
-                        color: balanceColor(
-                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
-                            zero: .secondary)
+                        color: balanceTint
                     )
                 }
                 .buttonStyle(.borderless)
@@ -1145,6 +1152,7 @@ struct CategoryBudgetRow: View {
                 .accessibilityLabel(category.isOverspent
                     ? "Cover overspending for \(category.categoryName)"
                     : "Move money from \(category.categoryName)")
+                .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -1180,6 +1188,10 @@ struct CategoryBudgetRow: View {
             onShowTransactions: onShowTransactions,
             onMoveMoney: onMoveMoney
         ))
+    }
+
+    private var balanceTint: Color {
+        balanceColor(category, goalsEnabled: budgetStore.goalTemplatesEnabled, zero: .secondary)
     }
 }
 
@@ -1223,15 +1235,14 @@ struct CleanCategoryBudgetRow: View {
                     onMoveMoney(category)
                 } label: {
                     Text(budgetStore.displayBalance(category.available))
-                        .foregroundColor(balanceColor(
-                            category, goalsEnabled: budgetStore.goalTemplatesEnabled,
-                            zero: .green))
+                        .foregroundColor(balanceTint)
                 }
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
                 .accessibilityLabel(category.isOverspent
                     ? "Cover overspending for \(category.categoryName)"
                     : "Move money from \(category.categoryName)")
+                .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
                 CategoryProgressBar(
@@ -1297,6 +1308,10 @@ struct CleanCategoryBudgetRow: View {
             onMoveMoney: onMoveMoney
         ))
     }
+
+    private var balanceTint: Color {
+        balanceColor(category, goalsEnabled: budgetStore.goalTemplatesEnabled, zero: .green)
+    }
 }
 
 /// Shared long-press/right-click menu for all category row styles — the same
@@ -1352,6 +1367,25 @@ func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -
         return category.isGoalUnderfunded ? .orange : .green
     }
     return category.available == 0 ? zero : .green
+}
+
+extension View {
+    /// The web's CarryoverIndicator: a small arrow just past the balance's
+    /// trailing edge, in the balance's color, when the category's overspending
+    /// rolls into next month (GH #372). An overlay rather than a sibling so
+    /// amounts stay column-aligned whether or not a row rolls over.
+    func rolloverIndicator(_ shown: Bool, color: Color) -> some View {
+        overlay(alignment: .trailing) {
+            if shown {
+                Image(systemName: "arrow.right")
+                    .font(.system(size: 7, weight: .heavy))
+                    .foregroundStyle(color)
+                    .offset(x: 10)
+                    .accessibilityHidden(true)
+            }
+        }
+        .accessibilityHint(shown ? "Overspending rolls over to next month" : "")
+    }
 }
 
 /// Whether `month` ("YYYY-MM") is before the current calendar month. The
@@ -1806,7 +1840,9 @@ struct CategoryBudgetDetailSheet: View {
     @State private var editingNote = false
     @State private var note: EntityNote = .unsupported
     @State private var history: [CategoryBudget] = []
+    @State private var rolloverEnabled: Bool
     @State private var isSavingName = false
+    @State private var isSavingRollover = false
     @State private var isApplyingSuggestion = false
     @State private var isApplyingTemplate = false
     @State private var editingAutomations = false
@@ -1815,6 +1851,7 @@ struct CategoryBudgetDetailSheet: View {
     init(category: CategoryBudget) {
         self.category = category
         _name = State(initialValue: category.categoryName)
+        _rolloverEnabled = State(initialValue: category.carryoverEnabled)
     }
 
     private var isTracking: Bool {
@@ -1836,6 +1873,7 @@ struct CategoryBudgetDetailSheet: View {
                     TextField("Category Name", text: $name)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.words)
+                        .accessibilityIdentifier("categoryEditor.name")
                 }
 
                 if note.supported {
@@ -1851,11 +1889,34 @@ struct CategoryBudgetDetailSheet: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                         }
+                        .accessibilityIdentifier("categoryEditor.note")
                     }
                 }
 
                 if budgetStore.goalTemplatesEnabled {
                     goalSection
+                }
+
+                Section {
+                    // The binding, not onChange, kicks off the write: a failed
+                    // save reverts the state directly, which must not re-save.
+                    // The guard covers a second tap landing before .disabled
+                    // re-renders, so two writes can't race for the same rows.
+                    Toggle("Rollover Overspending", isOn: Binding(
+                        get: { rolloverEnabled },
+                        set: { enabled in
+                            guard !isSavingRollover else { return }
+                            isSavingRollover = true
+                            rolloverEnabled = enabled
+                            Task { await saveRollover(enabled) }
+                        }
+                    ))
+                    .disabled(isSavingRollover)
+                    .accessibilityIdentifier("categoryEditor.rollover")
+                } footer: {
+                    Text(isTracking
+                        ? "Carry this category's balance into next month. Applies from \(MonthPicker.title(for: category.month)) onward."
+                        : "Carry overspending into next month instead of taking it from To Budget. Applies from \(MonthPicker.title(for: category.month)) onward.")
                 }
 
                 Section(
@@ -1867,6 +1928,7 @@ struct CategoryBudgetDetailSheet: View {
                         Text(budgetStore.displayBalance(category.budgeted))
                             .monospacedDigit()
                     }
+                    .accessibilityIdentifier("categoryEditor.currentAmount")
 
                     if quickAssignSuggestions.isEmpty {
                         Text("No suggestions available")
@@ -1888,11 +1950,13 @@ struct CategoryBudgetDetailSheet: View {
                             }
                             .buttonStyle(.plain)
                             .disabled(isApplyingSuggestion)
+                            .accessibilityIdentifier("categoryEditor.quickAssign.\(suggestion.kind.rawValue)")
                         }
                     }
                     },
                     header: {
                         Text(isTracking ? "Quick Budget" : "Quick Assign")
+                            .accessibilityIdentifier("categoryEditor.quickAssignHeader")
                     },
                     footer: {
                         Text("Suggestions use this category's existing Actual history and replace the amount shown above.")
@@ -2043,6 +2107,23 @@ struct CategoryBudgetDetailSheet: View {
             errorMessage = error.localizedDescription
             isApplyingSuggestion = false
         }
+    }
+
+    /// Writes immediately, like the web's balance menu — a rollover change
+    /// is a budget edit, not part of the name draft the Save button commits.
+    private func saveRollover(_ enabled: Bool) async {
+        errorMessage = nil
+        do {
+            try await budgetStore.setBudgetCarryover(
+                month: category.month,
+                categoryId: category.categoryId,
+                enabled: enabled
+            )
+        } catch {
+            errorMessage = error.localizedDescription
+            rolloverEnabled = !enabled
+        }
+        isSavingRollover = false
     }
 
     private func saveName() async {
