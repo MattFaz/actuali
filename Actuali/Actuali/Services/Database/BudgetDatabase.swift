@@ -2327,7 +2327,7 @@ final class BudgetDatabase: Sendable {
                 "graph_type", "date_range", "date_static", "start_date",
                 "end_date", "include_current", "show_empty", "show_offbudget",
                 "show_hidden", "show_uncategorized", "sort_by", "conditions",
-                "conditions_op"
+                "conditions_op", "show_trend_lines", "trim_intervals"
             ]
             let select = wanted
                 .map { existing.contains($0) ? $0 : "NULL AS \($0)" }
@@ -2361,6 +2361,8 @@ final class BudgetDatabase: Sendable {
                     showHidden: (row["show_hidden"] as Int? ?? 0) != 0,
                     showUncategorized: (row["show_uncategorized"] as Int? ?? 0) != 0,
                     sortBy: row["sort_by"] ?? "desc",
+                    showTrendLines: (row["show_trend_lines"] as Int? ?? 0) != 0,
+                    trimIntervals: (row["trim_intervals"] as Int? ?? 0) != 0,
                     conditions: conditions,
                     conditionsOp: row["conditions_op"] ?? "and"
                 )

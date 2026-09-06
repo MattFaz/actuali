@@ -11,20 +11,30 @@ struct CustomReportData: Equatable {
         var values: [[Double]]        // [series][interval], currency units
     }
     struct TableRow: Equatable { var name: String; var totalUnits: Double }
+    /// One donut wedge. `group` indexes `Kind.donut`'s `groups` ring for the
+    /// two-ring Category+Group layout; nil on a single-ring donut.
+    struct Slice: Equatable { var label: String; var valueUnits: Double; var group: Int? }
+    /// Least-squares trend through one line series, as its values at the
+    /// first and last interval.
+    struct Trend: Equatable { var startUnits: Double; var endUnits: Double }
 
     enum Kind: Equatable {
         case bars([Bar], signed: Bool)   // signed → color bars by sign (Net)
         case stacked(Stacked)
+        case lines(Stacked, trends: [Trend])   // trends empty unless showTrendLines
+        case area([Bar])                       // one point per interval
+        case donut(slices: [Slice], groups: [Bar])   // groups empty → single ring
         case table([TableRow])
         case unsupported(String)
     }
     var kind: Kind
 }
 
-/// Port of the webapp's custom-spreadsheet.ts for the option subset Actuali
-/// renders. Everything computes from the shared reports transaction array;
-/// configs outside the supported matrix return `.unsupported` naming the
-/// offending option so the card can explain itself.
+/// Port of the webapp's custom-spreadsheet.ts for the option matrix the web
+/// UI can save. Everything computes from the shared reports transaction
+/// array (or, for the Budgeted balance type, from budget cells); configs
+/// outside the matrix return `.unsupported` naming the offending option so
+/// the card can explain itself.
 enum CustomReportEngine {
 
     /// Row keys for the synthetic rows upstream appends after the real
@@ -41,6 +51,32 @@ enum CustomReportEngine {
         var groups: [CategoryGroup]      // in budget sort order
         var offBudgetAccountIds: Set<String>
         var firstDayOfWeekIdx: Int
+        var payees: [Payee] = []                              // groupBy Payee, store order
+        var accounts: [Account] = []                          // groupBy Account, store order
+        var budgetEntries: [BudgetAnalysisBudgetEntry] = []   // balanceType Budgeted
+    }
+
+    /// Assets/debts sums for one row or bucket (upstream QueryDataEntity split).
+    private struct Cell {
+        var assets = 0
+        var debts = 0
+
+        mutating func add(_ amount: Int) {
+            if amount > 0 { assets += amount } else { debts += amount }
+        }
+
+        static func + (lhs: Cell, rhs: Cell) -> Cell {
+            Cell(assets: lhs.assets + rhs.assets, debts: lhs.debts + rhs.debts)
+        }
+    }
+
+    /// One named row (category, group, payee, account) after bucketing.
+    private struct Row {
+        let key: String
+        let name: String
+        let cell: Cell            // whole-range aggregate
+        var perBucket: [Double]   // metric per interval, currency units
+        let total: Double         // metric over the aggregate, not Σ perBucket
     }
 
     static func compute(
@@ -58,19 +94,21 @@ enum CustomReportEngine {
                                     rangeLabel: config.dateStatic ? "" : (config.dateRange ?? "All time"),
                                     kind: .unsupported(""))
 
-        // Supported-matrix guard: name the first offending option.
+        // Supported-matrix guard (upstream ReportOptions.ts): name the first
+        // offending option.
         for (value, supported, label) in [
             (config.mode, ["total", "time"], "mode"),
-            (config.groupBy, ["Category", "Group", "Interval"], "group by"),
-            (config.balanceType, ["Payment", "Deposit", "Net"], "balance type"),
+            (config.groupBy, ["Category", "Group", "CategoryGroup", "Payee", "Account", "Interval"], "group by"),
+            (config.balanceType, ["Payment", "Deposit", "Net", "Net Payment", "Net Deposit", "Budgeted"], "balance type"),
             (config.interval, ["Daily", "Weekly", "Monthly", "Yearly"], "interval"),
-            (config.graphType, ["BarGraph", "StackedBarGraph", "TableGraph"], "graph"),
+            (config.graphType, ["BarGraph", "StackedBarGraph", "LineGraph", "AreaGraph", "DonutGraph", "TableGraph"], "graph"),
         ] where !supported.contains(value) {
             data.kind = .unsupported("\(value) \(label) isn't supported yet")
             return data
         }
 
-        // Date range from actual history.
+        // Date range from actual history (also for Budgeted, as upstream's
+        // card does).
         let live = transactions.filter { !$0.tombstone }
         let earliest = live.map(\.date).min().map(dateFrom)
         let latest = live.map(\.date).max().map(dateFrom)
@@ -85,12 +123,22 @@ enum CustomReportEngine {
         let categoriesById = Dictionary(uniqueKeysWithValues: reportContext.categories.map { ($0.id, $0) })
         let groupsById = Dictionary(uniqueKeysWithValues: reportContext.groups.map { ($0.id, $0) })
 
+        // Dataset: transactions in range, or budget cells for Budgeted
+        // (upstream fetchSpreadsheetQueryData). Budget cells only honour
+        // category conditions (budgetDataQuery.filterCategoriesByConditions).
+        let budgeted = config.balanceType == "Budgeted"
+        let source = budgeted
+            ? budgetRows(reportContext, startYMD: startYMD, endYMD: endYMD)
+            : live.filter { $0.date >= startYMD && $0.date <= endYMD }
+        let conditions = budgeted
+            ? config.conditions?.filter { ["category", "category_group"].contains($0.field) }
+            : config.conditions
+
         // Filter (upstream: conditions, then filterHiddenItems) — single pass.
         // Category resolves through the lookup, mirroring upstream's query
         // join: a dangling categoryId behaves exactly like no category.
-        let pool = live.filter { tx in
-            guard tx.date >= startYMD && tx.date <= endYMD else { return false }
-            guard ConditionsFilter.matches(transaction: tx, conditions: config.conditions,
+        let pool = source.filter { tx in
+            guard ConditionsFilter.matches(transaction: tx, conditions: conditions,
                                            op: config.conditionsOp, context: filterContext)
             else { return false }
             let category = tx.categoryId.flatMap { categoriesById[$0] }
@@ -110,12 +158,11 @@ enum CustomReportEngine {
                                       firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
         let bucketIndex = Dictionary(uniqueKeysWithValues:
             buckets.enumerated().map { ($0.element.key, $0.offset) })
-        let labels = buckets.map(\.label)
+        var labels = buckets.map(\.label)
 
-        // Accumulate assets/debts per (group, bucket). Group key "" = whole row
-        // (groupBy Interval).
-        struct Cell { var assets = 0; var debts = 0 }
-        var cells: [String: [Int: Cell]] = [:]   // groupKey -> bucketIdx -> sums
+        // Accumulate assets/debts per (row, bucket). Row key "" = whole
+        // dataset (groupBy Interval).
+        var cells: [String: [Int: Cell]] = [:]   // rowKey -> bucketIdx -> sums
         for tx in pool {
             let key = bucketKey(forYMD: tx.date, interval: config.interval,
                                 firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
@@ -125,89 +172,241 @@ enum CustomReportEngine {
             // off-budget txs (even categorized ones) to "Off budget", then
             // uncategorized transfers to "Transfers", the rest to
             // "Uncategorized". Group mode folds all three into one group.
+            // Payee/Account have no synthetic rows: a tx with no payee
+            // matches nothing (upstream `payee === item.id`).
             let category = tx.categoryId.flatMap { categoriesById[$0] }
             let offBudget = reportContext.offBudgetAccountIds.contains(tx.accountId)
-            let groupKey: String
+            let rowKey: String
             switch config.groupBy {
-            case "Category":
-                if let category, !offBudget { groupKey = category.id }
-                else if offBudget { groupKey = Synthetic.offBudget }
-                else if tx.transferAcct != nil { groupKey = Synthetic.transfer }
-                else { groupKey = Synthetic.uncategorized }
+            case "Category", "CategoryGroup":
+                if let category, !offBudget { rowKey = category.id }
+                else if offBudget { rowKey = Synthetic.offBudget }
+                else if tx.transferAcct != nil { rowKey = Synthetic.transfer }
+                else { rowKey = Synthetic.uncategorized }
             case "Group":
-                if let category, !offBudget { groupKey = category.groupId }
-                else { groupKey = Synthetic.uncategorized }
-            default: groupKey = ""   // Interval
+                if let category, !offBudget { rowKey = category.groupId }
+                else { rowKey = Synthetic.uncategorized }
+            case "Payee":
+                guard let payee = tx.payeeId else { continue }
+                rowKey = payee
+            case "Account":
+                rowKey = tx.accountId
+            default: rowKey = ""   // Interval
             }
-            var cell = cells[groupKey, default: [:]][idx, default: Cell()]
-            if tx.amount > 0 { cell.assets += tx.amount } else { cell.debts += tx.amount }
-            cells[groupKey, default: [:]][idx] = cell
+            cells[rowKey, default: [:]][idx, default: Cell()].add(tx.amount)
         }
 
-        func value(_ cell: Cell) -> Double {
-            switch config.balanceType {
-            case "Payment": return Double(-cell.debts) / 100    // |debts|
-            case "Deposit": return Double(cell.assets) / 100
-            default:        return Double(cell.assets + cell.debts) / 100  // Net, signed
-            }
+        let value = { (cell: Cell) in metric(cell, balanceType: config.balanceType) }
+        func bucketCells(_ rowKey: String) -> [Cell] {
+            (0..<buckets.count).map { cells[rowKey]?[$0] ?? Cell() }
         }
+        let signed = ["Net", "Budgeted"].contains(config.balanceType)
 
         // groupBy Interval → one row per bucket (web renders intervalData here).
         if config.groupBy == "Interval" {
-            let row = cells[""] ?? [:]
-            let values = labels.indices.map { row[$0].map(value) ?? 0 }
-            if config.graphType == "TableGraph" {
+            var values = bucketCells("").map(value)
+            if config.trimIntervals {
+                let range = trimmedRange([values])
+                labels = Array(labels[range])
+                values = Array(values[range])
+            }
+            switch config.graphType {
+            case "TableGraph":
                 data.kind = .table(zip(labels, values).map { .init(name: $0, totalUnits: $1) })
-            } else {
+            case "AreaGraph":
+                data.kind = .area(zip(labels, values).map { .init(label: $0, valueUnits: $1) })
+            default:
                 data.kind = .bars(zip(labels, values).map { .init(label: $0, valueUnits: $1) },
-                                  signed: config.balanceType == "Net")
+                                  signed: signed)
             }
             return data
         }
 
-        // Named groups in budget order. Upstream (ReportOptions.categoryLists)
+        // Named rows in store order. Upstream (ReportOptions.categoryLists)
         // always appends the synthetic rows; when their txs are filtered out
         // they total zero and fall to the showEmpty filter like any other row.
-        let orderedGroups: [(key: String, name: String)]
-        if config.groupBy == "Category" {
-            orderedGroups = reportContext.categories.map { ($0.id, $0.name) } + [
+        let orderedRows: [(key: String, name: String)]
+        switch config.groupBy {
+        case "Group":
+            orderedRows = reportContext.groups.map { ($0.id, $0.name) }
+                + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
+        case "Payee":
+            // Transfer payees carry no name of their own; upstream's v_payees
+            // shows the linked account.
+            let accountNames = Dictionary(reportContext.accounts.map { ($0.id, $0.name) },
+                                          uniquingKeysWith: { first, _ in first })
+            orderedRows = reportContext.payees.map { payee in
+                (payee.id, payee.transferAccountId.flatMap { accountNames[$0] } ?? payee.name)
+            }
+        case "Account":
+            orderedRows = reportContext.accounts.map { ($0.id, $0.name) }
+        default:   // Category, CategoryGroup
+            orderedRows = reportContext.categories.map { ($0.id, $0.name) } + [
                 (Synthetic.uncategorized, "Uncategorized"),
                 (Synthetic.offBudget, "Off budget"),
                 (Synthetic.transfer, "Transfers"),
             ]
-        } else {
-            orderedGroups = reportContext.groups.map { ($0.id, $0.name) }
-                + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
         }
 
-        struct GroupTotal { let key: String; let name: String; let total: Double; let perBucket: [Double] }
-        var totals: [GroupTotal] = orderedGroups.map { group in
-            let row = cells[group.key] ?? [:]
-            let perBucket = (0..<buckets.count).map { row[$0].map(value) ?? 0 }
-            return GroupTotal(key: group.key, name: group.name,
-                              total: perBucket.reduce(0, +), perBucket: perBucket)
+        var rows: [Row] = orderedRows.map { row in
+            let perBucket = bucketCells(row.key)
+            let cell = perBucket.reduce(Cell(), +)
+            return Row(key: row.key, name: row.name, cell: cell,
+                       perBucket: perBucket.map(value), total: value(cell))
         }
+        // Upstream filterEmptyRows: Net/Budgeted keep any row with activity;
+        // the rest keep rows whose metric is non-zero. For Net Payment /
+        // Net Deposit that is the row's whole-range net, so a row that is
+        // negative in one month but positive overall hides under Net Payment.
         if !config.showEmpty {
-            totals = totals.filter { $0.total != 0 || $0.perBucket.contains { $0 != 0 } }
+            rows = rows.filter { signed ? ($0.cell.assets != 0 || $0.cell.debts != 0) : $0.total != 0 }
         }
-        switch config.sortBy {
-        case "asc":  totals.sort { abs($0.total) < abs($1.total) }
-        case "name": totals.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
-        case "budget": break                       // keep budget order
-        default:     totals.sort { abs($0.total) > abs($1.total) }  // desc
+        // Upstream trimIntervals.ts: span from the first to the last interval
+        // where any surviving row, or the overall total, is non-zero.
+        if config.trimIntervals {
+            let overall = (0..<buckets.count).map { i in
+                value(cells.values.reduce(Cell()) { $0 + ($1[i] ?? Cell()) })
+            }
+            let range = trimmedRange(rows.map(\.perBucket) + [overall])
+            labels = Array(labels[range])
+            for i in rows.indices { rows[i].perBucket = Array(rows[i].perBucket[range]) }
         }
+        rows = sorted(rows, by: config.sortBy, total: \.total, name: \.name)
 
-        if config.graphType == "TableGraph" {
-            data.kind = .table(totals.map { .init(name: $0.name, totalUnits: $0.total) })
-        } else if config.mode == "time" {
-            data.kind = .stacked(.init(intervalLabels: labels,
-                                       seriesNames: totals.map(\.name),
-                                       values: totals.map(\.perBucket)))
-        } else {
-            data.kind = .bars(totals.map { .init(label: $0.name, valueUnits: $0.total) },
-                              signed: config.balanceType == "Net")
+        switch config.graphType {
+        case "TableGraph":
+            data.kind = .table(rows.map { .init(name: $0.name, totalUnits: $0.total) })
+        case "StackedBarGraph":
+            data.kind = .stacked(series(rows, labels: labels))
+        case "LineGraph":
+            let s = series(rows, labels: labels)
+            data.kind = .lines(s, trends: config.showTrendLines ? s.values.compactMap(trend) : [])
+        case "DonutGraph" where config.groupBy == "CategoryGroup":
+            data.kind = twoRingDonut(rows, context: reportContext,
+                                     categoriesById: categoriesById, sortBy: config.sortBy)
+        case "DonutGraph":
+            // A wedge can't have a negative angle; upstream disables Net here,
+            // so every allowed metric is already non-negative.
+            data.kind = .donut(slices: rows.filter { $0.total > 0 }
+                                   .map { .init(label: $0.name, valueUnits: $0.total, group: nil) },
+                               groups: [])
+        default:
+            data.kind = .bars(rows.map { .init(label: $0.name, valueUnits: $0.total) }, signed: signed)
         }
         return data
+    }
+
+    // MARK: - Metric
+
+    /// Upstream balanceTypeMap: Payment = |debts|, Deposit = assets,
+    /// Net Payment = |net| when negative, Net Deposit = net when positive,
+    /// Net and Budgeted = signed net (totalBudgeted mirrors totalTotals; only
+    /// the dataset differs).
+    private static func metric(_ cell: Cell, balanceType: String) -> Double {
+        let net = cell.assets + cell.debts
+        switch balanceType {
+        case "Payment":     return Double(-cell.debts) / 100
+        case "Deposit":     return Double(cell.assets) / 100
+        case "Net Payment": return net < 0 ? Double(-net) / 100 : 0
+        case "Net Deposit": return net > 0 ? Double(net) / 100 : 0
+        default:            return Double(net) / 100
+        }
+    }
+
+    /// Upstream sortData.ts sorts by the signed metric (its debts reversal is
+    /// already baked in because Payment is stored positive here).
+    private static func sorted<T>(
+        _ items: [T], by sortBy: String,
+        total: KeyPath<T, Double>, name: KeyPath<T, String>
+    ) -> [T] {
+        switch sortBy {
+        case "asc":  return items.sorted { $0[keyPath: total] < $1[keyPath: total] }
+        case "name": return items.sorted {
+            $0[keyPath: name].localizedCaseInsensitiveCompare($1[keyPath: name]) == .orderedAscending
+        }
+        case "budget": return items                 // keep store order
+        default:     return items.sorted { $0[keyPath: total] > $1[keyPath: total] }  // desc
+        }
+    }
+
+    private static func series(_ rows: [Row], labels: [String]) -> CustomReportData.Stacked {
+        .init(intervalLabels: labels, seriesNames: rows.map(\.name), values: rows.map(\.perBucket))
+    }
+
+    /// First…last interval where any series is non-zero; empty when none is.
+    private static func trimmedRange(_ series: [[Double]]) -> Range<Int> {
+        let count = series.first?.count ?? 0
+        let nonEmpty = (0..<count).map { i in series.contains { $0[i] != 0 } }
+        guard let first = nonEmpty.firstIndex(of: true),
+              let last = nonEmpty.lastIndex(of: true) else { return 0..<0 }
+        return first..<(last + 1)
+    }
+
+    /// Least-squares line through the series (upstream computeTrendLines.ts)
+    /// over x = 0…n-1. Needs two points.
+    static func trend(_ ys: [Double]) -> CustomReportData.Trend? {
+        guard ys.count >= 2 else { return nil }
+        let n = Double(ys.count)
+        let sumX = n * (n - 1) / 2
+        let sumX2 = (n - 1) * n * (2 * n - 1) / 6
+        let sumY = ys.reduce(0, +)
+        let sumXY = ys.enumerated().reduce(0.0) { $0 + Double($1.offset) * $1.element }
+        let slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
+        let intercept = (sumY - slope * sumX) / n
+        return .init(startUnits: intercept, endUnits: intercept + slope * (n - 1))
+    }
+
+    // MARK: - Budgeted dataset
+
+    /// Upstream budgetDataQuery.fetchBudgetData: one row per month in range
+    /// per non-income category with a non-zero budget, keyed to the month.
+    /// Emitted as synthetic transactions so the same bucketing and row
+    /// filters apply.
+    private static func budgetRows(_ context: ReportContext, startYMD: Int, endYMD: Int) -> [Transaction] {
+        let income = Set(context.categories.filter(\.isIncome).map(\.id))
+        return context.budgetEntries.compactMap { entry in
+            guard entry.amountCents != 0, !income.contains(entry.categoryId),
+                  (startYMD / 100...endYMD / 100).contains(entry.month) else { return nil }
+            // ponytail: cells sit on the 1st, so Daily/Weekly intervals show a
+            // month's budget on its first day where upstream shows nothing.
+            return Transaction(
+                id: "\(entry.month)-\(entry.categoryId)", accountId: "",
+                date: entry.month * 100 + 1, amount: entry.amountCents,
+                payeeId: nil, payeeName: nil, categoryId: entry.categoryId, categoryName: nil,
+                notes: nil, cleared: true, reconciled: false, transferId: nil,
+                isParent: false, parentId: nil, tombstone: false,
+                sortOrder: nil, importedPayee: nil)
+        }
+    }
+
+    // MARK: - Two-ring donut (groupBy CategoryGroup)
+
+    /// Upstream grouped-spreadsheet.ts + DonutGraph.tsx adjustedGroupData:
+    /// the inner ring is the category groups in store order (the synthetic
+    /// rows form "Uncategorized & Off budget"), each group's value being the
+    /// sum of its visible categories so the rings line up; zero groups drop
+    /// out, and groups and their categories sort by the same rule.
+    private static func twoRingDonut(
+        _ rows: [Row], context: ReportContext,
+        categoriesById: [String: Category], sortBy: String
+    ) -> CustomReportData.Kind {
+        struct Group { let name: String; let total: Double; let members: [Row] }
+        let order = context.groups.map { ($0.id, $0.name) }
+            + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
+        var groups: [Group] = order.compactMap { entry -> Group? in
+            let (id, name) = entry
+            let members = sorted(
+                rows.filter { $0.total > 0 && (categoriesById[$0.key]?.groupId ?? Synthetic.uncategorized) == id },
+                by: sortBy, total: \.total, name: \.name)
+            guard !members.isEmpty else { return nil }
+            return Group(name: name, total: members.map(\.total).reduce(0, +), members: members)
+        }
+        groups = sorted(groups, by: sortBy, total: \.total, name: \.name)
+        return .donut(
+            slices: groups.enumerated().flatMap { gi, group in
+                group.members.map { .init(label: $0.name, valueUnits: $0.total, group: gi) }
+            },
+            groups: groups.map { .init(label: $0.name, valueUnits: $0.total) })
     }
 
     // MARK: - Interval bucketing

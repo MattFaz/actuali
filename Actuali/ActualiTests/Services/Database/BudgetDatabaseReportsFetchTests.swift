@@ -152,21 +152,24 @@ struct BudgetDatabaseReportsFetchTests {
                 ALTER TABLE custom_reports ADD COLUMN date_static INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN include_current INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN sort_by TEXT DEFAULT 'desc';
+                ALTER TABLE custom_reports ADD COLUMN show_trend_lines INTEGER DEFAULT 0;
+                ALTER TABLE custom_reports ADD COLUMN trim_intervals INTEGER DEFAULT 0;
 
                 INSERT INTO custom_reports
                     (id, name, mode, group_by, balance_type, interval, graph_type,
                      date_range, date_static, start_date, end_date, include_current,
                      show_empty, show_offbudget, show_hidden, show_uncategorized,
-                     sort_by, conditions, conditions_op, tombstone)
+                     sort_by, show_trend_lines, trim_intervals,
+                     conditions, conditions_op, tombstone)
                 VALUES
                     ('r1', 'Category Spending', 'total', 'Category', 'Payment', 'Monthly',
                      'BarGraph', 'All time', 0, '2025-08-30', '2026-04-26', 1,
-                     0, 0, 0, 0, 'name',
+                     0, 0, 0, 0, 'name', 1, 1,
                      '[{"field":"transfer","op":"is","value":false,"type":"boolean"}]',
                      'and', 0),
                     ('r2', 'Deleted', 'total', 'Category', 'Payment', 'Monthly',
                      'BarGraph', 'All time', 0, NULL, NULL, 1,
-                     0, 0, 0, 0, 'desc', NULL, 'and', 1);
+                     0, 0, 0, 0, 'desc', 0, 0, NULL, 'and', 1);
             """)
         }
 
@@ -182,6 +185,8 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(r1.dateStatic == false)
         #expect(r1.includeCurrent == true)
         #expect(r1.sortBy == "name")
+        #expect(r1.showTrendLines == true)
+        #expect(r1.trimIntervals == true)
         #expect(r1.startDate == "2025-08-30")
         #expect(r1.endDate == "2026-04-26")
         #expect(r1.conditions?.first?.field == "transfer")
@@ -216,6 +221,8 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(r1.dateStatic == false)
         #expect(r1.includeCurrent == false)
         #expect(r1.sortBy == "desc")
+        #expect(r1.showTrendLines == false)
+        #expect(r1.trimIntervals == false)
         #expect(r1.conditions == nil)
         #expect(r1.conditionsOp == "or")
     }
