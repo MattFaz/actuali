@@ -2179,10 +2179,14 @@ final class BudgetDatabase: Sendable {
             let rows = try Row.fetchAll(db, sql: """
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
-                    t.description, t.notes, t.date, t.imported_description,
+                    t.notes, t.date, t.imported_description,
                     t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
+                    -- Merged payees keep their old id on the row; Actual's
+                    -- transaction view resolves it through payee_mapping, so
+                    -- reports group and filter by the surviving payee.
+                    COALESCE(pm.targetId, t.description) AS payee_id,
                     COALESCE(pa.name, p.name) as payee_name,
                     p.transfer_acct as transfer_acct,
                     c.name as category_name
@@ -2212,7 +2216,7 @@ final class BudgetDatabase: Sendable {
                     accountId: row["acct"] ?? "",
                     date: row["date"] ?? 0,
                     amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
+                    payeeId: row["payee_id"],
                     payeeName: row["payee_name"],
                     categoryId: row["category"],
                     categoryName: row["category_name"],
@@ -2327,7 +2331,7 @@ final class BudgetDatabase: Sendable {
                 "graph_type", "date_range", "date_static", "start_date",
                 "end_date", "include_current", "show_empty", "show_offbudget",
                 "show_hidden", "show_uncategorized", "sort_by", "conditions",
-                "conditions_op"
+                "conditions_op", "show_trend_lines", "trim_intervals"
             ]
             let select = wanted
                 .map { existing.contains($0) ? $0 : "NULL AS \($0)" }
@@ -2361,6 +2365,8 @@ final class BudgetDatabase: Sendable {
                     showHidden: (row["show_hidden"] as Int? ?? 0) != 0,
                     showUncategorized: (row["show_uncategorized"] as Int? ?? 0) != 0,
                     sortBy: row["sort_by"] ?? "desc",
+                    showTrendLines: (row["show_trend_lines"] as Int? ?? 0) != 0,
+                    trimIntervals: (row["trim_intervals"] as Int? ?? 0) != 0,
                     conditions: conditions,
                     conditionsOp: row["conditions_op"] ?? "and"
                 )

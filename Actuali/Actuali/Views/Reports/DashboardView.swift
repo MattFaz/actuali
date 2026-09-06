@@ -103,6 +103,9 @@ struct DashboardView: View {
             switch $0 {
             case .budgetAnalysis, .sankey, .balanceForecast: return true
             case .spending(_, let meta): return meta?.mode == .budget
+            // Budgeted custom reports read budget cells instead of transactions.
+            case .customReport(_, let meta):
+                return (meta?.id).flatMap { customReportConfigs[$0] }?.balanceType == "Budgeted"
             default: return false
             }
         }
@@ -204,7 +207,10 @@ struct DashboardView: View {
                         categories: budgetStore.categoryGroups.flatMap(\.categories),
                         groups: budgetStore.categoryGroups,
                         offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
-                        firstDayOfWeekIdx: firstDayOfWeekIdx
+                        firstDayOfWeekIdx: firstDayOfWeekIdx,
+                        payees: budgetStore.payees,
+                        accounts: budgetStore.accounts,
+                        budgetEntries: reportBudgets.entries
                     ),
                     filterContext: conditionsContext,
                     today: Date()
