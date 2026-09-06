@@ -210,7 +210,7 @@ private struct PendingImportRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(item.payee ?? "Unknown Payee")
+                Text(item.payee ?? String(localized: "Unknown Payee"))
                     .font(.headline)
                 Spacer()
                 if let amount = item.amount {

@@ -134,7 +134,7 @@ struct CategoryBalanceWidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(String(format: String(localized: "Updated %@ ago"), entry.date.formatted(.relative(presentation: .named))))
+            Text(String(format: String(localized: "Updated %@"), entry.date.formatted(.relative(presentation: .named))))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

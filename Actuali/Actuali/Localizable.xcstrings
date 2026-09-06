@@ -15780,6 +15780,28 @@
         }
       }
     },
+    "Unknown Payee": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Unknown Payee" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Bénéficiaire inconnu" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Beneficiario desconocido" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Beneficiário desconhecido" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Unbekannter Zahlungsempfänger" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Beneficiario sconosciuto" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Onbekende begunstigde" } }
+      }
+    },
+    "All Time": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "All Time" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Depuis le début" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Todo el tiempo" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Todo o período" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Gesamter Zeitraum" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Tutto il periodo" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Alle perioden" } }
+      }
+    },
     "This transaction is reconciled. Unlock it to make changes?": {
       "comment": "Confirmation dialog before unlocking a reconciled transaction",
       "localizations": {

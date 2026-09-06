@@ -45,14 +45,14 @@
         "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Valor disponível restante para as categorias escolhidas." } }
       }
     },
-    "Updated %@ ago" : {
+    "Updated %@" : {
       "localizations" : {
-        "de" : { "stringUnit" : { "state" : "translated", "value" : "Vor %@ aktualisiert" } },
-        "en" : { "stringUnit" : { "state" : "translated", "value" : "Updated %@ ago" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktualisiert %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Updated %@" } },
         "es" : { "stringUnit" : { "state" : "translated", "value" : "Actualizado %@" } },
         "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mis à jour %@" } },
         "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiornato %@" } },
-        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bijgewerkt %@ geleden" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bijgewerkt %@" } },
         "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Atualizado %@" } }
       }
     },

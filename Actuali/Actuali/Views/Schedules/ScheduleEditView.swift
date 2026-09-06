@@ -156,7 +156,7 @@ struct ScheduleEditView: View {
                         ForEach(linkedTransactions) { transaction in
                             HStack {
                                 VStack(alignment: .leading) {
-                                    Text(transaction.payeeName ?? "No payee")
+                                    Text(transaction.payeeName ?? String(localized: "No payee"))
                                     Text(transaction.dateFormatted)
                                         .font(.caption)
                                         .foregroundStyle(.secondary)

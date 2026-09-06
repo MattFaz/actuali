@@ -40,8 +40,11 @@ final class AccountSectionCollapseUITests: XCTestCase {
                        "collapsing On Budget should hide its accounts")
         XCTAssertTrue(vanguard.exists,
                       "collapsing On Budget should leave Off Budget alone")
-        XCTAssertTrue(collapsedHeader.label.contains("collapsed"),
-                          "the collapsed header should still carry the section total")
+        XCTAssertGreaterThanOrEqual(
+            collapsedHeader.label.components(separatedBy: ", ").count,
+            3,
+            "the collapsed header should still carry the section total"
+        )
 
         collapsedHeader.tap()
         XCTAssertTrue(chase.waitForExistence(timeout: 10),

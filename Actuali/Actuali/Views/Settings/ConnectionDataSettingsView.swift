@@ -94,7 +94,7 @@ private struct ServerConnectionSettingsSection: View {
             .keyboardType(.URL)
             .accessibilityHint(String(localized: "Example: https://actual.example.com"))
 
-            TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
+            TextField(String(localized: "Fallback server URL (optional)"), text: fallbackServerURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)

@@ -10,6 +10,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 CATALOG_PATH = ROOT / "Actuali/Actuali/Localizable.xcstrings"
+WIDGET_CATALOG_PATH = ROOT / "Actuali/ActualiWidgets/Localizable.xcstrings"
 PROJECT_PATH = ROOT / "Actuali/Actuali.xcodeproj/project.pbxproj"
 SOURCE_ROOTS = [ROOT / "Actuali/Actuali", ROOT / "Actuali/ActualiWidgets"]
 SOURCE_LANGUAGE = "en"
@@ -82,6 +83,8 @@ def main() -> int:
     try:
         catalog_data = json.loads(CATALOG_PATH.read_text(encoding="utf-8"))
         catalog = catalog_data["strings"]
+        widget_catalog_data = json.loads(WIDGET_CATALOG_PATH.read_text(encoding="utf-8"))
+        widget_catalog = widget_catalog_data["strings"]
     except (OSError, json.JSONDecodeError, KeyError) as error:
         print(f"catalog: {error}", file=sys.stderr)
         return 1
@@ -93,19 +96,23 @@ def main() -> int:
         return 1
 
     used: set[str] = set()
+    widget_used: set[str] = set()
     for source_root in SOURCE_ROOTS:
         for source in source_root.rglob("*.swift"):
             source_text = "\n".join(
                 line for line in source.read_text(encoding="utf-8").splitlines()
                 if not line.lstrip().startswith(("//", "/*", "*", "*/"))
             )
-            used.update(swift_string_value(key) for key in KEY_PATTERN.findall(source_text))
             if source_root.name == "ActualiWidgets":
-                used.update(
+                widget_used.update(
+                    swift_string_value(key) for key in KEY_PATTERN.findall(source_text)
+                )
+                widget_used.update(
                     swift_string_value(key)
                     for key in WIDGET_KEY_PATTERN.findall(source_text)
                 )
             else:
+                used.update(swift_string_value(key) for key in KEY_PATTERN.findall(source_text))
                 for match in SWIFTUI_LITERAL_PATTERN.finditer(source_text):
                     key = match.group(1)
                     static_text = INTERPOLATION_PATTERN.sub("", key)
@@ -114,6 +121,34 @@ def main() -> int:
                         used.add(swift_string_value(key))
 
     errors: list[str] = []
+    for target, target_catalog_data, target_catalog, target_used in [
+        ("widget", widget_catalog_data, widget_catalog, widget_used),
+    ]:
+        if target_catalog_data.get("sourceLanguage") != SOURCE_LANGUAGE:
+            errors.append(f"{target} catalog sourceLanguage is not {SOURCE_LANGUAGE!r}")
+        for key in sorted(target_used):
+            if INTERPOLATION_PATTERN.search(key):
+                if not interpolated_key_matches(key, target_catalog):
+                    errors.append(f"{target}: missing catalog key for interpolated: {key}")
+            elif key not in target_catalog:
+                errors.append(f"{target}: missing catalog key: {key}")
+        for key, entry in sorted(target_catalog.items()):
+            localizations = entry.get("localizations", {})
+            missing_locales = REQUIRED_LOCALES - set(localizations)
+            if missing_locales:
+                errors.append(f"{target} {key}: missing locales {', '.join(sorted(missing_locales))}")
+            source_values = localized_values(localizations.get("en", {})) or {(): key}
+            source_placeholders = {
+                path: tuple(placeholders(value)) for path, value in source_values.items()
+            }
+            for locale in REQUIRED_LOCALES:
+                locale_placeholders = {
+                    path: tuple(placeholders(value))
+                    for path, value in localized_values(localizations.get(locale, {})).items()
+                }
+                if locale_placeholders != source_placeholders:
+                    errors.append(f"{target} {key}: placeholder mismatch in {locale}")
+
     if catalog_data.get("sourceLanguage") != SOURCE_LANGUAGE:
         errors.append(
             f"catalog sourceLanguage is {catalog_data.get('sourceLanguage')!r}, "
@@ -212,7 +247,7 @@ def main() -> int:
         print("\n".join(f"- {error}" for error in errors))
         return 1
 
-    print(f"localization OK: {len(used)} source keys, {len(catalog)} catalog entries, {len(REQUIRED_LOCALES)} locales")
+    print(f"localization OK: {len(used) + len(widget_used)} source keys, {len(catalog) + len(widget_catalog)} catalog entries, {len(REQUIRED_LOCALES)} locales")
     return 0
 
 

@@ -28,7 +28,7 @@ struct CategoryTransactionsView: View {
     @State private var editingNote = false
 
     private var scopeTitle: String {
-        destination.month.map { MonthPicker.title(for: $0) } ?? "All Time"
+        destination.month.map { MonthPicker.title(for: $0) } ?? String(localized: "All Time")
     }
 
     private var filteredTransactions: [Transaction] {
