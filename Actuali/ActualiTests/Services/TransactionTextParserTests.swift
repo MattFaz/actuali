@@ -62,6 +62,50 @@ struct TransactionTextParserTests {
         #expect(TransactionTextParser.parseWithFallback("Paid INR 100 at Store").sourceCurrencyCode == "INR")
     }
 
+    @Test func preservesAdditionalExplicitIsoCurrencyCodes() {
+        #expect(TransactionTextParser.parseWithFallback("Paid CAD 100 at Store").sourceCurrencyCode == "CAD")
+        #expect(TransactionTextParser.parseWithFallback("Paid AUD 100 at Store").sourceCurrencyCode == "AUD")
+        #expect(TransactionTextParser.parseWithFallback("Paid JPY 100 at Store").sourceCurrencyCode == "JPY")
+        #expect(TransactionTextParser.parseWithFallback("Paid CHF 100 at Store").sourceCurrencyCode == "CHF")
+    }
+
+    @Test func normalizesLowercaseExplicitIsoCurrencyCode() {
+        #expect(TransactionTextParser.parseWithFallback("Paid cad 100 at Store").sourceCurrencyCode == "CAD")
+    }
+
+    @Test func doesNotTreatTitleCaseProseAsLeadingCurrencyCode() {
+        let parsed = TransactionTextParser.parseWithFallback("Try 100 at Store")
+        #expect(parsed.sourceCurrencyCode == nil)
+        #expect(parsed.amount == 100)
+        #expect(parsed.payee == "Store")
+        #expect(parsed.rawText == "Try 100 at Store")
+    }
+
+    @Test func acceptsUppercaseTurkishLiraInLeadingPosition() {
+        #expect(TransactionTextParser.parseWithFallback("TRY 100 at Store").sourceCurrencyCode == "TRY")
+    }
+
+    @Test func acceptsTurkishLiraInTrailingPosition() {
+        #expect(TransactionTextParser.parseWithFallback("100 TRY at Store").sourceCurrencyCode == "TRY")
+    }
+
+    @Test func acceptsLowercaseCurrencyCodeInTrailingPosition() {
+        #expect(TransactionTextParser.parseWithFallback("100 try at Store").sourceCurrencyCode == "TRY")
+    }
+
+    @Test func acceptsPunctuationAroundExplicitCurrencyCode() {
+        #expect(TransactionTextParser.parseWithFallback("Paid (CAD): 100 at Store").sourceCurrencyCode == "CAD")
+        #expect(TransactionTextParser.parseWithFallback("Paid 100, CAD. at Store").sourceCurrencyCode == "CAD")
+    }
+
+    @Test func rejectsUnknownCurrencyCode() {
+        #expect(TransactionTextParser.parseWithFallback("Paid XYZ 100 at Store").sourceCurrencyCode == nil)
+    }
+
+    @Test func doesNotTreatThreeLetterProseAsCurrency() {
+        #expect(TransactionTextParser.parseWithFallback("Paid the 100 at Store").sourceCurrencyCode == nil)
+    }
+
     @Test func toPendingImportPreservesOriginBudgetId() {
         let pending = TransactionTextParser.parseWithFallback("Paid $10 at Coffee")
             .toPendingImport(originBudgetId: "budget-a")

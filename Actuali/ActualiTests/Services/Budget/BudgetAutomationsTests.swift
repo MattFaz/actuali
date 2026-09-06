@@ -132,16 +132,16 @@ struct BudgetAutomationsTests {
         let expected: [String: (periodic: [String], copy: [String], average: [String])] = [
             "en_US": (
                 ["Budget $100 every 0 months", "Budget $100 every 1 month", "Budget $100 every 2 months"],
-                ["Budget the same amount as 0 months ago", "Budget the same amount as 1 month ago", "Budget the same amount as 2 months ago"],
-                ["Budget the average of the last 0 complete months", "Budget the average of the last 1 complete month", "Budget the average of the last 2 complete months"]),
+                ["Budget the same amount as 1 month ago", "Budget the same amount as 2 months ago"],
+                ["Budget the average of the last 1 complete month", "Budget the average of the last 2 complete months"]),
             "fr_FR": (
                 ["Budgéter $100 chaque 0 mois", "Budgéter $100 chaque 1 mois", "Budgéter $100 tous les 2 mois"],
-                ["Budgéter le même montant qu'il y a 0 mois", "Budgéter le même montant qu'il y a 1 mois", "Budgéter le même montant qu'il y a 2 mois"],
-                ["Budgéter la moyenne du dernier 0 mois complet", "Budgéter la moyenne du dernier 1 mois complet", "Budgéter la moyenne des 2 derniers mois complets"]),
+                ["Budgéter le même montant qu'il y a 1 mois", "Budgéter le même montant qu'il y a 2 mois"],
+                ["Budgéter la moyenne du dernier 1 mois complet", "Budgéter la moyenne des 2 derniers mois complets"]),
             "pt_BR": (
                 ["Orçar $100 a cada 0 mês", "Orçar $100 a cada 1 mês", "Orçar $100 a cada 2 meses"],
-                ["Orçar o mesmo valor de 0 mês atrás", "Orçar o mesmo valor de 1 mês atrás", "Orçar o mesmo valor de 2 meses atrás"],
-                ["Orçar a média do último 0 mês completo", "Orçar a média do último 1 mês completo", "Orçar a média dos últimos 2 meses completos"])
+                ["Orçar o mesmo valor de 1 mês atrás", "Orçar o mesmo valor de 2 meses atrás"],
+                ["Orçar a média do último 1 mês completo", "Orçar a média dos últimos 2 meses completos"])
         ]
 
         for localeIdentifier in ["en_US", "fr_FR", "pt_BR"] {
@@ -154,11 +154,13 @@ struct BudgetAutomationsTests {
             }
             for count in 0...2 {
                 let periodic = try render("#template 100 repeat every \(count) months starting 2024-01-01")
+                #expect(periodic == expected[localeIdentifier]!.periodic[count], "\(localeIdentifier) periodic \(count): \(periodic)")
+            }
+            for (index, count) in [1, 2].enumerated() {
                 let copy = try render("#template copy from \(count) months ago")
                 let average = try render("#template average \(count) months")
-                #expect(periodic == expected[localeIdentifier]!.periodic[count], "\(localeIdentifier) periodic \(count): \(periodic)")
-                #expect(copy == expected[localeIdentifier]!.copy[count], "\(localeIdentifier) copy \(count): \(copy)")
-                #expect(average == expected[localeIdentifier]!.average[count], "\(localeIdentifier) average \(count): \(average)")
+                #expect(copy == expected[localeIdentifier]!.copy[index], "\(localeIdentifier) copy \(count): \(copy)")
+                #expect(average == expected[localeIdentifier]!.average[index], "\(localeIdentifier) average \(count): \(average)")
             }
         }
 

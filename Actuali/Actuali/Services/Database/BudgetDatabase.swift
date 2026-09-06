@@ -2693,9 +2693,10 @@ final class BudgetDatabase: Sendable {
         return try dbQueue.read { db in
             guard let liveId = try String.fetchOne(db, sql: """
                 SELECT id FROM transactions
-                WHERE financial_id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                WHERE acct IS ? AND financial_id = ?
+                    AND (tombstone = 0 OR tombstone IS NULL)
                 LIMIT 1
-                """, arguments: [financialId]) else {
+                """, arguments: [transaction.accountId, financialId]) else {
                 return .absent
             }
             guard liveId == transaction.id else { return .duplicate }
@@ -2715,9 +2716,10 @@ final class BudgetDatabase: Sendable {
             if let financialId = transaction.financialId {
                 if let liveId = try String.fetchOne(db, sql: """
                     SELECT id FROM transactions
-                    WHERE financial_id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                    WHERE acct IS ? AND financial_id = ?
+                        AND (tombstone = 0 OR tombstone IS NULL)
                     LIMIT 1
-                    """, arguments: [financialId]) {
+                    """, arguments: [transaction.accountId, financialId]) {
                     guard liveId == transaction.id else { return [] }
                     let columns = Set(try String.fetchAll(db, sql: """
                         SELECT column FROM messages_crdt

@@ -298,6 +298,99 @@ struct SyncClientOfflineWriteTests {
         #expect(try database.deriveMerkleFromMessageLog().root.hash == firstMerkle)
     }
 
+    @Test func concurrentFinancialIdCreatesCommitOneRowAndOneMessageSet() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        var first = transaction(id: "tx-concurrent-financial-1")
+        first.financialId = "financial-concurrent"
+        var second = transaction(id: "tx-concurrent-financial-2")
+        second.financialId = first.financialId
+        let candidates = [first, second]
+
+        let outcomes = try await withThrowingTaskGroup(of: SyncClient.TransactionCreateResult.self) { group in
+            for candidate in candidates {
+                group.addTask {
+                    try await syncClient.createTransaction(candidate, applyRules: false)
+                }
+            }
+
+            var results: [SyncClient.TransactionCreateResult] = []
+            for try await result in group {
+                results.append(result)
+            }
+            return results
+        }
+
+        #expect(outcomes.count == 2)
+        #expect(outcomes.filter {
+            if case .duplicate = $0 { return true }
+            return false
+        }.count == 1)
+        let insertedIds = outcomes.compactMap { outcome in
+            if case let .inserted(id) = outcome { return id }
+            return nil
+        }
+        #expect(insertedIds.count == 1)
+        let insertedId = try #require(insertedIds.first)
+        let inserted = try #require(candidates.first { $0.id == insertedId })
+
+        let durableRows = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE acct = ? AND financial_id = ?
+                """, arguments: [inserted.accountId, inserted.financialId]) ?? 0
+        }
+        #expect(durableRows == 1)
+
+        let messageRows = try database.dbQueueForTesting.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT row, column FROM messages_crdt
+                WHERE dataset = 'transactions'
+                """)
+        }
+        #expect(Set(messageRows.map { $0["row"] as String }) == Set([inserted.id]))
+        #expect(Set(messageRows.map { $0["column"] as String }) == Set(inserted.syncableFields.keys))
+        #expect(messageRows.count == inserted.syncableFields.count)
+    }
+
+    @Test func legacyNullAccountFinancialIdLookupIsNullSafeAndAccountScoped() throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        try database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+                VALUES ('tx-legacy-null-account', NULL, 20260811, -1234, 'financial-null-account', 0)
+                """)
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+                VALUES ('tx-real-account', 'acct-1', 20260811, -1234, 'financial-null-account', 0)
+                """)
+        }
+
+        let nullAccountMatch = try database.dbQueueForTesting.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE acct IS NULL AND financial_id = ?
+                    AND (tombstone = 0 OR tombstone IS NULL)
+                LIMIT 1
+                """, arguments: ["financial-null-account"])
+        }
+        let realAccountMatch = try database.dbQueueForTesting.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE acct IS ? AND financial_id = ?
+                    AND (tombstone = 0 OR tombstone IS NULL)
+                LIMIT 1
+                """, arguments: ["acct-1", "financial-null-account"])
+        }
+
+        #expect(nullAccountMatch == "tx-legacy-null-account")
+        #expect(realAccountMatch == "tx-real-account")
+    }
+
     @Test func zeroMessageFinancialIdRetryRepairsThroughSyncClient() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

@@ -709,6 +709,15 @@ def _extract_parse_error_messages(tokens: list[tuple[str, str]]) -> set[str]:
             labeled = _labeled_argument(argument, "message")
             if labeled is not None:
                 found.update(_literal_leaves(labeled))
+                for nested_index, (nested_kind, nested_name) in enumerate(labeled[:-1]):
+                    if (
+                        nested_kind == "identifier"
+                        and nested_name == "localizedError"
+                        and labeled[nested_index + 1][1] == "("
+                    ):
+                        nested_arguments = _arguments(labeled, nested_index + 1)
+                        if nested_arguments:
+                            found.update(_literal_leaves(nested_arguments[0]))
     return found
 
 

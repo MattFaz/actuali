@@ -215,12 +215,12 @@ enum GoalTemplateParser {
         return template
     }
 
-    /// 'average' nonnegative ['months'] [modifiers]
+    /// 'average' positive ['months'] [modifiers]
     private static func parseAverage(_ s: inout Scanner) -> GoalTemplate? {
         s.skipWhitespace()
         guard s.matchLiteral("average", caseInsensitive: true) else { return nil }
         s.skipWhitespace()
-        guard let numMonths = s.number() else { return nil }
+        guard let numMonths = s.positive() else { return nil }
         s.skipWhitespace()
         _ = s.matchLiteral("months", caseInsensitive: true)
         let modifiers = s.modifiers()
@@ -231,12 +231,12 @@ enum GoalTemplateParser {
         return template
     }
 
-    /// 'copy from' nonnegative 'months ago' [limit]
+    /// 'copy from' positive 'months ago' [limit]
     private static func parseCopy(_ s: inout Scanner) -> GoalTemplate? {
         s.skipWhitespace()
         guard s.matchLiteral("copy from", caseInsensitive: true) else { return nil }
         s.skipWhitespace()
-        guard let lookBack = s.number() else { return nil }
+        guard let lookBack = s.positive() else { return nil }
         s.skipWhitespace()
         guard s.matchLiteral("months ago", caseInsensitive: true) else { return nil }
         let limit = s.limit()

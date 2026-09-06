@@ -192,10 +192,18 @@ struct GoalTemplateParserTests {
         #expect(adjusted.adjustmentType == .percent)
     }
 
+    @Test func rejectsZeroAverageMonths() {
+        #expect(throws: (any Error).self) { try parse("#template average 0") }
+    }
+
     @Test func parsesCopy() throws {
         let template = try parse("#template copy from 3 months ago")
         #expect(template.type == .copy)
         #expect(template.lookBack == 3)
+    }
+
+    @Test func rejectsZeroCopyLookBack() {
+        #expect(throws: (any Error).self) { try parse("#template copy from 0 months ago") }
     }
 
     // MARK: - Goal
@@ -214,15 +222,22 @@ struct GoalTemplateParserTests {
         #expect(throws: (any Error).self) { try GoalTemplateParser.parse("#goal") }
     }
 
-    @Test(arguments: ["en_US", "fr_FR"])
-    func localizesNonTemplateError(localeIdentifier: String) {
+    @Test(arguments: [
+        ("en_US", "Line is not a template"),
+        ("fr_FR", "Ligne non conforme à un modèle"),
+        ("es_ES", "La línea no es una plantilla"),
+        ("pt_BR", "A linha não é um modelo"),
+        ("de_DE", "Die Zeile ist keine Vorlage"),
+        ("it_IT", "La riga non è un modello"),
+        ("nl_NL", "De regel is geen sjabloon")
+    ])
+    func localizesNonTemplateError(localeIdentifier: String, expected: String) {
         let locale = Locale(identifier: localeIdentifier)
         do {
             _ = try GoalTemplateParser.parse("not a template", locale: locale, bundle: appBundle)
             Issue.record("Expected parsing to fail")
         } catch let error as GoalTemplateParser.ParseError {
-            #expect(error.message == String(
-                localized: "Line is not a template", bundle: appBundle, locale: locale))
+            #expect(error.message == expected)
         } catch {
             Issue.record("Unexpected error: \(error)")
         }
@@ -233,7 +248,7 @@ struct GoalTemplateParserTests {
             ("#goal", "Syntaxe #goal invalide"),
             ("#template-", "Priorité invalide"),
             ("#template nonsense", "Syntaxe de modèle invalide"),
-            ("not a template", "Line is not a template")
+            ("not a template", "Ligne non conforme à un modèle")
         ]
 
         for (line, expected) in cases {

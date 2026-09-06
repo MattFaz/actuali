@@ -396,6 +396,38 @@ struct BudgetStoreBankSyncTests {
         #expect(opening[0]["date"] == Self.expectedDay(5))
     }
 
+    @Test func conflictingProviderIdsAreReportedAndNotClaimedAsUpToDate() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-34.45", "payee": "Blue Bottle"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1) // the opening balance, but no conflict
+        #expect(result.updated == 0)
+        #expect(result.accountsSynced == 1)
+        #expect(result.problems == [
+            "Checking: Skipped 1 transaction because the bank returned conflicting details for the same transaction."
+        ])
+        #expect(result.summary(locale: Locale(identifier: "en_US"), bundle: appBundle) == "Imported 1 transaction.\n\nChecking: Skipped 1 transaction because the bank returned conflicting details for the same transaction.")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 1,
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "Checking: Skipped 1 transaction because the bank returned conflicting details for the same transaction.")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 2,
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "Checking : 2 transactions ignorées, car la banque a renvoyé des détails contradictoires pour la même transaction.")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 2,
+            locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == "Checking: 2 transações ignoradas porque o banco retornou detalhes conflitantes para a mesma transação.")
+        #expect(try rows(path: url, where: "financial_id = 'sf-conflict'").isEmpty)
+    }
+
     @Test func syncingAgainImportsNothingTwice() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }

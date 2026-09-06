@@ -49,6 +49,25 @@ class SourceExtractionTests(unittest.TestCase):
             {"Unknown institution", "Income", "Schedule", "Unknown account", "Invalid template syntax"},
         )
 
+    def test_extracts_localized_error_wrapper_literals_only_in_parse_errors(self):
+        source = '''
+        throw ParseError(message: localizedError("Wrapped parser error"))
+        let unrelated = localizedError("Not a parser key")
+        '''
+        self.assertEqual(
+            VALIDATOR.extract_source_keys(source),
+            {"Wrapped parser error"},
+        )
+
+    def test_validates_localized_error_wrapper_literals(self):
+        source = 'throw ParseError(message: localizedError("Missing wrapped error"))'
+        self.assertEqual(
+            VALIDATOR.validate_source_keys(
+                VALIDATOR.extract_source_keys(source), {"Present": {}}
+            ),
+            ["catalog: missing catalog key: Missing wrapped error"],
+        )
+
     def test_extracts_ns_localized_description_and_accessibility_copy(self):
         source = r'''
         // [NSLocalizedDescriptionKey: "Comment"]

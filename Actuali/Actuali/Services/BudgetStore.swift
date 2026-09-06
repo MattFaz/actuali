@@ -2880,6 +2880,19 @@ final class BudgetStore: ObservableObject {
         /// A run can succeed for some accounts and report problems for others.
         var problems: [String] = []
 
+        static func conflictProblem(
+            accountName: String,
+            count: Int,
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String {
+            ReportStrings.localized(
+                "\(accountName): Skipped \(count) transactions because the bank returned conflicting details for the same transaction.",
+                locale: locale,
+                bundle: bundle
+            )
+        }
+
         /// What to show when the run finishes. Problems come last so the
         /// counts above them still read as what did work.
         var summary: String {
@@ -3262,6 +3275,14 @@ final class BudgetStore: ObservableObject {
                 result.added += outcome.added
                 result.updated += outcome.updated
                 result.importedTransactions += outcome.inserted
+                if outcome.rejectedConflicts > 0 {
+                    result.problems.append(
+                        BankSyncResult.conflictProblem(
+                            accountName: target.name,
+                            count: outcome.rejectedConflicts
+                        )
+                    )
+                }
                 result.accountsSynced += 1
                 statuses.append((target.id, syncedAt, download.status))
             } catch {
@@ -3286,7 +3307,7 @@ final class BudgetStore: ObservableObject {
         into target: BankSyncAccount,
         existingOldestDay: Int?,
         prepared: SyncClient.PreparedRules
-    ) async throws -> (added: Int, updated: Int, inserted: [Transaction]) {
+    ) async throws -> (added: Int, updated: Int, inserted: [Transaction], rejectedConflicts: Int) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
 
         // The provider already dropped anything older than this account's own
@@ -3296,7 +3317,7 @@ final class BudgetStore: ObservableObject {
 
         var added = 0
         guard let earliest = candidates.map(\.date).min(),
-              let latest = candidates.map(\.date).max() else { return (added, 0, []) }
+              let latest = candidates.map(\.date).max() else { return (added, 0, [], 0) }
 
         // Resolve payees by name without creating any: the payee pass compares
         // ids, and a name the budget doesn't have yet can't match anything.
@@ -3408,7 +3429,7 @@ final class BudgetStore: ObservableObject {
             )
         }
 
-        return (added, plan.updates.count, inserted)
+        return (added, plan.updates.count, inserted, plan.rejectedConflicts)
     }
 
     /// Keep a backfill balance-neutral. Without this the account drifts from

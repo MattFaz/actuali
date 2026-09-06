@@ -165,6 +165,30 @@ struct BudgetStoreWalletImportTests {
         #expect(try transactionRows(path: url).count == 3)
     }
 
+    @Test func sameFinancialIdCanBeImportedIntoDifferentAccounts() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        let first = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-1")
+        let second = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-2")
+        let sameAccountRetry = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-2")
+
+        #expect(first == BudgetStore.WalletImportResult(imported: 1, skippedDuplicates: 0))
+        #expect(second == BudgetStore.WalletImportResult(imported: 1, skippedDuplicates: 0))
+        #expect(sameAccountRetry == BudgetStore.WalletImportResult(imported: 0, skippedDuplicates: 1))
+        #expect(try transactionRows(path: url).filter { row in
+            let financialId: String? = row["financial_id"]
+            return financialId == "shared-wallet-id"
+        }.map { row in
+            let accountId: String? = row["acct"]
+            return accountId
+        }.compactMap { $0 }.sorted() == ["acct-1", "acct-2"])
+    }
+
     @Test func duplicateWithinBatchImportsOnce() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }

@@ -135,27 +135,42 @@ enum TransactionTextParser {
 
     private static func normalizeCurrencyCode(_ value: String?) -> String? {
         guard let value else { return nil }
-        switch value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
-        case "USD": return "USD"
-        case "EUR": return "EUR"
-        case "GBP": return "GBP"
-        case "INR": return "INR"
-        default: return nil
+        let code = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard code.count == 3,
+              code.unicodeScalars.allSatisfy({ $0.value >= 65 && $0.value <= 90 }),
+              Locale.Currency.isoCurrencies.contains(where: { $0.identifier == code }) else {
+            return nil
         }
+        return code
     }
 
     /// Returns only currencies identified without relying on an ambiguous symbol.
     private static func extractCurrencyCode(from text: String) -> String? {
-        let codePattern = #"(?<![A-Za-z])(?:USD|EUR|GBP|INR)(?![A-Za-z])"#
-        if let regex = try? NSRegularExpression(pattern: codePattern, options: .caseInsensitive),
+        let leadingPattern = #"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(?=\d)"#
+        if let regex = try? NSRegularExpression(pattern: leadingPattern),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range, in: text) {
-            return normalizeCurrencyCode(String(text[range]).uppercased())
+           let range = Range(match.range(at: 1), in: text) {
+            let candidate = String(text[range])
+            if let code = normalizeCurrencyCode(candidate), !isAmbiguousTitleCaseCode(candidate) {
+                return code
+            }
+        }
+
+        let trailingPattern = #"\d[\d,]*(?:\.\d{1,2})?\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#
+        if let regex = try? NSRegularExpression(pattern: trailingPattern),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range(at: 1), in: text) {
+            return normalizeCurrencyCode(String(text[range]))
         }
         if text.contains("€") { return "EUR" }
         if text.contains("£") { return "GBP" }
         if text.contains("₹") { return "INR" }
         return nil
+    }
+
+    private static func isAmbiguousTitleCaseCode(_ value: String) -> Bool {
+        guard let first = value.first, first.isUppercase else { return false }
+        return value.dropFirst().allSatisfy { $0.isLowercase }
     }
 
     /// Extract currency amount. Requires an explicit currency marker (leading or trailing)
