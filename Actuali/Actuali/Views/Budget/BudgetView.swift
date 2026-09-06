@@ -167,21 +167,17 @@ struct BudgetView: View {
         budgetStore.budgetDisplayStyle == .compact
     }
 
-    @ViewBuilder
-    private var uncategorizedBackground: some View {
+    /// Shape for the "N uncategorized" link's background, matching the shape
+    /// used elsewhere for each display style. The compact style keeps sharp
+    /// corners since its rows sit edge-to-edge with no rounding.
+    private var uncategorizedShape: AnyShape {
         switch budgetStore.budgetDisplayStyle {
-        case .clean:
-            RoundedRectangle(cornerRadius: 20)
-                .fill(Color(.secondarySystemGroupedBackground))
-        case .detailed:
-            Capsule()
-                .fill(Color(.secondarySystemGroupedBackground))
-        case .compact:
-            Rectangle()
-                .fill(Color(.secondarySystemGroupedBackground))
+        case .clean: AnyShape(RoundedRectangle(cornerRadius: 20))
+        case .detailed: AnyShape(Capsule())
+        case .compact: AnyShape(Rectangle())
         }
     }
-    
+
     var body: some View {
         NavigationStack {
             Group {
@@ -729,10 +725,13 @@ struct BudgetView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(uncategorizedBackground)
+                    .background(
+                        Color(isCompact ? .systemBackground : .secondarySystemGroupedBackground),
+                        in: uncategorizedShape
+                    )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                .padding(.horizontal, 4)
+                .padding(.horizontal, isCompact ? 0 : 4)
                 .padding(.bottom, 8)
             }
 
