@@ -142,7 +142,10 @@ struct SyncClientOfflineWriteTests {
         try await syncClient.createTransaction(transaction(id: "tx-offline-1"))
         let elapsed = Date().timeIntervalSince(start)
 
-        #expect(elapsed < 1.0, "createTransaction blocked for \(elapsed)s waiting on an unreachable server")
+        // Bounded by the stall, not a fixed budget: a caller that awaited the
+        // push can't return before the stall elapses, while a loaded CI runner
+        // can take well over a second just to get the first write through.
+        #expect(elapsed < StallingSyncTransport.stall, "createTransaction blocked for \(elapsed)s waiting on an unreachable server")
         // Local-first: the transaction is already durable on return.
         #expect(try rowExists(database, id: "tx-offline-1"))
     }
