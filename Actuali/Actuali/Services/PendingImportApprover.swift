@@ -175,19 +175,28 @@ final class PendingImportApprover {
         guard let currentBudgetId = store.currentBudgetId else {
             throw ApproveError.budgetIdentityRequired
         }
-        let requiresAdoption = item.originBudgetId == nil || item.originBudgetId != currentBudgetId
-        let requiresCurrencyConfirmation: Bool = {
-            guard let source = item.sourceCurrencyCode else { return true }
-            return PendingImport.normalizedCurrencyCode(source)
-                != PendingImport.normalizedCurrencyCode(store.currencyCode)
-        }()
-        if (requiresAdoption || requiresCurrencyConfirmation) && !form.reviewConfirmed {
+        let reviewRequirements = item.reviewRequirements(
+            activeBudgetId: currentBudgetId,
+            budgetCurrency: store.currencyCode
+        )
+        let confirmedReviewRequirements = form.reviewConfirmations.isEmpty
+            && form.reviewConfirmed
+            && reviewRequirements.count == 1
+            ? Set(reviewRequirements)
+            : form.reviewConfirmations
+        if !reviewRequirements.isEmpty
+            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) {
             throw ApproveError.reviewConfirmationRequired
         }
         if let sourceCurrencyCode = item.sourceCurrencyCode {
             let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
             let budget = PendingImport.normalizedCurrencyCode(store.currencyCode)
-            guard source == budget || form.reviewConfirmed else {
+            let currencyRequirement = PendingImportReviewRequirement.confirmActiveBudgetCurrency(
+                source: source,
+                budget: budget
+            )
+            guard source == budget
+                || confirmedReviewRequirements.contains(currencyRequirement) else {
                 throw ApproveError.sourceCurrencyMismatch(source: source, budget: budget)
             }
         }

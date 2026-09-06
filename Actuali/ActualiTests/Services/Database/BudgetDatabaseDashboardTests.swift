@@ -280,6 +280,13 @@ struct ReportsLoadRequestTests {
 
 struct DashboardLoadRequestTests {
 
+    @Test func localeChangeInvalidatesWidgetComputation() {
+        let english = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US")
+        let french = WidgetComputationRequest(transactions: [], localeIdentifier: "fr_FR")
+
+        #expect(english != french)
+    }
+
     private struct TestError: LocalizedError {
         var errorDescription: String? { "report fetch failed" }
     }

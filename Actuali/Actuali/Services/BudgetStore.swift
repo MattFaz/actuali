@@ -4075,6 +4075,7 @@ final class BudgetStore: ObservableObject {
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
         var reviewConfirmed: Bool = false
+        var reviewConfirmations: Set<PendingImportReviewRequirement> = []
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,

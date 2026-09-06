@@ -71,6 +71,11 @@ enum BankSyncReconciler {
     /// transaction it might already be, matching upstream's window.
     static let fuzzyMatchDayRadius = 7
 
+    private struct FuzzyMatch {
+        var row: BankSyncExistingTransaction
+        var distance: Int
+    }
+
     static func plan(
         candidates: [BankSyncCandidate],
         existing: [BankSyncExistingTransaction],
@@ -79,6 +84,7 @@ enum BankSyncReconciler {
         var matchedIds = Set<String>()
         var plan = BankSyncPlan()
         let normalizedCandidates = normalize(candidates, rejectedConflicts: &plan.rejectedConflicts)
+        let sortedExisting = existing.sorted { $0.id < $1.id }
 
         // Pass 1: the provider's transaction id. Anything that misses gets a
         // window of same-amount transactions to try the later passes against,
@@ -90,14 +96,14 @@ enum BankSyncReconciler {
         // out a new id for the same transaction often enough — a pending
         // charge that posts, most commonly — that excluding them would
         // duplicate it.
-        var pending: [(candidate: BankSyncCandidate, match: BankSyncExistingTransaction?, window: [BankSyncExistingTransaction])] = []
+        var pending: [(candidate: BankSyncCandidate, match: BankSyncExistingTransaction?, window: [FuzzyMatch])] = []
         for candidate in normalizedCandidates {
-            let liveMatch = existing.sorted(by: { $0.id < $1.id }).first(where: {
+            let liveMatch = sortedExisting.first(where: {
                 $0.importedId == candidate.importedId
                     && !$0.tombstone
                     && !matchedIds.contains($0.id)
             })
-            let deletedMatch = reimportDeleted ? nil : existing.sorted(by: { $0.id < $1.id }).first(where: {
+            let deletedMatch = reimportDeleted ? nil : sortedExisting.first(where: {
                 $0.importedId == candidate.importedId
                     && $0.tombstone
                     && !matchedIds.contains($0.id)
@@ -107,18 +113,12 @@ enum BankSyncReconciler {
                 pending.append((candidate, match, []))
                 continue
             }
-            let window = existing
-                .compactMap { row -> (row: BankSyncExistingTransaction, distance: Int)? in
+            let window = existing.compactMap { row -> FuzzyMatch? in
                     guard !row.tombstone, row.amount == candidate.amount,
                           let distance = dayDistance(row.date, candidate.date),
                           distance <= fuzzyMatchDayRadius else { return nil }
-                    return (row, distance)
+                    return FuzzyMatch(row: row, distance: distance)
                 }
-                .sorted {
-                    if $0.distance != $1.distance { return $0.distance < $1.distance }
-                    return $0.row.id < $1.row.id
-                }
-                .map(\.row)
             pending.append((candidate, nil, window))
         }
 
@@ -126,9 +126,11 @@ enum BankSyncReconciler {
         // confident match always wins the row a vaguer one would have taken.
         for index in pending.indices {
             guard pending[index].match == nil, let payeeId = pending[index].candidate.payeeId else { continue }
-            guard let match = pending[index].window.first(where: {
-                !matchedIds.contains($0.id) && $0.payeeId == payeeId
-            }) else { continue }
+            guard let match = nearestMatch(
+                in: pending[index].window,
+                excluding: matchedIds,
+                payeeId: payeeId
+            ) else { continue }
             matchedIds.insert(match.id)
             pending[index].match = match
         }
@@ -137,7 +139,10 @@ enum BankSyncReconciler {
         // within a week.
         for index in pending.indices {
             guard pending[index].match == nil else { continue }
-            guard let match = pending[index].window.first(where: { !matchedIds.contains($0.id) }) else { continue }
+            guard let match = nearestMatch(
+                in: pending[index].window,
+                excluding: matchedIds
+            ) else { continue }
             matchedIds.insert(match.id)
             pending[index].match = match
         }
@@ -162,6 +167,23 @@ enum BankSyncReconciler {
         }
 
         return plan
+    }
+
+    private static func nearestMatch(
+        in window: [FuzzyMatch],
+        excluding matchedIds: Set<String>,
+        payeeId: String? = nil
+    ) -> BankSyncExistingTransaction? {
+        window.lazy
+            .filter { match in
+                !matchedIds.contains(match.row.id)
+                    && (payeeId == nil || match.row.payeeId == payeeId)
+            }
+            .min {
+                if $0.distance != $1.distance { return $0.distance < $1.distance }
+                return $0.row.id < $1.row.id
+            }?
+            .row
     }
 
     /// Identical retries are harmless. Conflicting payloads for one provider

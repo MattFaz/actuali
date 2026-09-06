@@ -5,6 +5,11 @@ struct DashboardLoadRequest: Equatable {
     let dataVersion: Int
 }
 
+struct WidgetComputationRequest: Equatable {
+    let transactions: [Transaction]?
+    let localeIdentifier: String
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
@@ -275,7 +280,13 @@ struct DashboardView: View {
             MarkdownWidgetView(meta: meta)
         case .ageOfMoney(_, let meta):
             WidgetCard(transactions: reportTransactions, loadingHeight: 160) { transactions in
-                AgeOfMoneyEngine.compute(meta: meta, transactions: transactions, today: Date(), context: conditionsContext)
+                AgeOfMoneyEngine.compute(
+                    meta: meta,
+                    transactions: transactions,
+                    today: Date(),
+                    context: conditionsContext,
+                    locale: locale
+                )
             } content: { data in
                 AgeOfMoneyWidgetView(displayName: widget.displayName, data: data)
             }
@@ -436,6 +447,7 @@ struct DashboardView: View {
 /// the dashboard-wide transaction fetch lands, then computes the widget's
 /// data once per fetch and hands it to `content`.
 private struct WidgetCard<Value, Content: View>: View {
+    @Environment(\.locale) private var locale
     let transactions: [Transaction]?
     let loadingHeight: CGFloat
     let compute: ([Transaction]) -> Value
@@ -455,7 +467,10 @@ private struct WidgetCard<Value, Content: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
-        .task(id: transactions) {
+            .task(id: WidgetComputationRequest(
+                transactions: transactions,
+                localeIdentifier: locale.identifier
+            )) {
             guard let transactions else { return }
             value = compute(transactions)
         }

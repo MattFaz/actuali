@@ -82,7 +82,6 @@ struct ReportsTabView: View {
             }
             .refreshable {
                 await budgetStore.sync()
-                requestReload()
                 await reload(request: currentLoadRequest)
             }
         }

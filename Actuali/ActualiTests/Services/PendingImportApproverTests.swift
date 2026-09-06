@@ -137,6 +137,27 @@ struct PendingImportApproverTests {
         }
     }
 
+    @Test func combinedDirectApprovalLeavesBothReviewRequirementsForEditor() async {
+        let store = makeStore()
+        store.accounts = [account("acct_cash", "Cash")]
+        store.currencyCode = "USD"
+        let item = PendingImport(
+            originBudgetId: "different-budget", amount: 25.0,
+            sourceCurrencyCode: "EUR", payee: "Coffee", rawText: "msg"
+        )
+
+        await #expect(throws: PendingImportApprover.ApproveError.budgetMismatch) {
+            try await PendingImportApprover(store: store).approve(item)
+        }
+        #expect(item.reviewRequirements(
+            activeBudgetId: store.currentBudgetId,
+            budgetCurrency: store.currencyCode
+        ) == [
+            .adoptIntoActiveBudget,
+            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
+        ])
+    }
+
     @Test func refusesKnownCurrencyMismatch() async {
         let store = makeStore()
         store.accounts = [account("acct_cash", "Cash")]
@@ -418,6 +439,38 @@ struct PendingImportApproverTests {
         #expect(try databaseRowCount(at: url) == 0)
     }
 
+    @Test func editedForeignCurrencyImportRequiresBothConfirmations() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        store.currencyCode = "USD"
+        let item = PendingImport(originBudgetId: "foreign-budget", amount: 12.50,
+                                 sourceCurrencyCode: "EUR", payee: "Coffee")
+        let baseForm = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
+            notes: "edited", date: Date(), cleared: false,
+            reviewConfirmed: true
+        )
+
+        await #expect(throws: PendingImportApprover.ApproveError.reviewConfirmationRequired) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: baseForm)
+        }
+        var confirmedForm = baseForm
+        let requirements = item.reviewRequirements(
+            activeBudgetId: store.currentBudgetId,
+            budgetCurrency: store.currencyCode
+        )
+        confirmedForm.reviewConfirmations = Set(requirements.dropLast())
+        await #expect(throws: PendingImportApprover.ApproveError.reviewConfirmationRequired) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: confirmedForm)
+        }
+        confirmedForm.reviewConfirmations = Set(requirements)
+        let result = try await PendingImportApprover(store: store).saveEdited(item, form: confirmedForm)
+        #expect(result == .inserted(item.id.uuidString))
+        #expect(try databaseRowCount(at: url) == 1)
+    }
+
     @Test func confirmedForeignBudgetImportSavesExactlyOneRow() async throws {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }
@@ -508,12 +561,19 @@ struct PendingImportApproverTests {
         defer { try? FileManager.default.removeItem(at: url) }
         store.accounts = [account("acct_checking", "Checking")]
         let item = PendingImport(amount: 12.50, payee: "Coffee")
-        let form = BudgetStore.TransactionForm(
+        var form = BudgetStore.TransactionForm(
             accountId: "acct_checking", type: .expense, amount: "12.50",
             payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
             notes: "edited", date: Date(), cleared: false, reviewConfirmed: true
         )
 
+        await #expect(throws: PendingImportApprover.ApproveError.reviewConfirmationRequired) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: form)
+        }
+        form.reviewConfirmations = Set(item.reviewRequirements(
+            activeBudgetId: store.currentBudgetId,
+            budgetCurrency: store.currencyCode
+        ))
         let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
         #expect(result == .inserted(item.id.uuidString))
         #expect(try databaseRowCount(at: url) == 1)

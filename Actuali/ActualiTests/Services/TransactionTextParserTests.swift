@@ -69,6 +69,20 @@ struct TransactionTextParserTests {
         #expect(TransactionTextParser.parseWithFallback("Paid CHF 100 at Store").sourceCurrencyCode == "CHF")
     }
 
+    @Test func extractsAmountAdjacentToAnyExplicitIsoCurrencyCode() {
+        let leading = TransactionTextParser.parseWithFallback(
+            "Card ending 4321 was charged (CAD): 25.50 at Store"
+        )
+        let trailing = TransactionTextParser.parseWithFallback(
+            "Card ending 4321 was charged 19.75 CHF at Store"
+        )
+
+        #expect(leading.amount == 25.50)
+        #expect(leading.sourceCurrencyCode == "CAD")
+        #expect(trailing.amount == 19.75)
+        #expect(trailing.sourceCurrencyCode == "CHF")
+    }
+
     @Test func normalizesLowercaseExplicitIsoCurrencyCode() {
         #expect(TransactionTextParser.parseWithFallback("Paid cad 100 at Store").sourceCurrencyCode == "CAD")
     }
@@ -91,6 +105,10 @@ struct TransactionTextParserTests {
 
     @Test func acceptsLowercaseCurrencyCodeInTrailingPosition() {
         #expect(TransactionTextParser.parseWithFallback("100 try at Store").sourceCurrencyCode == "TRY")
+    }
+
+    @Test func doesNotTreatTitleCaseProseAsTrailingCurrencyCode() {
+        #expect(TransactionTextParser.parseWithFallback("100 Try at Store").sourceCurrencyCode == nil)
     }
 
     @Test func acceptsPunctuationAroundExplicitCurrencyCode() {

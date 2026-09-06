@@ -58,11 +58,24 @@ struct BudgetViewTests {
     @Test func monthPickerTitleUsesRequestedLocale() {
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "en_US")) == "September 2026")
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "septembre 2026")
+        #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "pt_BR")) == "setembro de 2026")
+        #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "de_DE")) == "September 2026")
     }
 
     @Test func monthPickerShortTitleUsesRequestedLocale() {
         #expect(MonthPicker.shortTitle(for: "2026-09", locale: Locale(identifier: "en_US")) == "Sep 2026")
         #expect(MonthPicker.shortTitle(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "sept. 2026")
+        #expect(MonthPicker.shortTitle(for: "2026-09", locale: Locale(identifier: "pt_BR")) == "set. de 2026")
+        #expect(MonthPicker.shortTitle(for: "2026-09", locale: Locale(identifier: "de_DE")) == "Sept. 2026")
+    }
+
+    @Test(arguments: [
+        "2026-00", "2026-13", "2026-9", "26-09",
+        "2026--09", "2026-09-", "2026-+9"
+    ])
+    func monthPickerRejectsMalformedMonths(_ month: String) {
+        #expect(MonthPicker.date(fromMonth: month) == nil)
+        #expect(MonthPicker.title(for: month, locale: Locale(identifier: "en_US")) == month)
     }
 
     @Test func quickAssignTitlesUseRequestedLocale() {

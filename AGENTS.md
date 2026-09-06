@@ -120,7 +120,7 @@ Rules:
 
 ### Localization
 
-- Every user-facing string must come from `Localizable.xcstrings` through `String(localized:)` or a localized SwiftUI initializer; this includes accessibility labels, errors, notifications, AppIntents, and service messages.
+- Every user-facing string must come from the appropriate String Catalog through `String(localized:)` or a localized SwiftUI initializer; this includes accessibility labels, errors, notifications, AppIntents, and service messages. Main app strings go in `Actuali/Actuali/Localizable.xcstrings`, App Shortcut phrases in `Actuali/Actuali/AppShortcuts.xcstrings`, and widget strings in `Actuali/ActualiWidgets/Localizable.xcstrings`.
 - Add all seven supported locale values when introducing a catalog key, keep format placeholders identical, and run `python3 dev/scripts/validate-localization.py`.
 - When adding a language, update both the catalog and the Xcode `knownRegions` metadata, then extend the validator's supported locale list.
 

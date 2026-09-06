@@ -261,6 +261,7 @@ struct AgeOfMoneyEngineTests {
 
     @Test(arguments: [
         ("fr_FR", "janv. 2024"),
+        ("pt_BR", "jan. de 2024"),
         ("de_DE", "Jan. 2024")
     ])
     func labelsUseInjectedLocale(localeIdentifier: String, expectedLabel: String) {

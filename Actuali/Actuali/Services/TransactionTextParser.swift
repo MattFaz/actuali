@@ -147,24 +147,29 @@ enum TransactionTextParser {
     /// Returns only currencies identified without relying on an ambiguous symbol.
     private static func extractCurrencyCode(from text: String) -> String? {
         let leadingPattern = #"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(?=\d)"#
-        if let regex = try? NSRegularExpression(pattern: leadingPattern),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
+        if let code = currencyCode(in: text, matching: leadingPattern) {
+            return code
+        }
+
+        let trailingPattern = #"\d[\d,]*(?:\.\d{1,2})?\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#
+        if let code = currencyCode(in: text, matching: trailingPattern) {
+            return code
+        }
+        if text.contains("€") { return "EUR" }
+        if text.contains("£") { return "GBP" }
+        if text.contains("₹") { return "INR" }
+        return nil
+    }
+
+    private static func currencyCode(in text: String, matching pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let range = Range(match.range(at: 1), in: text) else { continue }
             let candidate = String(text[range])
             if let code = normalizeCurrencyCode(candidate), !isAmbiguousTitleCaseCode(candidate) {
                 return code
             }
         }
-
-        let trailingPattern = #"\d[\d,]*(?:\.\d{1,2})?\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#
-        if let regex = try? NSRegularExpression(pattern: trailingPattern),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            return normalizeCurrencyCode(String(text[range]))
-        }
-        if text.contains("€") { return "EUR" }
-        if text.contains("£") { return "GBP" }
-        if text.contains("₹") { return "INR" }
         return nil
     }
 
@@ -176,24 +181,64 @@ enum TransactionTextParser {
     /// Extract currency amount. Requires an explicit currency marker (leading or trailing)
     /// to avoid falsely capturing masked card or account numbers.
     private static func extractAmount(from text: String) -> Double? {
-        // Pattern 1: Leading currency symbol or code: "$50.00", "Rs. 500", "USD 25.50"
-        let leadingPattern = #"(?:[\$€£₹]|\b(?:rs|inr|usd|eur|gbp)\.?)\s*(\d[\d,]*(?:\.\d{1,2})?)"#
+        // Pattern 1: Leading currency symbol or legacy marker: "$50.00", "Rs. 500"
+        let leadingPattern = #"(?:[\$€£₹]|\brs\.?)\s*(\d[\d,]*(?:\.\d{1,2})?)"#
         if let regex = try? NSRegularExpression(pattern: leadingPattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
             return AmountParser.parse(String(text[range]))
         }
 
-        // Pattern 2: Trailing currency symbol or code: "500.00 Rs", "25.50 EUR"
-        let trailingPattern = #"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:[\$€£₹]|\b(?:rs|inr|usd|eur|gbp)\b)"#
+        // Pattern 2: Trailing currency symbol or legacy marker: "500.00 Rs", "25.50 €"
+        let trailingPattern = #"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:[\$€£₹]|\brs\b)"#
         if let regex = try? NSRegularExpression(pattern: trailingPattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
             return AmountParser.parse(String(text[range]))
         }
 
+        let leadingCodePattern = #"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(\d[\d,]*(?:\.\d{1,2})?)"#
+        if let amount = amountAdjacentToCurrencyCode(
+            in: text,
+            pattern: leadingCodePattern,
+            codeGroup: 1,
+            amountGroup: 2
+        ) {
+            return amount
+        }
+
+        let trailingCodePattern = #"(\d[\d,]*(?:\.\d{1,2})?)\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#
+        if let amount = amountAdjacentToCurrencyCode(
+            in: text,
+            pattern: trailingCodePattern,
+            codeGroup: 2,
+            amountGroup: 1
+        ) {
+            return amount
+        }
+
         // Pattern 3: Fall back to whole-text parse (only accepts single-number strings)
         return AmountParser.parse(text).flatMap { $0 > 0 ? $0 : nil }
+    }
+
+    private static func amountAdjacentToCurrencyCode(
+        in text: String,
+        pattern: String,
+        codeGroup: Int,
+        amountGroup: Int
+    ) -> Double? {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
+            guard let codeRange = Range(match.range(at: codeGroup), in: text),
+                  let amountRange = Range(match.range(at: amountGroup), in: text) else { continue }
+            let candidate = String(text[codeRange])
+            guard normalizeCurrencyCode(candidate) != nil,
+                  !isAmbiguousTitleCaseCode(candidate) else { continue }
+            if let amount = AmountParser.parse(String(text[amountRange])) {
+                return amount
+            }
+        }
+        return nil
     }
 
     /// Extract the last 4 digits of a card / account number.

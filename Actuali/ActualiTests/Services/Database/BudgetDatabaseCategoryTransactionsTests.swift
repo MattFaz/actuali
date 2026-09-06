@@ -15,34 +15,54 @@ import GRDB
 @MainActor
 struct BudgetDatabaseCategoryTransactionsTests {
 
-    @Test func emptyStateWordingUsesDestinationMonthNotLocalizedTitle() {
-        let locale = Locale(identifier: "en_US")
-        #expect(CategoryTransactionsView.emptyStateDescription(
-            categoryName: "Food",
-            month: nil,
-            scopeTitle: "All Time",
-            locale: locale
-        ) == "Nothing in Food for any month")
-        #expect(CategoryTransactionsView.emptyStateDescription(
-            categoryName: "Food",
-            month: "2026-06",
-            scopeTitle: "June 2026",
-            locale: locale
-        ) == "Nothing in Food for June 2026")
+    @Test func onlyCurrentUncancelledReloadCanPublish() {
+        #expect(CategoryTransactionsView.shouldPublishReload(
+            generation: 2,
+            currentGeneration: 2,
+            taskIsCancelled: false
+        ))
+        #expect(!CategoryTransactionsView.shouldPublishReload(
+            generation: 1,
+            currentGeneration: 2,
+            taskIsCancelled: false
+        ))
+        #expect(!CategoryTransactionsView.shouldPublishReload(
+            generation: 2,
+            currentGeneration: 2,
+            taskIsCancelled: true
+        ))
+    }
 
-        let french = Locale(identifier: "fr_FR")
-        #expect(CategoryTransactionsView.emptyStateDescription(
-            categoryName: "Courses",
-            month: nil,
-            scopeTitle: "Depuis le début",
-            locale: french
-        ) == "Aucune transaction dans Courses pour n'importe quel mois")
-        #expect(CategoryTransactionsView.emptyStateDescription(
-            categoryName: "Courses",
-            month: "2026-06",
-            scopeTitle: "Juin 2026",
-            locale: french
-        ) == "Aucune transaction dans Courses pour Juin 2026")
+    @Test func emptyStateWordingUsesDestinationMonthNotLocalizedTitle() {
+        let cases = [
+            (Locale(identifier: "en_US"), "September 2026", "No Transactions", "Nothing in Food for September 2026", "Nothing in Food for any month"),
+            (Locale(identifier: "fr_FR"), "septembre 2026", "Aucune transaction", "Aucune transaction dans Courses pour septembre 2026", "Aucune transaction dans Courses pour n'importe quel mois"),
+            (Locale(identifier: "pt_BR"), "setembro de 2026", "Nenhuma transação", "Nada em Alimentação para setembro de 2026", "Nada em Alimentação para qualquer mês")
+        ]
+
+        for (locale, monthTitle, emptyTitle, monthDescription, allTimeDescription) in cases {
+            #expect(CategoryTransactionsView.scopeTitle(
+                for: "2026-09",
+                locale: locale,
+                bundle: .main
+            ) == monthTitle)
+            #expect(CategoryTransactionsView.emptyStateTitle(
+                locale: locale,
+                bundle: .main
+            ) == emptyTitle)
+            #expect(CategoryTransactionsView.emptyStateDescription(
+                categoryName: locale.identifier == "pt_BR" ? "Alimentação" : locale.identifier == "fr_FR" ? "Courses" : "Food",
+                month: "2026-09",
+                locale: locale,
+                bundle: .main
+            ) == monthDescription)
+            #expect(CategoryTransactionsView.emptyStateDescription(
+                categoryName: locale.identifier == "pt_BR" ? "Alimentação" : locale.identifier == "fr_FR" ? "Courses" : "Food",
+                month: nil,
+                locale: locale,
+                bundle: .main
+            ) == allTimeDescription)
+        }
     }
 
     private func makeDatabase() throws -> (BudgetDatabase, URL) {

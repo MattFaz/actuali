@@ -2433,7 +2433,7 @@ struct MonthPicker: View {
         guard let date = date(fromMonth: month) else {
             return month
         }
-        return Self.formatter(format: "MMMM yyyy", locale: locale).string(from: date)
+        return Self.formatter(template: "yMMMM", locale: locale).string(from: date)
     }
 
     /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
@@ -2441,23 +2441,29 @@ struct MonthPicker: View {
         guard let date = date(fromMonth: month) else {
             return month
         }
-        return Self.formatter(format: "MMM yyyy", locale: locale).string(from: date)
+        return Self.formatter(template: "yMMM", locale: locale).string(from: date)
     }
 
-    private nonisolated static func formatter(format: String, locale: Locale) -> DateFormatter {
+    private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
         let formatter = DateFormatter()
         formatter.locale = locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = format
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
         return formatter
     }
 
     nonisolated static func date(fromMonth month: String) -> Date? {
-        let parts = month.split(separator: "-")
+          let parts = month.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2,
+              parts[0].count == 4,
+              parts[1].count == 2,
+              parts[0].allSatisfy(\.isNumber),
+              parts[1].allSatisfy(\.isNumber),
               let year = Int(parts[0]),
-              let monthNumber = Int(parts[1]) else {
+              year > 0,
+              let monthNumber = Int(parts[1]),
+              (1...12).contains(monthNumber) else {
             return nil
         }
         var components = DateComponents()
@@ -2465,7 +2471,8 @@ struct MonthPicker: View {
         components.month = monthNumber
         components.day = 1
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
+        guard let utc = TimeZone(secondsFromGMT: 0) else { return nil }
+        calendar.timeZone = utc
         return calendar.date(from: components)
     }
 }

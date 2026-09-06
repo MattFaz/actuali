@@ -88,6 +88,18 @@ struct BankSyncReconcilerTests {
         #expect(plan.updates.first?.cleared == true)
     }
 
+    @Test func duplicateExactIdsChooseTheLowestExistingId() throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1")],
+            existing: [
+                existing(id: "tx-z", importedId: "sf-1"),
+                existing(id: "tx-a", importedId: "sf-1")
+            ]
+        )
+
+        #expect(try #require(plan.updates.first).existingId == "tx-a")
+    }
+
     /// The id match beats the fuzzy window even when the window has a nearer
     /// row: it's the only match the provider actually vouched for.
     @Test func theIdMatchWinsOverACloserDate() throws {
@@ -219,6 +231,18 @@ struct BankSyncReconcilerTests {
         )
 
         #expect(try #require(plan.updates.first).existingId == "tx-near")
+    }
+
+    @Test func equallyNearMatchesUseTheLowestExistingId() throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(date: 20240310)],
+            existing: [
+                existing(id: "tx-z", date: 20240309),
+                existing(id: "tx-a", date: 20240311)
+            ]
+        )
+
+        #expect(try #require(plan.updates.first).existingId == "tx-a")
     }
 
     /// Providers reissue ids for the same transaction (a pending charge that

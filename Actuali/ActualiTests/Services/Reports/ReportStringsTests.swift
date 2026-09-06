@@ -182,9 +182,21 @@ struct ReportStringsTests {
             locale: Locale(identifier: "en_US"), firstDayOfWeekIdx: 0) == ["S", "M", "T", "W", "T", "F", "S"])
         #expect(CalendarWidgetFormatting.weekdaySymbols(
             locale: Locale(identifier: "fr_FR"), firstDayOfWeekIdx: 1) == ["L", "M", "M", "J", "V", "S", "D"])
-        #expect(CalendarWidgetFormatting.monthTitle(
-            calendarDate, locale: Locale(identifier: "en_US")) == "Jan 2024")
-        #expect(CalendarWidgetFormatting.monthTitle(
-            calendarDate, locale: Locale(identifier: "fr_FR")) == "janv. 2024")
+        let expected = [
+            ("en_US", "Jan 2024"),
+            ("fr_FR", "janv. 2024"),
+            ("pt_BR", "jan. de 2024"),
+            ("de_DE", "Jan. 2024")
+        ]
+        for (identifier, title) in expected {
+            #expect(CalendarWidgetFormatting.monthTitle(
+                calendarDate, locale: Locale(identifier: identifier)) == title)
+        }
+        let buddhistLocaleTitle = CalendarWidgetFormatting.monthTitle(
+            calendarDate,
+            locale: Locale(identifier: "th_TH@calendar=buddhist")
+        )
+        #expect(buddhistLocaleTitle.contains("2024"))
+        #expect(!buddhistLocaleTitle.contains("2567"))
     }
 }

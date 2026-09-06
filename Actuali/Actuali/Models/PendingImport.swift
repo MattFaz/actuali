@@ -44,7 +44,7 @@ struct PendingImport: Codable, Identifiable {
     }
 }
 
-enum PendingImportReviewRequirement: Equatable {
+enum PendingImportReviewRequirement: Hashable {
     case adoptIntoActiveBudget
     case confirmActiveBudgetCurrency(source: String?, budget: String)
 
@@ -58,5 +58,28 @@ enum PendingImportReviewRequirement: Equatable {
             }
             return String(localized: "I confirm that the numeric amount should be treated as the active budget currency (\(budget)); no conversion will be performed.")
         }
+    }
+}
+
+extension PendingImport {
+    nonisolated func reviewRequirements(
+        activeBudgetId: String?,
+        budgetCurrency: String
+    ) -> [PendingImportReviewRequirement] {
+        var requirements: [PendingImportReviewRequirement] = []
+        if originBudgetId == nil || originBudgetId != activeBudgetId {
+            requirements.append(.adoptIntoActiveBudget)
+        }
+
+        let normalizedBudget = Self.normalizedCurrencyCode(budgetCurrency)
+        guard let sourceCurrencyCode else {
+            requirements.append(.confirmActiveBudgetCurrency(source: nil, budget: normalizedBudget))
+            return requirements
+        }
+        let normalizedSource = Self.normalizedCurrencyCode(sourceCurrencyCode)
+        if normalizedSource != normalizedBudget {
+            requirements.append(.confirmActiveBudgetCurrency(source: normalizedSource, budget: normalizedBudget))
+        }
+        return requirements
     }
 }

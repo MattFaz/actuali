@@ -31,6 +31,21 @@ struct PendingImportsResolveAccountTests {
             == "2 transactions require review and were left pending.")
     }
 
+    @Test func bulkApprovalFailuresRecoverConsistently() {
+        #expect(PendingImportsView.bulkApprovalDisposition(
+            for: PendingImportApprover.ApproveError.alreadyApproved
+        ) == .removePendingImport)
+        #expect(PendingImportsView.bulkApprovalDisposition(
+            for: PendingImportApprover.ApproveError.noAccountAvailable
+        ) == .review)
+        #expect(PendingImportsView.bulkApprovalDisposition(
+            for: PendingImportApprover.ApproveError.sourceCurrencyRequired
+        ) == .review)
+        #expect(PendingImportsView.bulkApprovalDisposition(
+            for: PendingImportApprover.ApproveError.writeFailed("disk full")
+        ) == .failure)
+    }
+
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
         Account(id: id, name: name, type: .checking, offBudget: false, closed: closed,
                 sortOrder: 0, balance: 0)
@@ -157,6 +172,34 @@ struct PendingImportsResolveAccountTests {
         #expect(AddTransactionView.allowsReviewSave(requirement: adoption, confirmed: true))
         #expect(AddTransactionView.allowsReviewSave(requirement: nil, confirmed: false))
         #expect(currency.prompt.contains("no conversion"))
+    }
+
+    @Test func combinedReviewRequiresBothAcknowledgementsInOrder() {
+        let item = PendingImport(originBudgetId: "foreign-budget", sourceCurrencyCode: "EUR")
+        let requirements = item.reviewRequirements(activeBudgetId: "active-budget", budgetCurrency: "USD")
+
+        #expect(requirements == [
+            .adoptIntoActiveBudget,
+            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
+        ])
+        #expect(!AddTransactionView.allowsReviewSave(requirements: requirements, confirmed: [.adoptIntoActiveBudget]))
+        #expect(AddTransactionView.allowsReviewSave(
+            requirements: requirements,
+            confirmed: Set(requirements)
+        ))
+    }
+
+    @Test func unknownCurrencyRequiresIndependentAcknowledgement() {
+        let currency = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: nil, budget: "USD")
+
+        #expect(PendingImport(originBudgetId: "active-budget").reviewRequirements(
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD"
+        ) == [currency])
+        #expect(PendingImport().reviewRequirements(
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD"
+        ) == [.adoptIntoActiveBudget, currency])
     }
 
     @Test func amountUsesBudgetCurrencyAndLocale() {

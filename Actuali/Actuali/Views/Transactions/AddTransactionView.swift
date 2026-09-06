@@ -13,7 +13,7 @@ struct AddTransactionView: View {
     /// exact row written by the save path, or nil when nothing was created.
     private let onSaved: ((String?) throws -> Void)?
     private let saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)?
-    private let reviewRequirement: PendingImportReviewRequirement?
+    private let reviewRequirements: [PendingImportReviewRequirement]
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -37,7 +37,7 @@ struct AddTransactionView: View {
     /// multiple categories" undoes the toggle instantly) but the form shows
     /// the category picker and saves as a single transaction.
     @State private var unsplitRequested = false
-    @State private var reviewConfirmed = false
+    @State private var confirmedReviewRequirements: Set<PendingImportReviewRequirement> = []
 
     /// Initializer for the "Add" flow. The optional prefill parameters carry
     /// whatever an automation passed along — a failed Wallet log or the Add
@@ -53,12 +53,15 @@ struct AddTransactionView: View {
         cleared: Bool = false,
         saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil,
         onSaved: ((String?) throws -> Void)? = nil,
-        reviewRequirement: PendingImportReviewRequirement? = nil
+        reviewRequirement: PendingImportReviewRequirement? = nil,
+        reviewRequirements: [PendingImportReviewRequirement] = []
     ) {
         self.editing = nil
         self.onSaved = onSaved
         self.saveOverride = saveOverride
-        self.reviewRequirement = reviewRequirement
+        self.reviewRequirements = reviewRequirements.isEmpty
+            ? reviewRequirement.map { [$0] } ?? []
+            : reviewRequirements
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -80,7 +83,7 @@ struct AddTransactionView: View {
         self.editing = editing
         self.onSaved = nil
         self.saveOverride = nil
-        self.reviewRequirement = nil
+        self.reviewRequirements = []
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -110,7 +113,7 @@ struct AddTransactionView: View {
     }
 
     private var isEditing: Bool { editing != nil }
-    private var isPendingImportReview: Bool { reviewRequirement != nil }
+    private var isPendingImportReview: Bool { !reviewRequirements.isEmpty }
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
@@ -460,8 +463,20 @@ struct AddTransactionView: View {
                 }
 
                 Section {
-                    if let reviewRequirement {
-                        Toggle(reviewRequirement.prompt, isOn: $reviewConfirmed)
+                    ForEach(reviewRequirements, id: \.self) { requirement in
+                        Toggle(
+                            requirement.prompt,
+                            isOn: Binding(
+                                get: { confirmedReviewRequirements.contains(requirement) },
+                                set: { isConfirmed in
+                                    if isConfirmed {
+                                        confirmedReviewRequirements.insert(requirement)
+                                    } else {
+                                        confirmedReviewRequirements.remove(requirement)
+                                    }
+                                }
+                            )
+                        )
                     }
                 }
 
@@ -689,7 +704,8 @@ struct AddTransactionView: View {
 
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
-        if reviewRequirement != nil && !reviewConfirmed { return true }
+        if !reviewRequirements.isEmpty
+            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) { return true }
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
@@ -703,6 +719,13 @@ struct AddTransactionView: View {
         confirmed: Bool
     ) -> Bool {
         requirement == nil || confirmed
+    }
+
+    nonisolated static func allowsReviewSave(
+        requirements: [PendingImportReviewRequirement],
+        confirmed: Set<PendingImportReviewRequirement>
+    ) -> Bool {
+        confirmed.isSuperset(of: requirements)
     }
 
     private func saveTransaction() async {
@@ -723,7 +746,8 @@ struct AddTransactionView: View {
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation,
-            reviewConfirmed: reviewConfirmed
+            reviewConfirmed: confirmedReviewRequirements.count == 1,
+            reviewConfirmations: confirmedReviewRequirements
         )
 
         do {

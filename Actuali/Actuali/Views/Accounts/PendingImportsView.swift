@@ -4,6 +4,12 @@ import SwiftUI
 /// Users can approve (logs to budget), edit (opens add-transaction form),
 /// or dismiss each import.
 struct PendingImportsView: View {
+    enum BulkApprovalFailureDisposition: Equatable {
+        case removePendingImport
+        case review
+        case failure
+    }
+
     @EnvironmentObject private var budgetStore: BudgetStore
     @ObservedObject private var store = PendingImportStore.shared
     @Environment(\.dismiss) private var dismiss
@@ -146,16 +152,20 @@ struct PendingImportsView: View {
                         do { try store.remove(id: item.id) }
                         catch { errorMessage = error.localizedDescription }
                     }
-                } catch PendingImportApprover.ApproveError.sourceCurrencyMismatch {
-                    reviewCount += 1
-                    reviewItem = reviewItem ?? item
-                } catch PendingImportApprover.ApproveError.sourceCurrencyRequired,
-                        PendingImportApprover.ApproveError.budgetIdentityRequired,
-                        PendingImportApprover.ApproveError.budgetMismatch {
-                    reviewCount += 1
-                    reviewItem = reviewItem ?? item
                 } catch {
-                    failedCount += 1
+                    switch Self.bulkApprovalDisposition(for: error) {
+                    case .removePendingImport:
+                        do {
+                            try await MainActor.run { try store.remove(id: item.id) }
+                        } catch {
+                            failedCount += 1
+                        }
+                    case .review:
+                        reviewCount += 1
+                        reviewItem = reviewItem ?? item
+                    case .failure:
+                        failedCount += 1
+                    }
                 }
             }
             await MainActor.run {
@@ -169,6 +179,24 @@ struct PendingImportsView: View {
                     errorMessage = Self.approvalFailureMessage(count: failedCount)
                 }
             }
+        }
+    }
+
+    nonisolated static func bulkApprovalDisposition(
+        for error: any Error
+    ) -> BulkApprovalFailureDisposition {
+        guard let error = error as? PendingImportApprover.ApproveError else {
+            return .failure
+        }
+        switch error {
+        case .alreadyApproved:
+            return .removePendingImport
+        case .noAccountAvailable, .accountClosed, .budgetMismatch,
+             .budgetIdentityRequired, .sourceCurrencyRequired,
+             .sourceCurrencyMismatch, .reviewConfirmationRequired:
+            return .review
+        case .invalidAmount, .suppressedByRule, .writeFailed:
+            return .failure
         }
     }
 
@@ -227,7 +255,10 @@ struct PendingImportsView: View {
                     onSaved: { _ in
                         try store.remove(id: item.id)
                     },
-                    reviewRequirement: reviewRequirement(for: item)
+                    reviewRequirements: item.reviewRequirements(
+                        activeBudgetId: budgetStore.currentBudgetId,
+                        budgetCurrency: budgetStore.currencyCode
+                    )
                 )
                 .environmentObject(budgetStore)
             }
@@ -255,19 +286,6 @@ struct PendingImportsView: View {
         let budget = PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)
         guard source != budget else { return nil }
         return String(localized: "Source currency: \(source). Active budget: \(budget). Review and confirm before saving.")
-    }
-
-    private func reviewRequirement(for item: PendingImport) -> PendingImportReviewRequirement? {
-        if item.originBudgetId == nil || item.originBudgetId != budgetStore.currentBudgetId {
-            return .adoptIntoActiveBudget
-        }
-        guard let source = item.sourceCurrencyCode else {
-            return .confirmActiveBudgetCurrency(source: nil, budget: PendingImport.normalizedCurrencyCode(budgetStore.currencyCode))
-        }
-        let normalizedSource = PendingImport.normalizedCurrencyCode(source)
-        let normalizedBudget = PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)
-        guard normalizedSource != normalizedBudget else { return nil }
-        return .confirmActiveBudgetCurrency(source: normalizedSource, budget: normalizedBudget)
     }
 
     private func resolveAccountId(for item: PendingImport) -> String? {

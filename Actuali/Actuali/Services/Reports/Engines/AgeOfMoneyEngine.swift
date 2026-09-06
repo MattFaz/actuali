@@ -16,6 +16,18 @@ struct AgeOfMoneyData: Equatable {
                                       insufficientData: false)
 }
 
+enum ReportMonthYearFormatting {
+    static func formatter(locale: Locale) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.dateFormat = DateFormatter.dateFormat(
+            fromTemplate: "yMMM", options: 0, locale: locale)
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter
+    }
+}
+
 /// Port of the webapp's age-of-money-spreadsheet.ts. Income transactions
 /// become FIFO buckets; each expense drains the oldest buckets and its age is
 /// the day distance to the last bucket it touched. The headline is the
@@ -52,8 +64,7 @@ enum AgeOfMoneyEngine {
                 !tx.tombstone
                     && tx.date <= fixedEndYMD
                     && !context.offBudgetAccountIds.contains(tx.accountId)
-                    && (tx.transferAcct == nil
-                        || context.offBudgetAccountIds.contains(tx.transferAcct!))
+                    && (tx.transferAcct.map { context.offBudgetAccountIds.contains($0) } ?? true)
                     && ConditionsFilter.matches(transaction: tx,
                                                 conditions: meta?.conditions,
                                                 op: meta?.conditionsOp,
@@ -111,7 +122,7 @@ enum AgeOfMoneyEngine {
         // still emit a point (the average carries forward).
         var points: [AgeOfMoneyData.Point] = []
         var agesSoFar: [Int] = []
-        let labelFormatter = makeLabelFormatter(locale: locale)
+        let labelFormatter = ReportMonthYearFormatting.formatter(locale: locale)
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
@@ -137,14 +148,6 @@ enum AgeOfMoneyEngine {
 
         return AgeOfMoneyData(currentAge: currentAge, points: points,
                               trend: trend, insufficientData: insufficientData)
-    }
-
-    private static func makeLabelFormatter(locale: Locale) -> DateFormatter {
-        let f = DateFormatter()
-        f.locale = locale
-        f.dateFormat = "MMM yyyy"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
     }
 
     private static func monthStart(of date: Date) -> Date {

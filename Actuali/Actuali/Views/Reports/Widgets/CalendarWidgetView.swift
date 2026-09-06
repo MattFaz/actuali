@@ -120,11 +120,7 @@ enum CalendarWidgetFormatting {
     }
 
     static func monthTitle(_ date: Date, locale: Locale) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = locale
-        formatter.dateFormat = "MMM yyyy"
-        formatter.timeZone = TimeZone(identifier: "UTC")
-        return formatter.string(from: date)
+        ReportMonthYearFormatting.formatter(locale: locale).string(from: date)
     }
 }
 
