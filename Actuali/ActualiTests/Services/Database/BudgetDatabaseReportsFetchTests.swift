@@ -178,12 +178,12 @@ struct BudgetDatabaseReportsFetchTests {
 
         try await db.dbQueueForTesting.write { conn in
             // A synced budget file carries upstream columns the app's own
-            // migration doesn't create; add them so the fetch reads real values.
+            // migrations don't create; add them so the fetch reads real values.
+            // (show_trend_lines is already added by migration 1780099200000.)
             try conn.execute(sql: """
                 ALTER TABLE custom_reports ADD COLUMN date_static INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN include_current INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN sort_by TEXT DEFAULT 'desc';
-                ALTER TABLE custom_reports ADD COLUMN show_trend_lines INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN trim_intervals INTEGER DEFAULT 0;
 
                 INSERT INTO custom_reports
