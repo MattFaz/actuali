@@ -131,6 +131,7 @@ struct TransactionsListView: View {
                 Button(isSelecting ? "Done" : "Select") {
                     selectionModeBinding.wrappedValue.toggle()
                 }
+                .accessibilityIdentifier("transactions.selectionMode")
             }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
@@ -243,6 +244,7 @@ struct TransactionListRow: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityIdentifier("transactionRow.\(transaction.id)")
         // `highPriorityGesture`, not `simultaneousGesture`: this row's label
         // contains its own nested Button (the cleared-status dot), and a
         // merely-simultaneous long press doesn't stop that button's tap from

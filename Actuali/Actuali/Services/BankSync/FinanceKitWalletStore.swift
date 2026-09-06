@@ -11,6 +11,10 @@ import Foundation
 struct FinanceKitWalletStore: AppleWalletReading {
 
     func availability() async -> AppleWalletAvailability {
+        #if targetEnvironment(simulator)
+        // FinanceStore.shared traps in unsigned simulator builds before it can throw.
+        return .unsupported
+        #else
         guard FinanceStore.isDataAvailable(.financialData) else { return .unsupported }
         // authorizationStatus throws in builds without the FinanceKit
         // entitlement; treated as not-determined so the setup screen's
@@ -20,6 +24,7 @@ struct FinanceKitWalletStore: AppleWalletReading {
         case .denied: return .denied
         default: return .notDetermined
         }
+        #endif
     }
 
     func requestAccess() async throws -> Bool {

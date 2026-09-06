@@ -356,9 +356,12 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         groceries.tap()
 
         XCTAssertTrue(app.navigationBars["Edit Category"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.textFields["Category Name"].exists)
-        XCTAssertTrue(app.staticTexts["Note"].exists)
-        XCTAssertTrue(app.staticTexts["Quick Assign"].exists)
+        XCTAssertTrue(app.textFields["categoryEditor.name"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["categoryEditor.note"].waitForExistence(timeout: 5))
+        XCTAssertTrue(
+            app.descendants(matching: .any)["categoryEditor.quickAssignHeader"]
+                .waitForExistence(timeout: 5)
+        )
         XCTAssertFalse(app.buttons["This Month's Transactions"].exists)
         XCTAssertFalse(app.buttons["All Transactions"].exists)
         XCTAssertFalse(app.staticTexts["Actions"].exists)

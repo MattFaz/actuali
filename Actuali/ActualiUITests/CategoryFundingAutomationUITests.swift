@@ -17,7 +17,7 @@ final class CategoryFundingAutomationUITests: XCTestCase {
 
         XCTAssertTrue(app.navigationBars["Category Funding"].waitForExistence(timeout: 5), "Category Funding screen did not open")
 
-        let accountPicker = app.buttons["Account"]
+        let accountPicker = app.buttons["categoryFunding.accountPicker"]
         XCTAssertTrue(accountPicker.waitForExistence(timeout: 5), "Account picker not found")
         accountPicker.tap()
 

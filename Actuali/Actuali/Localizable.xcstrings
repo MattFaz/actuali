@@ -15252,6 +15252,17 @@
         }
       }
     },
+    "Tap to toggle the group's categories; touch and hold for options": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tap to toggle the group's categories; touch and hold for options" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Touchez pour afficher ou masquer les catégories du groupe ; maintenez le doigt pour les options" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Toque para mostrar u ocultar las categorías del grupo; mantenga pulsado para ver las opciones" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Toque para mostrar ou ocultar as categorias do grupo; mantenha pressionado para ver as opções" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Tippen Sie, um die Kategorien der Gruppe ein- oder auszublenden. Für Optionen gedrückt halten" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Tocca per mostrare o nascondere le categorie del gruppo; tieni premuto per le opzioni" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Tik om de categorieën van de groep te tonen of te verbergen; houd ingedrukt voor opties" } }
+      }
+    },
     "settings.budget.noneFound": {
       "comment": "Settings footer when no remote budgets are available",
       "localizations": {
@@ -54814,6 +54825,17 @@
             "value": "Schakelt de inkomenscategorieën om"
           }
         }
+      }
+    },
+    "Tap to toggle the income categories; touch and hold for options": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Tap to toggle the income categories; touch and hold for options" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Touchez pour afficher ou masquer les catégories de revenus ; maintenez le doigt pour les options" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Toque para mostrar u ocultar las categorías de ingresos; mantenga pulsado para ver las opciones" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Toque para mostrar ou ocultar as categorias de receita; mantenha pressionado para ver as opções" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Tippen Sie, um die Einkommenskategorien ein- oder auszublenden. Für Optionen gedrückt halten" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Tocca per mostrare o nascondere le categorie di entrate; tieni premuto per le opzioni" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Tik om de inkomenscategorieën te tonen of te verbergen; houd ingedrukt voor opties" } }
       }
     },
     "%@, %@, budgeted %@, spent %@, balance %@": {

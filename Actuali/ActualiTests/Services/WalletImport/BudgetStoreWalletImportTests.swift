@@ -174,8 +174,7 @@ struct BudgetStoreWalletImportTests {
 
         _ = try await store.importWalletTransactions(
             [candidate(id: "eee-1")], accountId: "acct-1")
-        let queue = try DatabaseQueue(path: url.path)
-        try await queue.write { db in
+        try await database.dbQueueForTesting.write { db in
             try db.execute(sql: "UPDATE transactions SET tombstone = 1")
         }
 

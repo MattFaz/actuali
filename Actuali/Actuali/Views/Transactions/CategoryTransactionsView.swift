@@ -39,6 +39,30 @@ struct CategoryTransactionsView: View {
         return transactions.filter { matcher.matches($0) }
     }
 
+    @ViewBuilder
+    private var renderedNoteText: some View {
+        if #available(iOS 26, *) {
+            noteText
+        } else {
+            noteText
+                .accessibilityRepresentation {
+                    ForEach(NoteLinkText.links(in: note.text)) { link in
+                        Link(link.label, destination: link.url)
+                            .accessibilityIdentifier("categoryNoteLink.\(link.position)")
+                    }
+                }
+        }
+    }
+
+    private var noteText: some View {
+        Text(NoteLinkText.attributed(note.text))
+            .multilineTextAlignment(.leading)
+            // Multi-line notes are the point — let the row grow instead of
+            // truncating the guidance to one line.
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     /// The category's note. Hidden while searching — a search is about finding
     /// transactions, not reading guidance — and on files with no `notes` table,
     /// where an edit could never save.
@@ -63,19 +87,15 @@ struct CategoryTransactionsView: View {
                     // tap gesture rather than the Button the empty state uses:
                     // a Button label swallows link taps, where links inside a
                     // gesture-carrying row take precedence over the gesture.
-                    Text(NoteLinkText.attributed(note.text))
-                        .multilineTextAlignment(.leading)
-                        // Multi-line notes are the point — let the row grow
-                        // instead of truncating the guidance to one line.
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                    renderedNoteText
                     Image(systemName: "pencil")
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture { editingNote = true }
-                .accessibilityElement(children: .combine)
+                .accessibilityElement(children: .contain)
+                .accessibilityLabel(String(NoteLinkText.attributed(note.text).characters))
                 .accessibilityAddTraits(.isButton)
                 .accessibilityIdentifier("categoryNoteRow")
             }
