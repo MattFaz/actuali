@@ -1,0 +1,281 @@
+{
+  "sourceLanguage" : "en",
+  "version" : "1.0",
+  "strings" : {
+    "Add transaction to \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion zu \\(.applicationName) hinzufügen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add transaction to \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Añadir una transacción a \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ajouter une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiungi una transazione a \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie toevoegen aan \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Adicionar uma transação ao \\(.applicationName)" } }
+      }
+    },
+    "Add transaction with review in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion mit Überprüfung in \\(.applicationName) hinzufügen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add transaction with review in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Añadir una transacción con revisión en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ajouter une transaction avec vérification dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiungi una transazione con revisione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie met controle toevoegen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Adicionar uma transação com revisão no \\(.applicationName)" } }
+      }
+    },
+    "Check \\(\\.$account) balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kontostand von \\(\\.$account) in \\(.applicationName) prüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check \\(\\.$account) balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Consultar el saldo de \\(\\.$account) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Consulter le solde de \\(\\.$account) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla il saldo di \\(\\.$account) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Saldo van \\(\\.$account) controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar o saldo de \\(\\.$account) no \\(.applicationName)" } }
+      }
+    },
+    "Check \\(\\.$category) balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Saldo von \\(\\.$category) in \\(.applicationName) prüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check \\(\\.$category) balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Consultar el saldo de \\(\\.$category) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Consulter le solde de \\(\\.$category) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla il saldo di \\(\\.$category) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Saldo van \\(\\.$category) controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar o saldo de \\(\\.$category) no \\(.applicationName)" } }
+      }
+    },
+    "Check account balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kontostand in \\(.applicationName) prüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check account balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Consultar el saldo de la cuenta en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Consulter le solde du compte dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla il saldo del conto in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Accountsaldo controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar o saldo da conta no \\(.applicationName)" } }
+      }
+    },
+    "Check category balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategoriesaldo in \\(.applicationName) prüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check category balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Consultar el saldo de la categoría en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Consulter le solde de la catégorie dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla il saldo della categoria in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categoriesaldo controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar o saldo da categoria no \\(.applicationName)" } }
+      }
+    },
+    "Check \\(.applicationName) account balance" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kontostand in \\(.applicationName) prüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Check \\(.applicationName) account balance" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Consultar el saldo de la cuenta en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Consulter le solde du compte dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla il saldo del conto in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Accountsaldo controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Verificar o saldo da conta no \\(.applicationName)" } }
+      }
+    },
+    "Enter transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion in \\(.applicationName) eingeben" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Enter transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Introducir una transacción en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Saisir une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Inserisci una transazione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie invoeren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Inserir uma transação no \\(.applicationName)" } }
+      }
+    },
+    "Get \\(\\.$account) balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kontostand von \\(\\.$account) in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get \\(\\.$account) balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener el saldo de \\(\\.$account) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir le solde de \\(\\.$account) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni il saldo di \\(\\.$account) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Saldo van \\(\\.$account) ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter o saldo de \\(\\.$account) no \\(.applicationName)" } }
+      }
+    },
+    "Get \\(\\.$category) balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Saldo von \\(\\.$category) in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get \\(\\.$category) balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener el saldo de \\(\\.$category) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir le solde de \\(\\.$category) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni il saldo di \\(\\.$category) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Saldo van \\(\\.$category) ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter o saldo de \\(\\.$category) no \\(.applicationName)" } }
+      }
+    },
+    "Get account balance in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kontostand in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get account balance in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener el saldo de la cuenta en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir le solde du compte dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni il saldo del conto in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Accountsaldo ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter o saldo da conta no \\(.applicationName)" } }
+      }
+    },
+    "Get accounts in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Konten in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get accounts in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener las cuentas en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir les comptes dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni i conti in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Accounts ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter contas no \\(.applicationName)" } }
+      }
+    },
+    "Get categories in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategorien in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get categories in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener las categorías en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir les catégories dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni le categorie in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorieën ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter categorias no \\(.applicationName)" } }
+      }
+    },
+    "Get payees in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zahlungsempfänger in \\(.applicationName) abrufen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Get payees in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Obtener los beneficiarios en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Obtenir les bénéficiaires dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Ottieni i beneficiari in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Begunstigden ophalen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Obter favorecidos no \\(.applicationName)" } }
+      }
+    },
+    "How much is left in \\(\\.$category) in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wie viel ist in \\(\\.$category) in \\(.applicationName) übrig" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "How much is left in \\(\\.$category) in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Cuánto queda en \\(\\.$category) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Quel montant reste-t-il dans \\(\\.$category) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Quanto resta in \\(\\.$category) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Hoeveel staat er nog in \\(\\.$category) in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Quanto resta em \\(\\.$category) no \\(.applicationName)" } }
+      }
+    },
+    "Import transaction from text in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion aus Text in \\(.applicationName) importieren" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Import transaction from text in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Importar una transacción desde texto en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Importer une transaction depuis du texte dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Importa una transazione dal testo in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie uit tekst importeren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Importar uma transação de texto no \\(.applicationName)" } }
+      }
+    },
+    "List accounts in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Konten in \\(.applicationName) auflisten" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "List accounts in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Listar las cuentas en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Lister les comptes dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Elenca i conti in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Accounts weergeven in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Listar contas no \\(.applicationName)" } }
+      }
+    },
+    "List categories in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategorien in \\(.applicationName) auflisten" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "List categories in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Listar las categorías en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Lister les catégories dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Elenca le categorie in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorieën weergeven in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Listar categorias no \\(.applicationName)" } }
+      }
+    },
+    "List payees in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Zahlungsempfänger in \\(.applicationName) auflisten" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "List payees in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Listar los beneficiarios en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Lister les bénéficiaires dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Elenca i beneficiari in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Begunstigden weergeven in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Listar favorecidos no \\(.applicationName)" } }
+      }
+    },
+    "Log a transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Eine Transaktion in \\(.applicationName) erfassen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log a transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Registrar una transacción en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Enregistrer une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Registra una transazione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Een transactie registreren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Registrar uma transação no \\(.applicationName)" } }
+      }
+    },
+    "Log transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion in \\(.applicationName) erfassen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Registrar una transacción en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Enregistrer une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Registra una transazione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie registreren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Registrar uma transação no \\(.applicationName)" } }
+      }
+    },
+    "Log transaction to \\(\\.$account) in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion auf \\(\\.$account) in \\(.applicationName) erfassen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Log transaction to \\(\\.$account) in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Registrar una transacción en \\(\\.$account) en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Enregistrer une transaction sur \\(\\.$account) dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Registra una transazione su \\(\\.$account) in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie registreren op \\(\\.$account) in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Registrar uma transação em \\(\\.$account) no \\(.applicationName)" } }
+      }
+    },
+    "Parse transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion in \\(.applicationName) analysieren" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Parse transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Analizar una transacción en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Analyser une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Analizza una transazione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie analyseren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Analisar uma transação no \\(.applicationName)" } }
+      }
+    },
+    "Queue transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Transaktion in \\(.applicationName) zur Warteschlange hinzufügen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Queue transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Poner una transacción en cola en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mettre une transaction en file d’attente dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Metti una transazione in coda in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie in de wachtrij plaatsen in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Colocar uma transação na fila no \\(.applicationName)" } }
+      }
+    },
+    "Review a transaction in \\(.applicationName)" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Eine Transaktion in \\(.applicationName) überprüfen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Review a transaction in \\(.applicationName)" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Revisar una transacción en \\(.applicationName)" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Vérifier une transaction dans l’app \\(.applicationName)" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Controlla una transazione in \\(.applicationName)" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Transactie controleren in \\(.applicationName)" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Revisar uma transação no \\(.applicationName)" } }
+      }
+    }
+  }
+}

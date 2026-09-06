@@ -4,8 +4,8 @@ import Foundation
 struct GetAccountsIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Accounts"
     static let description = IntentDescription(
-        "List all open accounts in Actuali.",
-        categoryName: "Accounts"
+        LocalizedStringResource("List all open accounts in Actuali."),
+        categoryName: LocalizedStringResource("Accounts")
     )
     static let openAppWhenRun = false
 

@@ -1,5 +1,23 @@
 import SwiftUI
 
+enum RuleRowLocalization {
+    nonisolated static func fragment(
+        _ value: String.LocalizationValue,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(value, locale: locale, bundle: bundle))
+    }
+
+    nonisolated static func joiner(
+        isAnd: Bool,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        fragment(isAnd ? "and" : "or", locale: locale, bundle: bundle)
+    }
+}
+
 /// Manage the rules Actual applies to incoming transactions (GH #222).
 /// Mirrors the web's mobile rules page: stage badge, an IF/THEN summary per
 /// rule, search over that summary text, and swipe to delete.
@@ -10,7 +28,6 @@ struct RulesListView: View {
     @State private var isCreating = false
     @State private var failureMessage: String?
     @State private var hasLoaded = false
-
     private var summary: RuleSummary { budgetStore.ruleSummary }
 
     private var filteredRules: [Rule] {
@@ -130,6 +147,7 @@ private struct RuleRow: View {
     let rule: Rule
     let summary: RuleSummary
     let isOwnedBySchedule: Bool
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -148,9 +166,9 @@ private struct RuleRow: View {
                 }
             }
 
-            labelled("IF", lines: rule.conditions.map(summary.condition),
-                     joiner: rule.conditionsOp == .and ? "and" : "or")
-            labelled("THEN", lines: rule.actions.map(summary.action), joiner: nil)
+            labelled(RuleRowLocalization.fragment("IF", locale: locale), lines: rule.conditions.map(summary.condition),
+                     joiner: RuleRowLocalization.joiner(isAnd: rule.conditionsOp == .and, locale: locale))
+            labelled(RuleRowLocalization.fragment("THEN", locale: locale), lines: rule.actions.map(summary.action), joiner: nil)
         }
         .padding(.vertical, 2)
     }

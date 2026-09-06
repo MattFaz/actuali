@@ -48,14 +48,20 @@ enum CustomReportEngine {
         transactions: [Transaction],
         reportContext: ReportContext,
         filterContext: ConditionsFilter.Context,
-        today: Date
+        today: Date,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> CustomReportData {
         guard let config else {
-            return CustomReportData(name: "Custom Report", rangeLabel: "",
-                                    kind: .unsupported("Report not found — try syncing"))
+            return CustomReportData(
+                name: ReportStrings.text("Custom Report", locale: locale, bundle: bundle),
+                rangeLabel: "",
+                kind: .unsupported(ReportStrings.text("Report not found — try syncing", locale: locale, bundle: bundle))
+            )
         }
         var data = CustomReportData(name: config.name,
-                                    rangeLabel: config.dateStatic ? "" : (config.dateRange ?? "All time"),
+                                    rangeLabel: config.dateStatic ? "" : localizedRangeLabel(
+                                        config.dateRange ?? "All time", locale: locale, bundle: bundle),
                                     kind: .unsupported(""))
 
         // Supported-matrix guard: name the first offending option.
@@ -66,7 +72,11 @@ enum CustomReportEngine {
             (config.interval, ["Daily", "Weekly", "Monthly", "Yearly"], "interval"),
             (config.graphType, ["BarGraph", "StackedBarGraph", "TableGraph"], "graph"),
         ] where !supported.contains(value) {
-            data.kind = .unsupported("\(value) \(label) isn't supported yet")
+            data.kind = .unsupported(ReportStrings.format(
+                "%@ %@ isn't supported yet", value,
+                ReportStrings.text(label, locale: locale, bundle: bundle),
+                locale: locale, bundle: bundle
+            ))
             return data
         }
 
@@ -81,7 +91,6 @@ enum CustomReportEngine {
             earliest: earliest, latest: latest, today: today,
             firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
         let startYMD = ymdInt(from: start), endYMD = ymdInt(from: end)
-
         let categoriesById = Dictionary(uniqueKeysWithValues: reportContext.categories.map { ($0.id, $0) })
         let groupsById = Dictionary(uniqueKeysWithValues: reportContext.groups.map { ($0.id, $0) })
 
@@ -107,7 +116,8 @@ enum CustomReportEngine {
         // Interval buckets, chronological.
         let buckets = intervalBuckets(from: start, to: end,
                                       interval: config.interval,
-                                      firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx)
+                                      firstDayOfWeekIdx: reportContext.firstDayOfWeekIdx,
+                                      locale: locale)
         let bucketIndex = Dictionary(uniqueKeysWithValues:
             buckets.enumerated().map { ($0.element.key, $0.offset) })
         let labels = buckets.map(\.label)
@@ -171,13 +181,14 @@ enum CustomReportEngine {
         let orderedGroups: [(key: String, name: String)]
         if config.groupBy == "Category" {
             orderedGroups = reportContext.categories.map { ($0.id, $0.name) } + [
-                (Synthetic.uncategorized, "Uncategorized"),
-                (Synthetic.offBudget, "Off budget"),
-                (Synthetic.transfer, "Transfers"),
+                (Synthetic.uncategorized, ReportStrings.text("Uncategorized", locale: locale, bundle: bundle)),
+                (Synthetic.offBudget, ReportStrings.text("Off budget", locale: locale, bundle: bundle)),
+                (Synthetic.transfer, ReportStrings.text("Transfers", locale: locale, bundle: bundle)),
             ]
         } else {
             orderedGroups = reportContext.groups.map { ($0.id, $0.name) }
-                + [(Synthetic.uncategorized, "Uncategorized & Off budget")]
+                + [(Synthetic.uncategorized, ReportStrings.text(
+                    "Uncategorized & Off budget", locale: locale, bundle: bundle))]
         }
 
         struct GroupTotal { let key: String; let name: String; let total: Double; let perBucket: [Double] }
@@ -228,21 +239,22 @@ enum CustomReportEngine {
     }
 
     private static func intervalBuckets(
-        from start: Date, to end: Date, interval: String, firstDayOfWeekIdx: Int
+        from start: Date, to end: Date, interval: String, firstDayOfWeekIdx: Int,
+        locale: Locale
     ) -> [BucketDef] {
         var out: [BucketDef] = []
         switch interval {
         case "Daily":
             var d = cal.startOfDay(for: start)
             while d <= end {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter.string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .day, value: 1, to: d)!
             }
         case "Weekly":
             var d = ReportDateRange.weekStart(of: start, firstDayOfWeekIdx: firstDayOfWeekIdx)
             let last = ReportDateRange.weekStart(of: end, firstDayOfWeekIdx: firstDayOfWeekIdx)
             while d <= last {
-                out.append(.init(key: ymdInt(from: d), label: dayFormatter.string(from: d)))
+                out.append(.init(key: ymdInt(from: d), label: dayFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .day, value: 7, to: d)!
             }
         case "Yearly":
@@ -250,7 +262,7 @@ enum CustomReportEngine {
             let lastY = cal.component(.year, from: end)
             while y <= lastY {
                 let d = cal.date(from: DateComponents(year: y, month: 1, day: 1))!
-                out.append(.init(key: y, label: yearFormatter.string(from: d)))
+                out.append(.init(key: y, label: yearFormatter(locale: locale).string(from: d)))
                 y += 1
             }
         default: // Monthly — label "MMM ''yy" → Sep '25 (upstream intervalFormat)
@@ -261,7 +273,7 @@ enum CustomReportEngine {
             while d <= last {
                 let mc = cal.dateComponents([.year, .month], from: d)
                 out.append(.init(key: (mc.year ?? 0) * 100 + (mc.month ?? 0),
-                                 label: monthFormatter.string(from: d)))
+                                 label: monthFormatter(locale: locale).string(from: d)))
                 d = cal.date(byAdding: .month, value: 1, to: d)!
             }
         }
@@ -276,29 +288,37 @@ enum CustomReportEngine {
         return c
     }()
 
-    private static let dayFormatter: DateFormatter = {
+    private static func dayFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
         return f
-    }()
+    }
 
-    private static let monthFormatter: DateFormatter = {
+    private static func monthFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "MMM ''yy"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
         return f
-    }()
+    }
 
-    private static let yearFormatter: DateFormatter = {
+    private static func yearFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "yyyy"
         f.timeZone = TimeZone(identifier: "UTC")
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
         return f
-    }()
+    }
+
+    private static func localizedRangeLabel(_ value: String, locale: Locale, bundle: Bundle) -> String {
+        switch value {
+        case "All time": return ReportStrings.text("All Time", locale: locale, bundle: bundle)
+        case "Year to date": return ReportStrings.text("Year to date", locale: locale, bundle: bundle)
+        default: return value
+        }
+    }
 
     private static func dateFrom(_ ymd: Int) -> Date {
         cal.date(from: DateComponents(year: ymd / 10000, month: (ymd % 10000) / 100, day: ymd % 100))!

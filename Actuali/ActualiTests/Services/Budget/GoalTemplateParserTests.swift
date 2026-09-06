@@ -1,9 +1,12 @@
+import Foundation
 import Testing
 @testable import Actuali
 
 /// Parser cases mirror loot-core's goal-template.pegjs grammar and the
 /// examples in Actual's goal templates documentation.
 struct GoalTemplateParserTests {
+
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     private func parse(_ line: String) throws -> GoalTemplate {
         try GoalTemplateParser.parse(line)
@@ -211,6 +214,62 @@ struct GoalTemplateParserTests {
         #expect(throws: (any Error).self) { try GoalTemplateParser.parse("#goal") }
     }
 
+    @Test(arguments: ["en_US", "fr_FR"])
+    func localizesNonTemplateError(localeIdentifier: String) {
+        let locale = Locale(identifier: localeIdentifier)
+        do {
+            _ = try GoalTemplateParser.parse("not a template", locale: locale, bundle: appBundle)
+            Issue.record("Expected parsing to fail")
+        } catch let error as GoalTemplateParser.ParseError {
+            #expect(error.message == String(
+                localized: "Line is not a template", bundle: appBundle, locale: locale))
+        } catch {
+            Issue.record("Unexpected error: \(error)")
+        }
+    }
+
+    @Test func localizesEveryParserErrorInFrench() {
+        let cases = [
+            ("#goal", "Syntaxe #goal invalide"),
+            ("#template-", "Priorité invalide"),
+            ("#template nonsense", "Syntaxe de modèle invalide"),
+            ("not a template", "Line is not a template")
+        ]
+
+        for (line, expected) in cases {
+            do {
+                _ = try GoalTemplateParser.parse(
+                    line, locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+                Issue.record("Expected parsing to fail for \(line)")
+            } catch let error as GoalTemplateParser.ParseError {
+                #expect(error.message == expected)
+            } catch {
+                Issue.record("Unexpected error for \(line): \(error)")
+            }
+        }
+    }
+
+    @Test func keepsEveryParserErrorInEnglish() {
+        let cases = [
+            ("#goal", "Invalid #goal syntax"),
+            ("#template-", "Invalid priority"),
+            ("#template nonsense", "Invalid template syntax"),
+            ("not a template", "Line is not a template")
+        ]
+
+        for (line, expected) in cases {
+            do {
+                _ = try GoalTemplateParser.parse(
+                    line, locale: Locale(identifier: "en_US"), bundle: appBundle)
+                Issue.record("Expected parsing to fail for \(line)")
+            } catch let error as GoalTemplateParser.ParseError {
+                #expect(error.message == expected)
+            } catch {
+                Issue.record("Unexpected error for \(line): \(error)")
+            }
+        }
+    }
+
     // MARK: - Note extraction
 
     @Test func extractsTemplatesFromNote() {
@@ -250,6 +309,7 @@ struct GoalTemplateParserTests {
         #expect(templates.count == 1)
         #expect(templates[0].type == .error)
         #expect(templates[0].line == "#template nonsense here")
+        #expect(templates[0].error?.isEmpty == false)
     }
 
     @Test func adjustmentOutOfBoundsBecomesError() {

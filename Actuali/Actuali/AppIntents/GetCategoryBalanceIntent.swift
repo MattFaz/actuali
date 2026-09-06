@@ -4,12 +4,12 @@ import Foundation
 struct GetCategoryBalanceIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Category Balance"
     static let description = IntentDescription(
-        "Check remaining available budget for a category in Actuali.",
-        categoryName: "Budget"
+        LocalizedStringResource("Check remaining available budget for a category in Actuali."),
+        categoryName: LocalizedStringResource("Budget")
     )
     static let openAppWhenRun = false
 
-    @Parameter(title: "Category")
+    @Parameter(title: LocalizedStringResource("Category"))
     var category: CategoryEntity
 
     static var parameterSummary: some ParameterSummary {

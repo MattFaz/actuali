@@ -6,34 +6,41 @@ import Foundation
 /// un-migrate flow.
 enum AutomationSentences {
 
+    private static func localized(
+        _ value: String.LocalizationValue, locale: Locale, bundle: Bundle
+    ) -> String {
+        String(localized: LocalizedStringResource(value, locale: locale, bundle: bundle))
+    }
+
     static func trimTrailingZeros(_ value: Double) -> String {
         value == value.rounded() ? String(Int(value)) : String(value)
     }
 
     /// "MMM yyyy" for a YYYY-MM string, "—" when empty (web formatMonthLabel).
-    static func monthLabel(_ month: String?) -> String {
+    static func monthLabel(_ month: String?, locale: Locale = .autoupdatingCurrent) -> String {
         guard let month, !month.isEmpty else { return "—" }
         guard let (year, monthNumber) = BudgetMonthMath.yearAndMonth(month) else { return month }
         let formatter = DateFormatter()
+        formatter.locale = locale
         formatter.dateFormat = "MMM yyyy"
         let components = DateComponents(year: year, month: monthNumber, day: 1)
         guard let date = Calendar.current.date(from: components) else { return month }
         return formatter.string(from: date)
     }
 
-    private static func plural(_ count: Int, _ singular: String, _ pluralForm: String) -> String {
-        count == 1 ? singular : pluralForm
-    }
-
-    private static func adjustmentSuffix(_ template: GoalTemplate, amount: (Double) -> String) -> String {
+    private static func adjustmentSuffix(
+        _ template: GoalTemplate, amount: (Double) -> String, locale: Locale, bundle: Bundle
+    ) -> String {
         guard let adjustment = template.adjustment, let type = template.adjustmentType else {
             return ""
         }
-        let direction = adjustment >= 0 ? String(localized: "increased") : String(localized: "decreased")
+        let direction = adjustment >= 0
+            ? localized("increased", locale: locale, bundle: bundle)
+            : localized("decreased", locale: locale, bundle: bundle)
         let value = abs(adjustment)
         let formatted = type == .percent
             ? "\(trimTrailingZeros(value))%" : amount(value)
-        return String(format: String(localized: ", %@ by %@"), direction, formatted)
+        return localized(", \(direction) by \(formatted)", locale: locale, bundle: bundle)
     }
 
     /// The list row / tooltip sentence for one template. `amount` formats a
@@ -42,96 +49,114 @@ enum AutomationSentences {
     static func sentence(
         for template: GoalTemplate,
         amount: (Double) -> String,
-        categoryName: (String) -> String?
+        categoryName: (String) -> String?,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
     ) -> String {
         switch template.type {
         case .periodic:
             let value = amount(template.amount ?? 0)
             let count = template.period?.amount ?? 1
             let unit = template.period?.period ?? .month
-            let unitName: String
             switch unit {
-            case .day: unitName = plural(count, String(localized: "day"), String(localized: "days"))
-            case .week: unitName = plural(count, String(localized: "week"), String(localized: "weeks"))
-            case .month: unitName = plural(count, String(localized: "month"), String(localized: "months"))
-            case .year: unitName = plural(count, String(localized: "year"), String(localized: "years"))
+            case .day:
+                return localized("Budget \(value) every \(count) days", locale: locale, bundle: bundle)
+            case .week:
+                return localized("Budget \(value) every \(count) weeks", locale: locale, bundle: bundle)
+            case .month:
+                return localized("Budget \(value) every \(count) months", locale: locale, bundle: bundle)
+            case .year:
+                return localized("Budget \(value) every \(count) years", locale: locale, bundle: bundle)
             }
-            return count == 1
-                ? String(format: String(localized: "Budget %@ every %@"), value, unitName)
-                : String(format: String(localized: "Budget %@ every %lld %@"), value, Int64(count), unitName)
 
         case .by, .spend:
             let value = amount(template.amount ?? 0)
-            let month = monthLabel(template.month)
-            var sentence = String(format: String(localized: "Save %@ by %@"), value, month)
+            let month = monthLabel(template.month, locale: locale)
+            var sentence = localized("Save \(value) by \(month)", locale: locale, bundle: bundle)
             if template.type == .spend {
-                sentence += String(format: String(localized: ", early spending from %@"), monthLabel(template.from))
+                sentence += localized(", early spending from \(monthLabel(template.from, locale: locale))",
+                                      locale: locale, bundle: bundle)
             }
+            let repeatTarget = template.type == .spend
+                ? month + localized(", early spending from \(monthLabel(template.from, locale: locale))",
+                                    locale: locale, bundle: bundle)
+                : month
             if template.annual == true {
                 let repeats = template.repeatCount ?? 1
-                sentence += repeats == 1
-                    ? String(localized: ", repeating every year")
-                    : String(format: String(localized: ", repeating every %lld years"), Int64(repeats))
+                sentence = localized(
+                    "Save \(value) by \(repeatTarget), repeating every \(repeats) years",
+                    locale: locale, bundle: bundle)
             } else if let repeats = template.repeatCount, repeats > 0 {
-                sentence += repeats == 1
-                    ? String(localized: ", repeating every month")
-                    : String(format: String(localized: ", repeating every %lld months"), Int64(repeats))
+                sentence = localized(
+                    "Save \(value) by \(repeatTarget), repeating every \(repeats) months",
+                    locale: locale, bundle: bundle)
             }
             return sentence
 
         case .schedule:
             guard let name = template.name, !name.isEmpty else {
-                return String(localized: "Budget for a schedule")
+                return localized("Budget for a schedule", locale: locale, bundle: bundle)
             }
             let base = template.full == true
-                ? String(format: String(localized: "Cover the occurrences of the schedule ‘%@’ this month"), name)
-                : String(format: String(localized: "Save up for the schedule ‘%@’"), name)
-            return base + adjustmentSuffix(template, amount: amount)
+                ? localized("Cover the occurrences of the schedule ‘\(name)’ this month", locale: locale, bundle: bundle)
+                : localized("Save up for the schedule ‘\(name)’", locale: locale, bundle: bundle)
+            return base + adjustmentSuffix(template, amount: amount, locale: locale, bundle: bundle)
 
         case .percentage:
             let percent = trimTrailingZeros(template.percent ?? 0)
-            let when = template.previous == true ? String(localized: "last month") : String(localized: "this month")
+            let when = template.previous == true
+                ? localized("last month", locale: locale, bundle: bundle)
+                : localized("this month", locale: locale, bundle: bundle)
             let source = template.category ?? ""
             switch source.lowercased() {
             case "all income":
-                return String(format: String(localized: "Budget %@%% of total income %@"), percent, when)
+                return localized("Budget \(percent)% of total income \(when)", locale: locale, bundle: bundle)
             case "available funds":
-                return String(format: String(localized: "Budget %@%% of available funds to budget %@"), percent, when)
+                return localized("Budget \(percent)% of available funds to budget \(when)", locale: locale, bundle: bundle)
             default:
                 let name = categoryName(source) ?? source
-                return String(format: String(localized: "Budget %@%% of ‘%@’ %@"), percent, name, when)
+                return localized("Budget \(percent)% of ‘\(name)’ \(when)", locale: locale, bundle: bundle)
             }
 
         case .copy:
             let lookBack = template.lookBack ?? 0
-            return String(format: String(localized: "Budget the same amount as %lld %@ ago"), Int64(lookBack), plural(lookBack, String(localized: "month"), String(localized: "months")))
+            return localized("Budget the same amount as \(lookBack) months ago", locale: locale, bundle: bundle)
 
         case .average:
             let months = template.numMonths ?? 0
-            let base = String(format: String(localized: "Budget the average of the last %lld complete %@"), Int64(months), plural(months, String(localized: "month"), String(localized: "months")))
-            return base + adjustmentSuffix(template, amount: amount)
+            let base = localized("Budget the average of the last \(months) complete months",
+                                 locale: locale, bundle: bundle)
+            return base + adjustmentSuffix(template, amount: amount, locale: locale, bundle: bundle)
 
         case .remainder:
-            return String(format: String(localized: "Share remaining funds to budget (weight %@)"), trimTrailingZeros(template.weight ?? 1))
+            return localized("Share remaining funds to budget (weight \(trimTrailingZeros(template.weight ?? 1)))",
+                             locale: locale, bundle: bundle)
 
         case .goal:
-            return String(format: String(localized: "Long-term goal of %@"), amount(template.amount ?? 0))
+            return localized("Long-term goal of \(amount(template.amount ?? 0))", locale: locale, bundle: bundle)
 
         case .refill:
-            return String(localized: "Refill to balance limit")
+            return localized("Refill to balance limit", locale: locale, bundle: bundle)
 
         case .limit:
-            guard let limit = template.limit else { return String(localized: "Set a balance limit") }
+            guard let limit = template.limit else { return localized("Set a balance limit", locale: locale, bundle: bundle) }
             let value = amount(limit.amount)
-            let cap = limit.hold ? String(localized: "soft cap") : String(localized: "hard cap")
+            let cap = limit.hold ? localized("soft cap", locale: locale, bundle: bundle) : localized("hard cap", locale: locale, bundle: bundle)
             switch limit.period {
-            case .daily: return String(format: String(localized: "Set a balance limit of %@/day (%@)"), value, cap)
-            case .weekly: return String(format: String(localized: "Set a balance limit of %@/week (%@)"), value, cap)
-            case .monthly: return String(format: String(localized: "Set a balance limit of %@/month (%@)"), value, cap)
+            case .daily: return localized("Set a balance limit of \(value)/day (\(cap))", locale: locale, bundle: bundle)
+            case .weekly: return localized("Set a balance limit of \(value)/week (\(cap))", locale: locale, bundle: bundle)
+            case .monthly: return localized("Set a balance limit of \(value)/month (\(cap))", locale: locale, bundle: bundle)
             }
 
-        case .simple, .error:
-            return "Unsupported template type: \(template.type.rawValue)"
+        case .simple:
+            guard let monthly = template.monthly else {
+                return localized("Unsupported template type: \(template.type.rawValue)", locale: locale, bundle: bundle)
+            }
+            return localized("Budget \(amount(monthly)) per month", locale: locale, bundle: bundle)
+
+        case .error:
+            let message = template.error ?? template.line ?? template.type.rawValue
+            return localized("Invalid automation: \(message)", locale: locale, bundle: bundle)
         }
     }
 

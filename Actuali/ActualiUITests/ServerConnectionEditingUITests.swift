@@ -19,7 +19,7 @@ final class ServerConnectionEditingUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["Connected"].exists)
         edit.tap()
 
-        let fallback = app.textFields["Fallback server URL (optional)"]
+        let fallback = app.textFields["Fallback Server URL"]
         XCTAssertTrue(fallback.waitForExistence(timeout: 5))
         fallback.tap()
         fallback.typeText("fallback.example.com")

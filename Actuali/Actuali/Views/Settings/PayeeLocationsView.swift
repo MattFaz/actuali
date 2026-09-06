@@ -134,7 +134,7 @@ struct PayeeLocationDetailView: View {
                 ? await budgetStore.deletePayeeLocation(doomed[0])
                 : await budgetStore.deletePayeeLocations(doomed)
             guard cleared else {
-                failureMessage = "The location couldn't be removed. Check your connection and try again."
+                failureMessage = String(localized: "The location couldn't be removed. Check your connection and try again.")
                 return
             }
             locations = await budgetStore.fetchPayeeLocations(payeeId: payee.id)

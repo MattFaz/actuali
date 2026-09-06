@@ -2,6 +2,7 @@ import SwiftUI
 import Charts
 
 struct AgeOfMoneyWidgetView: View {
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: AgeOfMoneyData
 
@@ -24,7 +25,7 @@ struct AgeOfMoneyWidgetView: View {
                             Image(systemName: trendSymbol.name)
                                 .foregroundStyle(trendSymbol.color)
                         }
-                        Text("\(age) days")
+                        Text(ReportStrings.localized("\(age) days", locale: locale))
                             .font(.subheadline.weight(.semibold))
                             .monospacedDigit()
                     }
@@ -34,8 +35,8 @@ struct AgeOfMoneyWidgetView: View {
             if data.points.count >= 2 {
                 Chart(Array(data.points.enumerated()), id: \.offset) { _, point in
                     AreaMark(
-                        x: .value("Month", point.monthLabel),
-                        y: .value("Days", point.age)
+                        x: .value(ReportStrings.text("Month", locale: locale), point.monthLabel),
+                        y: .value(ReportStrings.text("Days", locale: locale), point.age)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(.linearGradient(
@@ -44,22 +45,25 @@ struct AgeOfMoneyWidgetView: View {
                         endPoint: .bottom
                     ))
                     LineMark(
-                        x: .value("Month", point.monthLabel),
-                        y: .value("Days", point.age)
+                        x: .value(ReportStrings.text("Month", locale: locale), point.monthLabel),
+                        y: .value(ReportStrings.text("Days", locale: locale), point.age)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(.teal)
                 }
                 .frame(height: 140)
             } else {
-                Text(data.currentAge == nil ? "Not enough data" : "")
+                Text(data.currentAge == nil ? ReportStrings.text("Not enough data", locale: locale) : "")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
             }
 
             if data.insufficientData {
-                Text("Some expenses predate the income history; ages are approximate.")
+                Text(ReportStrings.text(
+                    "Some expenses predate the income history; ages are approximate.",
+                    locale: locale
+                ))
                     .font(.caption2)
                     .foregroundStyle(.secondary)
             }

@@ -4,8 +4,8 @@ import Foundation
 struct GetPayeesIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Payees"
     static let description = IntentDescription(
-        "List all active payees in Actuali.",
-        categoryName: "Transactions"
+        LocalizedStringResource("List all active payees in Actuali."),
+        categoryName: LocalizedStringResource("Transactions")
     )
     static let openAppWhenRun = false
 

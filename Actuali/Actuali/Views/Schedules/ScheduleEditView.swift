@@ -6,6 +6,7 @@ import SwiftUI
 struct ScheduleEditView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     private let editing: ScheduleSummary?
 
@@ -261,7 +262,7 @@ struct ScheduleEditView: View {
                     HStack {
                         Text(String(localized: "Repeat"))
                         Spacer()
-                        Text(ScheduleDescription.recurring(recurrence.config))
+                        Text(ScheduleDescription.recurring(recurrence.config, locale: locale, bundle: .main))
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.trailing)
                     }
@@ -275,7 +276,7 @@ struct ScheduleEditView: View {
             if repeats {
                 Text("Next: " + ScheduleRecurrence
                     .upcomingDates(for: recurrence.config, count: 1)
-                    .map(ScheduleDescription.mediumDate)
+                    .map { ScheduleDescription.mediumDate($0, locale: locale) }
                     .joined())
             }
         }

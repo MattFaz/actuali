@@ -1,7 +1,13 @@
 import SwiftUI
 
+struct ReportsLoadRequest: Equatable {
+    let databaseID: ObjectIdentifier?
+    let generation: Int
+}
+
 struct ReportsTabView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var pages: [DashboardPage] = []
     @State private var selectedPageId: String?
     @State private var widgets: [DashboardWidget] = []
@@ -12,6 +18,7 @@ struct ReportsTabView: View {
     @State private var loadedPageId: String?
     @State private var loadError: String?
     @State private var hasLoaded = false
+    @State private var loadGeneration = 0
 
     var body: some View {
         NavigationStack {
@@ -60,7 +67,9 @@ struct ReportsTabView: View {
             // Keyed to the open database so the initial load re-runs when
             // the budget finishes opening (launching straight onto this tab
             // races loadLocalBudget) and when the budget is switched.
-            .task(id: budgetStore.databaseForLogger.map(ObjectIdentifier.init)) { await reload() }
+            .task(id: currentLoadRequest) {
+                await reload(request: currentLoadRequest)
+            }
             // This is a resident tab: nothing rebuilds it on the way back from
             // Settings, and `reload` has already written the resolved page into
             // `selectedPageId` — which outranks the new default. So changing the
@@ -69,11 +78,12 @@ struct ReportsTabView: View {
             // the first page.
             .onChange(of: budgetStore.defaultDashboardPageId) { _, newValue in
                 selectedPageId = newValue
-                Task { await reload() }
+                requestReload()
             }
             .refreshable {
                 await budgetStore.sync()
-                await reload()
+                requestReload()
+                await reload(request: currentLoadRequest)
             }
         }
         .initialSyncBanner()
@@ -89,7 +99,7 @@ struct ReportsTabView: View {
                 get: { selectedPageId ?? "" },
                 set: { newId in
                     selectedPageId = newId
-                    Task { await reload() }
+                    requestReload()
                 }
             )) {
                 ForEach(pages) { page in
@@ -98,7 +108,8 @@ struct ReportsTabView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:)) ?? "Dashboard")
+                 Text(pages.first { $0.id == selectedPageId }.map(displayName(for:))
+                     ?? ReportStrings.text("Dashboard", locale: locale))
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -122,7 +133,18 @@ struct ReportsTabView: View {
     }
 
     private func displayName(for page: DashboardPage) -> String {
-        page.name.isEmpty ? "Untitled" : page.name
+        page.name.isEmpty ? ReportStrings.text("Untitled", locale: locale) : page.name
+    }
+
+    private var currentLoadRequest: ReportsLoadRequest {
+        ReportsLoadRequest(
+            databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init),
+            generation: loadGeneration
+        )
+    }
+
+    private func requestReload() {
+        loadGeneration += 1
     }
 
     /// Which page to show: a still-live explicit selection wins, then the
@@ -143,8 +165,21 @@ struct ReportsTabView: View {
         return pages.first?.id
     }
 
-    private func reload() async {
+    nonisolated static func shouldPublish(
+        request: ReportsLoadRequest,
+        currentRequest: ReportsLoadRequest,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled && request == currentRequest
+    }
+
+    private func reload(request: ReportsLoadRequest) async {
         guard let database = budgetStore.databaseForLogger else {
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             self.hasLoaded = true
             return
         }
@@ -156,6 +191,11 @@ struct ReportsTabView: View {
                 pages: fetchedPages
             )
             let fetched = try await database.fetchWidgets(pageId: pageId)
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             self.pages = fetchedPages
             self.selectedPageId = pageId
             self.widgets = fetched
@@ -169,8 +209,18 @@ struct ReportsTabView: View {
             // reloads.
             return
         } catch {
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             self.loadError = error.localizedDescription
         }
+        guard Self.shouldPublish(
+            request: request,
+            currentRequest: currentLoadRequest,
+            taskIsCancelled: Task.isCancelled
+        ) else { return }
         self.hasLoaded = true
     }
 }

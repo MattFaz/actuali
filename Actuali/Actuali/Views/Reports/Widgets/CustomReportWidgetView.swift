@@ -3,6 +3,7 @@ import Charts
 
 struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let data: CustomReportData
 
     var body: some View {
@@ -31,8 +32,8 @@ struct CustomReportWidgetView: View {
             } else {
                 Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
                     BarMark(
-                        x: .value("Label", bar.label),
-                        y: .value("Amount", bar.valueUnits)
+                        x: .value(ReportStrings.text("Label", locale: locale), bar.label),
+                        y: .value(ReportStrings.text("Amount", locale: locale), bar.valueUnits)
                     )
                     .foregroundStyle(signed
                         ? (bar.valueUnits < 0 ? Color.red : Color.green)
@@ -57,10 +58,10 @@ struct CustomReportWidgetView: View {
                 }
                 Chart(points) { point in
                     BarMark(
-                        x: .value("Interval", point.interval),
-                        y: .value("Amount", point.value)
+                        x: .value(ReportStrings.text("Interval", locale: locale), point.interval),
+                        y: .value(ReportStrings.text("Amount", locale: locale), point.value)
                     )
-                    .foregroundStyle(by: .value("Group", point.series))
+                    .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                 }
                 .chartLegend(.visible)
                 .frame(height: 200)
@@ -95,7 +96,7 @@ struct CustomReportWidgetView: View {
     }
 
     private var emptyText: some View {
-        Text("No data in range")
+        Text(ReportStrings.text("No data in range", locale: locale))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)

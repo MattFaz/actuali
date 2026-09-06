@@ -4,6 +4,10 @@ import Testing
 
 struct CategoryBudgetProgressTests {
 
+    private var actualiBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
+
     private func makeCategory(
         id: String = "cat1",
         groupId: String = "g1",
@@ -83,6 +87,26 @@ struct CategoryBudgetProgressTests {
         #expect(makeCategory(budgeted: 10000, spent: -12000, available: -2000).progressState == .overspent)
     }
 
+    @Test func progressStatusesStayLocalizedAcrossSupportedLocales() {
+        let expected: [String: [String]] = [
+            "en_US": ["Overspent", "Fully spent", "Partially spent", "Funded", "No money assigned"],
+            "fr_FR": ["Dépassement", "Entièrement dépensé", "Partiellement dépensé", "Financé", "Aucun argent attribué"],
+            "es_ES": ["Excedido", "Totalmente gastado", "Parcialmente gastado", "Financiado", "Sin dinero asignado"],
+            "pt_BR": ["Excedido", "Totalmente gasto", "Parcialmente gasto", "Financiado", "Nenhum dinheiro atribuído"],
+            "de_DE": ["Überzogen", "Vollständig ausgegeben", "Teilweise ausgegeben", "Finanziert", "Kein Geld zugewiesen"],
+            "it_IT": ["In eccesso", "Speso interamente", "Speso parzialmente", "Finanziato", "Nessun importo assegnato"],
+            "nl_NL": ["Overschreden", "Volledig uitgegeven", "Gedeeltelijk uitgegeven", "Gefinancierd", "Geen geld toegewezen"]
+        ]
+        let states: [CategoryProgressState] = [.overspent, .spent, .spending, .funded, .unassigned]
+
+        for (identifier, values) in expected {
+            let locale = Locale(identifier: identifier)
+            for (state, value) in zip(states, values) {
+                #expect(state.statusText(locale: locale, bundle: actualiBundle) == value)
+            }
+        }
+    }
+
     @Test func quickAssignUsesActualHistoryAndProducesFinalAmounts() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [
@@ -133,6 +157,89 @@ struct CategoryBudgetProgressTests {
         #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
         #expect(!BudgetCategoryFilter.approachingLimit.includes(funded))
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
+    }
+
+    @Test(arguments: ["en_US", "fr_FR", "pt_BR", "es_ES", "de_DE", "it_IT", "nl_NL"])
+    func filterTitlesSelectTheCorrectPluralBranchForZeroOneAndTwo(identifier: String) {
+        let locale = Locale(identifier: identifier)
+        let titles = (0...2).map { count in
+            BudgetCategoryFilter.needsAttention.title(
+                count: count,
+                isTrackingBudget: false,
+                locale: locale,
+                bundle: actualiBundle
+            )
+        }
+
+        #expect(titles[0].contains("0"))
+        #expect(titles[1].contains("1"))
+        #expect(titles[2].contains("2"))
+        if identifier == "en_US" {
+            #expect(titles[0] == "Needs attention (0)")
+            #expect(titles[1] == "Needs attention (1)")
+            #expect(titles[2] == "Needs attention (2)")
+        } else if identifier == "fr_FR" {
+            #expect(titles[0] == "Nécessite une attention (0)")
+            #expect(titles[1] == "Nécessite une attention (1)")
+            #expect(titles[2] == "Nécessitent une attention (2)")
+        } else if identifier == "pt_BR" {
+            #expect(titles[0] == "Precisa de atenção (0)")
+            #expect(titles[1] == "Precisa de atenção (1)")
+            #expect(titles[2] == "Precisam de atenção (2)")
+        } else if identifier == "es_ES" {
+            #expect(titles[0] == "Requieren atención (0)")
+            #expect(titles[1] == "Requiere atención (1)")
+            #expect(titles[2] == "Requieren atención (2)")
+        } else if identifier == "de_DE" {
+            #expect(titles[0] == "Benötigen Aufmerksamkeit (0)")
+            #expect(titles[1] == "Benötigt Aufmerksamkeit (1)")
+            #expect(titles[2] == "Benötigen Aufmerksamkeit (2)")
+        } else if identifier == "it_IT" {
+            #expect(titles[0] == "Richiedono attenzione (0)")
+            #expect(titles[1] == "Richiede attenzione (1)")
+            #expect(titles[2] == "Richiedono attenzione (2)")
+        } else {
+            #expect(titles[0] == "Hebben aandacht nodig (0)")
+            #expect(titles[1] == "Heeft aandacht nodig (1)")
+            #expect(titles[2] == "Hebben aandacht nodig (2)")
+        }
+    }
+
+    @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
+    func everyFilterUsesLocalizedLabelsAndAccessibilityWrapper(identifier: String) {
+        let locale = Locale(identifier: identifier)
+        let wrapper = ReportStrings.text("Show %@ categories", locale: locale, bundle: actualiBundle)
+        let englishWrapper = ReportStrings.text("Show %@ categories", locale: Locale(identifier: "en_US"), bundle: actualiBundle)
+
+        #expect(wrapper != englishWrapper)
+        for filter in BudgetCategoryFilter.allCases {
+            for isTrackingBudget in [false, true] {
+                for count in 0...2 {
+                    let title = filter.title(
+                        count: count,
+                        isTrackingBudget: isTrackingBudget,
+                        locale: locale,
+                        bundle: actualiBundle
+                    )
+                    #expect(title.contains("\(count)"))
+                    #expect(!title.contains("budget.filter."))
+                    #expect(title != filter.title(
+                        count: count,
+                        isTrackingBudget: isTrackingBudget,
+                        locale: Locale(identifier: "en_US"),
+                        bundle: actualiBundle
+                    ))
+
+                    let accessibilityLabel = ReportStrings.format(
+                        "Show %@ categories",
+                        title,
+                        locale: locale,
+                        bundle: actualiBundle
+                    )
+                    #expect(accessibilityLabel == wrapper.replacingOccurrences(of: "%@", with: title))
+                }
+            }
+        }
     }
 
     // The toolbar stepper abbreviates the month so its `.principal` item keeps

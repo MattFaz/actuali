@@ -340,6 +340,7 @@ struct TransactionGroupingToggle: View {
 
 struct TransactionRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let transaction: Transaction
     var showAccount: Bool = true
     var showDate: Bool = true
@@ -353,7 +354,8 @@ struct TransactionRow: View {
     @State private var confirmingUnlock = false
 
     var accountName: String {
-        budgetStore.accounts.first { $0.id == transaction.accountId }?.name ?? "Unknown Account"
+        budgetStore.accounts.first { $0.id == transaction.accountId }?.name
+            ?? String(localized: TransactionsListLocalization.unknownAccount, locale: locale)
     }
 
     private var isInOffBudgetAccount: Bool {
@@ -372,19 +374,23 @@ struct TransactionRow: View {
     /// nagging "Uncategorized" (GH #104).
     private var categoryLabel: String {
         if isInOffBudgetAccount {
-            return "Off budget"
+            return String(localized: TransactionsListLocalization.offBudget, locale: locale)
         }
         if let portions = transaction.splitPortions, !portions.isEmpty {
             return portions.map { portion in
-                let name = portion.categoryName ?? "Uncategorized"
+                let name = portion.categoryName
+                    ?? String(localized: TransactionsListLocalization.uncategorized, locale: locale)
                 return "\(name) \(budgetStore.displaySpentCaption(portion.amount))"
             }.joined(separator: ", ")
         }
         if transaction.categoryName == nil, isTransfer,
            !transaction.needsCategory(offBudgetAccountIds: budgetStore.offBudgetAccountIds) {
-            return "Transfer"
+            return String(localized: TransactionsListLocalization.transfer, locale: locale)
         }
-        return transaction.categoryName ?? (transaction.isParent ? "Split" : "Uncategorized")
+        return transaction.categoryName
+            ?? (transaction.isParent
+                ? String(localized: TransactionsListLocalization.split, locale: locale)
+                : String(localized: TransactionsListLocalization.uncategorized, locale: locale))
     }
 
     var body: some View {
@@ -399,7 +405,10 @@ struct TransactionRow: View {
                     ClearedIndicator(cleared: transaction.cleared, reconciled: transaction.reconciled)
                 }
                 .frame(width: 48, height: 28)
-                .accessibilityLabel(isSelected ? "Selected" : "Not selected")
+                .accessibilityLabel(TransactionsListLocalization.selectionLabel(
+                    isSelected: isSelected,
+                    locale: locale
+                ))
             } else if let onToggleCleared {
                 Button {
                     if transaction.reconciled {
@@ -415,7 +424,7 @@ struct TransactionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .accessibilityHint("Toggles cleared status")
+                .accessibilityHint(String(localized: TransactionsListLocalization.togglesCleared, locale: locale))
                 .confirmationDialog(
                     "This transaction is reconciled. Unlock it to make changes?",
                     isPresented: $confirmingUnlock,
@@ -434,9 +443,12 @@ struct TransactionRow: View {
                 // label them "Split" like the desktop app, not "Unknown".
                 // Off-budget rows say "No payee": they're commonly payee-less
                 // (balance adjustments) and "Unknown" read as a bug (GH #123).
-                Text(transaction.payeeName
-                     ?? (transaction.isParent ? "Split"
-                         : (isInOffBudgetAccount ? "No payee" : "Unknown")))
+                    Text(transaction.payeeName
+                     ?? (transaction.isParent
+                         ? String(localized: TransactionsListLocalization.split, locale: locale)
+                         : (isInOffBudgetAccount
+                            ? String(localized: TransactionsListLocalization.noPayee, locale: locale)
+                            : String(localized: TransactionsListLocalization.unknown, locale: locale))))
                     .font(.body)
                 HStack(spacing: 4) {
                     if transaction.isParent {
@@ -488,6 +500,7 @@ struct TransactionRow: View {
 }
 
 struct ClearedIndicator: View {
+    @Environment(\.locale) private var locale
     let cleared: Bool
     let reconciled: Bool
 
@@ -506,8 +519,60 @@ struct ClearedIndicator: View {
             }
         }
         .font(.system(size: 14))
-        .accessibilityLabel(reconciled ? "Reconciled" : (cleared ? "Cleared" : "Uncleared"))
+        .accessibilityLabel(TransactionsListLocalization.statusLabel(
+            cleared: cleared,
+            reconciled: reconciled,
+            locale: locale
+        ))
     }
+}
+
+enum TransactionsListLocalization {
+    static let cleared: String.LocalizationValue = "Cleared"
+    static let noPayee: String.LocalizationValue = "No payee"
+    static let notSelected: String.LocalizationValue = "Not selected"
+    static let offBudget: String.LocalizationValue = "Off budget"
+    static let reconciled: String.LocalizationValue = "Reconciled"
+    static let selected: String.LocalizationValue = "Selected"
+    static let split: String.LocalizationValue = "Split"
+    static let togglesCleared: String.LocalizationValue = "Toggles cleared status"
+    static let transfer: String.LocalizationValue = "Transfer"
+    static let uncleared: String.LocalizationValue = "Uncleared"
+    static let uncategorized: String.LocalizationValue = "Uncategorized"
+    static let unknown: String.LocalizationValue = "Unknown"
+    static let unknownAccount: String.LocalizationValue = "Unknown Account"
+
+    static func text(
+        _ key: String,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.text(key, locale: locale, bundle: bundle)
+    }
+
+    static func statusLabel(
+        cleared: Bool,
+        reconciled: Bool,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        text(reconciled ? reconciledKey : (cleared ? clearedKey : unclearedKey),
+             locale: locale, bundle: bundle)
+    }
+
+    static func selectionLabel(
+        isSelected: Bool,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        text(isSelected ? selectedKey : notSelectedKey, locale: locale, bundle: bundle)
+    }
+
+    private static let clearedKey = "Cleared"
+    private static let reconciledKey = "Reconciled"
+    private static let unclearedKey = "Uncleared"
+    private static let selectedKey = "Selected"
+    private static let notSelectedKey = "Not selected"
 }
 
 #Preview {

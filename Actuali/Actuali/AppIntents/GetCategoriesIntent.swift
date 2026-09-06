@@ -4,8 +4,8 @@ import Foundation
 struct GetCategoriesIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Categories"
     static let description = IntentDescription(
-        "List all active budget categories in Actuali.",
-        categoryName: "Budget"
+        LocalizedStringResource("List all active budget categories in Actuali."),
+        categoryName: LocalizedStringResource("Budget")
     )
     static let openAppWhenRun = false
 

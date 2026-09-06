@@ -13,33 +13,41 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     case writeFailed(underlying: String)
 
     var errorDescription: String? {
-        switch self {
-        case .noBudgetLoaded:
-            return String(localized: "intent.error.noBudgetLoaded")
-        case .noAccountSelected:
-            return String(localized: "intent.error.noAccountSelected")
-        case .accountUnavailable:
-            return String(localized: "intent.error.accountUnavailable")
-        case .invalidAmount(let received):
-            // Show what the automation actually delivered: issue #41 failures
-            // hinge on whether iOS passed the real text or a coerced "0".
-            let shown = received.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)
-            return String(
-                format: String(localized: "intent.error.invalidAmount %@"),
-                String(shown)
-            )
-        case .noAmountReceived:
-            return String(localized: "intent.error.noAmountReceived")
-        case .writeFailed(let underlying):
-            return String(
-                format: String(localized: "intent.error.writeFailed %@"),
-                String(describing: underlying)
-            )
-        }
+        String(localized: localizedStringResource)
     }
 
     var localizedStringResource: LocalizedStringResource {
-        LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
+        Self.resource(for: self)
+    }
+
+    static func localizedString(
+        for error: Self,
+        locale: Locale,
+        bundle: Bundle
+    ) -> String {
+        String(localized: resource(for: error, locale: locale, bundle: bundle))
+    }
+
+    private static func resource(
+        for error: Self,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> LocalizedStringResource {
+        switch error {
+        case .noBudgetLoaded:
+            return LocalizedStringResource("intent.error.noBudgetLoaded", locale: locale, bundle: bundle)
+        case .noAccountSelected:
+            return LocalizedStringResource("intent.error.noAccountSelected", locale: locale, bundle: bundle)
+        case .accountUnavailable:
+            return LocalizedStringResource("intent.error.accountUnavailable", locale: locale, bundle: bundle)
+        case .invalidAmount(let received):
+            let shown = received.trimmingCharacters(in: .whitespacesAndNewlines).prefix(40)
+            return LocalizedStringResource("intent.error.invalidAmount \(shown)", locale: locale, bundle: bundle)
+        case .noAmountReceived:
+            return LocalizedStringResource("intent.error.noAmountReceived", locale: locale, bundle: bundle)
+        case .writeFailed(let underlying):
+            return LocalizedStringResource("intent.error.writeFailed \(String(describing: underlying))", locale: locale, bundle: bundle)
+        }
     }
 }
 
@@ -50,20 +58,36 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
     case noAccountSelected
 
     var errorDescription: String? {
-        switch self {
-        case .accountNotFound:
-            return String(localized: "intent.error.accountNotFound")
-        case .categoryNotFound:
-            return String(localized: "intent.error.categoryNotFound")
-        case .noBudgetLoaded:
-            return String(localized: "intent.error.noBudgetLoaded")
-        case .noAccountSelected:
-            return String(localized: "intent.error.noAccountSelected")
-        }
+        String(localized: localizedStringResource)
     }
 
     var localizedStringResource: LocalizedStringResource {
-        LocalizedStringResource(stringLiteral: errorDescription ?? "Unknown error")
+        Self.resource(for: self)
+    }
+
+    static func localizedString(
+        for error: Self,
+        locale: Locale,
+        bundle: Bundle
+    ) -> String {
+        String(localized: resource(for: error, locale: locale, bundle: bundle))
+    }
+
+    private static func resource(
+        for error: Self,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> LocalizedStringResource {
+        switch error {
+        case .accountNotFound:
+            return LocalizedStringResource("intent.error.accountNotFound", locale: locale, bundle: bundle)
+        case .categoryNotFound:
+            return LocalizedStringResource("intent.error.categoryNotFound", locale: locale, bundle: bundle)
+        case .noBudgetLoaded:
+            return LocalizedStringResource("intent.error.noBudgetLoaded", locale: locale, bundle: bundle)
+        case .noAccountSelected:
+            return LocalizedStringResource("intent.error.noAccountSelected", locale: locale, bundle: bundle)
+        }
     }
 }
 

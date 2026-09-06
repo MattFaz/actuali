@@ -15,13 +15,17 @@ enum GoalTemplateParser {
 
     /// Parse one `#template…` / `#goal…` line (already trimmed to start at
     /// the `#`). Throws on lines that match no grammar alternative.
-    static func parse(_ line: String) throws -> GoalTemplate {
+    static func parse(
+        _ line: String,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) throws -> GoalTemplate {
         var scanner = Scanner(line)
 
         // `#goal`i amount
         if scanner.matchLiteral("#goal", caseInsensitive: true) {
             guard let amount = scanner.amount(), scanner.isAtEnd else {
-                throw ParseError(message: "Invalid #goal syntax")
+                throw ParseError(message: localizedError("Invalid #goal syntax", locale: locale, bundle: bundle))
             }
             var template = GoalTemplate(type: .goal, directive: .goal, priority: nil)
             template.amount = amount
@@ -30,13 +34,14 @@ enum GoalTemplateParser {
 
         // `#template` is case-sensitive upstream.
         guard scanner.matchLiteral("#template", caseInsensitive: false) else {
-            throw ParseError(message: "Line is not a template")
+            throw ParseError(message: localizedError(
+                "Line is not a template", locale: locale, bundle: bundle))
         }
         // priority = '-' number; absent coerces to 0 (upstream's `+null`).
         var priority = 0
         if scanner.matchLiteral("-", caseInsensitive: false) {
             guard let n = scanner.number() else {
-                throw ParseError(message: "Invalid priority")
+                throw ParseError(message: localizedError("Invalid priority", locale: locale, bundle: bundle))
             }
             priority = n
         }
@@ -53,7 +58,12 @@ enum GoalTemplateParser {
                 return template
             }
         }
-        throw ParseError(message: "Invalid template syntax")
+        throw ParseError(message: localizedError("Invalid template syntax", locale: locale, bundle: bundle))
+    }
+
+    private static func localizedError(_ key: String, locale: Locale, bundle: Bundle) -> String {
+        ReportStrings.localizedBundle(for: locale, in: bundle)
+            .localizedString(forKey: key, value: key, table: nil)
     }
 
     // MARK: - Alternatives (bodies after the `#template[-N]` prefix)
@@ -205,12 +215,12 @@ enum GoalTemplateParser {
         return template
     }
 
-    /// 'average' positive ['months'] [modifiers]
+    /// 'average' nonnegative ['months'] [modifiers]
     private static func parseAverage(_ s: inout Scanner) -> GoalTemplate? {
         s.skipWhitespace()
         guard s.matchLiteral("average", caseInsensitive: true) else { return nil }
         s.skipWhitespace()
-        guard let numMonths = s.positive() else { return nil }
+        guard let numMonths = s.number() else { return nil }
         s.skipWhitespace()
         _ = s.matchLiteral("months", caseInsensitive: true)
         let modifiers = s.modifiers()
@@ -221,12 +231,12 @@ enum GoalTemplateParser {
         return template
     }
 
-    /// 'copy from' positive 'months ago' [limit]
+    /// 'copy from' nonnegative 'months ago' [limit]
     private static func parseCopy(_ s: inout Scanner) -> GoalTemplate? {
         s.skipWhitespace()
         guard s.matchLiteral("copy from", caseInsensitive: true) else { return nil }
         s.skipWhitespace()
-        guard let lookBack = s.positive() else { return nil }
+        guard let lookBack = s.number() else { return nil }
         s.skipWhitespace()
         guard s.matchLiteral("months ago", caseInsensitive: true) else { return nil }
         let limit = s.limit()
@@ -581,14 +591,14 @@ enum GoalTemplateNotes {
                    adjustment <= -100 || adjustment > 1000 {
                     var errorTemplate = GoalTemplate(type: .error, directive: .error)
                     errorTemplate.line = line
-                    errorTemplate.error = "Invalid adjustment percentage (\(trimTrailingZeros(adjustment))%). Must be between -100% and 1000%"
+                    errorTemplate.error = String(localized: "Invalid adjustment percentage (\(trimTrailingZeros(adjustment))%). Must be between -100% and 1000%")
                     template = errorTemplate
                 }
             } catch {
                 var errorTemplate = GoalTemplate(type: .error, directive: .error)
                 errorTemplate.line = line
                 errorTemplate.error = (error as? GoalTemplateParser.ParseError)?.message
-                    ?? "Invalid template syntax"
+                    ?? String(localized: "Invalid template syntax")
                 template = errorTemplate
             }
             template.description = description

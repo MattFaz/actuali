@@ -16,6 +16,7 @@ struct CategoryTransactionsDestination: Hashable {
 /// the "Spent" figure the user tapped.
 struct CategoryTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let destination: CategoryTransactionsDestination
 
     @State private var transactions: [Transaction] = []
@@ -28,7 +29,7 @@ struct CategoryTransactionsView: View {
     @State private var editingNote = false
 
     private var scopeTitle: String {
-        destination.month.map { MonthPicker.title(for: $0) } ?? String(localized: "All Time")
+        destination.month.map { MonthPicker.title(for: $0) } ?? String(localized: "All Time", locale: locale)
     }
 
     private var filteredTransactions: [Transaction] {
@@ -108,10 +109,29 @@ struct CategoryTransactionsView: View {
         ContentUnavailableView(
             "No Transactions",
             systemImage: "list.bullet.rectangle",
-            description: Text(String(format: String(localized: "Nothing in %@ for %@"), destination.categoryName, scopeTitle.lowercased() == "all time" ? String(localized: "any month") : scopeTitle))
+            description: Text(Self.emptyStateDescription(
+                categoryName: destination.categoryName,
+                month: destination.month,
+                scopeTitle: scopeTitle
+            ))
         )
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+    }
+
+    static func emptyStateDescription(
+        categoryName: String,
+        month: String?,
+        scopeTitle: String,
+        locale: Locale = .autoupdatingCurrent
+    ) -> String {
+        ReportStrings.format(
+            "Nothing in %@ for %@",
+            categoryName,
+            month == nil ? ReportStrings.text("any month", locale: locale) : scopeTitle,
+            locale: locale,
+            bundle: .main
+        )
     }
 
     @ViewBuilder
@@ -163,7 +183,7 @@ struct CategoryTransactionsView: View {
             Spacer()
             // Sums the filtered rows so the total matches what's on screen
             // while searching.
-            Text(String(format: String(localized: "Total %@"), budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount })))
+            Text(String(format: String(localized: "Total %@", locale: locale), budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount })))
         }
     }
 

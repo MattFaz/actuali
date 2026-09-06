@@ -1,7 +1,13 @@
 import SwiftUI
 
+struct DashboardLoadRequest: Equatable {
+    let databaseID: ObjectIdentifier?
+    let dataVersion: Int
+}
+
 struct DashboardView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     let widgets: [DashboardWidget]
 
@@ -23,6 +29,8 @@ struct DashboardView: View {
 
     /// Unsupported widgets never render as cards; a single top banner notes
     /// that only a limited set of reports is available.
+    @State private var loadError: String?
+
     private var hasUnsupportedWidgets: Bool {
         widgets.contains {
             if case .unsupported = $0 { return true }
@@ -50,6 +58,12 @@ struct DashboardView: View {
                 "No widgets",
                 systemImage: "chart.bar.xaxis",
                 description: Text("Configure your dashboard in the Actual Budget webapp; it will sync here.")
+            )
+        } else if let loadError {
+            ContentUnavailableView(
+                "Could not load reports",
+                systemImage: "exclamationmark.triangle",
+                description: Text(loadError)
             )
         } else {
             ScrollView {
@@ -81,43 +95,119 @@ struct DashboardView: View {
             // Keyed to dataVersion so widgets recompute when transactions
             // change anywhere in the app (edits on other tabs, sync,
             // scheduled posts) — not just on first appearance.
-            .task(id: budgetStore.dataVersion) { await loadTransactions() }
+            .task(id: budgetStore.dataVersion) {
+                await loadTransactions(request: currentLoadRequest)
+            }
         }
     }
 
-    private func loadTransactions() async {
+    private var currentLoadRequest: DashboardLoadRequest {
+        DashboardLoadRequest(
+            databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init),
+            dataVersion: budgetStore.dataVersion
+        )
+    }
+
+    nonisolated static func shouldPublish(
+        request: DashboardLoadRequest,
+        currentRequest: DashboardLoadRequest,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled && request == currentRequest
+    }
+
+    nonisolated static func errorMessageToPublish(
+        error: any Error,
+        request: DashboardLoadRequest,
+        currentRequest: DashboardLoadRequest,
+        taskIsCancelled: Bool
+    ) -> String? {
+        guard shouldPublish(
+            request: request,
+            currentRequest: currentRequest,
+            taskIsCancelled: taskIsCancelled
+        ) else { return nil }
+        return error.localizedDescription
+    }
+
+    private func loadTransactions(request: DashboardLoadRequest) async {
         guard let database = budgetStore.databaseForLogger else {
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             reportTransactions = []
             return
         }
-        // Fetch configs + week pref BEFORE assigning reportTransactions:
-        // WidgetCard recomputes when the transactions change and the compute
-        // closures read these, so they must land first.
-        let reportIds = widgets.compactMap { widget -> String? in
-            if case .customReport(_, let meta) = widget { return meta?.id }
-            return nil
-        }
-        customReportConfigs = (try? await database.fetchCustomReportConfigs(ids: reportIds)) ?? [:]
-        firstDayOfWeekIdx = (try? await database.fetchFirstDayOfWeekIdx()) ?? 0
-        let needsBudgets = widgets.contains {
-            switch $0 {
-            case .budgetAnalysis, .sankey, .balanceForecast: return true
-            case .spending(_, let meta): return meta?.mode == .budget
-            default: return false
+        do {
+            // Fetch configs + week pref BEFORE assigning reportTransactions:
+            // WidgetCard recomputes when the transactions change and the compute
+            // closures read these, so they must land first.
+            let reportIds = widgets.compactMap { widget -> String? in
+                if case .customReport(_, let meta) = widget { return meta?.id }
+                return nil
             }
+            let loadedConfigs = try await database.fetchCustomReportConfigs(ids: reportIds)
+            try Task.checkCancellation()
+
+            let loadedFirstDayOfWeekIdx = try await database.fetchFirstDayOfWeekIdx()
+            try Task.checkCancellation()
+
+            let needsBudgets = widgets.contains {
+                switch $0 {
+                case .budgetAnalysis, .sankey, .balanceForecast: return true
+                case .spending(_, let meta): return meta?.mode == .budget
+                default: return false
+                }
+            }
+            let loadedReportBudgets = needsBudgets
+                ? try await database.fetchBudgetDataForReports()
+                : BudgetDatabase.ReportBudgetData()
+            try Task.checkCancellation()
+
+            let needsForecast = widgets.contains {
+                if case .balanceForecast = $0 { return true }
+                return false
+            }
+            let loadedForecastSchedules: [Schedule] = if needsForecast {
+                try await database.fetchForecastSchedules()
+            } else {
+                []
+            }
+            try Task.checkCancellation()
+
+            let loadedTrackingBudgetMonths: [BalanceForecastBudgetMonth] = if needsForecast {
+                try await database.fetchTrackingBudgetMonths()
+            } else {
+                []
+            }
+            try Task.checkCancellation()
+
+            let loadedTransactions = try await database.fetchTransactionsForReports()
+            try Task.checkCancellation()
+
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
+            customReportConfigs = loadedConfigs
+            firstDayOfWeekIdx = loadedFirstDayOfWeekIdx
+            reportBudgets = loadedReportBudgets
+            forecastSchedules = loadedForecastSchedules
+            trackingBudgetMonths = loadedTrackingBudgetMonths
+            reportTransactions = loadedTransactions
+            loadError = nil
+        } catch {
+            guard let errorMessage = Self.errorMessageToPublish(
+                error: error,
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
+            loadError = errorMessage
         }
-        if needsBudgets {
-            reportBudgets = (try? await database.fetchBudgetDataForReports()) ?? BudgetDatabase.ReportBudgetData()
-        }
-        let needsForecast = widgets.contains {
-            if case .balanceForecast = $0 { return true }
-            return false
-        }
-        if needsForecast {
-            forecastSchedules = (try? await database.fetchForecastSchedules()) ?? []
-            trackingBudgetMonths = (try? await database.fetchTrackingBudgetMonths()) ?? []
-        }
-        reportTransactions = (try? await database.fetchTransactionsForReports()) ?? []
     }
 
     /// Budget-level context conditions need (on/off-budget ops, account-name
@@ -207,7 +297,7 @@ struct DashboardView: View {
                         firstDayOfWeekIdx: firstDayOfWeekIdx
                     ),
                     filterContext: conditionsContext,
-                    today: Date()
+                    today: Date(), locale: locale
                 )
             } content: { data in
                 CustomReportWidgetView(data: data)
@@ -334,9 +424,10 @@ struct DashboardView: View {
     private func comparisonLabel(for meta: SpendingMeta?) -> String {
         // nil mode defaults to single-month upstream (SpendingCard.tsx).
         switch meta?.mode ?? .singleMonth {
-        case .budget: return "vs budget"
-        case .singleMonth: return "vs \(meta?.compareTo ?? "prior")"
-        case .average: return "vs avg"
+        case .budget: return ReportStrings.text("vs budget", locale: locale)
+        case .singleMonth:
+            return ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
+        case .average: return ReportStrings.text("vs avg", locale: locale)
         }
     }
 }

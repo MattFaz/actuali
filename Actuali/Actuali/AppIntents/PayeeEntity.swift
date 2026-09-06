@@ -4,7 +4,9 @@ struct PayeeEntity: AppEntity, Identifiable {
     let id: String
     let name: String
 
-    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Payee"
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(
+        name: LocalizedStringResource("Payee")
+    )
 
     var displayRepresentation: DisplayRepresentation {
         DisplayRepresentation(title: "\(name)")

@@ -4,6 +4,7 @@ import SwiftUI
 struct DiscoverSchedulesView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     @State private var proposals: [ScheduleDiscovery.Proposal] = []
     @State private var selected = Set<UUID>()
@@ -30,7 +31,7 @@ struct DiscoverSchedulesView: View {
                             Text(budgetStore.displayBalance(proposal.amount))
                                 .monospacedDigit()
                         }
-                        Text(ScheduleDescription.recurring(proposal.config))
+                        Text(ScheduleDescription.recurring(proposal.config, locale: locale, bundle: .main))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Text(accountName(proposal.accountId))

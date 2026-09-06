@@ -3,6 +3,7 @@ import Charts
 
 struct NetWorthWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: NetWorthData
 
@@ -22,8 +23,8 @@ struct NetWorthWidgetView: View {
             if data.points.count >= 2 {
                 Chart(data.points, id: \.date) { point in
                     AreaMark(
-                        x: .value("Date", point.date),
-                        y: .value("Balance", Double(point.balanceCents) / 100.0)
+                        x: .value(ReportStrings.text("Date", locale: locale), point.date),
+                        y: .value(ReportStrings.text("Balance", locale: locale), Double(point.balanceCents) / 100.0)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(.linearGradient(
@@ -32,8 +33,8 @@ struct NetWorthWidgetView: View {
                         endPoint: .bottom
                     ))
                     LineMark(
-                        x: .value("Date", point.date),
-                        y: .value("Balance", Double(point.balanceCents) / 100.0)
+                        x: .value(ReportStrings.text("Date", locale: locale), point.date),
+                        y: .value(ReportStrings.text("Balance", locale: locale), Double(point.balanceCents) / 100.0)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(.green)
@@ -43,7 +44,7 @@ struct NetWorthWidgetView: View {
                 .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
-                Text("Not enough data")
+                Text(ReportStrings.text("Not enough data", locale: locale))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

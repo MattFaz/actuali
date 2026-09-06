@@ -4,12 +4,12 @@ import Foundation
 struct GetAccountBalanceIntent: AppIntent {
     static let title: LocalizedStringResource = "Get Account Balance"
     static let description = IntentDescription(
-        "Check the current balance of an account in Actuali.",
-        categoryName: "Accounts"
+        LocalizedStringResource("Check the current balance of an account in Actuali."),
+        categoryName: LocalizedStringResource("Accounts")
     )
     static let openAppWhenRun = false
 
-    @Parameter(title: "Account")
+    @Parameter(title: LocalizedStringResource("Account"))
     var account: AccountEntity?
 
     static var parameterSummary: some ParameterSummary {

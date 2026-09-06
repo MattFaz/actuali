@@ -43,6 +43,29 @@ struct BudgetTransferContext: Identifiable {
     }
 }
 
+enum BudgetTransferLocalization {
+    nonisolated static func candidateLabel(
+        categoryName: String,
+        amount: String,
+        isRecommended: Bool,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        if isRecommended {
+            return String(localized: LocalizedStringResource(
+                "Recommended: \(categoryName) (\(amount))",
+                locale: locale,
+                bundle: bundle
+            ))
+        }
+        return String(localized: LocalizedStringResource(
+            "\(categoryName) (\(amount))",
+            locale: locale,
+            bundle: bundle
+        ))
+    }
+}
+
 /// Move budgeted funds between categories (GH #128). Adapts to the tapped
 /// balance: in the red it covers the overspending from "To Budget" or a
 /// category with available funds; in the green it sends the surplus to
@@ -53,6 +76,7 @@ struct BudgetTransferContext: Identifiable {
 struct BudgetTransferSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let context: BudgetTransferContext
 
     /// The other side of the move: the month's unallocated pool, or a
@@ -151,7 +175,12 @@ struct BudgetTransferSheet: View {
                                     .tag(Endpoint.toBudget)
                             }
                             ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
-                                Text(String(format: String(localized: "%@ (%@)"), index == 0 && isCovering ? String(localized: "Recommended: ") + candidate.categoryName : candidate.categoryName, budgetStore.displayBalance(candidate.available)))
+                                Text(BudgetTransferLocalization.candidateLabel(
+                                    categoryName: candidate.categoryName,
+                                    amount: budgetStore.displayBalance(candidate.available),
+                                    isRecommended: index == 0 && isCovering,
+                                    locale: locale
+                                ))
                                     .tag(Endpoint.category(candidate.categoryId))
                             }
                         }

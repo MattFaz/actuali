@@ -33,7 +33,8 @@ enum AgeOfMoneyEngine {
         meta: AgeOfMoneyMeta?,
         transactions: [Transaction],
         today: Date,
-        context: ConditionsFilter.Context
+        context: ConditionsFilter.Context,
+        locale: Locale = .autoupdatingCurrent
     ) -> AgeOfMoneyData {
         let (start, resolvedEnd) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
         // Upstream: fixedEnd = min(lastDayOfMonth(end), today). Only the
@@ -110,6 +111,7 @@ enum AgeOfMoneyEngine {
         // still emit a point (the average carries forward).
         var points: [AgeOfMoneyData.Point] = []
         var agesSoFar: [Int] = []
+        let labelFormatter = makeLabelFormatter(locale: locale)
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
@@ -137,13 +139,13 @@ enum AgeOfMoneyEngine {
                               trend: trend, insufficientData: insufficientData)
     }
 
-    private static let labelFormatter: DateFormatter = {
+    private static func makeLabelFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
+        f.locale = locale
         f.dateFormat = "MMM yyyy"
         f.timeZone = TimeZone(identifier: "UTC")
         return f
-    }()
+    }
 
     private static func monthStart(of date: Date) -> Date {
         let c = cal.dateComponents([.year, .month], from: date)

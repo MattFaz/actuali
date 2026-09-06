@@ -76,6 +76,7 @@ struct RecurrenceDraft: Equatable {
 
 struct RecurrenceEditorView: View {
     @Binding var draft: RecurrenceDraft
+    @Environment(\.locale) private var locale
 
     private static let weekdayCodes = ["SU", "MO", "TU", "WE", "TH", "FR", "SA"]
 
@@ -188,7 +189,7 @@ struct RecurrenceEditorView: View {
             if draft.patterns.isEmpty {
                 Text(String(format: String(localized: "Repeats on day %lld of the month. Add specific days to repeat more than once a month."), draft.start.day))
             } else {
-                Text(ScheduleDescription.recurring(draft.config))
+                Text(ScheduleDescription.recurring(draft.config, locale: locale, bundle: .main))
             }
         }
     }
@@ -203,14 +204,12 @@ struct RecurrenceEditorView: View {
     // MARK: - Bindings
 
     private var intervalLabel: String {
-        let unit: String
         switch draft.frequency {
-        case .daily: unit = draft.interval == 1 ? String(localized: "day") : String(localized: "days")
-        case .weekly: unit = draft.interval == 1 ? String(localized: "week") : String(localized: "weeks")
-        case .monthly: unit = draft.interval == 1 ? String(localized: "month") : String(localized: "months")
-        case .yearly: unit = draft.interval == 1 ? String(localized: "year") : String(localized: "years")
+        case .daily: return ReportStrings.localized("\(draft.interval) days", locale: locale, bundle: .main)
+        case .weekly: return ReportStrings.localized("\(draft.interval) weeks", locale: locale, bundle: .main)
+        case .monthly: return ReportStrings.localized("\(draft.interval) months", locale: locale, bundle: .main)
+        case .yearly: return ReportStrings.localized("\(draft.interval) years", locale: locale, bundle: .main)
         }
-        return draft.interval == 1 ? unit : "\(draft.interval) \(unit)"
     }
 
     private var startBinding: Binding<Date> {
@@ -241,6 +240,7 @@ struct RecurrenceEditorView: View {
 /// The next few occurrences, so a recurrence can be sanity-checked before it
 /// is saved. Mirrors the web picker's preview.
 struct UpcomingDatesList: View {
+    @Environment(\.locale) private var locale
     let config: RecurConfig
     var count: Int = 4
 
@@ -252,9 +252,9 @@ struct UpcomingDatesList: View {
         } else {
             ForEach(dates, id: \.yyyymmdd) { date in
                 HStack {
-                    Text(ScheduleDescription.mediumDate(date))
+                    Text(ScheduleDescription.mediumDate(date, locale: locale))
                     Spacer()
-                    Text(ScheduleDescription.weekdayName(date.weekday))
+                    Text(ScheduleDescription.weekdayName(date.weekday, locale: locale))
                         .foregroundStyle(.secondary)
                 }
                 .font(.callout)

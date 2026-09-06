@@ -94,11 +94,11 @@ private struct ServerConnectionSettingsSection: View {
             .keyboardType(.URL)
             .accessibilityHint(String(localized: "Example: https://actual.example.com"))
 
-            TextField(String(localized: "Fallback server URL (optional)"), text: fallbackServerURL)
+            TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
-            .accessibilityHint(String(localized: "Used when the primary server cannot be reached"))
+            .accessibilityHint(String(localized: "Optional. Used when the primary server cannot be reached"))
     }
 
     var body: some View {

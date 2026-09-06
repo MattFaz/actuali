@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SpendingWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: SpendingData
     let comparisonLabel: String
@@ -19,7 +20,7 @@ struct SpendingWidgetView: View {
             Text(displayName).font(.headline)
             HStack(spacing: 16) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("This month")
+                    Text(ReportStrings.text("This month", locale: locale))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Text(budgetStore.displayBalance(data.currentSpentCents))
@@ -39,7 +40,8 @@ struct SpendingWidgetView: View {
                 HStack(spacing: 4) {
                     Image(systemName: delta > 0 ? "arrow.up" : (delta < 0 ? "arrow.down" : "equal"))
                     Text(budgetStore.displayBalance(abs(delta)))
-                    Text(delta > 0 ? "more spent" : (delta < 0 ? "less spent" : ""))
+                    Text(delta > 0 ? ReportStrings.text("more spent", locale: locale)
+                        : (delta < 0 ? ReportStrings.text("less spent", locale: locale) : ""))
                 }
                 .font(.subheadline)
                 .foregroundStyle(deltaColor)

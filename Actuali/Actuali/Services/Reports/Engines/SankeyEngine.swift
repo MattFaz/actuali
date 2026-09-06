@@ -204,7 +204,9 @@ enum SankeyEngine {
         budget: SankeyBudgetInput? = nil,
         today: Date,
         context: ConditionsFilter.Context = .empty,
-        maxNodesPerLayer: Int = 6
+        maxNodesPerLayer: Int = 6,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyData {
         var (start, end) = TimeFrame.resolve(meta?.timeFrame, asOf: today)
         // Upstream queries firstDayOfMonth(start)..lastDayOfMonth(end).
@@ -234,7 +236,9 @@ enum SankeyEngine {
                 entries,
                 budget: budget ?? SankeyBudgetInput(),
                 startMonth: monthLabel(start),
-                endMonth: monthLabel(end)
+                endMonth: monthLabel(end),
+                locale: locale,
+                bundle: bundle
             )
         } else {
             let entries = transactionEntries(
@@ -245,7 +249,7 @@ enum SankeyEngine {
                 groupAccounts: meta?.groupAccounts ?? false,
                 context: context
             )
-            graph = createTransactionsGraph(entries)
+            graph = createTransactionsGraph(entries, locale: locale, bundle: bundle)
         }
 
         let topN = min(meta?.topNcategories ?? 15, maxNodesPerLayer)
@@ -270,7 +274,9 @@ enum SankeyEngine {
             categorySort: sort,
             layerFrom: layerFrom,
             layerTo: layerTo,
-            showPercentages: meta?.showPercentages ?? false
+            showPercentages: meta?.showPercentages ?? false,
+            locale: locale,
+            bundle: bundle
         )
     }
 
@@ -341,14 +347,20 @@ enum SankeyEngine {
         return entries
     }
 
-    static func createTransactionsGraph(_ categoryData: [SankeyCategoryEntry]) -> SankeyGraph {
+    static func createTransactionsGraph(
+        _ categoryData: [SankeyCategoryEntry],
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> SankeyGraph {
         var graph = SankeyGraph()
 
         func addAccountNode(_ accountId: String, _ accountName: String) {
             graph.addNode(
                 accountId,
                 type: .account,
-                name: accountId == SpecialKey.allAccounts ? "Income" : accountName
+                name: accountId == SpecialKey.allAccounts
+                    ? ReportStrings.text("Income", locale: locale, bundle: bundle)
+                    : accountName
             )
         }
 
@@ -505,12 +517,16 @@ enum SankeyEngine {
         _ categoryData: [SankeyCategoryEntry],
         budget: SankeyBudgetInput,
         startMonth: String,
-        endMonth: String
+        endMonth: String,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyGraph {
         var graph = SankeyGraph()
 
-        graph.addNode(SpecialKey.budgeted, type: .budget, name: "Budgeted")
-        graph.addNode(SpecialKey.availableIncome, type: .account, name: "Available funds")
+        graph.addNode(SpecialKey.budgeted, type: .budget,
+                      name: ReportStrings.text("Budgeted", locale: locale, bundle: bundle))
+        graph.addNode(SpecialKey.availableIncome, type: .account,
+                      name: ReportStrings.text("Available funds", locale: locale, bundle: bundle))
 
         for entry in categoryData {
             if entry.isIncome {
@@ -526,26 +542,37 @@ enum SankeyEngine {
                 graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: entry.value)
             } else {
                 // Negative budget: category feeds the budget pool
-                graph.addNode(entry.categoryId, type: .account, name: "From \(entry.category)", isNegative: true)
+                graph.addNode(entry.categoryId, type: .account,
+                              name: ReportStrings.format("From %@", entry.category,
+                                                         locale: locale, bundle: bundle),
+                              isNegative: true)
                 graph.addValueToLink(from: entry.categoryId, to: SpecialKey.budgeted, value: abs(entry.value))
                 graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: entry.value)
             }
         }
 
         if budget.toBudgetCents > 0 {
-            graph.addNode(SpecialKey.toBudget, type: .categoryGroup, name: "To budget")
+            graph.addNode(SpecialKey.toBudget, type: .categoryGroup,
+                          name: ReportStrings.text("To budget", locale: locale, bundle: bundle))
             graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.toBudget, value: budget.toBudgetCents)
         } else {
-            graph.addNode(SpecialKey.toBudget, type: .account, name: "Overbudgeted", isNegative: true)
+            graph.addNode(SpecialKey.toBudget, type: .account,
+                          name: ReportStrings.text("Overbudgeted", locale: locale, bundle: bundle),
+                          isNegative: true)
             graph.addValueToLink(from: SpecialKey.toBudget, to: SpecialKey.budgeted, value: abs(budget.toBudgetCents))
             graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.budgeted, value: -abs(budget.toBudgetCents))
         }
 
-        graph.addNode(SpecialKey.fromPrevMonth, type: .incomeCategory, name: "From \(shiftMonth(startMonth, by: -1))")
+        graph.addNode(SpecialKey.fromPrevMonth, type: .incomeCategory,
+                      name: ReportStrings.format("From %@", localizedMonthLabel(shiftMonth(startMonth, by: -1), locale: locale),
+                             locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.fromPrevMonth, to: SpecialKey.availableIncome, value: budget.fromPreviousMonthCents)
-        graph.addNode(SpecialKey.forNextMonth, type: .budget, name: "For \(shiftMonth(endMonth, by: 1))")
+        graph.addNode(SpecialKey.forNextMonth, type: .budget,
+                      name: ReportStrings.format("For %@", localizedMonthLabel(shiftMonth(endMonth, by: 1), locale: locale),
+                             locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.forNextMonth, value: budget.forNextMonthCents)
-        graph.addNode(SpecialKey.lastMonthOverspent, type: .budget, name: "Overspent")
+        graph.addNode(SpecialKey.lastMonthOverspent, type: .budget,
+                  name: ReportStrings.text("Overspent", locale: locale, bundle: bundle))
         graph.addValueToLink(from: SpecialKey.availableIncome, to: SpecialKey.lastMonthOverspent, value: abs(budget.lastMonthOverspentCents))
 
         return graph
@@ -560,10 +587,13 @@ enum SankeyEngine {
         categorySort: SankeySortMode,
         layerFrom: SankeyLayer,
         layerTo: SankeyLayer,
-        showPercentages: Bool = false
+        showPercentages: Bool = false,
+        locale: Locale = .current,
+        bundle: Bundle = .main
     ) -> SankeyData {
         var graph = baseGraph  // value type; upstream clones
-        groupOtherCategories(&graph, topN: topN, categorySort: categorySort)
+        groupOtherCategories(&graph, topN: topN, categorySort: categorySort,
+                             locale: locale, bundle: bundle)
         sortGraph(&graph, categorySort: categorySort, categoryGroups: categoryGroups)
         addPercentageLabels(&graph)
         cleanUpNodes(&graph)
@@ -609,7 +639,13 @@ enum SankeyEngine {
 
     // MARK: Other-bucket grouping
 
-    static func groupOtherCategories(_ graph: inout SankeyGraph, topN: Int, categorySort: SankeySortMode) {
+    static func groupOtherCategories(
+        _ graph: inout SankeyGraph,
+        topN: Int,
+        categorySort: SankeySortMode,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) {
         func isGroupable(_ key: String) -> Bool {
             guard let node = graph[key] else { return false }
             return !key.hasSuffix(SpecialKey.otherSuffix)
@@ -625,14 +661,21 @@ enum SankeyEngine {
                 // min(by:) keeps the first of equal elements, matching the
                 // upstream strict `<` scan.
                 guard let nodeToDelete = ordinary.min(by: { getNodeValue(graph, $0) < getNodeValue(graph, $1) }) else { break }
-                moveToOther(&graph, nodeToDelete, globalOther: categorySort == .global)
+                moveToOther(&graph, nodeToDelete, globalOther: categorySort == .global,
+                            locale: locale, bundle: bundle)
                 ordinary = nodesInLayer(graph, layer).filter(isGroupable)
                 others = nodesInLayer(graph, layer).filter { $0.hasSuffix(SpecialKey.otherSuffix) }
             }
         }
     }
 
-    static func moveToOther(_ graph: inout SankeyGraph, _ key: String, globalOther: Bool) {
+    static func moveToOther(
+        _ graph: inout SankeyGraph,
+        _ key: String,
+        globalOther: Bool,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) {
         guard let nodeData = graph[key] else { return }
 
         let toNodes = nodeData.toOrder
@@ -648,7 +691,8 @@ enum SankeyEngine {
             }
         }
 
-        graph.addNode(otherKey, type: nodeData.type, name: "Other")
+        graph.addNode(otherKey, type: nodeData.type,
+                  name: ReportStrings.text("Other", locale: locale, bundle: bundle))
 
         for fromKey in fromNodes {
             if let value = graph[fromKey]?.toValues[key] {
@@ -941,6 +985,19 @@ enum SankeyEngine {
     private static func monthLabel(_ date: Date) -> String {
         let comps = calendar.dateComponents([.year, .month], from: date)
         return String(format: "%04d-%02d", comps.year ?? 0, comps.month ?? 0)
+    }
+
+    private static func localizedMonthLabel(_ label: String, locale: Locale) -> String {
+        let parts = label.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 2,
+              let date = calendar.date(from: DateComponents(year: parts[0], month: parts[1], day: 1)) else {
+            return label
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM yyyy"
+        formatter.locale = locale
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
     }
 
     private static func shiftMonth(_ label: String, by months: Int) -> String {

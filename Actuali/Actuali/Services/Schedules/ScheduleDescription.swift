@@ -20,72 +20,70 @@ enum ScheduleDescription {
     // MARK: - Date condition
 
     /// One-line summary of a schedule's date condition, for the list row.
-    static func dateSummary(_ condition: ScheduleDateCondition?) -> String {
+    static func dateSummary(
+        _ condition: ScheduleDateCondition?,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
         switch condition {
-        case .fixed(let day): Self.mediumDate(day)
-        case .recurring(let config): recurring(config)
-        case .unsupported: String(localized: "Unsupported repeat")
-        case nil: String(localized: "No date")
+        case .fixed(let day): Self.mediumDate(day, locale: locale)
+        case .recurring(let config): recurring(config, locale: locale, bundle: bundle)
+        case .unsupported: ReportStrings.text("Unsupported repeat", locale: locale, bundle: bundle)
+        case nil: ReportStrings.text("No date", locale: locale, bundle: bundle)
         }
     }
 
     // MARK: - Recurrence
 
-    static func recurring(_ config: RecurConfig) -> String {
+    static func recurring(
+        _ config: RecurConfig,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
         let interval = max(1, config.interval)
 
         var endSuffix = ""
         switch config.endMode {
         case "after_n_occurrences":
             let count = config.endOccurrences ?? 1
-            endSuffix = count == 1
-                ? String(localized: "once")
-                : String(format: String(localized: "%lld times"), Int64(count))
+            endSuffix = ReportStrings.localized("\(count) times", locale: locale, bundle: bundle)
         case "on_date":
             if let end = config.endDate {
-                endSuffix = String(format: String(localized: "until %@"), mediumDate(end))
+                endSuffix = ReportStrings.localized("until \(mediumDate(end, locale: locale))", locale: locale, bundle: bundle)
             }
         default:
             break
         }
 
         let weekendSuffix = config.skipWeekend
-            ? (config.weekendSolveMode == "after" ? String(localized: "(after weekend)") : String(localized: "(before weekend)"))
+            ? (config.weekendSolveMode == "after"
+                ? ReportStrings.text("(after weekend)", locale: locale, bundle: bundle)
+                : ReportStrings.text("(before weekend)", locale: locale, bundle: bundle))
             : ""
 
         var suffix = ""
-        if !endSuffix.isEmpty { suffix += String(format: String(localized: ", %@"), endSuffix) }
+        if !endSuffix.isEmpty { suffix += ReportStrings.localized(", \(endSuffix)", locale: locale, bundle: bundle) }
         if !weekendSuffix.isEmpty { suffix += " \(weekendSuffix)" }
 
         let body: String
         switch config.frequency {
         case .daily:
-            body = interval != 1
-                ? String(format: String(localized: "Every %lld days"), Int64(interval))
-                : String(localized: "Every day")
+            body = ReportStrings.localized("Every \(interval) days", locale: locale, bundle: bundle)
         case .weekly:
-            let day = weekdayName(config.start.weekday)
-            body = interval != 1
-                ? String(format: String(localized: "Every %lld weeks on %@"), Int64(interval), day)
-                : String(format: String(localized: "Every week on %@"), day)
+            let day = weekdayName(config.start.weekday, locale: locale)
+            body = ReportStrings.localized("Every \(interval) weeks on \(day)", locale: locale, bundle: bundle)
         case .monthly:
-            let range = monthlyRange(config)
+            let range = monthlyRange(config, locale: locale, bundle: bundle)
             if range.isEmpty {
-                let day = ordinal(config.start.day)
-                body = interval != 1
-                    ? String(format: String(localized: "Every %lld months on the %@"), Int64(interval), day)
-                    : String(format: String(localized: "Every month on the %@"), day)
+                let day = ordinal(config.start.day, locale: locale)
+                body = ReportStrings.localized("Every \(interval) months on the \(day)", locale: locale, bundle: bundle)
             } else {
-                body = interval != 1
-                    ? String(format: String(localized: "Every %lld months on the %@"), Int64(interval), range)
-                    : String(format: String(localized: "Every month on the %@"), range)
+                body = ReportStrings.localized("Every \(interval) months on the \(range)", locale: locale, bundle: bundle)
             }
         case .yearly:
             let day = Transaction.date(fromYYYYMMDD: config.start.yyyymmdd)
-                .formatted(.dateTime.month(.abbreviated).day(.defaultDigits))
-            body = interval != 1
-                ? String(format: String(localized: "Every %lld years on %@"), Int64(interval), day)
-                : String(format: String(localized: "Every year on %@"), day)
+                .formatted(.dateTime.locale(locale).month(.abbreviated).day(.defaultDigits))
+            body = ReportStrings.localized("Every \(interval) years on \(day)", locale: locale, bundle: bundle)
         }
 
         return (body + suffix).trimmingCharacters(in: .whitespaces)
@@ -93,7 +91,7 @@ enum ScheduleDescription {
 
     /// The "15th and last day" / "1st and 3rd Monday" fragment. Empty when the
     /// config carries no patterns (a plain monthly recurrence).
-    private static func monthlyRange(_ config: RecurConfig) -> String {
+    private static func monthlyRange(_ config: RecurConfig, locale: Locale, bundle: Bundle) -> String {
         guard !config.patterns.isEmpty else { return "" }
 
         // Weekday patterns sort ahead of day-of-month patterns, then by value.
@@ -117,23 +115,25 @@ enum ScheduleDescription {
 
         let parts: [String] = patterns.map { pattern in
             if pattern.type == "day" {
-                return pattern.value == -1 ? String(localized: "last day") : ordinal(pattern.value)
+                return pattern.value == -1
+                    ? ReportStrings.text("last day", locale: locale, bundle: bundle)
+                    : ordinal(pattern.value, locale: locale)
             }
-            let dayName = isSameDay ? "" : " " + weekdayName(forCode: pattern.type)
+            let dayName = isSameDay ? "" : " " + weekdayName(forCode: pattern.type, locale: locale)
             if pattern.value == -1 {
-                return String(localized: "last") + dayName
+                return ReportStrings.text("last", locale: locale, bundle: bundle) + dayName
             }
-            return ordinal(pattern.value) + dayName
+            return ordinal(pattern.value, locale: locale) + dayName
         }
 
         var range: String
         if parts.count > 2 {
-            range = parts.dropLast().joined(separator: ", ") + String(localized: ", and ") + (parts.last ?? "")
+            range = parts.dropLast().joined(separator: ", ") + ReportStrings.text(", and ", locale: locale, bundle: bundle) + (parts.last ?? "")
         } else {
-            range = parts.joined(separator: String(localized: " and "))
+            range = parts.joined(separator: ReportStrings.text(" and ", locale: locale, bundle: bundle))
         }
         if isSameDay {
-            range += " " + weekdayName(forCode: first.type)
+            range += " " + weekdayName(forCode: first.type, locale: locale)
         }
         return range
     }
@@ -147,8 +147,9 @@ enum ScheduleDescription {
     }()
 
     /// "1st", "15th" — upstream's `makeNumberSuffix`.
-    static func ordinal(_ value: Int) -> String {
-        ordinalFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+    static func ordinal(_ value: Int, locale: Locale = .current) -> String {
+        ordinalFormatter.locale = locale
+        return ordinalFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
     /// 1 = Sunday ... 7 = Saturday, matching `DayDate.weekday`.
@@ -175,8 +176,10 @@ enum ScheduleDescription {
     }
 
     /// Locale-formatted medium date, matching how transaction rows read.
-    static func mediumDate(_ day: DayDate) -> String {
-        Transaction.date(fromYYYYMMDD: day.yyyymmdd)
-            .formatted(date: .abbreviated, time: .omitted)
+    static func mediumDate(_ day: DayDate, locale: Locale = .current) -> String {
+        var style = Date.FormatStyle(date: .abbreviated, time: .omitted)
+        style.locale = locale
+        return Transaction.date(fromYYYYMMDD: day.yyyymmdd)
+            .formatted(style)
     }
 }

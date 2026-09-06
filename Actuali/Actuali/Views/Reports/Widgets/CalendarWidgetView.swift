@@ -2,6 +2,7 @@ import SwiftUI
 
 struct CalendarWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: CalendarData
 
@@ -12,8 +13,10 @@ struct CalendarWidgetView: View {
     }
 
     private var weekdaySymbols: [String] {
-        let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
-        return (0..<7).map { symbols[($0 + data.firstDayOfWeekIdx) % 7] }
+        CalendarWidgetFormatting.weekdaySymbols(
+            locale: locale,
+            firstDayOfWeekIdx: data.firstDayOfWeekIdx
+        )
     }
 
     var body: some View {
@@ -27,14 +30,14 @@ struct CalendarWidgetView: View {
                 )
             }
             if data.months.isEmpty {
-                Text("No data")
+                Text(ReportStrings.text("No data", locale: locale))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
             } else {
                 HStack(alignment: .top, spacing: 16) {
                     ForEach(visibleMonths, id: \.monthStart) { month in
-                        CalendarMonthGridView(month: month, weekdaySymbols: weekdaySymbols)
+                        CalendarMonthGridView(month: month, weekdaySymbols: weekdaySymbols, locale: locale)
                     }
                 }
             }
@@ -78,22 +81,14 @@ private struct CalendarCompactLabelStyle: LabelStyle {
 private struct CalendarMonthGridView: View {
     let month: CalendarMonthData
     let weekdaySymbols: [String]
-
-    private static let monthFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "MMM yyyy"
-        // Month starts are UTC dates; format them in UTC so the label can't
-        // shift into the neighboring month in negative-offset timezones.
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
+    let locale: Locale
 
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 2), count: 7)
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text(Self.monthFormatter.string(from: month.monthStart))
+                Text(CalendarWidgetFormatting.monthTitle(month.monthStart, locale: locale))
                     .font(.caption.bold())
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -113,6 +108,23 @@ private struct CalendarMonthGridView: View {
                 }
             }
         }
+    }
+}
+
+enum CalendarWidgetFormatting {
+    static func weekdaySymbols(locale: Locale, firstDayOfWeekIdx: Int) -> [String] {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        let symbols = formatter.veryShortStandaloneWeekdaySymbols ?? ["S", "M", "T", "W", "T", "F", "S"]
+        return (0..<7).map { symbols[($0 + firstDayOfWeekIdx) % 7] }
+    }
+
+    static func monthTitle(_ date: Date, locale: Locale) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.dateFormat = "MMM yyyy"
+        formatter.timeZone = TimeZone(identifier: "UTC")
+        return formatter.string(from: date)
     }
 }
 
