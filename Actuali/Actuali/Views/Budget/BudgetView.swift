@@ -172,7 +172,7 @@ struct BudgetView: View {
     /// corners since its rows sit edge-to-edge with no rounding.
     private var uncategorizedShape: AnyShape {
         switch budgetStore.budgetDisplayStyle {
-        case .clean: AnyShape(RoundedRectangle(cornerRadius: 20))
+        case .clean: AnyShape(RoundedRectangle(cornerRadius: 24))
         case .detailed: AnyShape(Capsule())
         case .compact: AnyShape(Rectangle())
         }
