@@ -167,6 +167,21 @@ struct BudgetView: View {
         budgetStore.budgetDisplayStyle == .compact
     }
 
+    @ViewBuilder
+    private var uncategorizedBackground: some View {
+        switch budgetStore.budgetDisplayStyle {
+        case .clean:
+            RoundedRectangle(cornerRadius: 16)
+                .fill(Color(.secondarySystemGroupedBackground))
+        case .detailed:
+            Capsule()
+                .fill(Color(.secondarySystemGroupedBackground))
+        case .compact:
+            Rectangle()
+                .fill(Color(.secondarySystemGroupedBackground))
+        }
+    }
+    
     var body: some View {
         NavigationStack {
             Group {
@@ -714,10 +729,7 @@ struct BudgetView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.secondarySystemGroupedBackground))
-                    )
+                    .background(uncategorizedBackground)
                 }
                 .accessibilityIdentifier("budgetUncategorized")
                 .padding(.horizontal, 4)
