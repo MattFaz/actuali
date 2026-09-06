@@ -171,7 +171,7 @@ struct BudgetView: View {
     private var uncategorizedBackground: some View {
         switch budgetStore.budgetDisplayStyle {
         case .clean:
-            RoundedRectangle(cornerRadius: 16)
+            RoundedRectangle(cornerRadius: 20)
                 .fill(Color(.secondarySystemGroupedBackground))
         case .detailed:
             Capsule()
