@@ -50,6 +50,8 @@ struct BankSyncPlan: Sendable, Equatable {
     /// Downloaded transactions that matched something already correct — the
     /// ordinary case for every sync after the first.
     var unchanged: Int = 0
+    /// Conflicting downloads with the same provider id are not imported.
+    var rejectedConflicts: Int = 0
 
     var isEmpty: Bool { inserts.isEmpty && updates.isEmpty }
 }
@@ -76,6 +78,7 @@ enum BankSyncReconciler {
     ) -> BankSyncPlan {
         var matchedIds = Set<String>()
         var plan = BankSyncPlan()
+        let normalizedCandidates = normalize(candidates, rejectedConflicts: &plan.rejectedConflicts)
 
         // Pass 1: the provider's transaction id. Anything that misses gets a
         // window of same-amount transactions to try the later passes against,
@@ -88,13 +91,13 @@ enum BankSyncReconciler {
         // charge that posts, most commonly — that excluding them would
         // duplicate it.
         var pending: [(candidate: BankSyncCandidate, match: BankSyncExistingTransaction?, window: [BankSyncExistingTransaction])] = []
-        for candidate in candidates {
-            let liveMatch = existing.first(where: {
+        for candidate in normalizedCandidates {
+            let liveMatch = existing.sorted(by: { $0.id < $1.id }).first(where: {
                 $0.importedId == candidate.importedId
                     && !$0.tombstone
                     && !matchedIds.contains($0.id)
             })
-            let deletedMatch = reimportDeleted ? nil : existing.first(where: {
+            let deletedMatch = reimportDeleted ? nil : existing.sorted(by: { $0.id < $1.id }).first(where: {
                 $0.importedId == candidate.importedId
                     && $0.tombstone
                     && !matchedIds.contains($0.id)
@@ -111,7 +114,10 @@ enum BankSyncReconciler {
                           distance <= fuzzyMatchDayRadius else { return nil }
                     return (row, distance)
                 }
-                .sorted { $0.distance < $1.distance }
+                .sorted {
+                    if $0.distance != $1.distance { return $0.distance < $1.distance }
+                    return $0.row.id < $1.row.id
+                }
                 .map(\.row)
             pending.append((candidate, nil, window))
         }
@@ -156,6 +162,24 @@ enum BankSyncReconciler {
         }
 
         return plan
+    }
+
+    /// Identical retries are harmless. Conflicting payloads for one provider
+    /// id are rejected instead of selecting a winner from input order.
+    private static func normalize(
+        _ candidates: [BankSyncCandidate],
+        rejectedConflicts: inout Int
+    ) -> [BankSyncCandidate] {
+        let grouped = Dictionary(grouping: candidates, by: \.importedId)
+        return grouped.keys.sorted().compactMap { importedId in
+            let variants = grouped[importedId, default: []]
+            guard let first = variants.first,
+                  variants.dropFirst().allSatisfy({ $0 == first }) else {
+                rejectedConflicts += 1
+                return nil
+            }
+            return first
+        }
     }
 
     /// What a matched transaction ends up with. Anything the person already

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -6,6 +7,29 @@ import Testing
 /// account. The strict matcher itself is covered by
 /// `BudgetStoreAccountMappingTests`.
 struct PendingImportsResolveAccountTests {
+
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+
+    @Test func approvalFailureMessageInterpolatesTheCount() {
+        #expect(PendingImportsView.approvalFailureMessage(
+            count: 0, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "0 transactions could not be approved. Please check their details.")
+        #expect(PendingImportsView.approvalFailureMessage(
+            count: 1, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "1 transaction could not be approved. Please check its details.")
+        #expect(PendingImportsView.approvalFailureMessage(
+            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "2 transactions could not be approved. Please check their details.")
+        #expect(PendingImportsView.approvalFailureMessage(
+            count: 2, locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            == "2 transactions n’ont pas pu être approuvées. Vérifiez leurs détails.")
+    }
+
+    @Test func reviewRequiredMessageIsDistinct() {
+        #expect(PendingImportsView.reviewRequiredMessage(
+            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "2 transactions require review and were left pending.")
+    }
 
     private func account(_ id: String, _ name: String, closed: Bool = false) -> Account {
         Account(id: id, name: name, type: .checking, offBudget: false, closed: closed,
@@ -98,5 +122,55 @@ struct PendingImportsResolveAccountTests {
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
         #expect(result == "acct_hsbc")
+    }
+
+    @Test func approvalUsesTheSameFirstOpenFallbackAsTheEditor() {
+        let accounts = [account("acct_old", "Closed", closed: true), account("acct_cash", "Cash")]
+
+        let result = PendingImportApprover.resolveAccountId(
+            cardHint: "unknown", accounts: accounts,
+            cardMappings: [:], defaultAccountId: nil)
+
+        #expect(result == "acct_cash")
+    }
+
+    @Test func legacyImportUsesReviewSeedForExplicitAdoption() {
+        let legacy = PendingImport(amount: 25, payee: "Coffee")
+        let accounts = [account("acct_cash", "Cash")]
+
+        // A legacy record cannot be directly approved; opening the editor and
+        // saving is the explicit adoption action into the active budget.
+        #expect(legacy.originBudgetId == nil)
+        #expect(PendingImportsView.seedAccountId(
+            cardHint: legacy.cardHint,
+            accounts: accounts,
+            cardMappings: [:],
+            defaultAccountId: nil
+        ) == "acct_cash")
+    }
+
+    @Test func reviewSaveRequiresExplicitConfirmation() {
+        let adoption = PendingImportReviewRequirement.adoptIntoActiveBudget
+        let currency = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
+        #expect(!AddTransactionView.allowsReviewSave(requirement: adoption, confirmed: false))
+        #expect(!AddTransactionView.allowsReviewSave(requirement: currency, confirmed: false))
+        #expect(AddTransactionView.allowsReviewSave(requirement: adoption, confirmed: true))
+        #expect(AddTransactionView.allowsReviewSave(requirement: nil, confirmed: false))
+        #expect(currency.prompt.contains("no conversion"))
+    }
+
+    @Test func amountUsesBudgetCurrencyAndLocale() {
+        #expect(PendingImportsView.amountString(
+            1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
+            locale: Locale(identifier: "de_DE")) == "-1.234,50 €")
+        #expect(PendingImportsView.amountString(
+            12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
+            locale: Locale(identifier: "de_DE")) == "-12,34 €")
+        #expect(PendingImportsView.amountString(
+            12.34, isIncome: true, currencyCode: "EUR", sourceCurrencyCode: "USD", narrowSymbol: true,
+            locale: Locale(identifier: "en_US")) == "$12.34")
+        #expect(PendingImportsView.amountString(
+            12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
+            locale: Locale(identifier: "en_US")) == "-$12.34")
     }
 }

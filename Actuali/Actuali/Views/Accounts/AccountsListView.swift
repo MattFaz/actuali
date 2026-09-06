@@ -291,13 +291,13 @@ struct AccountsListView: View {
             ContentUnavailableView(
                 String(localized: "Select a Budget"),
                 systemImage: "dollarsign.circle",
-                description: Text(String(localized: "You're connected. Choose a budget in Settings → Connection & Data to load it here."))
+                description: Text(String(localized: "You're connected. Choose a budget in More → Connection & Data to load it here."))
             )
         } else {
             ContentUnavailableView(
                 String(localized: "No Budget Loaded"),
                 systemImage: "dollarsign.circle",
-                description: Text(String(localized: "Go to Settings → Connection & Data to connect to your Actual Budget server"))
+                description: Text(String(localized: "Go to More → Connection & Data to connect to your Actual Budget server"))
             )
         }
     }

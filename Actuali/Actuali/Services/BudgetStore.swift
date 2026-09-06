@@ -706,7 +706,7 @@ final class BudgetStore: ObservableObject {
         creditCardConfigs[accountId] = config
         guard let syncClient else {
             creditCardConfigs[accountId] = previous
-            error = "Credit card settings need sync configured for this budget."
+            error = String(localized: "Credit card settings need sync configured for this budget.")
             return
         }
         do {
@@ -1336,7 +1336,7 @@ final class BudgetStore: ObservableObject {
         let normalized = Self.normalizedServerURL(serverURL)
         let normalizedFallback = Self.normalizedServerURL(fallbackServerURL)
         guard !normalized.isEmpty else {
-            error = "Please enter a server URL"
+            error = String(localized: "Please enter a server URL")
             return
         }
         if normalized != serverURL {
@@ -1376,7 +1376,7 @@ final class BudgetStore: ObservableObject {
         let normalized = Self.normalizedServerURL(newServerURL)
         let normalizedFallback = Self.normalizedServerURL(newFallbackServerURL)
         guard !normalized.isEmpty else {
-            error = "Please enter a server URL"
+            error = String(localized: "Please enter a server URL")
             return false
         }
         guard Self.isValidServerURL(normalized) else {
@@ -1723,7 +1723,7 @@ final class BudgetStore: ObservableObject {
             var loadedKey: LoadedKey?
             if remoteBudget.isEncrypted {
                 guard let key = EncryptionKeyManager.load(fileId: remoteBudget.id) else {
-                    self.error = "This budget is encrypted. Enter its encryption password to open it."
+                    self.error = String(localized: "This budget is encrypted. Enter its encryption password to open it.")
                     isLoading = false
                     downloadingBudgetId = nil
                     return
@@ -1742,7 +1742,7 @@ final class BudgetStore: ObservableObject {
                 }
                 guard meta.keyId == loadedKey.keyId else {
                     try? EncryptionKeyManager.remove(fileId: remoteBudget.id)
-                    self.error = "This budget's encryption key has changed. Re-enter the password."
+                    self.error = String(localized: "This budget's encryption key has changed. Re-enter the password.")
                     isLoading = false
                     downloadingBudgetId = nil
                     return
@@ -1810,9 +1810,11 @@ final class BudgetStore: ObservableObject {
     /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
     /// checked against the names already on the server (and local files).
     nonisolated static func budgetNameError(_ name: String, existingNames: [String]) -> String? {
-        if name.isEmpty { return "Budget name cannot be blank" }
-        if name.count > 100 { return "Budget name is too long (max length 100)" }
-        if existingNames.contains(name) { return "\u{201C}\(name)\u{201D} already exists" }
+        if name.isEmpty { return String(localized: "Budget name cannot be blank") }
+        if name.count > 100 { return String(localized: "Budget name is too long (max length 100)") }
+        if existingNames.contains(name) {
+            return String(format: String(localized: "\u{201C}%@\u{201D} already exists"), name)
+        }
         return nil
     }
 
@@ -1838,7 +1840,7 @@ final class BudgetStore: ObservableObject {
             return
         }
         guard let templateURL = Bundle.main.url(forResource: "blank-budget", withExtension: "sqlite") else {
-            error = "The blank budget template is missing from the app bundle."
+            error = String(localized: "The blank budget template is missing from the app bundle.")
             return
         }
 
@@ -1915,15 +1917,9 @@ final class BudgetStore: ObservableObject {
                 // The file exists server-side; surface it in the picker so one
                 // tap downloads it instead of leaving an invisible orphan.
                 await fetchRemoteBudgets()
-                self.error = """
-                    \u{201C}\(name)\u{201D} was created on your server, but couldn't be \
-                    finished on this device: \(error.localizedDescription) \
-                    Select it in Budget Selection to download it.
-                    """
+                self.error = String(format: String(localized: "\u{201C}%@\u{201D} was created on your server, but couldn't be finished on this device: %@ Select it in Budget Selection to download it."), name, error.localizedDescription)
             } else if uploadOutcomeUnknown {
-                self.error = """
-                    The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.
-                    """
+                self.error = String(localized: "The connection stopped before Actuali received the upload result. Reopen Connection & Data before you try again.")
             } else {
                 self.error = error.localizedDescription
             }
@@ -2131,7 +2127,7 @@ final class BudgetStore: ObservableObject {
                 dataVersion += 1
                 clearWidgetSnapshot()
             }
-            self.error = "Failed to load budget: \(error.localizedDescription)"
+                self.error = String(format: String(localized: "Failed to load budget: %@"), error.localizedDescription)
         }
 
         isLoading = false
@@ -2182,7 +2178,7 @@ final class BudgetStore: ObservableObject {
             // I/O error. A successful demo seed supersedes it.
             self.error = nil
         } catch {
-            self.error = "Failed to seed demo data: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to seed demo data: %@"), error.localizedDescription)
         }
     }
 
@@ -2278,7 +2274,7 @@ final class BudgetStore: ObservableObject {
             // If the budget was switched mid-fetch, the failure belongs to
             // the old database — don't surface it over the new budget.
             guard self.database === database else { return }
-            self.error = "Failed to refresh data: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to refresh data: %@"), error.localizedDescription)
         }
     }
     
@@ -2684,15 +2680,17 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Create a new transaction (optimistic local-first)
-    func createTransaction(_ transaction: Transaction) async throws {
+    @discardableResult
+    func createTransaction(_ transaction: Transaction) async throws -> SyncClient.TransactionCreateResult {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
-        try await syncClient.createTransaction(transaction)
+        let result = try await syncClient.createTransaction(transaction, applyRules: true)
 
         // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
         await refreshDataOnly()
+        return result
     }
 
     struct WalletImportResult: Equatable {
@@ -2724,7 +2722,6 @@ final class BudgetStore: ObservableObject {
                 skipped += 1
                 continue
             }
-            existing.insert(candidate.id)
             let payeeName = candidate.payeeName.isEmpty ? nil : candidate.payeeName
             let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
             let transaction = Transaction(
@@ -2747,8 +2744,16 @@ final class BudgetStore: ObservableObject {
                 importedPayee: payeeName,
                 financialId: candidate.id
             )
-            try await syncClient.createTransaction(transaction, prepared: prepared)
-            imported += 1
+            switch try await syncClient.createTransaction(transaction, prepared: prepared) {
+            case .inserted:
+                existing.insert(candidate.id)
+                imported += 1
+            case .duplicate:
+                existing.insert(candidate.id)
+                skipped += 1
+            case .suppressedByRule:
+                break
+            }
         }
         await refreshDataOnly()
         return WalletImportResult(imported: imported, skippedDuplicates: skipped)
@@ -2878,19 +2883,23 @@ final class BudgetStore: ObservableObject {
         /// What to show when the run finishes. Problems come last so the
         /// counts above them still read as what did work.
         var summary: String {
+            summary(locale: .autoupdatingCurrent, bundle: .main)
+        }
+
+        func summary(locale: Locale, bundle: Bundle) -> String {
             var lines: [String] = []
             if added > 0 {
-                lines.append("Imported \(added) new transaction\(added == 1 ? "" : "s").")
+                lines.append(ReportStrings.localized("Imported \(added) transactions", locale: locale, bundle: bundle) + ".")
             }
             if updated > 0 {
-                lines.append("Matched \(updated) transaction\(updated == 1 ? "" : "s") you already had.")
+                lines.append(ReportStrings.localized("Matched \(updated) transactions you already had.", locale: locale, bundle: bundle))
             }
             // Only claim there was nothing to do when nothing went wrong
             // either — otherwise the problems below say what happened.
             if lines.isEmpty, problems.isEmpty {
                 lines.append(accountsSynced == 0
-                    ? "No linked accounts to sync."
-                    : "Everything is already up to date.")
+                    ? ReportStrings.text("No linked accounts to sync.", locale: locale, bundle: bundle)
+                    : ReportStrings.text("Everything is already up to date.", locale: locale, bundle: bundle))
             }
             return (lines + problems).joined(separator: "\n\n")
         }
@@ -3377,8 +3386,15 @@ final class BudgetStore: ObservableObject {
                 importedPayee: candidate.payeeName,
                 financialId: candidate.importedId
             )
-            try await syncClient.createTransaction(transaction, prepared: prepared)
-            inserted.append(transaction)
+            switch try await syncClient.createTransaction(transaction, prepared: prepared) {
+            case .inserted(let persistedId):
+                added += 1
+                if let persisted = try await database.fetchTransaction(id: persistedId) {
+                    inserted.append(persisted)
+                }
+            case .duplicate, .suppressedByRule:
+                break
+            }
         }
 
         // Anything older than the history this account already had was folded
@@ -3392,7 +3408,7 @@ final class BudgetStore: ObservableObject {
             )
         }
 
-        return (added + plan.inserts.count, plan.updates.count, inserted)
+        return (added, plan.updates.count, inserted)
     }
 
     /// Keep a backfill balance-neutral. Without this the account drifts from
@@ -3706,7 +3722,7 @@ final class BudgetStore: ObservableObject {
                 } catch {
                     // Skip the parent when its children couldn't be read —
                     // tombstoning it anyway would orphan them.
-                    self.error = "Failed to delete transaction: \(error.localizedDescription)"
+                    self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
                     continue
                 }
             }
@@ -3717,7 +3733,7 @@ final class BudgetStore: ObservableObject {
         do {
             try await syncClient.updateTransactions(deleted, changedFields: ["tombstone"])
         } catch {
-            self.error = "Failed to delete transaction: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to delete transaction: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
     }
@@ -3748,7 +3764,7 @@ final class BudgetStore: ObservableObject {
             do {
                 try await duplicateSingleTransaction(tx, sortOrder: baseSortOrder + Double(index))
             } catch {
-                self.error = "Failed to duplicate transaction: \(error.localizedDescription)"
+                self.error = String(format: String(localized: "Failed to duplicate transaction: %@"), error.localizedDescription)
             }
         }
         await refreshDataOnly()
@@ -3879,20 +3895,20 @@ final class BudgetStore: ObservableObject {
             } catch {
                 // Skip the parent when its children can't be read — a parent
                 // that flips without them leaves the split inconsistent.
-                self.error = "Failed to update cleared status: \(error.localizedDescription)"
+                self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
             }
         }
         // The reconciled lock is silent otherwise: say which part of the
         // selection stayed put.
         let locked = transactions.filter { $0.reconciled && $0.cleared != cleared }.count
         if locked > 0 {
-            self.error = "\(locked) reconciled transaction\(locked == 1 ? "" : "s") stayed locked. Unlock from the status dot to change them."
+            self.error = String(localized: "\(locked) reconciled transactions stayed locked. Unlock from the status dot to change them.")
         }
         guard !updated.isEmpty else { return }
         do {
             try await syncClient.updateTransactions(updated, changedFields: ["cleared"])
         } catch {
-            self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
     }
@@ -3918,7 +3934,7 @@ final class BudgetStore: ObservableObject {
                 )
             }
         } catch {
-            self.error = "Failed to update cleared status: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
     }
 
@@ -3974,7 +3990,7 @@ final class BudgetStore: ObservableObject {
             await refreshDataOnly()
             return locked.count
         } catch {
-            self.error = "Failed to lock transactions: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to lock transactions: %@"), error.localizedDescription)
             return 0
         }
     }
@@ -4008,7 +4024,7 @@ final class BudgetStore: ObservableObject {
             try await createTransaction(adjustment)
             return true
         } catch {
-            self.error = "Failed to create adjustment: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to create adjustment: %@"), error.localizedDescription)
             return false
         }
     }
@@ -4037,6 +4053,7 @@ final class BudgetStore: ObservableObject {
         /// Per-save opt-out for payee location recording (GH #24). Defaults
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
+        var reviewConfirmed: Bool = false
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
@@ -4847,6 +4864,10 @@ return transaction.id
         await syncClient?.hasPendingLocalWrites() ?? false
     }
 
+    func hasPendingLocalWrites(dataset: String, row: String) async -> Bool {
+        await syncClient?.hasPendingLocalWrites(dataset: dataset, row: row) ?? false
+    }
+
     /// Sync when app enters foreground - only if a budget is loaded
     /// Uses rate-limited automatic sync to avoid redundant syncs
     func syncOnForeground() async {
@@ -4952,8 +4973,12 @@ return transaction.id
     private var scheduleNoticeDismissTask: Task<Void, Never>?
 
     /// The toast copy for a completed posting pass.
-    static func schedulePostNoticeText(count: Int) -> String {
-        String(localized: "Posted \(count) scheduled transactions")
+    static func schedulePostNoticeText(
+        count: Int,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.localized("Posted \(count) scheduled transactions", locale: locale, bundle: bundle)
     }
 
     /// Mirror sync state into the published property, and post due schedules
@@ -5341,7 +5366,7 @@ return transaction.id
                 id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false")
             goalTemplatesEnabled = enabled
         } catch {
-            self.error = "Failed to update goal templates setting: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
         }
     }
 
@@ -5478,7 +5503,7 @@ return transaction.id
                 id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false")
             goalTemplatesUIEnabled = enabled
         } catch {
-            self.error = "Failed to update automations setting: \(error.localizedDescription)"
+            self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
         }
     }
 

@@ -162,6 +162,25 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 // Safe to share across actors: the only stored property is an immutable
 // GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
 final class BudgetDatabase: Sendable {
+    enum TransactionFinancialIdState: Equatable {
+        case absent
+        case duplicate
+        case repair
+    }
+
+    func messageTimestamps(dataset: String, row: String) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT timestamp FROM messages_crdt
+                WHERE dataset = ? AND row = ?
+                ORDER BY timestamp
+                """, arguments: [dataset, row])
+        }
+    }
+    enum TransactionWriteError: Error, Equatable {
+        case incompleteFinancialIdMessages
+    }
+
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
@@ -2566,28 +2585,46 @@ final class BudgetDatabase: Sendable {
     /// order so the outcome doesn't depend on the order the server sent them.
     func applyMessages(_ messages: [CRDTMessage]) throws {
         try dbQueue.write { db in
-            let schema = try Self.syncableSchema(db)
+            try Self.applyMessageRows(db, messages)
+        }
+    }
 
-            for msg in messages.sorted(by: { $0.timestamp < $1.timestamp }) {
-                // Unknown identifiers are either upstream schema we don't have
-                // yet or a hostile server. Skip the message but let sync
-                // continue: insertMessages still records it in messages_crdt so
-                // a later schema migration can replay it.
-                guard let columns = schema[msg.dataset], columns.contains(msg.column) else {
-                    logger.warning(
-                        "Skipping CRDT message for unknown schema \(msg.dataset, privacy: .public).\(msg.column, privacy: .public)"
-                    )
-                    continue
-                }
+    /// Applies messages and persists their original input ordering in one
+    /// SQLite transaction. `applying` is used by receive paths that must apply
+    /// only messages not already materialized while still persisting every
+    /// received message for deduplication and replay.
+    func applyMessagesAndInsertMessages(
+        _ messages: [CRDTMessage],
+        applying messagesToApply: [CRDTMessage]? = nil
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.applyMessageRows(db, messagesToApply ?? messages)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
 
-                try Self.upsertValue(
-                    db,
-                    table: Self.quotedIdentifier(msg.dataset),
-                    column: Self.quotedIdentifier(msg.column),
-                    rowId: msg.row,
-                    value: CRDTValue.deserialize(msg.value)
+    private static func applyMessageRows(_ db: Database, _ messages: [CRDTMessage]) throws {
+        let schema = try syncableSchema(db)
+
+        for msg in messages.sorted(by: { $0.timestamp < $1.timestamp }) {
+            // Unknown identifiers are either upstream schema we don't have
+            // yet or a hostile server. Skip the message but let sync
+            // continue: insertMessages still records it in messages_crdt so
+            // a later schema migration can replay it.
+            guard let columns = schema[msg.dataset], columns.contains(msg.column) else {
+                logger.warning(
+                    "Skipping CRDT message for unknown schema \(msg.dataset, privacy: .public).\(msg.column, privacy: .public)"
                 )
+                continue
             }
+
+            try upsertValue(
+                db,
+                table: quotedIdentifier(msg.dataset),
+                column: quotedIdentifier(msg.column),
+                rowId: msg.row,
+                value: CRDTValue.deserialize(msg.value)
+            )
         }
     }
 
@@ -2644,6 +2681,61 @@ final class BudgetDatabase: Sendable {
     func insertTransaction(_ transaction: Transaction) throws {
         try dbQueue.write { db in
             try Self.insertTransactionRow(db, transaction)
+        }
+    }
+
+    /// Persists an imported transaction and all of its CRDT messages as one
+    /// SQLite transaction. A retry can complete a deterministic transaction
+    /// row that was left without messages by an older writer, while a fully
+    /// messaged row remains a duplicate.
+    func transactionFinancialIdState(_ transaction: Transaction) throws -> TransactionFinancialIdState {
+        guard let financialId = transaction.financialId else { return .absent }
+        return try dbQueue.read { db in
+            guard let liveId = try String.fetchOne(db, sql: """
+                SELECT id FROM transactions
+                WHERE financial_id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                LIMIT 1
+                """, arguments: [financialId]) else {
+                return .absent
+            }
+            guard liveId == transaction.id else { return .duplicate }
+
+            let columns = Set(try String.fetchAll(db, sql: """
+                SELECT column FROM messages_crdt
+                WHERE dataset = 'transactions' AND row = ?
+                """, arguments: [transaction.id]))
+            if columns.isEmpty { return .repair }
+            if columns == Set(transaction.syncableFields.keys) { return .duplicate }
+            throw TransactionWriteError.incompleteFinancialIdMessages
+        }
+    }
+
+    func insertTransactionWithMessages(_ transaction: Transaction, messages: [CRDTMessage]) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            if let financialId = transaction.financialId {
+                if let liveId = try String.fetchOne(db, sql: """
+                    SELECT id FROM transactions
+                    WHERE financial_id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                    LIMIT 1
+                    """, arguments: [financialId]) {
+                    guard liveId == transaction.id else { return [] }
+                    let columns = Set(try String.fetchAll(db, sql: """
+                        SELECT column FROM messages_crdt
+                        WHERE dataset = 'transactions' AND row = ?
+                        """, arguments: [transaction.id]))
+                    if columns.isEmpty {
+                        try Self.updateTransactionRow(db, transaction)
+                        return try Self.insertMessageRows(db, messages)
+                    }
+                    if columns == Set(transaction.syncableFields.keys) {
+                        return []
+                    }
+                    throw TransactionWriteError.incompleteFinancialIdMessages
+                }
+            }
+
+            try Self.insertTransactionRow(db, transaction)
+            return try Self.insertMessageRows(db, messages)
         }
     }
 
@@ -2783,6 +2875,16 @@ final class BudgetDatabase: Sendable {
                 WHERE acct = ? AND financial_id IS NOT NULL
                 """, arguments: [accountId])
             return Set(ids)
+        }
+    }
+
+    func containsFinancialId(_ financialId: String) throws -> Bool {
+        try dbQueue.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT 1 FROM transactions
+                WHERE financial_id = ?
+                LIMIT 1
+                """, arguments: [financialId]) != nil
         }
     }
 
@@ -3025,6 +3127,33 @@ final class BudgetDatabase: Sendable {
     func updateTransaction(_ transaction: Transaction) throws {
         try dbQueue.write { db in
             try Self.updateTransactionRow(db, transaction)
+        }
+    }
+
+    /// Updates a transaction and stores its CRDT messages in one SQLite
+    /// transaction. A failed message insert must roll the row update back, or
+    /// another device can never learn about the local edit.
+    func updateTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.updateTransactionRow(db, transaction)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Updates every row and persists every generated message in one SQLite
+    /// transaction. Message generation must happen before this method is
+    /// called so a failure cannot leave only part of a bulk edit applied.
+    func updateTransactionsWithMessages(
+        _ updates: [(transaction: Transaction, messages: [CRDTMessage])]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            for update in updates {
+                try Self.updateTransactionRow(db, update.transaction)
+            }
+            return try Self.insertMessageRows(db, updates.flatMap(\.messages))
         }
     }
 

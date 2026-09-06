@@ -178,6 +178,37 @@ struct BankSyncReconcilerTests {
         #expect(plan.inserts.count == 1)
     }
 
+    @Test func duplicateProviderIdsAreOrderIndependent() {
+        let first = candidate(importedId: "sf-duplicate", notes: "Coffee")
+        let same = candidate(importedId: "sf-duplicate", notes: "Coffee")
+        let forward = BankSyncReconciler.plan(
+            candidates: [first, same], existing: []
+        )
+        let reversed = BankSyncReconciler.plan(
+            candidates: [same, first], existing: []
+        )
+
+        #expect(forward == reversed)
+        #expect(forward.inserts == [first])
+        #expect(forward.rejectedConflicts == 0)
+    }
+
+    @Test func conflictingProviderIdsAreRejectedRatherThanChosenByOrder() {
+        let first = candidate(importedId: "sf-conflict", amount: -1250)
+        let second = candidate(importedId: "sf-conflict", amount: -1300)
+        let forward = BankSyncReconciler.plan(
+            candidates: [first, second], existing: []
+        )
+        let reversed = BankSyncReconciler.plan(
+            candidates: [second, first], existing: []
+        )
+
+        #expect(forward == reversed)
+        #expect(forward.inserts.isEmpty)
+        #expect(forward.updates.isEmpty)
+        #expect(forward.rejectedConflicts == 1)
+    }
+
     @Test func theNearestDateInTheWindowIsMatchedFirst() throws {
         let plan = BankSyncReconciler.plan(
             candidates: [candidate(date: 20240310)],

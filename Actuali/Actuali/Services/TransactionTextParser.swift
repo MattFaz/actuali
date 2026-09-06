@@ -11,15 +11,18 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Transacti
 /// Result of parsing a bank SMS / message into transaction fields.
 struct ParsedMessage: Equatable {
     var amount: Double?
+    var sourceCurrencyCode: String?
     var payee: String?
     var cardHint: String?
     var date: Date?
     var isIncome: Bool
     var rawText: String
 
-    func toPendingImport() -> PendingImport {
+    func toPendingImport(originBudgetId: String? = nil) -> PendingImport {
         PendingImport(
+            originBudgetId: originBudgetId,
             amount: amount,
+            sourceCurrencyCode: sourceCurrencyCode,
             payee: payee,
             cardHint: cardHint,
             date: date ?? Date(),
@@ -37,6 +40,9 @@ struct ParsedMessage: Equatable {
 struct ExtractedTransaction {
     @Guide(description: "The transaction amount as a positive decimal number, without currency symbol")
     var amount: Double
+
+    @Guide(description: "The explicit ISO 4217 source currency code, if clearly present; otherwise nil")
+    var sourceCurrencyCode: String?
 
     @Guide(description: "The merchant or payee name")
     var payee: String
@@ -81,6 +87,7 @@ enum TransactionTextParser {
         let session = LanguageModelSession(instructions: """
             Extract transaction details from bank notification text. \
             The amount should be a positive number without currency symbols. \
+            Preserve an explicit source currency code such as USD, EUR, GBP, or INR when present; use nil when absent or ambiguous. \
             Identify the merchant or payee name. \
             If a card or account number's last 4 digits are mentioned, extract them. \
             Determine if money was received (income/credit/refund) or spent (debit/payment).
@@ -93,6 +100,7 @@ enum TransactionTextParser {
         let date = extractDate(from: text)
         return ParsedMessage(
             amount: extracted.amount,
+            sourceCurrencyCode: normalizeCurrencyCode(extracted.sourceCurrencyCode),
             payee: extracted.payee.isEmpty ? nil : extracted.payee,
             cardHint: extracted.cardHint,
             date: date,
@@ -114,6 +122,7 @@ enum TransactionTextParser {
 
         return ParsedMessage(
             amount: extractAmount(from: text),
+            sourceCurrencyCode: extractCurrencyCode(from: text),
             payee: extractMerchant(from: text),
             cardHint: extractCardHint(from: text),
             date: extractDate(from: text),
@@ -123,6 +132,31 @@ enum TransactionTextParser {
     }
 
     // MARK: - Extraction helpers
+
+    private static func normalizeCurrencyCode(_ value: String?) -> String? {
+        guard let value else { return nil }
+        switch value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased() {
+        case "USD": return "USD"
+        case "EUR": return "EUR"
+        case "GBP": return "GBP"
+        case "INR": return "INR"
+        default: return nil
+        }
+    }
+
+    /// Returns only currencies identified without relying on an ambiguous symbol.
+    private static func extractCurrencyCode(from text: String) -> String? {
+        let codePattern = #"(?<![A-Za-z])(?:USD|EUR|GBP|INR)(?![A-Za-z])"#
+        if let regex = try? NSRegularExpression(pattern: codePattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
+           let range = Range(match.range, in: text) {
+            return normalizeCurrencyCode(String(text[range]).uppercased())
+        }
+        if text.contains("€") { return "EUR" }
+        if text.contains("£") { return "GBP" }
+        if text.contains("₹") { return "INR" }
+        return nil
+    }
 
     /// Extract currency amount. Requires an explicit currency marker (leading or trailing)
     /// to avoid falsely capturing masked card or account numbers.

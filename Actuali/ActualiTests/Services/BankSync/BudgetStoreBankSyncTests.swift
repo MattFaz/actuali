@@ -72,6 +72,23 @@ struct BudgetStoreBankSyncTests {
 
     private static let accountId = "acct-1"
     private static let externalAccountId = "sf-acct-1"
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+
+    @Test func bankSyncSummaryUsesRequestedLocaleAndPreservesProblems() {
+        let one = BudgetStore.BankSyncResult(added: 1, problems: ["Bridge said: retry later"])
+        let many = BudgetStore.BankSyncResult(added: 2)
+        let updatedOne = BudgetStore.BankSyncResult(updated: 1)
+        let updatedMany = BudgetStore.BankSyncResult(updated: 2)
+
+        #expect(one.summary(locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            == "1 transaction importée.\n\nBridge said: retry later")
+        #expect(many.summary(locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            == "2 transactions importées.")
+        #expect(updatedOne.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "Matched 1 transaction you already had.")
+        #expect(updatedMany.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "Matched 2 transactions you already had.")
+    }
 
     /// Timestamps relative to now, so the download always lands inside the
     /// 90-day sync window however long this test lives.
@@ -177,6 +194,30 @@ struct BudgetStoreBankSyncTests {
                 """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
             try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
+            try db.execute(sql: """
+                CREATE TABLE category_mapping (
+                    id TEXT PRIMARY KEY,
+                    transferId TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    cat_group TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0,
+                    conditions_op TEXT DEFAULT 'and'
+                )
+                """)
             try db.execute(sql: """
                 CREATE TABLE banks (
                     id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
@@ -544,6 +585,58 @@ struct BudgetStoreBankSyncTests {
                 """) ?? 0
         }
         #expect(financialIdMessages == 1)
+    }
+
+    @Test func automaticBankSyncRuleSuppressionIsNeitherAddedNorImported() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('suppress-coffee',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"delete-transaction","value":null}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-suppressed", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1) // opening balance only
+        #expect(result.updated == 0)
+        #expect(result.importedTransactions.isEmpty)
+        #expect(try rows(path: url, where: "financial_id = 'sf-suppressed'").isEmpty)
+    }
+
+    @Test func automaticBankSyncReturnsPersistedRuleMutatedTransaction() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('set-rule-note',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"set","field":"notes","value":"Rule note"}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-rule-mutated", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        let imported = try #require(result.importedTransactions.first)
+        #expect(imported.notes == "Rule note")
+        let persistedRow = try #require(try rows(path: url, where: "financial_id = 'sf-rule-mutated'").first)
+        #expect(persistedRow["notes"] as String? == imported.notes)
+        #expect(try row(path: url, sql: """
+            SELECT value FROM messages_crdt
+            WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
+            """, arguments: [imported.id])?["value"] as String? == "S:Rule note")
     }
 
     @Test func syncingWithoutAnAccessKeyIsRefused() async throws {

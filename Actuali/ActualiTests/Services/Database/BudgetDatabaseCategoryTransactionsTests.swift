@@ -15,6 +15,36 @@ import GRDB
 @MainActor
 struct BudgetDatabaseCategoryTransactionsTests {
 
+    @Test func emptyStateWordingUsesDestinationMonthNotLocalizedTitle() {
+        let locale = Locale(identifier: "en_US")
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: "Food",
+            month: nil,
+            scopeTitle: "All Time",
+            locale: locale
+        ) == "Nothing in Food for any month")
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: "Food",
+            month: "2026-06",
+            scopeTitle: "June 2026",
+            locale: locale
+        ) == "Nothing in Food for June 2026")
+
+        let french = Locale(identifier: "fr_FR")
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: "Courses",
+            month: nil,
+            scopeTitle: "Depuis le début",
+            locale: french
+        ) == "Aucune transaction dans Courses pour n'importe quel mois")
+        #expect(CategoryTransactionsView.emptyStateDescription(
+            categoryName: "Courses",
+            month: "2026-06",
+            scopeTitle: "Juin 2026",
+            locale: french
+        ) == "Aucune transaction dans Courses pour Juin 2026")
+    }
+
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

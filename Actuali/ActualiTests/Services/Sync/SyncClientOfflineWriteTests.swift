@@ -81,6 +81,52 @@ struct SyncClientOfflineWriteTests {
                     value BLOB NOT NULL
                 )
                 """)
+            try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0,
+                    conditions_op TEXT DEFAULT 'and'
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE payee_mapping (
+                    id TEXT PRIMARY KEY,
+                    targetId TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE payees (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    transfer_acct TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE accounts (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    offbudget INTEGER DEFAULT 0,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE category_mapping (
+                    id TEXT PRIMARY KEY,
+                    transferId TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    cat_group TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
     }
@@ -166,4 +212,208 @@ struct SyncClientOfflineWriteTests {
         }
         #expect(observed >= 1, "the deferred sync never reached the server")
     }
+
+    @Test func transactionUpdateRollsBackWhenMessagePersistenceFails() throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        let original = transaction(id: "tx-atomic-update")
+        try database.insertTransaction(original)
+        var updated = original
+        updated.amount = -9999
+
+        try database.dbQueueForTesting.write { db in
+            try db.execute(sql: "DROP TABLE messages_crdt")
+        }
+
+        let message = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions",
+            row: updated.id,
+            column: "amount",
+            value: "N:-9999"
+        )
+        #expect(throws: (any Error).self) {
+            try database.updateTransactionWithMessages(updated, messages: [message])
+        }
+
+        let amount = try database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT amount FROM transactions WHERE id = ?", arguments: [updated.id])
+        }
+        #expect(amount == original.amount)
+    }
+
+    @Test func bulkTransactionUpdateRollsBackEveryRowWhenMessagePersistenceFails() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let first = transaction(id: "tx-bulk-1")
+        let second = transaction(id: "tx-bulk-2")
+        try database.insertTransaction(first)
+        try database.insertTransaction(second)
+        let syncClient = try await makeSyncClient(database: database)
+
+        var firstUpdate = first
+        firstUpdate.amount = -2000
+        var secondUpdate = second
+        secondUpdate.amount = -3000
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "DROP TABLE messages_crdt")
+        }
+
+        await #expect(throws: (any Error).self) {
+            try await syncClient.updateTransactions(
+                [firstUpdate, secondUpdate], changedFields: ["amount"])
+        }
+
+        let amounts = try await database.dbQueueForTesting.read { db in
+            try Int.fetchAll(db, sql: "SELECT amount FROM transactions ORDER BY id")
+        }
+        #expect(amounts == [first.amount, second.amount])
+    }
+
+    @Test func financialIdRetryReturnsDuplicateWithoutChangingMessagesOrMerkle() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let imported: Transaction = {
+            var value = transaction(id: "tx-retry")
+            value.financialId = "financial-retry"
+            return value
+        }()
+        let importedId = imported.id
+
+        let firstResult = try await syncClient.createTransaction(imported, applyRules: true)
+        #expect(firstResult == .inserted("tx-retry"))
+        let firstMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [importedId]) ?? 0
+        }
+        let firstMerkle = try database.deriveMerkleFromMessageLog().root.hash
+
+        let retryResult = try await syncClient.createTransaction(imported, applyRules: true)
+        #expect(retryResult == .duplicate)
+        let secondMessages = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [importedId]) ?? 0
+        }
+        #expect(secondMessages == firstMessages)
+        #expect(try database.deriveMerkleFromMessageLog().root.hash == firstMerkle)
+    }
+
+    @Test func zeroMessageFinancialIdRetryRepairsThroughSyncClient() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let imported: Transaction = {
+            var value = transaction(id: "tx-zero-message")
+            value.financialId = "financial-zero-message"
+            return value
+        }()
+        try database.insertTransaction(imported)
+
+        let result = try await syncClient.createTransaction(imported, applyRules: true)
+        #expect(result == .inserted("tx-zero-message"))
+        let messageCount = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [imported.id]) ?? 0
+        }
+        #expect(messageCount == imported.syncableFields.count)
+        #expect(try database.deriveMerkleFromMessageLog().root.hash != MerkleTree().root.hash)
+    }
+
+    @Test func zeroMessageRepairPersistsRuleMutationInRowAndMessages() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('set-rule-note',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"set","field":"notes","value":"Rule note"}]', 0, 'and')
+                """)
+        }
+
+        let imported: Transaction = {
+            var value = transaction(id: "tx-rule-repair")
+            value.financialId = "financial-rule-repair"
+            value.importedPayee = "Coffee"
+            return value
+        }()
+        let importedId = imported.id
+        try database.insertTransaction(imported)
+
+        let result = try await syncClient.createTransaction(imported, applyRules: true)
+        #expect(result == .inserted(importedId))
+        let persisted = try #require(await database.fetchTransaction(id: importedId))
+        #expect(persisted.notes == "Rule note")
+
+        let messageValues = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT value FROM messages_crdt
+                WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
+                """, arguments: [importedId])
+        }
+        #expect(messageValues == [CRDTValue.serialize(persisted.syncableFields["notes"] ?? nil)])
+        let timestamps = try await database.dbQueueForTesting.read { db in
+            try String.fetchAll(db, sql: "SELECT timestamp FROM messages_crdt")
+        }
+        var expected = MerkleTree()
+        for timestamp in timestamps {
+            expected = expected.inserting(try #require(HLCTimestamp.parse(timestamp)))
+        }
+        #expect(try database.deriveMerkleFromMessageLog().root.hash == expected.pruned().root.hash)
+    }
+
+    @Test func partialFinancialIdStateIsRejectedWithoutAppendingMessages() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let imported: Transaction = {
+            var value = transaction(id: "tx-partial")
+            value.financialId = "financial-partial"
+            return value
+        }()
+        try database.insertTransaction(imported)
+        let partial = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: imported.id, column: "amount", value: "N:-1234")
+        _ = try database.insertMessages([partial])
+
+        await #expect(throws: BudgetDatabase.TransactionWriteError.incompleteFinancialIdMessages) {
+            try await syncClient.createTransaction(imported, applyRules: true)
+        }
+        let messageCount = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [imported.id]) ?? 0
+        }
+        #expect(messageCount == 1)
+        #expect(try database.deriveMerkleFromMessageLog().root.hash == MerkleTree().inserting(partial.timestamp).pruned().root.hash)
+    }
+
+    @Test func tombstonedFinancialIdCanBeReimportedWithANewRow() throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        try database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+                VALUES ('tx-deleted', 'acct-1', 20260811, -1234, 'financial-reimport', 1)
+                """)
+        }
+
+        var imported = transaction(id: "tx-reimported")
+        imported.financialId = "financial-reimport"
+        let message = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: imported.id, column: "financial_id", value: "S:financial-reimport"
+        )
+
+        #expect(try database.insertTransactionWithMessages(imported, messages: [message]).count == 1)
+        let count = try database.dbQueueForTesting.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM transactions WHERE financial_id = ?",
+                arguments: [imported.financialId]
+            )
+        }
+        #expect(count == 2)
+    }
+
 }

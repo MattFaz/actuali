@@ -115,4 +115,31 @@ struct SyncClientCreditCardTests {
         #expect(messages[0]["row"] == "actuali:custom:flag")
         #expect(messages[0]["value"] == "S:active")
     }
+
+    @Test func genericSetPreferenceRollsBackWhenMessageInsertAborts() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER fail_preference_message_insert
+                BEFORE INSERT ON messages_crdt
+                WHEN NEW.dataset = 'preferences' AND NEW.row = 'actuali:atomicity'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced message insert failure');
+                END;
+                """)
+        }
+
+        let client = try await makeSyncClient(database: database)
+        await #expect(throws: (any Error).self) {
+            try await client.setPreference(key: "actuali:atomicity", value: "active")
+        }
+
+        let storedValue = try await database.dbQueueForTesting.read { db in
+            try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = ?", arguments: ["actuali:atomicity"])
+        }
+        #expect(storedValue == nil)
+        #expect(try messageRows(path: path).isEmpty)
+    }
 }

@@ -15,7 +15,8 @@ struct PendingImportsView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if store.imports.isEmpty {
+                let visibleImports = store.visibleImports(for: budgetStore.currentBudgetId)
+                if visibleImports.isEmpty {
                     ContentUnavailableView(
                         "No Pending Imports",
                         systemImage: "tray",
@@ -23,7 +24,7 @@ struct PendingImportsView: View {
                     )
                 } else {
                     List {
-                        ForEach(store.imports) { item in
+                        ForEach(visibleImports) { item in
                             Button {
                                 editingItem = item
                             } label: {
@@ -32,7 +33,7 @@ struct PendingImportsView: View {
                             .buttonStyle(.plain)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
-                                    withAnimation { store.remove(id: item.id) }
+                                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
                                 } label: {
                                     Label("Dismiss", systemImage: "trash")
                                 }
@@ -47,7 +48,7 @@ struct PendingImportsView: View {
                             }
                         }
 
-                        if store.count > 1 {
+                        if visibleImports.count > 1 {
                             Section {
                                 Button {
                                     approveAll()
@@ -102,13 +103,25 @@ struct PendingImportsView: View {
             do {
                 _ = try await approver.approve(item)
                 await MainActor.run {
-                    withAnimation { store.remove(id: item.id) }
+                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
                 }
             } catch PendingImportApprover.ApproveError.noAccountAvailable {
                 // Can't confidently pick an account (no card match, no default).
                 // Send the user to the review form to choose one rather than
                 // dead-ending on an error — same destination as tapping the row.
                 await MainActor.run { editingItem = item }
+            } catch PendingImportApprover.ApproveError.budgetIdentityRequired {
+                await MainActor.run { editingItem = item }
+            } catch PendingImportApprover.ApproveError.budgetMismatch {
+                await MainActor.run { editingItem = item }
+            } catch PendingImportApprover.ApproveError.sourceCurrencyRequired {
+                await MainActor.run { editingItem = item }
+            } catch PendingImportApprover.ApproveError.sourceCurrencyMismatch {
+                await MainActor.run { editingItem = item }
+            } catch PendingImportApprover.ApproveError.alreadyApproved {
+                await MainActor.run {
+                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
+                }
             } catch {
                 await MainActor.run {
                     errorMessage = error.localizedDescription
@@ -119,46 +132,105 @@ struct PendingImportsView: View {
 
     private func approveAll() {
         let approver = PendingImportApprover(store: budgetStore)
-        let items = store.imports
+        let items = store.visibleImports(for: budgetStore.currentBudgetId)
         isProcessing = true
 
         Task {
             var failedCount = 0
+            var reviewCount = 0
+            var reviewItem: PendingImport?
             for item in items {
                 do {
                     _ = try await approver.approve(item)
                     await MainActor.run {
-                        withAnimation { store.remove(id: item.id) }
+                        do { try store.remove(id: item.id) }
+                        catch { errorMessage = error.localizedDescription }
                     }
+                } catch PendingImportApprover.ApproveError.sourceCurrencyMismatch {
+                    reviewCount += 1
+                    reviewItem = reviewItem ?? item
+                } catch PendingImportApprover.ApproveError.sourceCurrencyRequired,
+                        PendingImportApprover.ApproveError.budgetIdentityRequired,
+                        PendingImportApprover.ApproveError.budgetMismatch {
+                    reviewCount += 1
+                    reviewItem = reviewItem ?? item
                 } catch {
                     failedCount += 1
                 }
             }
             await MainActor.run {
                 isProcessing = false
-                if failedCount > 0 {
-                    errorMessage = String(localized: "\(failedCount) transaction(s) could not be approved. Please check their details.")
+                if let reviewItem {
+                    editingItem = reviewItem
+                }
+                if reviewCount > 0 {
+                    errorMessage = Self.reviewRequiredMessage(count: reviewCount)
+                } else if failedCount > 0 {
+                    errorMessage = Self.approvalFailureMessage(count: failedCount)
                 }
             }
         }
+    }
+
+    nonisolated static func reviewRequiredMessage(
+        count: Int,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
+        let resource = LocalizedStringResource(
+            "\(count) transactions require review and were left pending.",
+            locale: locale,
+            bundle: bundle
+        )
+        return String(localized: resource)
+    }
+
+    nonisolated static func approvalFailureMessage(
+        count: Int,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
+        let resource = LocalizedStringResource(
+            "\(count) transaction could not be approved. Please check its details.",
+            locale: locale,
+            bundle: bundle
+        )
+        return String(localized: resource)
     }
 
     @ViewBuilder
     private func editView(for item: PendingImport) -> some View {
         let targetAccountId = resolveAccountId(for: item)
         if let accountId = targetAccountId {
-            AddTransactionView(
-                accountId: accountId,
-                payee: item.payee ?? "",
-                amountCents: item.amount.flatMap { Transaction.cents(fromDollars: $0) },
-                date: item.date,
-                notes: item.rawText,
-                categoryId: nil,
-                isIncome: item.isIncome,
-                cleared: false,
-                onSaved: { _ in store.remove(id: item.id) }
-            )
-            .environmentObject(budgetStore)
+            let approver = PendingImportApprover(store: budgetStore)
+            VStack(spacing: 0) {
+                if let context = currencyContext(for: item) {
+                    Text(context)
+                        .font(.callout)
+                        .foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                        .background(.orange.opacity(0.12))
+                }
+                AddTransactionView(
+                    accountId: accountId,
+                    payee: item.payee ?? "",
+                    amountCents: item.amount.flatMap { Transaction.cents(fromDollars: $0) },
+                    date: item.date,
+                    notes: item.rawText,
+                    categoryId: nil,
+                    isIncome: item.isIncome,
+                    cleared: false,
+                    saveOverride: { form in
+                        try await approver.saveEdited(item, form: form)
+                    },
+                    onSaved: { _ in
+                        try store.remove(id: item.id)
+                    },
+                    reviewRequirement: reviewRequirement(for: item)
+                )
+                .environmentObject(budgetStore)
+            }
         } else {
             ContentUnavailableView(
                 "No Accounts",
@@ -168,8 +240,38 @@ struct PendingImportsView: View {
         }
     }
 
+    private func currencyContext(for item: PendingImport) -> String? {
+        if let originBudgetId = item.originBudgetId,
+           originBudgetId != budgetStore.currentBudgetId {
+            return String(localized: "This import belongs to a different budget. Review and confirm adoption into the active budget before saving.")
+        }
+        guard let sourceCurrencyCode = item.sourceCurrencyCode else {
+            if item.originBudgetId == nil {
+                return String(localized: "This older import has no budget identity. Review and save it to adopt it into the active budget.")
+            }
+            return String(localized: "Currency was not identified. Active budget: \(PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)). Review and confirm before saving.")
+        }
+        let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
+        let budget = PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)
+        guard source != budget else { return nil }
+        return String(localized: "Source currency: \(source). Active budget: \(budget). Review and confirm before saving.")
+    }
+
+    private func reviewRequirement(for item: PendingImport) -> PendingImportReviewRequirement? {
+        if item.originBudgetId == nil || item.originBudgetId != budgetStore.currentBudgetId {
+            return .adoptIntoActiveBudget
+        }
+        guard let source = item.sourceCurrencyCode else {
+            return .confirmActiveBudgetCurrency(source: nil, budget: PendingImport.normalizedCurrencyCode(budgetStore.currencyCode))
+        }
+        let normalizedSource = PendingImport.normalizedCurrencyCode(source)
+        let normalizedBudget = PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)
+        guard normalizedSource != normalizedBudget else { return nil }
+        return .confirmActiveBudgetCurrency(source: normalizedSource, budget: normalizedBudget)
+    }
+
     private func resolveAccountId(for item: PendingImport) -> String? {
-        Self.seedAccountId(
+        PendingImportApprover.resolveAccountId(
             cardHint: item.cardHint,
             accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings,
@@ -189,16 +291,12 @@ struct PendingImportsView: View {
         cardMappings: [String: String],
         defaultAccountId: String?
     ) -> String? {
-        if let hint = cardHint, !hint.isEmpty,
-           let resolved = BudgetStore.resolveAccountId(
-               hint: hint, accounts: accounts, cardMappings: cardMappings) {
-            return resolved
-        }
-        if let defaultId = defaultAccountId,
-           accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
-            return defaultId
-        }
-        return accounts.first(where: { !$0.closed })?.id
+        PendingImportApprover.resolveAccountId(
+            cardHint: cardHint,
+            accounts: accounts,
+            cardMappings: cardMappings,
+            defaultAccountId: defaultAccountId
+        )
     }
 }
 
@@ -206,6 +304,8 @@ struct PendingImportsView: View {
 
 private struct PendingImportRow: View {
     let item: PendingImport
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -214,9 +314,23 @@ private struct PendingImportRow: View {
                     .font(.headline)
                 Spacer()
                 if let amount = item.amount {
-                    Text(amountString(amount, isIncome: item.isIncome))
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(PendingImportsView.amountString(
+                            amount,
+                            isIncome: item.isIncome,
+                            currencyCode: PendingImport.normalizedCurrencyCode(budgetStore.currencyCode),
+                            sourceCurrencyCode: item.sourceCurrencyCode,
+                            narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                            locale: locale
+                        ))
                         .font(.headline)
                         .foregroundStyle(item.isIncome ? .green : .primary)
+                        if item.sourceCurrencyCode == nil {
+                            Text("Currency unknown: \(PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)) budget")
+                                .font(.caption2)
+                                .foregroundStyle(.orange)
+                        }
+                    }
                 }
             }
 
@@ -242,8 +356,23 @@ private struct PendingImportRow: View {
         .padding(.vertical, 4)
     }
 
-    private func amountString(_ amount: Double, isIncome: Bool) -> String {
-        let sign = isIncome ? "+" : "-"
-        return "\(sign)\(String(format: "%.2f", amount))"
+}
+
+extension PendingImportsView {
+    nonisolated static func amountString(
+        _ amount: Double,
+        isIncome: Bool,
+        currencyCode: String,
+        sourceCurrencyCode: String?,
+        narrowSymbol: Bool,
+        locale: Locale
+    ) -> String {
+        guard let cents = Transaction.cents(fromDollars: amount) else { return "" }
+        return CurrencyAmountFormat.string(
+            cents: isIncome ? cents : -cents,
+            currencyCode: PendingImport.normalizedCurrencyCode(sourceCurrencyCode ?? currencyCode),
+            narrowSymbol: narrowSymbol,
+            locale: locale
+        )
     }
 }

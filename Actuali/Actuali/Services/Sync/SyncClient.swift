@@ -182,6 +182,12 @@ actor SyncClient {
         let context: RuleContext
     }
 
+    enum TransactionCreateResult: Equatable {
+        case inserted(String)
+        case duplicate
+        case suppressedByRule
+    }
+
     func prepareRules() -> PreparedRules {
         guard let database else { return PreparedRules(rules: [], context: .empty) }
         return PreparedRules(
@@ -195,11 +201,12 @@ actor SyncClient {
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
+    @discardableResult
     func createTransaction(
         _ transaction: Transaction,
         applyRules: Bool = true,
         prepared: PreparedRules? = nil
-    ) async throws {
+    ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -218,7 +225,7 @@ actor SyncClient {
                 // row; for a transaction that doesn't exist yet, not creating it
                 // is the same outcome with less to sync.
                 logger.notice("Rules deleted the incoming transaction — skipping insert")
-                return
+                return .suppressedByRule
             }
 
             finalTransaction = result.transaction
@@ -230,16 +237,33 @@ actor SyncClient {
             }
         }
 
-        // 1. Insert locally (optimistic)
-        try database.insertTransaction(finalTransaction)
-        logger.debug("Transaction inserted locally")
+        // 1. A complete live deterministic row is already the result. Check
+        // before generating fresh HLC timestamps so a retry cannot create a
+        // second incomparable message set.
+        if finalTransaction.financialId != nil,
+           try database.transactionFinancialIdState(finalTransaction) == .duplicate {
+            return .duplicate
+        }
 
-        // 2. Generate CRDT messages
+        // 2. Generate CRDT messages before persistence so a generation failure
+        // cannot leave a financial-id row that looks like a completed import.
         let messages = try await messageGenerator.messagesForInsert(finalTransaction)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Store the row and messages atomically. Financial-id retries can
+        // repair a deterministic row that has no messages yet.
+        let insertedMessages: [CRDTMessage]
+        if finalTransaction.financialId != nil {
+            insertedMessages = try database.insertTransactionWithMessages(finalTransaction, messages: messages)
+        } else {
+            try database.insertTransaction(finalTransaction)
+            insertedMessages = try database.insertMessages(messages)
+        }
+        guard !insertedMessages.isEmpty else { return .duplicate }
+        logger.debug("Transaction and messages inserted locally")
+
+        // 3. Update merkle
+        for msg in insertedMessages {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -248,6 +272,7 @@ actor SyncClient {
 
         // 4. Push to the server in the background (never blocks the caller)
         scheduleAutomaticSync()
+        return .inserted(finalTransaction.id)
     }
 
     /// Create both legs of a transfer atomically (optimistic local-first).
@@ -347,21 +372,20 @@ actor SyncClient {
 
         logger.debug("updateTransaction() - id: \(transaction.id, privacy: .private), fields: \(changedFields.count, privacy: .public)")
 
-        // 1. Update locally (optimistic)
-        try database.updateTransaction(transaction)
-        logger.debug("Transaction updated locally")
-
+        // 1. Generate CRDT messages before persistence. The database commits
+        // the row and messages together so a message failure cannot strand a
+        // local-only edit.
         guard !changedFields.isEmpty else {
-            logger.debug("No changed fields - skipping CRDT messages")
+            try database.updateTransaction(transaction)
+            logger.debug("No changed fields - updated local-only fields")
             return
         }
 
-        // 2. Generate CRDT messages for the changed fields only
         let messages = try await messageGenerator.messagesForUpdate(transaction, changedFields: changedFields)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 2. Store the row and messages atomically, then update merkle.
+        for msg in try database.updateTransactionWithMessages(transaction, messages: messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -383,18 +407,17 @@ actor SyncClient {
 
         logger.debug("updateTransactions() - \(transactions.count, privacy: .public) rows, fields: \(changedFields.count, privacy: .public)")
 
-        // 1. Update locally (optimistic) and generate CRDT messages
-        var messages: [CRDTMessage] = []
+        // 1. Generate every message before touching any row.
+        var updates: [(transaction: Transaction, messages: [CRDTMessage])] = []
         for transaction in transactions {
-            try database.updateTransaction(transaction)
-            guard !changedFields.isEmpty else { continue }
-            messages.append(contentsOf: try await messageGenerator.messagesForUpdate(
-                transaction, changedFields: changedFields
-            ))
+            let messages = changedFields.isEmpty
+                ? []
+                : try await messageGenerator.messagesForUpdate(transaction, changedFields: changedFields)
+            updates.append((transaction: transaction, messages: messages))
         }
 
-        // 2. Store messages and update merkle once for the batch
-        for msg in try database.insertMessages(messages) {
+        // 2. Store all rows and messages atomically, then update Merkle once.
+        for msg in try database.updateTransactionsWithMessages(updates) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -735,9 +758,7 @@ actor SyncClient {
             row: id,
             fields: [("name", name)]
         )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
+        for message in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(message.timestamp)
         }
         merkle = merkle.pruned()
@@ -762,9 +783,7 @@ actor SyncClient {
             row: id,
             fields: [("hidden", hidden ? 1 : 0)]
         )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
+        for message in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(message.timestamp)
         }
         merkle = merkle.pruned()
@@ -867,9 +886,7 @@ actor SyncClient {
         let fields: [(column: String, value: (any Sendable)?)] = [("value", value)]
         let messages = try await messageGenerator.messages(dataset: "preferences", row: key, fields: fields)
 
-        try database.applyMessages(messages)
-
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -930,10 +947,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -977,10 +992,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1022,10 +1035,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1057,8 +1068,7 @@ actor SyncClient {
                 dataset: "categories", row: update.categoryId, fields: fields)
         }
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1089,8 +1099,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "categories", row: categoryId, fields: fields)
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1113,8 +1122,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "cleanup_groups", row: id, fields: fields)
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1163,8 +1171,7 @@ actor SyncClient {
                 dataset: cell.table, row: cell.rowId, fields: fields)
         }
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1184,8 +1191,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "preferences", row: id, fields: [("value", value)])
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1222,10 +1228,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving from
         //    another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1259,10 +1263,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving from
         //    another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1282,9 +1284,7 @@ actor SyncClient {
         logger.debug("deleteRule() - id: \(rule.id, privacy: .private)")
 
         let message = try await messageGenerator.messageForDelete(rule)
-        try database.applyMessages([message])
-
-        for msg in try database.insertMessages([message]) {
+        for msg in try database.applyMessagesAndInsertMessages([message]) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1318,10 +1318,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local advance and the identical advance
         //    arriving from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1422,10 +1420,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1606,6 +1602,17 @@ actor SyncClient {
     /// (issue #139).
     func hasPendingLocalWrites() -> Bool {
         hasUnsyncedLocalMessages()
+    }
+
+    /// Whether this row still has a message newer than the sync watermark.
+    /// Unrelated pending rows do not affect this transaction's outcome.
+    func hasPendingLocalWrites(dataset: String, row: String) -> Bool {
+        guard let database,
+              let timestamps = try? database.messageTimestamps(dataset: dataset, row: row),
+              !timestamps.isEmpty else { return false }
+        let watermark = lastSyncedTimestamp ?? downloadBaselineTimestamp
+        guard let watermark, !watermark.isEmpty else { return true }
+        return timestamps.contains { $0 > watermark }
     }
 
     private func startPushTask(rateLimited: Bool) {
@@ -1862,15 +1869,11 @@ actor SyncClient {
         let newMessages = try database.filterNewMessages(messages)
         logger.debug("After filtering: \(newMessages.count, privacy: .public) new messages to apply")
 
-        // Apply to local DB
-        try database.applyMessages(newMessages)
-        logger.debug("Applied messages to database")
-
-        // Store in messages_crdt and merkle-insert only what was actually new.
+        // Apply new messages and persist all received messages atomically.
         // The merkle hash is XOR-based, so re-inserting an existing timestamp
         // (server echo, multi-pass recursion, retry) would cancel it out of the
         // trie and force a permanent divergence from the server.
-        let insertedMessages = try database.insertMessages(messages)
+        let insertedMessages = try database.applyMessagesAndInsertMessages(messages, applying: newMessages)
         for msg in insertedMessages {
             merkle = merkle.inserting(msg.timestamp)
         }

@@ -440,7 +440,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let store = try await makeStore(database: database, walletStore: appleCard())
         let first = try await store.syncBankAccounts()
         let coffee = try #require(first.importedTransactions.first {
-            $0.financialId == "11111111-1111-1111-1111-111111111111"
+            $0.amount == -3345
         })
 
         await store.deleteTransaction(coffee)
@@ -472,7 +472,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let store = try await makeStore(database: database, walletStore: appleCard())
         let first = try await store.syncBankAccounts()
         let coffee = try #require(first.importedTransactions.first {
-            $0.financialId == "11111111-1111-1111-1111-111111111111"
+            $0.amount == -3345
         })
 
         await store.deleteTransaction(coffee)
