@@ -78,7 +78,8 @@ extension BudgetStore {
             : CurrencyAmountFormat.symbolLessString(
                 cents: cents,
                 currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces
+                wholeUnits: hideDecimalPlaces,
+                numberFormat: numberFormat
             )
     }
 }

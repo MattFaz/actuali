@@ -154,13 +154,15 @@ struct LogTransactionIntent: AppIntent {
                 amountCents: amountCents,
                 currencyCode: store.currencyCode,
                 narrowSymbol: store.useNarrowCurrencySymbol,
-                synced: written.synced
+                synced: written.synced,
+                numberFormat: store.numberFormat
             )
 
             let amountString = CurrencyAmountFormat.string(
                 cents: abs(amountCents),
                 currencyCode: store.currencyCode,
-                narrowSymbol: store.useNarrowCurrencySymbol
+                narrowSymbol: store.useNarrowCurrencySymbol,
+                numberFormat: store.numberFormat
             )
             let verb = written.synced ? "Logged" : "Saved locally:"
             let dialogText = displayPayee.isEmpty
@@ -194,7 +196,8 @@ struct LogTransactionIntent: AppIntent {
                 notes: notes.trimmingCharacters(in: .whitespacesAndNewlines),
                 isIncome: isIncome,
                 cleared: cleared
-            )
+            ),
+            numberFormat: store.numberFormat
         )
     }
 }
