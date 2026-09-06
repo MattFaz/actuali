@@ -111,6 +111,37 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(transfer?.transferAcct == "acct-savings")
     }
 
+    /// Merging payees leaves the old id on the transaction row; Actual's
+    /// transaction view resolves it through payee_mapping, so reports must
+    /// see the surviving payee or a Payee-grouped report drops the history.
+    @Test func resolvesMergedPayeeThroughMapping() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-kept', 'Coffee Shop', NULL);
+
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-kept',   'payee-kept'),
+                    ('payee-merged', 'payee-kept');
+
+                INSERT INTO transactions (id, acct, description, amount, date) VALUES
+                    ('t-old',  'acct-checking', 'payee-merged', -550, 20260601),
+                    ('t-new',  'acct-checking', 'payee-kept',   -450, 20260602),
+                    ('t-none', 'acct-checking', NULL,           -100, 20260603);
+            """)
+        }
+
+        let txns = try await db.fetchTransactionsForReports()
+        let old = txns.first { $0.id == "t-old" }
+        #expect(old?.payeeId == "payee-kept")
+        #expect(old?.payeeName == "Coffee Shop")
+        #expect(txns.first { $0.id == "t-new" }?.payeeId == "payee-kept")
+        #expect(txns.first { $0.id == "t-none" }?.payeeId == nil)
+    }
+
     @Test func excludesSplitParentsAndOrphanedChildren() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }

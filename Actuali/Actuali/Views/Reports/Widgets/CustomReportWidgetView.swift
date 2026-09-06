@@ -36,17 +36,7 @@ struct CustomReportWidgetView: View {
             if bars.isEmpty {
                 emptyText
             } else {
-                Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
-                    BarMark(
-                        x: .value("Label", bar.label),
-                        y: .value("Amount", bar.valueUnits)
-                    )
-                    .foregroundStyle(signed
-                        ? (bar.valueUnits < 0 ? Color.red : Color.green)
-                        : Color.accentColor)
-                }
-                .frame(height: 180)
-                .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+                barChart(bars, signed: signed)
             }
 
         case .stacked(let stacked):
@@ -103,8 +93,11 @@ struct CustomReportWidgetView: View {
             }
 
         case .area(let bars):
-            if bars.count < 2 {
+            if bars.isEmpty {
                 emptyText
+            } else if bars.count < 2 {
+                // An area has no width with one interval; show it as a bar.
+                barChart(bars, signed: false)
             } else {
                 Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
                     AreaMark(
@@ -215,8 +208,8 @@ struct CustomReportWidgetView: View {
     }
 
     /// Single ring: palette by position. Two rings: each category takes its
-    /// group's colour lightened by position within the group, as upstream's
-    /// DonutGraph buildColorMap does (0.15 … 0.65 toward white).
+    /// group's colour lightened by position within the group, matching
+    /// upstream's DonutGraph buildColorMap (0.15 + index / count * 0.5).
     private func sliceColors(_ slices: [CustomReportData.Slice], groups: [CustomReportData.Bar]) -> [Color] {
         guard !groups.isEmpty else {
             return slices.indices.map { Self.palette[$0 % Self.palette.count] }
@@ -246,6 +239,20 @@ struct CustomReportWidgetView: View {
     }
 
     // MARK: - Helpers
+
+    private func barChart(_ bars: [CustomReportData.Bar], signed: Bool) -> some View {
+        Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
+            BarMark(
+                x: .value("Label", bar.label),
+                y: .value("Amount", bar.valueUnits)
+            )
+            .foregroundStyle(signed
+                ? (bar.valueUnits < 0 ? Color.red : Color.green)
+                : Color.accentColor)
+        }
+        .frame(height: 180)
+        .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+    }
 
     private var emptyText: some View {
         Text("No data in range")

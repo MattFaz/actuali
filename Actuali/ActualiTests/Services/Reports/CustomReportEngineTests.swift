@@ -53,12 +53,13 @@ struct CustomReportEngineTests {
         graph: String, sortBy: String = "desc",
         showEmpty: Bool = false, showOffBudget: Bool = false, showUncategorized: Bool = false,
         showTrendLines: Bool = false, trimIntervals: Bool = false,
+        dateRange: String = "All time",
         staticRange: (start: String, end: String)? = nil,
         conditions: [WidgetRuleCondition]? = nil
     ) -> CustomReportConfig {
         CustomReportConfig(
             id: "r", name: "Test", mode: mode, groupBy: groupBy, balanceType: balance,
-            interval: interval, graphType: graph, dateRange: "All time",
+            interval: interval, graphType: graph, dateRange: dateRange,
             dateStatic: staticRange != nil,
             startDate: staticRange?.start, endDate: staticRange?.end,
             includeCurrent: true, showEmpty: showEmpty,
@@ -356,7 +357,41 @@ struct CustomReportEngineTests {
         #expect(foodOnly.map(\.valueUnits) == [1000.0])
     }
 
+    @Test func budgetedSurvivesInvertedRange() {
+        // "Last year" on a budget whose history starts this year resolves to
+        // a start after its end (ReportDateRange clamps the start to the
+        // earliest transaction). That is an empty chart, not a trap.
+        var ctx = reportContext
+        ctx.budgetEntries = [
+            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-food", amountCents: 50_000),
+        ]
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Category", balance: "Budgeted",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Last year"),
+            transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today)
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.isEmpty)
+    }
+
     // MARK: - Donut
+
+    @Test func donutOverIntervals() {
+        // Upstream allows Interval grouping on a total-mode donut: one wedge
+        // per interval, empty intervals dropped.
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "DonutGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .donut(let slices, let groups) = data.kind else {
+            Issue.record("expected donut, got \(data.kind)"); return
+        }
+        #expect(groups.isEmpty)
+        #expect(slices.map(\.label) == ["Jun '26", "Jul '26"])
+        #expect(slices.map(\.valueUnits) == [300.0, 50.0])
+    }
 
     @Test func donutDropsZeroSlices() {
         let data = CustomReportEngine.compute(

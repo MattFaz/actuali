@@ -215,6 +215,12 @@ enum CustomReportEngine {
                 data.kind = .table(zip(labels, values).map { .init(name: $0, totalUnits: $1) })
             case "AreaGraph":
                 data.kind = .area(zip(labels, values).map { .init(label: $0, valueUnits: $1) })
+            case "DonutGraph":
+                // Upstream allows Interval on a total-mode donut: one wedge
+                // per interval, and a wedge can't have a non-positive angle.
+                data.kind = .donut(slices: zip(labels, values).filter { $0.1 > 0 }
+                                       .map { .init(label: $0, valueUnits: $1, group: nil) },
+                                   groups: [])
             default:
                 data.kind = .bars(zip(labels, values).map { .init(label: $0, valueUnits: $1) },
                                   signed: signed)
@@ -366,7 +372,7 @@ enum CustomReportEngine {
         let income = Set(context.categories.filter(\.isIncome).map(\.id))
         return context.budgetEntries.compactMap { entry in
             guard entry.amountCents != 0, !income.contains(entry.categoryId),
-                  (startYMD / 100...endYMD / 100).contains(entry.month) else { return nil }
+                  entry.month >= startYMD / 100, entry.month <= endYMD / 100 else { return nil }
             // ponytail: cells sit on the 1st, so Daily/Weekly intervals show a
             // month's budget on its first day where upstream shows nothing.
             return Transaction(
