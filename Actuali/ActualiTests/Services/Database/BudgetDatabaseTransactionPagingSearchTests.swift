@@ -299,6 +299,39 @@ struct BudgetDatabaseTransactionPagingSearchTests {
         #expect(matches.map(\.id) == ["parent"])
     }
 
+    @Test func searchMatchesSplitChildPayeeAndNotes() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedLookups(db)
+
+        // The split parent has no own payee or note. Its children have
+        // different payees, so the existing parent-payee resolution cannot
+        // surface either child individually; both searches must still return
+        // the parent row.
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-transfer', NULL, 'acct-2');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-transfer', 'payee-transfer');
+                INSERT INTO transactions (id, acct, description, amount, notes, date, isParent, isChild, parent_id, sort_order) VALUES
+                    ('parent', 'acct-1', NULL,          -10000, NULL,              20260602, 1, 0, NULL,     3),
+                    ('c-1',    'acct-1', 'payee-cafe',   -6000,  'weekly groceries', 20260602, 0, 1, 'parent', 2),
+                    ('c-2',    'acct-1', 'payee-market', -3000,  'cleaning supplies', 20260602, 0, 1, 'parent', 1),
+                    ('c-3',    'acct-1', 'payee-transfer', -1000, NULL,             20260602, 0, 1, 'parent', 0);
+            """)
+        }
+
+        let byChildPayee = try await db.fetchTransactions(search: "cafe")
+        #expect(byChildPayee.map(\.id) == ["parent"])
+
+        let byChildNote = try await db.fetchTransactions(search: "cleaning")
+        #expect(byChildNote.map(\.id) == ["parent"])
+
+        let byTransferAccount = try await db.fetchTransactions(search: "Savings")
+        #expect(byTransferAccount.map(\.id) == ["parent"])
+    }
+
     @Test func searchAppliesLimitAndOffset() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
