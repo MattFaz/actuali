@@ -174,7 +174,7 @@ struct AddTransactionView: View {
     }
 
     private var showsStandardCategoryFields: Bool {
-        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
+        budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
 
     /// Converting keeps the edited row on its own side of the transfer, so

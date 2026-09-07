@@ -420,6 +420,41 @@ struct BudgetStoreSplitSaveTests {
         #expect(messageRows == 3)
     }
 
+    @Test func editingAnOffBudgetSplitParentCollapsesIt() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Brokerage", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0)
+        ]
+        try await database.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date, isParent, isChild, parent_id, sort_order) VALUES
+                    ('parent', 'acct-1', NULL,       -1000, 20260601, 1, 0, NULL,     10),
+                    ('c-1',    'acct-1', 'cat-food',  -600, 20260601, 0, 1, 'parent',  9),
+                    ('c-2',    'acct-1', 'cat-fun',   -400, 20260601, 0, 1, 'parent',  8);
+            """)
+        }
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20260601, amount: -1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil
+        )
+
+        try await store.saveTransaction(form(amount: "10.00"), editing: original)
+
+        let byId = Dictionary(uniqueKeysWithValues:
+            try rows(path: path).map { ($0["id"] as String, $0) })
+        let parent = try #require(byId["parent"])
+        #expect(parent["isParent"] == 0)
+        #expect(parent["category"] == nil)
+        #expect(byId["c-1"]?["tombstone"] == 1)
+        #expect(byId["c-2"]?["tombstone"] == 1)
+    }
+
     @Test func editingASplitParentProtectsAmountAndCategoryAndCascadesSharedFields() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
