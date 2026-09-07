@@ -628,3 +628,24 @@ struct PendingImportApproverTests {
         }
     }
 }
+
+extension PendingImportApproverTests {
+    @Test(arguments: ["tombstone = 1", "acct = 'other-account'"])
+    func retryAfterDeletionOrAccountMoveIsAlreadyApproved(change: String) async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_checking", "Checking")]
+        store.defaultAccountId = "acct_checking"
+        let item = PendingImport(originBudgetId: store.currentBudgetId, amount: 9.99,
+                                 sourceCurrencyCode: "USD", payee: "Coffee")
+        let approver = PendingImportApprover(store: store)
+        _ = try await approver.approve(item)
+        let queue = try DatabaseQueue(path: url.path)
+        try await queue.write { db in
+            try db.execute(sql: "UPDATE transactions SET \(change) WHERE id = ?", arguments: [item.id.uuidString])
+        }
+        await #expect(throws: PendingImportApprover.ApproveError.alreadyApproved) {
+            try await approver.approve(item)
+        }
+    }
+}

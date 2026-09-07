@@ -166,16 +166,16 @@ enum TransactionTextParser {
         for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
             guard let range = Range(match.range(at: 1), in: text) else { continue }
             let candidate = String(text[range])
-            if let code = normalizeCurrencyCode(candidate), !isAmbiguousTitleCaseCode(candidate) {
+            if let code = normalizeCurrencyCode(candidate), isExplicitCurrencyCode(candidate) {
                 return code
             }
         }
         return nil
     }
 
-    private static func isAmbiguousTitleCaseCode(_ value: String) -> Bool {
-        guard let first = value.first, first.isUppercase else { return false }
-        return value.dropFirst().allSatisfy { $0.isLowercase }
+    // Lowercase ISO codes overlap ordinary prose ("all", "try", "pen").
+    private static func isExplicitCurrencyCode(_ value: String) -> Bool {
+        value.unicodeScalars.allSatisfy { $0.value >= 65 && $0.value <= 90 }
     }
 
     /// Extract currency amount. Requires an explicit currency marker (leading or trailing)
@@ -233,7 +233,7 @@ enum TransactionTextParser {
                   let amountRange = Range(match.range(at: amountGroup), in: text) else { continue }
             let candidate = String(text[codeRange])
             guard normalizeCurrencyCode(candidate) != nil,
-                  !isAmbiguousTitleCaseCode(candidate) else { continue }
+                  isExplicitCurrencyCode(candidate) else { continue }
             if let amount = AmountParser.parse(String(text[amountRange])) {
                 return amount
             }

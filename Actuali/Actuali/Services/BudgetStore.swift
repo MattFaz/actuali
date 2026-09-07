@@ -3800,9 +3800,10 @@ final class BudgetStore: ObservableObject {
                 .filter { $0.transaction.accountId == target.id && $0.transaction.date < existingOldestDay }
                 .reduce(0) { $0 + $1.transaction.amount }
             if carried != 0 {
+                let expectedAmount = opening.amount
                 opening.amount -= carried
                 openingUpdate = try await syncClient.prepareBankSyncOpeningUpdate(
-                    opening, expectedInsertedIds: preparedIds
+                    opening, expectedAmount: expectedAmount, expectedInsertedIds: preparedIds
                 )
             }
         }

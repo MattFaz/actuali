@@ -304,9 +304,11 @@ actor SyncClient {
 
     func prepareBankSyncOpeningUpdate(
         _ transaction: Transaction,
+        expectedAmount: Int,
         expectedInsertedIds: Set<String>
     ) async throws -> BankSyncOpeningUpdate {
         BankSyncOpeningUpdate(
+            expectedAmount: expectedAmount,
             transaction: transaction,
             messages: try await messageGenerator.messagesForUpdate(
                 transaction, changedFields: ["amount"]

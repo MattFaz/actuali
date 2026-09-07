@@ -198,18 +198,6 @@ final class PendingImportApprover {
             && !form.reviewConfirmations.isSuperset(of: reviewRequirements) {
             throw ApproveError.reviewConfirmationRequired
         }
-        if let sourceCurrencyCode = item.sourceCurrencyCode {
-            let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
-            let budget = PendingImport.normalizedCurrencyCode(store.currencyCode)
-            let currencyRequirement = PendingImportReviewRequirement.confirmActiveBudgetCurrency(
-                source: source,
-                budget: budget
-            )
-            guard source == budget
-                || form.reviewConfirmations.contains(currencyRequirement) else {
-                throw ApproveError.sourceCurrencyMismatch(source: source, budget: budget)
-            }
-        }
 
         await store.ensureBudgetReady()
         let accounts = await store.accountsForIntent()

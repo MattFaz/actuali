@@ -49,6 +49,7 @@ struct BankSyncOpeningInsert {
 }
 
 struct BankSyncOpeningUpdate {
+    let expectedAmount: Int
     let transaction: Transaction
     let messages: [CRDTMessage]
     let expectedInsertedIds: Set<String>
@@ -2837,13 +2838,13 @@ final class BudgetDatabase: Sendable {
             return (true, try Self.insertMessageRows(db, messages))
         }
 
-        if let sameId = try Bool.fetchOne(db, sql: """
-                SELECT EXISTS(
-                    SELECT 1 FROM transactions
-                    WHERE id = ? AND acct IS ? AND financial_id = ?
-                        AND (tombstone = 0 OR tombstone IS NULL)
-                )
-                """, arguments: [transaction.id, transaction.accountId, financialId]), sameId {
+        if let existing = try Row.fetchOne(db, sql: """
+                SELECT acct, tombstone FROM transactions
+                WHERE id = ? AND financial_id = ?
+                """, arguments: [transaction.id, financialId]) {
+            // A retry must not resurrect a deleted import or undo an account move.
+            guard existing["acct"] as String? == transaction.accountId,
+                  (existing["tombstone"] as Int? ?? 0) == 0 else { return (false, []) }
                 let columns = Set(try String.fetchAll(db, sql: """
                     SELECT column FROM messages_crdt
                     WHERE dataset = 'transactions' AND row = ?
@@ -3504,7 +3505,20 @@ final class BudgetDatabase: Sendable {
                 guard insertedIds == openingUpdate.expectedInsertedIds else {
                     throw BankSyncDatabaseError.bankSyncMaterializationStale
                 }
-                try Self.updateTransactionRow(db, openingUpdate.transaction)
+                let opening = openingUpdate.transaction
+                try db.execute(sql: """
+                    UPDATE transactions SET amount = ?
+                    WHERE id = ? AND acct IS ? AND amount = ? AND date = ?
+                        AND COALESCE(tombstone, 0) = 0
+                        AND COALESCE(reconciled, 0) = ?
+                        AND COALESCE(isParent, 0) = 0 AND COALESCE(isChild, 0) = 0
+                        AND starting_balance_flag = 1
+                    """, arguments: [opening.amount, opening.id, opening.accountId,
+                                      openingUpdate.expectedAmount, opening.date,
+                                      opening.reconciled ? 1 : 0])
+                guard db.changesCount == 1 else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
                 allMessages += try Self.insertMessageRows(db, openingUpdate.messages)
             }
             return (appliedIds.count, inserted, allMessages)

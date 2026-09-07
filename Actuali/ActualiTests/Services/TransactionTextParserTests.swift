@@ -83,8 +83,8 @@ struct TransactionTextParserTests {
         #expect(trailing.sourceCurrencyCode == "CHF")
     }
 
-    @Test func normalizesLowercaseExplicitIsoCurrencyCode() {
-        #expect(TransactionTextParser.parseWithFallback("Paid cad 100 at Store").sourceCurrencyCode == "CAD")
+    @Test func requiresUppercaseExplicitIsoCurrencyCode() {
+        #expect(TransactionTextParser.parseWithFallback("Paid cad 100 at Store").sourceCurrencyCode == nil)
     }
 
     @Test func doesNotTreatTitleCaseProseAsLeadingCurrencyCode() {
@@ -103,8 +103,8 @@ struct TransactionTextParserTests {
         #expect(TransactionTextParser.parseWithFallback("100 TRY at Store").sourceCurrencyCode == "TRY")
     }
 
-    @Test func acceptsLowercaseCurrencyCodeInTrailingPosition() {
-        #expect(TransactionTextParser.parseWithFallback("100 try at Store").sourceCurrencyCode == "TRY")
+    @Test func rejectsLowercaseCurrencyCodeInTrailingPosition() {
+        #expect(TransactionTextParser.parseWithFallback("100 try at Store").sourceCurrencyCode == nil)
     }
 
     @Test func doesNotTreatTitleCaseProseAsTrailingCurrencyCode() {
@@ -129,5 +129,12 @@ struct TransactionTextParserTests {
             .toPendingImport(originBudgetId: "budget-a")
 
         #expect(pending.originBudgetId == "budget-a")
+    }
+}
+
+extension TransactionTextParserTests {
+    @Test func lowercaseProseIsNotCurrency() {
+        let parsed = TransactionTextParser.parseWithFallback("Debited 500 all accounts on 12 Jan")
+        #expect(parsed.sourceCurrencyCode == nil)
     }
 }

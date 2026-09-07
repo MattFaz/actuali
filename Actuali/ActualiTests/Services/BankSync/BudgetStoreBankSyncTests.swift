@@ -1963,3 +1963,39 @@ struct BudgetStoreBankSyncTests {
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 }
+
+extension BudgetStoreBankSyncTests {
+    @Test(arguments: ["notes = 'Concurrent user edit'", "amount = 22000",
+                      "tombstone = 1", "acct = 'other-account'", "reconciled = 1"])
+    func backfillPreservesConcurrentOpeningEdit(change: String) async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let firstBody = accountSet(balance: "100.00", transactions: """
+            {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)
+        let store = try await makeStore(database: database, responseBody: firstBody)
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        _ = try await store.syncBankAccounts()
+        store.setSimpleFINClientForTesting(
+            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
+                {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
+                {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+                """)))
+        )
+        store.bankSyncBeforeMaterializationHook = {
+            try! database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET \(change) WHERE starting_balance_flag = 1")
+            }
+        }
+        let result = try await store.syncBankAccounts()
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM transactions WHERE starting_balance_flag = 1 AND \(change)")?["count"] as Int? == 1)
+        if change.hasPrefix("notes") {
+            #expect(result.problems.isEmpty)
+            #expect(result.accountsSynced == 1)
+        } else {
+            #expect(!result.problems.isEmpty)
+            #expect(result.accountsSynced == 0)
+            #expect(try rows(path: url, where: "financial_id = 'sf-review-old'").isEmpty)
+        }
+    }
+}

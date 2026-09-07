@@ -526,6 +526,7 @@ enum CustomReportEngine {
         f.dateFormat = "yy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
     }
 
@@ -534,6 +535,7 @@ enum CustomReportEngine {
         f.dateFormat = "MMM ''yy"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
     }
 
@@ -542,6 +544,7 @@ enum CustomReportEngine {
         f.dateFormat = "yyyy"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale
+        f.calendar = Calendar(identifier: .gregorian)
         return f
     }
 

@@ -625,3 +625,15 @@ struct CustomReportEngineTests {
         ])
     }
 }
+
+extension CustomReportEngineTests {
+    @Test func gregorianYearForThaiRegion() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Net",
+                           interval: "Yearly", graph: "BarGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today, locale: Locale(identifier: "th_TH"))
+        guard case .bars(let bars, _) = data.kind else { Issue.record("Expected bars"); return }
+        #expect(bars.map(\.label) == ["2026"])
+    }
+}
