@@ -39,6 +39,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
         let option = app.buttons[style]
         XCTAssertTrue(option.waitForExistence(timeout: 5), "\(style) option not found")
+        XCTAssertFalse(app.buttons["Detailed"].exists)
         option.tap()
         XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
     }
@@ -65,8 +66,8 @@ final class BudgetViewSettingsUITests: XCTestCase {
         XCTAssertTrue(groupTotals.waitForExistence(timeout: 5), "Group Totals toggle not found")
         XCTAssertFalse(groupTotals.isEnabled, "Clean view should disable Group Totals")
 
-        selectViewStyle("Detailed", in: app)
-        XCTAssertTrue(groupTotals.isEnabled, "Detailed view should enable Group Totals")
+        selectViewStyle("Compact", in: app)
+        XCTAssertTrue(groupTotals.isEnabled, "Compact view should enable Group Totals")
 
         app.tabBars.buttons["Budget"].tap()
         let headerWithTotals = app.buttons.matching(
@@ -74,7 +75,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(
             headerWithTotals.waitForExistence(timeout: 10),
-            "Detailed view should show totals in the group header"
+            "Compact view should show totals in the group header"
         )
 
         openBudgetViewSettings(in: app)

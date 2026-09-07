@@ -74,30 +74,32 @@ final class BudgetDisplayStyleUITests: XCTestCase {
         )
 
         optionsMenu.tap()
-        app.buttons["Detailed"].tap()
-        XCTAssertFalse(budgetedCaption(in: app).waitForExistence(timeout: 5),
-                       "detailed rows replace the captions")
-
-        optionsMenu.tap()
+        XCTAssertFalse(app.buttons["Detailed"].exists)
         app.buttons["Clean"].tap()
         XCTAssertTrue(budgetedCaption(in: app).waitForExistence(timeout: 5),
                       "toggling back restores the clean rows")
     }
 
     @MainActor
-    func testDetailedStyleShowsPillTableWithoutCaptions() throws {
+    func testLegacyDetailedStyleOpensCompact() throws {
         let app = XCUIApplication()
         // NSArgumentDomain: seeds the persisted preference for this launch.
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "detailed"]
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "detailed",
+            "-showCompactBudgetOverview", "YES",
+            "-collapsedBudgetGroups", "",
+        ]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()
 
-        let groceries = app.buttons["Details for Groceries"].firstMatch
+        let groceries = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Details for Groceries'")
+        ).firstMatch
         XCTAssertTrue(groceries.waitForExistence(timeout: 10),
                       "demo data should show the Essentials categories")
-        XCTAssertFalse(budgetedCaption(in: app).exists,
-                       "detailed rows show pill cells, not 'Budgeted:' captions")
+        XCTAssertTrue(app.descendants(matching: .any)["compactBudgetOverview"]
+            .waitForExistence(timeout: 5), "the removed Detailed preference opens Compact")
     }
 
     @MainActor

@@ -780,7 +780,7 @@ extension View {
         switch style {
         case .compact:
             listStyle(.plain)
-        case .clean, .detailed:
+        case .clean:
             self
         }
     }
