@@ -270,7 +270,7 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["isParent"] == 0)
     }
 
-    @Test func editingAnOffBudgetTransactionDropsItsCategory() async throws {
+    @Test func editingAnOffBudgetTransactionDropsCategoriesAndSplits() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
@@ -283,11 +283,18 @@ struct BudgetStoreSaveTransactionTests {
         try database.insertTransaction(original)
         var edit = form()
         edit.categoryId = "cat-food"
+        edit.splits = [
+            .init(categoryId: "cat-food", amount: "5.25"),
+            .init(categoryId: "cat-fun", amount: "5.25")
+        ]
 
         try await store.saveTransaction(edit, editing: original)
 
-        let row = try #require(try transactionRows(path: path).first)
+        let rows = try transactionRows(path: path)
+        #expect(rows.count == 1)
+        let row = try #require(rows.first)
         #expect(row["category"] == nil)
+        #expect(row["isParent"] == 0)
     }
 
     @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {

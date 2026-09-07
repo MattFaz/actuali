@@ -4184,6 +4184,7 @@ final class BudgetStore: ObservableObject {
         if form.type != .transfer, offBudgetAccountIds.contains(form.accountId) {
             form.categoryId = nil
             form.splits = []
+            form.collapseSplit = original?.isParent == true
         }
         let date = Transaction.yyyymmdd(from: form.date)
         let notes = form.notes.isEmpty ? nil : form.notes
