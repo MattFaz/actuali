@@ -7,28 +7,63 @@ import Testing
 /// an unreachable self-hosted server looks like to URLSession (the request
 /// hangs until the timeout rather than failing fast).
 private final class StallingSyncTransport: URLProtocol {
-    /// Seconds each request stalls before failing. Long enough that awaiting
-    /// it is unmistakable in a timing assertion, short enough not to wedge the
-    /// suite.
-    static let stall: TimeInterval = 3
-
-    private static let lock = NSLock()
+    /// Requests hang until the test opens the gate rather than for a fixed
+    /// number of seconds. A wall-clock bound can't tell "the caller awaited
+    /// the push" from "the runner was starved": CI measured 4s across a window
+    /// that takes 20ms locally and failed a 3s bound with nothing wrong. Held
+    /// open, a caller that awaits the push simply never returns, which the
+    /// test's time limit catches no matter how slow the machine is.
+    private static let gate = NSCondition()
+    nonisolated(unsafe) private static var isOpen = false
     nonisolated(unsafe) private static var attempts = 0
+    nonisolated(unsafe) private static var completions = 0
 
-    static func resetAttempts() {
-        lock.withLock { attempts = 0 }
+    /// Safety net so a request left in flight by an earlier test can't hold a
+    /// URLSession thread for the life of the suite.
+    private static let maxStall: TimeInterval = 60
+
+    static func reset() {
+        gate.lock()
+        isOpen = false
+        attempts = 0
+        completions = 0
+        gate.unlock()
+    }
+
+    /// Let every stalled request fail so its thread unwinds.
+    static func release() {
+        gate.lock()
+        isOpen = true
+        gate.broadcast()
+        gate.unlock()
     }
 
     static var attemptCount: Int {
-        lock.withLock { attempts }
+        gate.lock()
+        defer { gate.unlock() }
+        return attempts
+    }
+
+    /// Requests that have finished stalling — zero for as long as the gate is
+    /// shut, so a caller that returned while this is zero cannot have waited
+    /// for the server to answer.
+    static var completionCount: Int {
+        gate.lock()
+        defer { gate.unlock() }
+        return completions
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lock.withLock { Self.attempts += 1 }
-        Thread.sleep(forTimeInterval: Self.stall)
+        Self.gate.lock()
+        Self.attempts += 1
+        let deadline = Date(timeIntervalSinceNow: Self.maxStall)
+        // wait(until:) returns false once the deadline passes.
+        while !Self.isOpen, Self.gate.wait(until: deadline) {}
+        Self.completions += 1
+        Self.gate.unlock()
         client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
     }
 
@@ -88,7 +123,7 @@ struct SyncClientOfflineWriteTests {
     /// Sync client whose every request stalls, standing in for a server that
     /// is down or off-network.
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        StallingSyncTransport.resetAttempts()
+        StallingSyncTransport.reset()
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StallingSyncTransport.self]
         let serverClient = ActualServerClient(session: URLSession(configuration: config))
@@ -133,19 +168,21 @@ struct SyncClientOfflineWriteTests {
     }
 
     /// The whole bug: the caller must not wait on the network round trip.
-    @Test func createTransactionReturnsWithoutWaitingForTheServer() async throws {
+    /// The time limit is half the assertion — the gate stays shut for the
+    /// duration of the test, so a caller that awaits the push never returns at
+    /// all rather than returning slowly.
+    @Test(.timeLimit(.minutes(1)))
+    func createTransactionReturnsWithoutWaitingForTheServer() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
+        defer { StallingSyncTransport.release() }
 
-        let start = Date()
         try await syncClient.createTransaction(transaction(id: "tx-offline-1"))
-        let elapsed = Date().timeIntervalSince(start)
 
-        // Bounded by the stall, not a fixed budget: a caller that awaited the
-        // push can't return before the stall elapses, while a loaded CI runner
-        // can take well over a second just to get the first write through.
-        #expect(elapsed < StallingSyncTransport.stall, "createTransaction blocked for \(elapsed)s waiting on an unreachable server")
+        // Returned while the server is still hanging: nothing has been allowed
+        // to answer yet, so the push cannot have been awaited.
+        #expect(StallingSyncTransport.completionCount == 0, "createTransaction waited for the unreachable server to answer")
         // Local-first: the transaction is already durable on return.
         #expect(try rowExists(database, id: "tx-offline-1"))
     }
@@ -156,6 +193,7 @@ struct SyncClientOfflineWriteTests {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
+        defer { StallingSyncTransport.release() }
 
         try await syncClient.createTransaction(transaction(id: "tx-offline-2"))
 
