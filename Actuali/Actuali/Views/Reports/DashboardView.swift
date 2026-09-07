@@ -8,6 +8,7 @@ struct DashboardLoadRequest: Equatable {
 struct WidgetComputationRequest: Equatable {
     let transactions: [Transaction]?
     let localeIdentifier: String
+    let dataVersion: Int
 }
 
 struct DashboardView: View {
@@ -163,6 +164,9 @@ struct DashboardView: View {
                 switch $0 {
                 case .budgetAnalysis, .sankey, .balanceForecast: return true
                 case .spending(_, let meta): return meta?.mode == .budget
+                // Budgeted custom reports read budget cells instead of transactions.
+                case .customReport(_, let meta):
+                    return (meta?.id).flatMap { loadedConfigs[$0] }?.balanceType == "Budgeted"
                 default: return false
                 }
             }
@@ -305,7 +309,10 @@ struct DashboardView: View {
                         categories: budgetStore.categoryGroups.flatMap(\.categories),
                         groups: budgetStore.categoryGroups,
                         offBudgetAccountIds: Set(budgetStore.accounts.filter(\.offBudget).map(\.id)),
-                        firstDayOfWeekIdx: firstDayOfWeekIdx
+                        firstDayOfWeekIdx: firstDayOfWeekIdx,
+                        payees: budgetStore.payees,
+                        accounts: budgetStore.accounts,
+                        budgetEntries: reportBudgets.entries
                     ),
                     filterContext: conditionsContext,
                     today: Date(), locale: locale
@@ -447,6 +454,7 @@ struct DashboardView: View {
 /// the dashboard-wide transaction fetch lands, then computes the widget's
 /// data once per fetch and hands it to `content`.
 private struct WidgetCard<Value, Content: View>: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let transactions: [Transaction]?
     let loadingHeight: CGFloat
@@ -469,7 +477,8 @@ private struct WidgetCard<Value, Content: View>: View {
         }
             .task(id: WidgetComputationRequest(
                 transactions: transactions,
-                localeIdentifier: locale.identifier
+                localeIdentifier: locale.identifier,
+                dataVersion: budgetStore.dataVersion
             )) {
             guard let transactions else { return }
             value = compute(transactions)

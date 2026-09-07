@@ -7,28 +7,73 @@ import Testing
 /// an unreachable self-hosted server looks like to URLSession (the request
 /// hangs until the timeout rather than failing fast).
 private final class StallingSyncTransport: URLProtocol {
-    /// Seconds each request stalls before failing. Long enough that awaiting
-    /// it is unmistakable in a timing assertion, short enough not to wedge the
-    /// suite.
-    static let stall: TimeInterval = 3
-
-    private static let lock = NSLock()
+    /// number of seconds. A wall-clock bound can't tell "the caller awaited
+    /// the push" from "the runner was starved": CI measured 4s across a window
+    /// that takes 20ms locally and failed a 3s bound with nothing wrong. Held
+    /// open, a caller that awaits the push simply never returns, which the
+    /// test's time limit catches no matter how slow the machine is.
+    private static let gate = NSCondition()
+    nonisolated(unsafe) private static var isOpen = false
     nonisolated(unsafe) private static var attempts = 0
+    nonisolated(unsafe) private static var completions = 0
 
-    static func resetAttempts() {
-        lock.withLock { attempts = 0 }
+    /// Safety net so a request left in flight by an earlier test can't hold a
+    /// URLSession thread for the life of the suite.
+    private static let maxStall: TimeInterval = 60
+
+    static func reset() {
+        gate.lock()
+        isOpen = false
+        attempts = 0
+        completions = 0
+        gate.unlock()
+    }
+
+    /// Let every stalled request fail so its thread unwinds.
+    static func release() {
+        gate.lock()
+        isOpen = true
+        gate.broadcast()
+        gate.unlock()
     }
 
     static var attemptCount: Int {
-        lock.withLock { attempts }
+        gate.lock()
+        defer { gate.unlock() }
+        return attempts
+    }
+
+    /// Requests that have finished stalling — zero for as long as the gate is
+    /// shut, so a caller that returned while this is zero cannot have waited
+    /// for the server to answer.
+    static var completionCount: Int {
+        gate.lock()
+        defer { gate.unlock() }
+        return completions
     }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
-        Self.lock.withLock { Self.attempts += 1 }
-        Thread.sleep(forTimeInterval: Self.stall)
+        Self.gate.lock()
+        Self.attempts += 1
+        let deadline = Date(timeIntervalSinceNow: Self.maxStall)
+        // wait(until:) returns false once the deadline passes.
+        while !Self.isOpen, Self.gate.wait(until: deadline) {}
+        Self.completions += 1
+        Self.gate.unlock()
+        client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
+    }
+
+    override func stopLoading() {}
+}
+
+private final class ImmediateFailureSyncTransport: URLProtocol {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
         client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
     }
 
@@ -41,6 +86,10 @@ private final class StallingSyncTransport: URLProtocol {
 /// returns immediately and the sync is deferred to the retry ladder.
 @Suite(.serialized)
 struct SyncClientOfflineWriteTests {
+
+    private static let expectedBankSyncLink = ExpectedBankSyncLink(
+        accountId: "acct-1", externalAccountId: "external-acct-1", source: "simpleFin"
+    )
 
     /// transactions and messages_crdt normally come from the downloaded budget
     /// file, so create them with the upstream schema.
@@ -110,8 +159,14 @@ struct SyncClientOfflineWriteTests {
                     id TEXT PRIMARY KEY,
                     name TEXT,
                     offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
+                    tombstone INTEGER DEFAULT 0,
+                    account_id TEXT,
+                    account_sync_source TEXT
                 )
+                """)
+            try db.execute(sql: """
+                INSERT INTO accounts (id, account_id, account_sync_source)
+                VALUES ('acct-1', 'external-acct-1', 'simpleFin')
                 """)
             try db.execute(sql: """
                 CREATE TABLE category_mapping (
@@ -133,10 +188,17 @@ struct SyncClientOfflineWriteTests {
 
     /// Sync client whose every request stalls, standing in for a server that
     /// is down or off-network.
-    private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
-        StallingSyncTransport.resetAttempts()
+    private func makeSyncClient(
+        database: BudgetDatabase,
+        stallRequests: Bool = false
+    ) async throws -> SyncClient {
         let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [StallingSyncTransport.self]
+        if stallRequests {
+            StallingSyncTransport.reset()
+            config.protocolClasses = [StallingSyncTransport.self]
+        } else {
+            config.protocolClasses = [ImmediateFailureSyncTransport.self]
+        }
         let serverClient = ActualServerClient(session: URLSession(configuration: config))
         try await serverClient.configure(serverURL: "https://budget.example.com")
         await serverClient.setToken("test-token")
@@ -148,6 +210,11 @@ struct SyncClientOfflineWriteTests {
 
     private func cleanup(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
+    }
+
+    private func cancelStalledSync(_ syncClient: SyncClient) async {
+        StallingSyncTransport.release()
+        await syncClient.cancelPendingSync()
     }
 
     private func transaction(id: String) -> Transaction {
@@ -179,21 +246,30 @@ struct SyncClientOfflineWriteTests {
     }
 
     /// The whole bug: the caller must not wait on the network round trip.
-    @Test func createTransactionReturnsWithoutWaitingForTheServer() async throws {
+    /// The time limit is half the assertion — the gate stays shut for the
+    /// duration of the test, so a caller that awaits the push never returns at
+    /// all rather than returning slowly.
+    @Test(.timeLimit(.minutes(1)))
+    func createTransactionReturnsWithoutWaitingForTheServer() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeSyncClient(database: database, stallRequests: true)
+        defer { StallingSyncTransport.release() }
 
-        let start = Date()
-        try await syncClient.createTransaction(transaction(id: "tx-offline-1"))
-        let elapsed = Date().timeIntervalSince(start)
+        do {
+            try await syncClient.createTransaction(transaction(id: "tx-offline-1"))
 
-        // Bounded by the stall, not a fixed budget: a caller that awaited the
-        // push can't return before the stall elapses, while a loaded CI runner
-        // can take well over a second just to get the first write through.
-        #expect(elapsed < StallingSyncTransport.stall, "createTransaction blocked for \(elapsed)s waiting on an unreachable server")
-        // Local-first: the transaction is already durable on return.
-        #expect(try rowExists(database, id: "tx-offline-1"))
+            // Returned while the server is still hanging: nothing has been allowed
+            // to answer yet, so the push cannot have been awaited.
+            #expect(StallingSyncTransport.completionCount == 0, "createTransaction waited for the unreachable server to answer")
+            // Local-first: the transaction is already durable on return.
+            #expect(try rowExists(database, id: "tx-offline-1"))
+        } catch {
+            await cancelStalledSync(syncClient)
+            throw error
+        }
+
+        await cancelStalledSync(syncClient)
     }
 
     /// Deferred, not dropped: the push still goes out, just off the caller's
@@ -201,16 +277,24 @@ struct SyncClientOfflineWriteTests {
     @Test func pushStillHappensAfterTheWriteReturns() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
+        let syncClient = try await makeSyncClient(database: database, stallRequests: true)
+        defer { StallingSyncTransport.release() }
 
-        try await syncClient.createTransaction(transaction(id: "tx-offline-2"))
+        do {
+            try await syncClient.createTransaction(transaction(id: "tx-offline-2"))
 
-        var observed = StallingSyncTransport.attemptCount
-        for _ in 0..<40 where observed == 0 {
-            try await Task.sleep(nanoseconds: 50_000_000)
-            observed = StallingSyncTransport.attemptCount
+            var observed = StallingSyncTransport.attemptCount
+            for _ in 0..<40 where observed == 0 {
+                try await Task.sleep(nanoseconds: 50_000_000)
+                observed = StallingSyncTransport.attemptCount
+            }
+            #expect(observed >= 1, "the deferred sync never reached the server")
+        } catch {
+            await cancelStalledSync(syncClient)
+            throw error
         }
-        #expect(observed >= 1, "the deferred sync never reached the server")
+
+        await cancelStalledSync(syncClient)
     }
 
     @Test func transactionUpdateRollsBackWhenMessagePersistenceFails() throws {
@@ -359,7 +443,7 @@ struct SyncClientOfflineWriteTests {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
-        let prepared = SyncClient.PreparedRules(rules: [], context: .empty)
+        let prepared = try await syncClient.prepareRules()
 
         let first: Transaction = {
             var value = transaction(id: "tx-bank-occurrence-1")
@@ -378,13 +462,16 @@ struct SyncClientOfflineWriteTests {
         }()
 
         #expect(try await syncClient.createBankSyncTransaction(
-            first, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+            first, maxLiveFinancialIdOccurrences: 2, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .inserted(first.id))
         #expect(try await syncClient.createBankSyncTransaction(
-            second, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+            second, maxLiveFinancialIdOccurrences: 2, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .inserted(second.id))
         #expect(try await syncClient.createBankSyncTransaction(
-            third, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+            third, maxLiveFinancialIdOccurrences: 2, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .duplicate)
 
         #expect(try await database.dbQueueForTesting.read { db in
@@ -405,14 +492,15 @@ struct SyncClientOfflineWriteTests {
             try db.execute(sql: "DELETE FROM messages_crdt WHERE row = ?", arguments: [first.id])
         }
         #expect(try await syncClient.createBankSyncTransaction(
-            first, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+            first, maxLiveFinancialIdOccurrences: 1, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .inserted(first.id))
         #expect(try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [first.id]) ?? 0
         } == first.syncableFields.count)
     }
 
-    @Test(arguments: ["reconciled", "tombstone", "moved", "child", "date", "amount", "payee", "financial_id", "imported_description", "notes", "cleared"])
+    @Test(arguments: ["reconciled", "tombstone", "starting_balance", "child", "date", "amount", "payee", "financial_id", "imported_description", "notes", "cleared"])
     func bankSyncUpdateSkipsRowsThatChangedAfterPlanning(_ state: String) async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
@@ -447,9 +535,9 @@ struct SyncClientOfflineWriteTests {
             try await database.dbQueueForTesting.write { db in
                 try db.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE id = ?", arguments: [existing.id])
             }
-        case "moved":
+        case "starting_balance":
             try await database.dbQueueForTesting.write { db in
-                try db.execute(sql: "UPDATE transactions SET acct = ? WHERE id = ?", arguments: ["acct-other", existing.id])
+                try db.execute(sql: "UPDATE transactions SET starting_balance_flag = 1 WHERE id = ?", arguments: [existing.id])
             }
         case "child":
             try await database.dbQueueForTesting.write { db in
@@ -491,7 +579,7 @@ struct SyncClientOfflineWriteTests {
         }
 
         let applied = try await syncClient.applyBankSyncUpdates(
-            [update], expectedAccountId: existing.accountId
+            [update], expectedLink: Self.expectedBankSyncLink
         )
 
         #expect(applied == 0)
@@ -499,11 +587,11 @@ struct SyncClientOfflineWriteTests {
             try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'transactions' AND row = ?", arguments: [existing.id]) ?? 0
         } == 0)
         #expect(try await database.dbQueueForTesting.read { db in
-            let row = try Row.fetchOne(db, sql: "SELECT acct, date, amount, description, financial_id, imported_description, notes, cleared, reconciled, tombstone, isChild FROM transactions WHERE id = ?", arguments: [existing.id])
+            let row = try Row.fetchOne(db, sql: "SELECT acct, date, amount, description, financial_id, imported_description, notes, cleared, reconciled, tombstone, starting_balance_flag, isChild FROM transactions WHERE id = ?", arguments: [existing.id])
             switch state {
             case "reconciled": return row?["reconciled"] as Int? == 1
             case "tombstone": return row?["tombstone"] as Int? == 1
-            case "moved": return row?["acct"] as String? == "acct-other"
+            case "starting_balance": return row?["starting_balance_flag"] as Int? == 1
             case "child": return row?["isChild"] as Int? == 1
             case "date": return row?["date"] as Int? == 20260812
             case "amount": return row?["amount"] as Int? == -4321
@@ -515,6 +603,36 @@ struct SyncClientOfflineWriteTests {
             default: return false
             }
         })
+    }
+
+    @Test func bankSyncWindowExcludesStartingBalanceRowsFromFuzzyMatching() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+
+        var openingBalance = transaction(id: "tx-bank-opening-balance")
+        openingBalance.startingBalanceFlag = true
+        try database.insertTransaction(openingBalance)
+
+        let candidate = BankSyncCandidate(
+            importedId: "financial-opening-balance",
+            date: openingBalance.date,
+            amount: openingBalance.amount,
+            payeeName: "Updated",
+            payeeId: "payee-updated",
+            notes: "Updated",
+            cleared: true
+        )
+        let window = try await database.bankSyncWindow(
+            accountId: openingBalance.accountId,
+            from: candidate.date - 7,
+            to: candidate.date + 7,
+            importedIds: [candidate.importedId]
+        )
+        let plan = BankSyncReconciler.plan(candidates: [candidate], existing: window)
+
+        #expect(window.isEmpty)
+        #expect(plan.updates.isEmpty)
+        #expect(plan.inserts.map(\.importedId) == [candidate.importedId])
     }
 
     @Test func bankSyncUpdateAppliesUnchangedPlanAndInsertsMessages() async throws {
@@ -541,7 +659,7 @@ struct SyncClientOfflineWriteTests {
         )
         let plan = BankSyncReconciler.plan(candidates: [candidate], existing: window)
         let applied = try await syncClient.applyBankSyncUpdates(
-            plan.updates, expectedAccountId: existing.accountId
+            plan.updates, expectedLink: Self.expectedBankSyncLink
         )
 
         #expect(applied == 1)
@@ -550,17 +668,151 @@ struct SyncClientOfflineWriteTests {
         } == 5)
     }
 
+    @Test func standaloneBankAPIsRejectAStaleLinkWithoutWriting() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let staleLink = ExpectedBankSyncLink(
+            accountId: "acct-1", externalAccountId: "stale-external-id", source: "simpleFin"
+        )
+        let prepared = try await syncClient.prepareRules()
+        var imported = transaction(id: "tx-stale-bank-api")
+        imported.financialId = "financial-stale-bank-api"
+        let importedId = imported.id
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            _ = try await syncClient.createBankSyncTransaction(
+                imported, maxLiveFinancialIdOccurrences: 1, prepared: prepared,
+                expectedLink: staleLink
+            )
+        }
+
+        let existing = transaction(id: "tx-stale-bank-update")
+        try database.insertTransaction(existing)
+        let update = BankSyncUpdate(
+            expected: .init(
+                id: existing.id,
+                date: existing.date,
+                amount: existing.amount,
+                payeeId: existing.payeeId,
+                importedId: existing.financialId,
+                importedPayee: existing.importedPayee,
+                notes: existing.notes,
+                cleared: existing.cleared,
+                reconciled: existing.reconciled,
+                tombstone: existing.tombstone
+            ),
+            existingId: existing.id,
+            importedId: "financial-stale-update",
+            payeeId: "payee-updated",
+            importedPayee: "Updated",
+            notes: nil,
+            cleared: true
+        )
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            _ = try await syncClient.applyBankSyncUpdates([update], expectedLink: staleLink)
+        }
+
+        let counts = try await database.dbQueueForTesting.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [importedId]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(counts == (0, 0))
+    }
+
+    @Test func bankSyncMaterializationRejectsStalePreparedRulesBeforeWriting() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "INSERT INTO rules (id, stage, conditions_op, conditions, actions) VALUES ('rule-1', NULL, 'and', '[]', '[{\"op\":\"set\",\"field\":\"category\",\"value\":\"cat-1\"}]')")
+        }
+        let syncClient = try await makeSyncClient(database: database)
+        let prepared = try await syncClient.prepareRules()
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE rules SET actions = ? WHERE id = 'rule-1'", arguments: ["[{\"op\":\"set\",\"field\":\"category\",\"value\":\"cat-2\"}]"])
+        }
+
+        var imported = transaction(id: "tx-stale-rules")
+        imported.financialId = "financial-stale-rules"
+        let message = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: imported.id, column: "amount", value: "N:-1234"
+        )
+        await #expect(throws: BankSyncDatabaseError.bankSyncRulesChanged) {
+            _ = try await syncClient.materializeBankSync(
+                updates: [],
+                inserts: [PreparedBankSyncInsert(
+                    transaction: imported,
+                    messages: [message],
+                    pendingPayees: [Payee(id: "payee-new", name: "New Payee", transferAccountId: nil)],
+                    maxLiveFinancialIdOccurrences: 1
+                )],
+                openingInsert: nil,
+                openingUpdate: nil,
+                expectedLink: ExpectedBankSyncLink(
+                    accountId: "acct-1", externalAccountId: "external-acct-1", source: "simpleFin"
+                ),
+                preparedRulesFingerprint: prepared.fingerprint
+            )
+        }
+
+        let counts = try await database.dbQueueForTesting.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(counts == (0, 0, 0))
+    }
+
+    @Test func bankSyncMaterializationToleratesPartialRulesContextSchema() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "ALTER TABLE accounts DROP COLUMN offbudget")
+            try db.execute(sql: "INSERT INTO rules (id, stage, conditions_op, conditions, actions) VALUES ('rule-1', NULL, 'and', '[]', '[{\"op\":\"set\",\"field\":\"category\",\"value\":\"cat-1\"}]')")
+        }
+        let syncClient = try await makeSyncClient(database: database)
+        let prepared = try await syncClient.prepareRules()
+
+        var imported = transaction(id: "tx-partial-rules-context")
+        imported.financialId = "financial-partial-rules-context"
+        let message = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: imported.id, column: "amount", value: "N:-1234"
+        )
+        let result = try await syncClient.materializeBankSync(
+            updates: [],
+            inserts: [PreparedBankSyncInsert(
+                transaction: imported,
+                messages: [message],
+                pendingPayees: [],
+                maxLiveFinancialIdOccurrences: 1
+            )],
+            openingInsert: nil,
+            openingUpdate: nil,
+            expectedLink: Self.expectedBankSyncLink,
+            preparedRulesFingerprint: prepared.fingerprint
+        )
+
+        #expect(result.inserted.map(\.id) == [imported.id])
+    }
+
     @Test func rejectedBankFinancialIdDoesNotLeavePendingPayeeRows() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)
-        let prepared = SyncClient.PreparedRules(rules: [], context: .empty)
+        let prepared = try await syncClient.prepareRules()
 
         var accepted = transaction(id: "tx-bank-payee-accepted")
         accepted.financialId = "financial-payee-limit"
         accepted.payeeId = "payee-existing"
         #expect(try await syncClient.createBankSyncTransaction(
-            accepted, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+            accepted, maxLiveFinancialIdOccurrences: 1, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .inserted(accepted.id))
 
         var rejected = transaction(id: "tx-bank-payee-rejected")
@@ -568,7 +820,8 @@ struct SyncClientOfflineWriteTests {
         rejected.payeeId = nil
         rejected.payeeName = "Never Seen Payee"
         #expect(try await syncClient.createBankSyncTransaction(
-            rejected, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+            rejected, maxLiveFinancialIdOccurrences: 1, prepared: prepared,
+            expectedLink: Self.expectedBankSyncLink
         ) == .duplicate)
 
         let rejectedPayeeName = rejected.payeeName
@@ -585,6 +838,74 @@ struct SyncClientOfflineWriteTests {
         #expect(counts.1 == 0)
         #expect(counts.2 == 0)
         #expect(counts.3 == 1)
+    }
+
+    @Test func bankSyncMaterializationRollsBackConflictingPendingPayeePayload() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+        }
+        let syncClient = try await makeSyncClient(database: database)
+        let preparedRules = try await syncClient.prepareRules()
+        var first = transaction(id: "tx-pending-payee-conflict-1")
+        first.financialId = "financial-pending-payee-conflict-1"
+        first.payeeId = nil
+        first.payeeName = "Original Merchant"
+        let prepared = try #require(await syncClient.prepareBankSyncTransaction(
+            first, prepared: preparedRules
+        ))
+        let firstPayee = try #require(prepared.pendingPayees.first)
+        var second = transaction(id: "tx-pending-payee-conflict-2")
+        second.financialId = "financial-pending-payee-conflict-2"
+        second.payeeId = nil
+        second.payeeName = "Different Merchant"
+        let conflictingPayee = Payee(
+            id: firstPayee.id,
+            name: "Different Merchant",
+            transferAccountId: firstPayee.transferAccountId,
+            tombstone: firstPayee.tombstone
+        )
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncPendingPayeeConflict) {
+            _ = try await syncClient.materializeBankSync(
+                updates: [],
+                inserts: [
+                    PreparedBankSyncInsert(
+                        transaction: prepared.transaction,
+                        messages: prepared.messages,
+                        pendingPayees: prepared.pendingPayees,
+                        maxLiveFinancialIdOccurrences: 1
+                    ),
+                    PreparedBankSyncInsert(
+                        transaction: second,
+                        messages: [],
+                        pendingPayees: [conflictingPayee],
+                        maxLiveFinancialIdOccurrences: 1
+                    )
+                ],
+                openingInsert: nil,
+                openingUpdate: nil,
+                expectedLink: ExpectedBankSyncLink(
+                    accountId: "acct-1",
+                    externalAccountId: "external-acct-1",
+                    source: "simpleFin"
+                ),
+                preparedRulesFingerprint: preparedRules.fingerprint
+            )
+        }
+
+        let counts = try await database.dbQueueForTesting.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping") ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(counts.0 == 0)
+        #expect(counts.1 == 0)
+        #expect(counts.2 == 0)
+        #expect(counts.3 == 0)
     }
 
     @Test func legacyNullAccountFinancialIdLookupIsNullSafeAndAccountScoped() throws {

@@ -220,11 +220,16 @@ final class BudgetStore: ObservableObject {
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
     @Published private(set) var bankSyncAccounts: [BankSyncAccount] = []
+    private var bankSyncLoadGeneration = 0
     /// Whether this device has claimed a SimpleFIN access key.
     @Published private(set) var isSimpleFINConfigured = SimpleFINCredentials.isConfigured
     /// True for the length of a bank sync, so the UI can show progress and
     /// keep a second sync from starting on top of the first.
     @Published private(set) var isBankSyncing = false
+
+#if DEBUG
+    var bankSyncBeforeMaterializationHook: (() -> Void)?
+#endif
 
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
@@ -267,6 +272,15 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Number formatting follows Actual's synced `numberFormat` preference.
+    /// It deliberately has no UserDefaults fallback: the budget's synced
+    /// preference is the source of truth, with `.commaDot` as the Actual default.
+    @Published var numberFormat: ActualNumberFormat = .commaDot {
+        didSet {
+            publishWidgetSnapshot()
+        }
+    }
+
     private static func currencyCodeCacheKey(for budgetId: String) -> String {
         "currencyCode.\(budgetId)"
     }
@@ -300,6 +314,19 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else { return }
         do {
             try await syncClient.updateCurrencyCode(code)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// User-initiated number formatting changes use the same generic synced
+    /// preference path as other Actual preferences. No local persistence is
+    /// needed because the budget database is authoritative.
+    func setNumberFormat(_ format: ActualNumberFormat) async {
+        numberFormat = format
+        guard let syncClient else { return }
+        do {
+            try await syncClient.setPreference(key: "numberFormat", value: format.rawValue)
         } catch {
             self.error = error.localizedDescription
         }
@@ -775,8 +802,8 @@ final class BudgetStore: ObservableObject {
 
         // 1. Mapping keywords the hint contains. Longest key first so "1234" beats "12"
         //    and multi-match resolution is deterministic (Dictionary order isn't). Only
-        //    hint-contains-key: the reverse direction would let a one-character hint
-        //    match any keyword.
+//    hint-contains-key: the reverse direction would let a one-character hint
+//    match any keyword.
         let mappingsByLongestKey = cardMappings
             .map { (key: $0.key.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(),
                     accountId: $0.value) }
@@ -932,6 +959,11 @@ final class BudgetStore: ObservableObject {
                     longitude: coordinate.1,
                     createdAt: 1_751_760_000_000 + Int64(index)
                 ))
+            } catch let error as BankSyncDatabaseError
+                where error == .bankSyncMaterializationStale {
+                // The link changed while this download was in flight. The
+                // guarded write rejected it; do not stamp or count the old feed.
+                continue
             } catch {
                 logger.error("seedDebugPayeeLocations insert failed: \(error, privacy: .public)")
             }
@@ -1162,6 +1194,10 @@ final class BudgetStore: ObservableObject {
     /// Test-only: pause a load after its month snapshots are fetched so a
     /// month request can race the final publish deterministically.
     var budgetMonthsFetchedForTesting: (() async -> Void)?
+
+    /// Test-only: pause the first bank-account read before budget-local links
+    /// are migrated or published.
+    var bankSyncAccountsFetchedForTesting: (() async -> Void)?
 
     /// Test-only: release the open database and sync client the way the app's
     /// file-mutating paths (disconnect, downloadBudget) do, so a test can
@@ -1947,6 +1983,7 @@ final class BudgetStore: ObservableObject {
             // Nil means the budget has no currency preference; an empty value
             // is Actual's explicit "None" setting.
             let fetchedCurrencyCode = try await openedDb.fetchCurrencyCode()
+            let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
             let fetchedAccounts = try await openedDb.fetchAccounts()
@@ -1987,6 +2024,12 @@ final class BudgetStore: ObservableObject {
                 cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
             } else if let cached = cachedCurrencyCode(for: budgetId) {
                 currencyCode = cached
+            }
+            if let fetchedNumberFormat,
+               let parsedNumberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) {
+                numberFormat = parsedNumberFormat
+            } else {
+                numberFormat = .commaDot
             }
             
             upcomingScheduledTransactionLength = fetchedUpcomingLength
@@ -2188,6 +2231,7 @@ final class BudgetStore: ObservableObject {
         guard let database else { return }
         let budgetId = currentBudgetId
         let currencyCodeBefore = currencyCode
+        let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
@@ -2218,6 +2262,7 @@ final class BudgetStore: ObservableObject {
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
+            let fetchedNumberFormat = try await database.fetchPreference(id: "numberFormat")
             // Same story for the goal-templates flags — the web's Experimental
             // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(
@@ -2262,6 +2307,9 @@ final class BudgetStore: ObservableObject {
                     cacheCurrencyCode(fetchedCurrencyCode, for: budgetId)
                 }
             }
+            if let fetchedNumberFormat, numberFormat == numberFormatBefore {
+                numberFormat = ActualNumberFormat(rawValue: fetchedNumberFormat) ?? .commaDot
+            }
             dataVersion += 1
 
             await loadSchedules()
@@ -2277,7 +2325,7 @@ final class BudgetStore: ObservableObject {
             self.error = String(format: String(localized: "Failed to refresh data: %@"), error.localizedDescription)
         }
     }
-    
+
     // MARK: - Backup Actions
 
     func refreshBackups() async {
@@ -2512,7 +2560,6 @@ final class BudgetStore: ObservableObject {
                 name: trimmedName
             )
         } catch let error as BudgetDatabase.CategoryWriteError {
-            // Already phrased for the person who typed the name.
             throw error
         } catch {
             throw BudgetStoreError.categoryGroupCreationFailed(error.localizedDescription)
@@ -2544,6 +2591,7 @@ final class BudgetStore: ObservableObject {
                 categoryGroupId: groupId
             )
         } catch let error as BudgetDatabase.CategoryWriteError {
+            // Already phrased for the person who typed the name.
             throw error
         } catch {
             throw BudgetStoreError.categoryCreationFailed(error.localizedDescription)
@@ -2713,7 +2761,7 @@ final class BudgetStore: ObservableObject {
         var existing = try database.existingFinancialIds(accountId: accountId)
         
         // One rules/context fetch for the whole import, not one per row.
-        let prepared = await syncClient.prepareRules()
+        let prepared = try await syncClient.prepareRules()
         
         var imported = 0
         var skipped = 0
@@ -2833,6 +2881,59 @@ final class BudgetStore: ObservableObject {
 
     private func forgetAppleWalletLinks(for budgetId: String) {
         appleWalletLinkDefaults.removeObject(forKey: appleWalletLinksKey(for: budgetId))
+    }
+
+    private func migrateLegacyAppleWalletLinksIfNeeded(
+        database: BudgetDatabase,
+        budgetId: String,
+        storedWalletLinks: [String: String]
+    ) throws -> BankSyncLocalLinkMigrationResult {
+        guard !storedWalletLinks.isEmpty else {
+            return BankSyncLocalLinkMigrationResult(staleAccountIds: [], adoptedAccountIds: [])
+        }
+        let links = storedWalletLinks.map { accountId, externalAccountId in
+            ExpectedBankSyncLink(
+                accountId: accountId,
+                externalAccountId: externalAccountId,
+                source: BankSyncSource.financeKit.rawValue
+            )
+        }
+        return try database.migrateBankSyncLocalLinks(links)
+    }
+
+    private func removeMigratedAppleWalletLinks(
+        budgetId: String,
+        result: BankSyncLocalLinkMigrationResult
+    ) {
+        let resolvedAccountIds = result.staleAccountIds.union(result.adoptedAccountIds)
+        var remainingWalletLinks = appleWalletLinkDefaults.dictionary(
+            forKey: appleWalletLinksKey(for: budgetId)
+        ) as? [String: String] ?? [:]
+        for accountId in resolvedAccountIds {
+            remainingWalletLinks.removeValue(forKey: accountId)
+        }
+        if remainingWalletLinks.isEmpty {
+            forgetAppleWalletLinks(for: budgetId)
+        } else {
+            appleWalletLinkDefaults.set(
+                remainingWalletLinks,
+                forKey: appleWalletLinksKey(for: budgetId)
+            )
+        }
+    }
+
+    private func migrateLegacyAppleWalletLinksIfNeeded() throws {
+        guard let database, let budgetId = currentBudgetId else { return }
+        let storedWalletLinks = appleWalletLinks
+        let result = try migrateLegacyAppleWalletLinksIfNeeded(
+            database: database,
+            budgetId: budgetId,
+            storedWalletLinks: storedWalletLinks
+        )
+        removeMigratedAppleWalletLinks(
+            budgetId: budgetId,
+            result: result
+        )
     }
 
     /// Whether Wallet data can be read here, as of the last check. Drives
@@ -3014,11 +3115,55 @@ final class BudgetStore: ObservableObject {
     }
 
     func loadBankSyncAccounts() async {
-        guard let database else {
+        let capturedDatabase = database
+        let capturedBudgetId = currentBudgetId
+        bankSyncLoadGeneration += 1
+        let capturedGeneration = bankSyncLoadGeneration
+        guard let database = capturedDatabase else {
+            guard capturedDatabase === self.database,
+                  currentBudgetId == capturedBudgetId,
+                  bankSyncLoadGeneration == capturedGeneration else { return }
             bankSyncAccounts = []
             return
         }
+        func isCurrentRequest() -> Bool {
+            self.database === capturedDatabase
+                && self.currentBudgetId == capturedBudgetId
+                && self.bankSyncLoadGeneration == capturedGeneration
+        }
+
         var synced = (try? await database.fetchBankSyncAccounts()) ?? []
+#if DEBUG
+        await bankSyncAccountsFetchedForTesting?()
+#endif
+        guard isCurrentRequest() else { return }
+
+        // UserDefaults was the original Wallet-link store. Copy it into the
+        // budget-local SQLite identity table before exposing links to imports.
+        let storedWalletLinks = capturedBudgetId.flatMap { budgetId in
+            appleWalletLinkDefaults.dictionary(forKey: appleWalletLinksKey(for: budgetId))
+                as? [String: String]
+        } ?? [:]
+        if !storedWalletLinks.isEmpty {
+            do {
+                guard isCurrentRequest() else { return }
+                guard let capturedBudgetId else { return }
+                let result = try migrateLegacyAppleWalletLinksIfNeeded(
+                    database: database,
+                    budgetId: capturedBudgetId,
+                    storedWalletLinks: storedWalletLinks
+                )
+                guard isCurrentRequest() else { return }
+                removeMigratedAppleWalletLinks(
+                    budgetId: capturedBudgetId,
+                    result: result
+                )
+            } catch {
+                // Retain the legacy key so a later load can retry the batch.
+            }
+        }
+        var localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? []
+        guard isCurrentRequest() else { return }
 
         // Early builds wrote financeKit links into the synced columns, where
         // the ids mean nothing to any other device and today's unlink path
@@ -3026,31 +3171,87 @@ final class BudgetStore: ObservableObject {
         // first, then clear the columns the way any unlink would. Idempotent:
         // once cleared, there are no strays left to find.
         let strays = synced.filter { $0.source == .financeKit }
-        if !strays.isEmpty, currentBudgetId != nil {
-            var links = appleWalletLinks
-            for stray in strays where links[stray.id] == nil {
-                links[stray.id] = stray.externalAccountId
+        if !strays.isEmpty, capturedBudgetId != nil {
+            let strayLinks = strays.map {
+                ExpectedBankSyncLink(
+                    accountId: $0.id,
+                    externalAccountId: $0.externalAccountId,
+                    source: BankSyncSource.financeKit.rawValue
+                )
             }
-            appleWalletLinks = links
-            if let syncClient {
-                for stray in strays {
-                    try? await syncClient.unlinkAccount(accountId: stray.id)
+            do {
+                guard isCurrentRequest() else { return }
+                _ = try database.migrateBankSyncLocalLinks(strayLinks)
+                let persistedLinks = try await database.fetchBankSyncLocalLinks()
+                guard isCurrentRequest() else { return }
+                let adopted = strays.filter { stray in
+                    persistedLinks.contains { link in
+                        link.accountId == stray.id
+                            && link.source == BankSyncSource.financeKit.rawValue
+                    }
                 }
-                synced = (try? await database.fetchBankSyncAccounts()) ?? []
-            } else {
-                // No sync client yet (restored budget): serve the link from
-                // the local store now, leave the columns for a later load.
-                synced.removeAll { $0.source == .financeKit }
+                if let syncClient {
+                    for stray in adopted {
+                        guard isCurrentRequest() else { return }
+                        let expectedLink = ExpectedBankSyncLink(
+                            accountId: stray.id,
+                            externalAccountId: stray.externalAccountId,
+                            source: BankSyncSource.financeKit.rawValue
+                        )
+                        try? await syncClient.unlinkAccount(
+                            accountId: stray.id,
+                            expectedLink: expectedLink
+                        )
+                        guard isCurrentRequest() else { return }
+                    }
+                    synced = (try? await database.fetchBankSyncAccounts()) ?? []
+                    guard isCurrentRequest() else { return }
+                } else {
+                    // No sync client yet (restored budget): serve adopted
+                    // links locally and leave their columns for later.
+                    let adoptedIds = adopted.map(\.id)
+                    synced.removeAll { adoptedIds.contains($0.id) }
+                }
+                localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? localLinks
+                guard isCurrentRequest() else { return }
+            } catch {
+                // Keep the synced columns intact so a later load can retry.
             }
         }
 
-        let walletLinks = appleWalletLinks
+        // A synchronized non-FinanceKit identity outranks a hidden local
+        // FinanceKit identity. Remove only the exact local row observed by
+        // this load; if it changed concurrently, refetch instead of deleting
+        // the newer local identity.
+        let synchronizedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
+        var refetchedAfterStaleCleanup = false
+        for link in localLinks where link.source == BankSyncSource.financeKit.rawValue {
+            guard let synchronized = synchronizedById[link.accountId], synchronized.source != .financeKit else {
+                continue
+            }
+            guard isCurrentRequest() else { return }
+            let removed = (try? database.removeBankSyncLocalLinkIfSynchronizedProviderWins(link)) ?? false
+            if removed {
+                localLinks.removeAll { $0 == link }
+            } else if !refetchedAfterStaleCleanup {
+                refetchedAfterStaleCleanup = true
+                synced = (try? await database.fetchBankSyncAccounts()) ?? synced
+                localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? localLinks
+                guard isCurrentRequest() else { return }
+            }
+        }
+
+        let walletLinks = Dictionary(
+            uniqueKeysWithValues: localLinks.map { ($0.accountId, $0.externalAccountId) }
+        )
         guard !walletLinks.isEmpty else {
+            guard isCurrentRequest() else { return }
             bankSyncAccounts = synced
             return
         }
         let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
         let budgetAccounts = (try? await database.fetchAccounts()) ?? accounts
+        guard isCurrentRequest() else { return }
         bankSyncAccounts = budgetAccounts.compactMap { account in
             if let linked = syncedById[account.id] { return linked }
             guard let externalId = walletLinks[account.id] else { return nil }
@@ -3090,38 +3291,97 @@ final class BudgetStore: ObservableObject {
     }
 
     func linkBankAccount(accountId: String, to remote: BankSyncRemoteAccount) async throws {
+        let expectedOldLink = bankSyncAccount(forAccountId: accountId).map {
+            ExpectedBankSyncLink(
+                accountId: accountId,
+                externalAccountId: $0.externalAccountId,
+                source: $0.syncSource
+            )
+        }
+        do {
+            try migrateLegacyAppleWalletLinksIfNeeded()
+        } catch let error as BankSyncDatabaseError
+            where error == .bankSyncMaterializationStale {
+            await loadBankSyncAccounts()
+            throw error
+        }
         if remote.source == .financeKit {
-            guard currentBudgetId != nil else { throw BudgetStoreError.syncNotConfigured }
-            var links = appleWalletLinks
-            links[accountId] = remote.id
-            appleWalletLinks = links
+            guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+            do {
+                try await syncClient.linkFinanceKitAccount(
+                    accountId: accountId,
+                    externalAccountId: remote.id,
+                    expectedOldLink: expectedOldLink
+                )
+            } catch let error as BankSyncDatabaseError
+                where error == .bankSyncMaterializationStale {
+                await loadBankSyncAccounts()
+                throw error
+            }
             await loadBankSyncAccounts()
             return
         }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        try await syncClient.linkAccount(
-            accountId: accountId,
-            externalAccountId: remote.id,
-            source: remote.source,
-            institutionId: remote.institutionId,
-            institutionName: remote.institutionName
-        )
-        var links = appleWalletLinks
-        links.removeValue(forKey: accountId)
-        appleWalletLinks = links
+        do {
+            try await syncClient.linkAccount(
+                accountId: accountId,
+                externalAccountId: remote.id,
+                source: remote.source,
+                institutionId: remote.institutionId,
+                institutionName: remote.institutionName,
+                expectedOldLink: expectedOldLink,
+                verifyExpectedOldLink: true
+            )
+        } catch let error as BankSyncDatabaseError
+            where error == .bankSyncMaterializationStale {
+            await loadBankSyncAccounts()
+            throw error
+        }
         await refreshDataOnly()
     }
 
     func unlinkBankAccount(accountId: String) async throws {
-        if bankSyncAccount(forAccountId: accountId)?.source == .financeKit {
-            var links = appleWalletLinks
-            links.removeValue(forKey: accountId)
-            appleWalletLinks = links
+        guard let linked = bankSyncAccount(forAccountId: accountId),
+                            !linked.syncSource.isEmpty else {
+            return
+        }
+        let expectedLink = ExpectedBankSyncLink(
+            accountId: accountId,
+            externalAccountId: linked.externalAccountId,
+                        source: linked.syncSource
+        )
+        do {
+            try migrateLegacyAppleWalletLinksIfNeeded()
+        } catch let error as BankSyncDatabaseError
+            where error == .bankSyncMaterializationStale {
+            await loadBankSyncAccounts()
+            throw error
+        }
+        if linked.syncSource == BankSyncSource.financeKit.rawValue {
+            guard let database else { throw BudgetStoreError.syncNotConfigured }
+            do {
+                try database.removeBankSyncLocalLink(expectedLink)
+            } catch let error as BankSyncDatabaseError
+                where error == .bankSyncMaterializationStale {
+                await loadBankSyncAccounts()
+                guard let refreshed = bankSyncAccount(forAccountId: accountId),
+                      refreshed.syncSource == BankSyncSource.financeKit.rawValue,
+                      refreshed.externalAccountId == expectedLink.externalAccountId else {
+                    throw error
+                }
+                try database.removeBankSyncLocalLink(expectedLink)
+            }
             await loadBankSyncAccounts()
             return
         }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
-        try await syncClient.unlinkAccount(accountId: accountId)
+        do {
+            try await syncClient.unlinkAccount(accountId: accountId, expectedLink: expectedLink)
+        } catch let error as BankSyncDatabaseError
+            where error == .bankSyncMaterializationStale {
+            await loadBankSyncAccounts()
+            throw error
+        }
         await refreshDataOnly()
     }
 
@@ -3130,6 +3390,15 @@ final class BudgetStore: ObservableObject {
     ///   linked one, which is what the accounts tab's sync button does.
     @discardableResult
     func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
+        var bankSyncHook: (() -> Void)?
+    #if DEBUG
+        bankSyncHook = bankSyncBeforeMaterializationHook
+        bankSyncBeforeMaterializationHook = nil
+    #endif
+        func takeBankSyncHook() -> (() -> Void)? {
+            defer { bankSyncHook = nil }
+            return bankSyncHook
+        }
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
         // A second run on top of the first would re-download the same window
         // and race the first one's writes.
@@ -3181,6 +3450,7 @@ final class BudgetStore: ObservableObject {
         let lookbackFloor = DayDate.today()
             .adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
         var oldestDates: [String: Int] = [:]
+        var targetStartDays: [String: Int] = [:]
         for target in targets {
             // Both "the read failed" and "the account has no transactions"
             // mean the same thing here: start at the chosen day.
@@ -3188,19 +3458,20 @@ final class BudgetStore: ObservableObject {
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
-                guard let oldest = oldestDates[$0.id] else {
-                    return BankSyncTarget(externalId: $0.externalAccountId, startDay: importStart)
+                let startDay: Int
+                if let oldest = oldestDates[$0.id] {
+                    let incremental = max(lookbackFloor, oldest)
+                    // Reach past existing history only while the chosen day sits
+                    // below it. Note this is not `min(importStart, incremental)`:
+                    // the default day is older than the 90-day floor for any
+                    // budget past its first quarter, and that form would widen
+                    // every ongoing sync to it.
+                    startDay = importStart < oldest ? importStart : incremental
+                } else {
+                    startDay = importStart
                 }
-                let incremental = max(lookbackFloor, oldest)
-                // Reach past existing history only while the chosen day sits
-                // below it. Note this is not `min(importStart, incremental)`:
-                // the default day is older than the 90-day floor for any
-                // budget past its first quarter, and that form would widen
-                // every ongoing sync to it.
-                return BankSyncTarget(
-                    externalId: $0.externalAccountId,
-                    startDay: importStart < oldest ? importStart : incremental
-                )
+                targetStartDays[$0.id] = startDay
+                return BankSyncTarget(externalId: $0.externalAccountId, startDay: startDay)
             }
         }
 
@@ -3235,9 +3506,9 @@ final class BudgetStore: ObservableObject {
 
         result.problems += simpleFinProblems + walletProblems
         // One rules/context fetch for the whole run, not one per row.
-        let prepared = await syncClient.prepareRules()
+        let prepared = try await syncClient.prepareRules()
         let syncedAt = String(Int64(Date().timeIntervalSince1970 * 1000))
-        var statuses: [(accountId: String, lastSync: String?, status: String)] = []
+        var statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)] = []
 
         for target in targets {
             guard let download = downloaded.byAccount[target.externalAccountId] else {
@@ -3255,8 +3526,14 @@ final class BudgetStore: ObservableObject {
                 // into synced status columns. SimpleFIN is a shared feed, so
                 // its missing/failed state belongs there.
                 if target.source != .financeKit {
-                    statuses.append((target.id, nil,
-                                     sourceHasProblems ? "failed" : "account-missing"))
+                    statuses.append((
+                        target.id, nil, sourceHasProblems ? "failed" : "account-missing",
+                        ExpectedBankSyncLink(
+                            accountId: target.id,
+                            externalAccountId: target.externalAccountId,
+                            source: target.syncSource
+                        )
+                    ))
                 }
                 continue
             }
@@ -3266,12 +3543,27 @@ final class BudgetStore: ObservableObject {
                 result.problems.append("\(target.name): \(problem)")
             }
             do {
-                let outcome = try await importBankSync(
-                    download,
-                    into: target,
-                    existingOldestDay: oldestDates[target.id],
-                    prepared: prepared
-                )
+                let outcome: (added: Int, updated: Int, inserted: [Transaction], rejectedConflicts: Int)
+                do {
+                    outcome = try await importBankSync(
+                        download,
+                        into: target,
+                        existingOldestDay: oldestDates[target.id],
+                        startingDay: targetStartDays[target.id]!,
+                        prepared: prepared,
+                        bankSyncHook: takeBankSyncHook()
+                    )
+                } catch let error as BankSyncDatabaseError where error == .bankSyncRulesChanged {
+                    let retryPrepared = try await syncClient.prepareRules()
+                    outcome = try await importBankSync(
+                        download,
+                        into: target,
+                        existingOldestDay: oldestDates[target.id],
+                        startingDay: targetStartDays[target.id]!,
+                        prepared: retryPrepared,
+                        bankSyncHook: nil
+                    )
+                }
                 result.added += outcome.added
                 result.updated += outcome.updated
                 result.importedTransactions += outcome.inserted
@@ -3284,10 +3576,26 @@ final class BudgetStore: ObservableObject {
                     )
                 }
                 result.accountsSynced += 1
-                statuses.append((target.id, syncedAt, download.status))
+                statuses.append((
+                    target.id, syncedAt, download.status,
+                    ExpectedBankSyncLink(
+                        accountId: target.id,
+                        externalAccountId: target.externalAccountId,
+                        source: target.syncSource
+                    )
+                ))
             } catch {
                 result.problems.append("\(target.name): \(error.localizedDescription)")
-                statuses.append((target.id, nil, "failed"))
+                if target.source != .financeKit {
+                    statuses.append((
+                        target.id, nil, "failed",
+                        ExpectedBankSyncLink(
+                            accountId: target.id,
+                            externalAccountId: target.externalAccountId,
+                            source: target.syncSource
+                        )
+                    ))
+                }
             }
         }
 
@@ -3306,7 +3614,9 @@ final class BudgetStore: ObservableObject {
         _ download: BankSyncDownload,
         into target: BankSyncAccount,
         existingOldestDay: Int?,
-        prepared: SyncClient.PreparedRules
+        startingDay: Int,
+        prepared: SyncClient.PreparedRules,
+        bankSyncHook: (() -> Void)?
     ) async throws -> (added: Int, updated: Int, inserted: [Transaction], rejectedConflicts: Int) {
         guard let database, let syncClient else { throw BudgetStoreError.syncNotConfigured }
 
@@ -3315,9 +3625,11 @@ final class BudgetStore: ObservableObject {
         // far as the hungriest of them.
         var candidates = download.candidates
 
-        var added = 0
-        guard let earliest = candidates.map(\.date).min(),
-              let latest = candidates.map(\.date).max() else { return (added, 0, [], 0) }
+        guard !candidates.isEmpty || existingOldestDay == nil else {
+            return (0, 0, [], 0)
+        }
+        let earliest = candidates.map(\.date).min() ?? startingDay
+        let latest = candidates.map(\.date).max() ?? startingDay
 
         // Resolve payees by name without creating any: the payee pass compares
         // ids, and a name the budget doesn't have yet can't match anything.
@@ -3369,14 +3681,15 @@ final class BudgetStore: ObservableObject {
             reimportDeleted: reimportDeleted
         )
 
-        let updated = try await syncClient.applyBankSyncUpdates(
-            plan.updates,
-            expectedAccountId: target.id
+        let expectedLink = ExpectedBankSyncLink(
+            accountId: target.id,
+            externalAccountId: target.externalAccountId,
+            source: target.syncSource
         )
-
         // Oldest first: sort_order is stamped at insert, so inserting in date
         // order leaves the newest transaction at the top of the account.
-        var inserted: [Transaction] = []
+        var preparedInserts: [PreparedBankSyncInsert] = []
+        var pendingPayeesByName: [String: Payee] = [:]
         for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
             let transaction = Transaction(
                 id: UUID().uuidString,
@@ -3401,47 +3714,98 @@ final class BudgetStore: ObservableObject {
             let maxOccurrences = target.source == .financeKit
                 ? 1
                 : candidates.count { $0 == candidate }
-            switch try await syncClient.createBankSyncTransaction(
+            if let result = try await syncClient.prepareBankSyncTransaction(
                 transaction,
-                maxLiveFinancialIdOccurrences: maxOccurrences,
-                prepared: prepared
+                prepared: prepared,
+                pendingPayeesByName: pendingPayeesByName
             ) {
-            case .inserted(let persistedId):
-                added += 1
-                if let persisted = try await database.fetchTransaction(id: persistedId) {
-                    inserted.append(persisted)
-                }
-            case .duplicate, .suppressedByRule:
-                break
+                pendingPayeesByName = result.pendingPayeesByName
+                preparedInserts.append(PreparedBankSyncInsert(
+                    transaction: result.transaction,
+                    messages: result.messages,
+                    pendingPayees: result.pendingPayees,
+                    maxLiveFinancialIdOccurrences: maxOccurrences
+                ))
             }
         }
 
-        let targetInserted = inserted.filter { $0.accountId == target.id }
-
-        // The opening balance counts as an import too (upstream folds its id
-        // into `added`). Use only rows that survived rules, deduplication, and
-        // persistence so their final dates and amounts drive the math.
-        if existingOldestDay == nil {
-            added += try await insertStartingBalance(
-                for: target,
-                currentBalanceCents: download.currentBalanceCents,
-                imported: targetInserted,
-                startingDay: earliest
-            ) ? 1 : 0
+        var expectedMaterializedInserts: [PreparedBankSyncInsert] = []
+        var expectedOccurrences: [String: Int] = [:]
+        for prepared in preparedInserts {
+            guard let financialId = prepared.transaction.financialId else {
+                expectedMaterializedInserts.append(prepared)
+                continue
+            }
+            let key = "\(prepared.transaction.accountId)|\(financialId)"
+            let occurrence = expectedOccurrences[key, default: 0]
+            guard occurrence < prepared.maxLiveFinancialIdOccurrences else { continue }
+            expectedOccurrences[key] = occurrence + 1
+            expectedMaterializedInserts.append(prepared)
+        }
+        let preparedIds = Set(expectedMaterializedInserts.map(\.transaction.id))
+        var openingInsert: BankSyncOpeningInsert?
+        if existingOldestDay == nil,
+           let balance = download.currentBalanceCents {
+            let openingAmount = balance - expectedMaterializedInserts
+                .filter { $0.transaction.accountId == target.id }
+                .reduce(0) { $0 + $1.transaction.amount }
+            if openingAmount != 0 {
+                let payee = try await database.fetchPayees().first {
+                    $0.name.caseInsensitiveCompare("Starting Balance") == .orderedSame
+                } ?? Payee(id: UUID().uuidString, name: "Starting Balance", transferAccountId: nil)
+                let category = target.offBudget ? nil : startingBalanceCategory()
+                let transaction = Transaction(
+                    id: UUID().uuidString,
+                    accountId: target.id,
+                    date: earliest,
+                    amount: openingAmount,
+                    payeeId: payee.id,
+                    payeeName: payee.name,
+                    categoryId: category?.id,
+                    categoryName: category?.name,
+                    notes: nil,
+                    cleared: true,
+                    reconciled: false,
+                    transferId: nil,
+                    isParent: false,
+                    parentId: nil,
+                    tombstone: false,
+                    sortOrder: nil,
+                    importedPayee: nil,
+                    startingBalanceFlag: true
+                )
+                openingInsert = try await syncClient.prepareBankSyncOpeningInsert(
+                    transaction, payee: payee, expectedInsertedIds: preparedIds
+                )
+            }
         }
 
-        // Anything older than the history this account already had was folded
-        // into its opening balance when that was worked out. Importing those
-        // rows now would count them twice, so the opening gives back exactly
-        // what they carry: a backfill moves no balance, only detail.
-        if let existingOldestDay {
-            try await absorbIntoStartingBalance(
-                for: target,
-                backfilled: targetInserted.filter { $0.date < existingOldestDay }
-            )
+        var openingUpdate: BankSyncOpeningUpdate?
+        if let existingOldestDay,
+           let openingId = try await database.startingBalanceTransactionId(accountId: target.id),
+           var opening = try await database.fetchTransaction(id: openingId) {
+            let carried = expectedMaterializedInserts
+                .filter { $0.transaction.accountId == target.id && $0.transaction.date < existingOldestDay }
+                .reduce(0) { $0 + $1.transaction.amount }
+            if carried != 0 {
+                opening.amount -= carried
+                openingUpdate = try await syncClient.prepareBankSyncOpeningUpdate(
+                    opening, expectedInsertedIds: preparedIds
+                )
+            }
         }
 
-        return (added, updated, inserted, plan.rejectedConflicts)
+        bankSyncHook?()
+        let materialized = try await syncClient.materializeBankSync(
+            updates: plan.updates,
+            inserts: preparedInserts,
+            openingInsert: openingInsert,
+            openingUpdate: openingUpdate,
+            expectedLink: expectedLink,
+            preparedRulesFingerprint: prepared.fingerprint
+        )
+        let added = materialized.inserted.count + (openingInsert == nil ? 0 : 1)
+        return (added, materialized.updatedCount, materialized.inserted, plan.rejectedConflicts)
     }
 
     /// Keep a backfill balance-neutral. Without this the account drifts from
@@ -3453,66 +3817,6 @@ final class BudgetStore: ObservableObject {
     /// and the balance is right to move. Nor does the opening's date change —
     /// it carries income for an on-budget account, and moving it would rewrite
     /// a past budget month to tidy up a running balance.
-    private func absorbIntoStartingBalance(
-        for target: BankSyncAccount, backfilled: [Transaction]
-    ) async throws {
-        guard let database, let syncClient else { return }
-        let carried = backfilled.reduce(0) { $0 + $1.amount }
-        guard carried != 0 else { return }
-        guard let openingId = try await database.startingBalanceTransactionId(
-            accountId: target.id
-        ), var opening = try await database.fetchTransaction(id: openingId) else { return }
-
-        opening.amount -= carried
-        try await syncClient.updateTransaction(opening, changedFields: ["amount"])
-    }
-
-    /// Give a freshly linked account the opening balance its imported history
-    /// starts from. Actual has no stored balance field, so without this the
-    /// account would be short everything that happened before the sync window
-    /// (upstream `processBankSyncDownload`, initial sync).
-    /// Returns whether a transaction was written (a zero opening writes none).
-    @discardableResult
-    private func insertStartingBalance(
-        for target: BankSyncAccount,
-        currentBalanceCents: Int?,
-        imported: [Transaction],
-        startingDay: Int
-    ) async throws -> Bool {
-        guard let syncClient, let balance = currentBalanceCents else { return false }
-        // The balance is as of now, so what the account opened with is what's
-        // left once everything about to be imported is taken back off it.
-        let opening = balance - imported.reduce(0) { $0 + $1.amount }
-        guard opening != 0 else { return false }
-
-        let payee = try await findOrCreatePayee(name: "Starting Balance")
-        let category = target.offBudget ? nil : startingBalanceCategory()
-
-        let transaction = Transaction(
-            id: UUID().uuidString,
-            accountId: target.id,
-            date: startingDay,
-            amount: opening,
-            payeeId: payee.id,
-            payeeName: payee.name,
-            categoryId: category?.id,
-            categoryName: category?.name,
-            notes: nil,
-            cleared: true,
-            reconciled: false,
-            transferId: nil,
-            isParent: false,
-            parentId: nil,
-            tombstone: false,
-            sortOrder: nil,
-            importedPayee: nil,
-            startingBalanceFlag: true
-        )
-        // Rules never see an opening balance, same as account creation's.
-        try await syncClient.createTransaction(transaction, applyRules: false)
-        return true
-    }
-
     /// Create a paired transfer between two accounts. Writes both legs with linked
     /// `transferId`s and uses the existing transfer payee for each side.
     /// - Parameters:
@@ -4408,7 +4712,7 @@ final class BudgetStore: ObservableObject {
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
-return transaction.id
+                return transaction.id
             }
         }
     }
@@ -4985,10 +5289,14 @@ return transaction.id
         let accountNames = accounts.reduce(into: [String: String]()) {
             $0[$1.id] = $1.name
         }
-        await NewTransactionNotifier.notify(about: fresh, currencyCode: currencyCode,
-                                            narrowSymbol: useNarrowCurrencySymbol,
-                                            accountNames: accountNames,
-                                            offBudgetAccountIds: offBudgetAccountIds)
+        await NewTransactionNotifier.notify(
+            about: fresh,
+            currencyCode: currencyCode,
+            narrowSymbol: useNarrowCurrencySymbol,
+            numberFormat: numberFormat,
+            accountNames: accountNames,
+            offBudgetAccountIds: offBudgetAccountIds
+        )
     }
 
     /// Transactions that arrived via sync since the last check (advances the
@@ -5984,14 +6292,16 @@ return transaction.id
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol)
+                                    narrowSymbol: useNarrowCurrencySymbol,
+                                    numberFormat: numberFormat)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
-                                    narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true)
+                                    narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true,
+                                    numberFormat: numberFormat)
     }
 
     // MARK: - Helpers

@@ -17,6 +17,10 @@ struct ReportStringsTests {
         #expect(brazilianPortuguese == "Este mês")
     }
 
+    @Test func summaryPercentageUsesInjectedFrenchLocale() {
+        #expect(SummaryWidgetFormatting.percentage(27.15, locale: Locale(identifier: "fr_FR")) == "27,15\u{00A0}%")
+    }
+
     @Test func interpolatedReportLabelsResolveAtLookupTime() {
         let english = ReportStrings.format(
             "Ending: %@", "$1,234", locale: Locale(identifier: "en_US"), bundle: appBundle)

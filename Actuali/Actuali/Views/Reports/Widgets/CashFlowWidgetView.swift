@@ -52,7 +52,12 @@ struct CashFlowWidgetView: View {
                 .frame(height: 200)
                 // The bars retain their trend, but hiding the numeric axis
                 // prevents the chart from disclosing an exact amount.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

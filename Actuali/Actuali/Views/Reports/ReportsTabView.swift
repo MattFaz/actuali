@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ReportsLoadRequest: Equatable {
     let databaseID: ObjectIdentifier?
+    let dataVersion: Int
     let generation: Int
 }
 
@@ -138,6 +139,7 @@ struct ReportsTabView: View {
     private var currentLoadRequest: ReportsLoadRequest {
         ReportsLoadRequest(
             databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init),
+            dataVersion: budgetStore.dataVersion,
             generation: loadGeneration
         )
     }

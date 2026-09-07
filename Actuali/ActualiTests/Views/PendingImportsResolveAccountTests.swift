@@ -190,16 +190,19 @@ struct PendingImportsResolveAccountTests {
     @Test func amountUsesBudgetCurrencyAndLocale() {
         #expect(PendingImportsView.amountString(
             1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
-            locale: Locale(identifier: "de_DE")) == "-1.234,50 €")
+            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")) == "-1.234,50 €")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
-            locale: Locale(identifier: "de_DE")) == "-12,34 €")
+            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")) == "-12,34 €")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: true, currencyCode: "EUR", sourceCurrencyCode: "USD", narrowSymbol: true,
-            locale: Locale(identifier: "en_US")) == "$12.34")
+            numberFormat: .commaDot, locale: Locale(identifier: "en_US")) == "$12.34")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
-            locale: Locale(identifier: "en_US")) == "-$12.34")
+            numberFormat: .commaDot, locale: Locale(identifier: "en_US")) == "-$12.34")
+        #expect(PendingImportsView.amountString(
+            1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
+            numberFormat: .dotComma, locale: Locale(identifier: "en_US")) == "-$1.234,50")
     }
 
     @Test func bulkApprovalOutcomeDefersFailuresWhenReviewIsNeeded() {

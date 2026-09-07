@@ -367,6 +367,7 @@ private struct PendingImportRow: View {
                             currencyCode: PendingImport.normalizedCurrencyCode(budgetStore.currencyCode),
                             sourceCurrencyCode: item.sourceCurrencyCode,
                             narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                            numberFormat: budgetStore.numberFormat,
                             locale: locale
                         ))
                         .font(.headline)
@@ -411,6 +412,7 @@ extension PendingImportsView {
         currencyCode: String,
         sourceCurrencyCode: String?,
         narrowSymbol: Bool,
+        numberFormat: ActualNumberFormat,
         locale: Locale
     ) -> String {
         guard let cents = Transaction.cents(fromDollars: amount) else { return "" }
@@ -418,6 +420,7 @@ extension PendingImportsView {
             cents: isIncome ? cents : -cents,
             currencyCode: PendingImport.normalizedCurrencyCode(sourceCurrencyCode ?? currencyCode),
             narrowSymbol: narrowSymbol,
+            numberFormat: numberFormat,
             locale: locale
         )
     }

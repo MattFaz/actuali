@@ -81,7 +81,12 @@ struct BalanceForecastWidgetView: View {
                 }
                 .frame(height: 180)
                 // Keep the trend visible without exposing chart-axis amounts.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
                 Text(ReportStrings.text("Not enough data", locale: locale))

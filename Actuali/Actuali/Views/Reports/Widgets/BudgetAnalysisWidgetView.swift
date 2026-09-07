@@ -128,7 +128,12 @@ struct BudgetAnalysisWidgetView: View {
                 .chartForegroundStyleScale(domain: seriesDomain, range: seriesRange)
                 .frame(height: 200)
                 // Keep the trend visible without exposing chart-axis amounts.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

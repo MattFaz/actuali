@@ -91,7 +91,8 @@ extension BudgetStore {
             : CurrencyAmountFormat.symbolLessString(
                 cents: cents,
                 currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces
+                wholeUnits: hideDecimalPlaces,
+                numberFormat: numberFormat
             )
     }
 }
@@ -178,6 +179,17 @@ struct BudgetView: View {
 
     private var isCompact: Bool {
         budgetStore.budgetDisplayStyle == .compact
+    }
+
+    /// Shape for the "N uncategorized" link's background, matching the shape
+    /// used elsewhere for each display style. The compact style keeps sharp
+    /// corners since its rows sit edge-to-edge with no rounding.
+    private var uncategorizedShape: AnyShape {
+        switch budgetStore.budgetDisplayStyle {
+        case .clean: AnyShape(RoundedRectangle(cornerRadius: 24))
+        case .detailed: AnyShape(Capsule())
+        case .compact: AnyShape(Rectangle())
+        }
     }
 
     var body: some View {
@@ -733,12 +745,12 @@ struct BudgetView: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.secondarySystemGroupedBackground))
+                        Color(isCompact ? .systemBackground : .secondarySystemGroupedBackground),
+                        in: uncategorizedShape
                     )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                .padding(.horizontal, 4)
+                .padding(.horizontal, isCompact ? 0 : 4)
                 .padding(.bottom, 8)
             }
 

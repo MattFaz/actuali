@@ -180,6 +180,13 @@ actor SyncClient {
     struct PreparedRules {
         let rules: [Rule]
         let context: RuleContext
+        let fingerprint: BankSyncRulesFingerprint
+
+        init(rules: [Rule], context: RuleContext, fingerprint: BankSyncRulesFingerprint) {
+            self.rules = rules
+            self.context = context
+            self.fingerprint = fingerprint
+        }
     }
 
     enum TransactionCreateResult: Equatable {
@@ -188,11 +195,15 @@ actor SyncClient {
         case suppressedByRule
     }
 
-    func prepareRules() -> PreparedRules {
-        guard let database else { return PreparedRules(rules: [], context: .empty) }
+    func prepareRules() async throws -> PreparedRules {
+        guard let database else {
+            return PreparedRules(rules: [], context: .empty, fingerprint: .empty)
+        }
+        let snapshot = try database.prepareRulesSnapshot()
         return PreparedRules(
-            rules: (try? database.fetchRules()) ?? [],
-            context: (try? database.ruleContext()) ?? .empty
+            rules: snapshot.rules,
+            context: snapshot.context,
+            fingerprint: snapshot.fingerprint
         )
     }
 
@@ -219,7 +230,8 @@ actor SyncClient {
     func createBankSyncTransaction(
         _ transaction: Transaction,
         maxLiveFinancialIdOccurrences: Int,
-        prepared: PreparedRules
+        prepared: PreparedRules,
+        expectedLink: ExpectedBankSyncLink
     ) async throws -> TransactionCreateResult {
         precondition(maxLiveFinancialIdOccurrences > 0)
         return try await createTransaction(
@@ -227,7 +239,79 @@ actor SyncClient {
             applyRules: true,
             prepared: prepared,
             financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
-            resolveOriginalBankPayee: true
+            resolveOriginalBankPayee: true,
+            expectedLink: expectedLink
+        )
+    }
+
+    func prepareBankSyncTransaction(
+        _ transaction: Transaction,
+        prepared: PreparedRules,
+        pendingPayeesByName: [String: Payee] = [:]
+    ) async throws -> (transaction: Transaction, messages: [CRDTMessage], pendingPayees: [Payee], pendingPayeesByName: [String: Payee])? {
+        guard database != nil else { throw SyncError.notConfigured }
+        var finalTransaction = transaction
+        var pendingPayees: [Payee] = []
+        var pendingPayeesByName = pendingPayeesByName
+        let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
+        if result.isDeleted { return nil }
+        finalTransaction = result.transaction
+        if let name = result.pendingPayeeName {
+            finalTransaction.payeeId = try await resolvePayee(
+                named: name,
+                deferCreation: true,
+                pendingPayees: &pendingPayees,
+                pendingPayeesByName: &pendingPayeesByName
+            )
+        } else if !result.changedFields.contains("payee"),
+                  !result.changedFields.contains("payee_name"),
+                  finalTransaction.payeeId == nil,
+                  let originalPayeeName = transaction.payeeName {
+            finalTransaction.payeeId = try await resolvePayee(
+                named: originalPayeeName,
+                deferCreation: true,
+                pendingPayees: &pendingPayees,
+                pendingPayeesByName: &pendingPayeesByName
+            )
+        }
+        var messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        for payee in pendingPayees {
+            messages += try await messageGenerator.messagesForInsert(payee)
+            messages += try await messageGenerator.messagesForInsert(
+                PayeeMapping(id: payee.id, targetId: payee.id)
+            )
+        }
+        return (finalTransaction, messages, pendingPayees, pendingPayeesByName)
+    }
+
+    func prepareBankSyncOpeningInsert(
+        _ transaction: Transaction,
+        payee: Payee,
+        expectedInsertedIds: Set<String>
+    ) async throws -> BankSyncOpeningInsert {
+        var messages = try await messageGenerator.messagesForInsert(payee)
+        messages += try await messageGenerator.messagesForInsert(
+            PayeeMapping(id: payee.id, targetId: payee.id)
+        )
+        messages += try await messageGenerator.messagesForInsert(transaction)
+        return BankSyncOpeningInsert(
+            transaction: transaction,
+            payee: payee,
+            messages: messages,
+            expectedInsertedIds: expectedInsertedIds
+        )
+    }
+
+    func prepareBankSyncOpeningUpdate(
+        _ transaction: Transaction,
+        expectedInsertedIds: Set<String>
+    ) async throws -> BankSyncOpeningUpdate {
+        BankSyncOpeningUpdate(
+            transaction: transaction,
+            messages: try await messageGenerator.messagesForUpdate(
+                transaction, changedFields: ["amount"]
+            ),
+            expectedInsertedIds: expectedInsertedIds
         )
     }
 
@@ -241,7 +325,8 @@ actor SyncClient {
         applyRules: Bool,
         prepared: PreparedRules?,
         financialIdPolicy: FinancialIdPolicy,
-        resolveOriginalBankPayee: Bool
+        resolveOriginalBankPayee: Bool,
+        expectedLink: ExpectedBankSyncLink? = nil
     ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
 
@@ -253,9 +338,15 @@ actor SyncClient {
         //    rules rewriting the linked payee/account.
         var finalTransaction = transaction
         var pendingPayees: [Payee] = []
+        var pendingPayeesByName: [String: Payee] = [:]
         if applyRules, transaction.transferId == nil {
-            let prepared = prepared ?? prepareRules()
-            let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
+            let preparedRules: PreparedRules
+            if let prepared {
+                preparedRules = prepared
+            } else {
+                preparedRules = try await prepareRules()
+            }
+            let result = RulesEngine.apply(transaction, rules: preparedRules.rules, context: preparedRules.context)
 
             if result.isDeleted {
                 // A `delete-transaction` rule matched. Upstream tombstones the
@@ -270,7 +361,8 @@ actor SyncClient {
                 finalTransaction.payeeId = try await resolvePayee(
                     named: name,
                     deferCreation: transaction.financialId != nil,
-                    pendingPayees: &pendingPayees
+                    pendingPayees: &pendingPayees,
+                    pendingPayeesByName: &pendingPayeesByName
                 )
             } else if resolveOriginalBankPayee,
                       !result.changedFields.contains("payee"),
@@ -280,7 +372,8 @@ actor SyncClient {
                 finalTransaction.payeeId = try await resolvePayee(
                     named: originalPayeeName,
                     deferCreation: transaction.financialId != nil,
-                    pendingPayees: &pendingPayees
+                    pendingPayees: &pendingPayees,
+                    pendingPayeesByName: &pendingPayeesByName
                 )
             }
             if !result.changedFields.isEmpty {
@@ -311,10 +404,14 @@ actor SyncClient {
                     pendingPayees: pendingPayees
                 )
             case .occurrences(let limit):
+                guard let expectedLink else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
                 insertedMessages = try database.insertBankSyncTransactionWithMessages(
                     finalTransaction,
                     messages: messages,
                     maxLiveFinancialIdOccurrences: limit,
+                    expectedLink: expectedLink,
                     pendingPayees: pendingPayees
                 )
             }
@@ -526,16 +623,23 @@ actor SyncClient {
     private func resolvePayee(
         named name: String,
         deferCreation: Bool = false,
-        pendingPayees: inout [Payee]
+        pendingPayees: inout [Payee],
+        pendingPayeesByName: inout [String: Payee]
     ) async throws -> String? {
         guard let database else { throw SyncError.notConfigured }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        let key = trimmed.lowercased()
+        if let pending = pendingPayeesByName[key] {
+            pendingPayees.append(pending)
+            return pending.id
+        }
         if let existing = try database.payee(named: trimmed) { return existing.id }
 
         let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
         if deferCreation {
+            pendingPayeesByName[key] = payee
             pendingPayees.append(payee)
         } else {
             try await createPayee(payee)
@@ -609,38 +713,53 @@ actor SyncClient {
         externalAccountId: String,
         source: BankSyncSource,
         institutionId: String,
-        institutionName: String
+        institutionName: String,
+        expectedOldLink: ExpectedBankSyncLink? = nil,
+        verifyExpectedOldLink: Bool = false
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("linkAccount() - id: \(accountId, privacy: .private)")
 
-        let existingBank = try await database.bank(withBankId: institutionId)
-        let bank = existingBank ?? Bank(
+        let proposedBank = Bank(
             id: UUID().uuidString, bankId: institutionId, name: institutionName
         )
+        for attempt in 0..<2 {
+            let link = try database.proposeBankSyncLink(proposedBank: proposedBank)
+            var messages = try await messageGenerator.messages(
+                dataset: "accounts",
+                row: accountId,
+                fields: [
+                    ("account_id", externalAccountId),
+                    ("account_sync_source", source.rawValue),
+                    ("bank", link.bank.id)
+                ]
+            )
+            if link.created {
+                messages += try await messageGenerator.messagesForInsert(link.bank)
+            } else if link.revived {
+                messages += try await messageGenerator.messagesForUpdate(
+                    link.bank,
+                    changedFields: ["bank_id", "name", "tombstone"]
+                )
+            }
 
-        var messages = try await messageGenerator.messages(
-            dataset: "accounts",
-            row: accountId,
-            fields: [
-                ("account_id", externalAccountId),
-                ("account_sync_source", source.rawValue),
-                ("bank", bank.id)
-            ]
-        )
-        if existingBank == nil {
-            messages += try await messageGenerator.messagesForInsert(bank)
-        }
-
-        for msg in try database.applyBankSyncLink(
-            accountId: accountId,
-            externalAccountId: externalAccountId,
-            syncSource: source.rawValue,
-            bank: bank,
-            messages: messages
-        ) {
-            merkle = merkle.inserting(msg.timestamp)
+            do {
+                for msg in try database.applyBankSyncLink(
+                    accountId: accountId,
+                    externalAccountId: externalAccountId,
+                    syncSource: source.rawValue,
+                    proposal: link,
+                    expectedOldLink: expectedOldLink,
+                    verifyExpectedOldLink: verifyExpectedOldLink,
+                    messages: messages
+                ) {
+                    merkle = merkle.inserting(msg.timestamp)
+                }
+                break
+            } catch let error as BankSyncDatabaseError where error == .bankSyncLinkChanged && attempt == 0 {
+                continue
+            }
         }
         merkle = merkle.pruned()
         try saveClock()
@@ -648,10 +767,48 @@ actor SyncClient {
         await automaticSync()
     }
 
+    func linkFinanceKitAccount(
+        accountId: String,
+        externalAccountId: String,
+        expectedOldLink: ExpectedBankSyncLink?
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        var messages: [CRDTMessage] = []
+        if let expectedOldLink, expectedOldLink.source != BankSyncSource.financeKit.rawValue {
+            messages = try await messageGenerator.messages(
+                dataset: "accounts",
+                row: accountId,
+                fields: [
+                    ("account_id", nil),
+                    ("account_sync_source", nil),
+                    ("bank", nil),
+                    ("balance_current", nil),
+                    ("balance_available", nil),
+                    ("balance_limit", nil),
+                    ("bank_sync_status", nil)
+                ]
+            )
+        }
+        for msg in try database.applyBankSyncLocalLink(
+            ExpectedBankSyncLink(
+                accountId: accountId,
+                externalAccountId: externalAccountId,
+                source: BankSyncSource.financeKit.rawValue
+            ),
+            expectedOldLink: expectedOldLink,
+            messages: messages
+        ) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Cut an account loose from its bank feed. The transactions it already
     /// imported stay — only the link goes, matching the web UI's unlink, which
     /// clears the cached balances and the status badge along with the pointer.
-    func unlinkAccount(accountId: String) async throws {
+    func unlinkAccount(accountId: String, expectedLink: ExpectedBankSyncLink) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("unlinkAccount() - id: \(accountId, privacy: .private)")
@@ -670,7 +827,9 @@ actor SyncClient {
             ]
         )
 
-        for msg in try database.applyBankSyncUnlink(accountId: accountId, messages: messages) {
+        for msg in try database.applyBankSyncUnlink(
+            accountId: accountId, expectedLink: expectedLink, messages: messages
+        ) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -683,7 +842,7 @@ actor SyncClient {
     /// and `bank_sync_status`, the two columns every Actual client stamps, so
     /// a sync run here reads the same in the web UI.
     func recordBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String)]
+        _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)]
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
         guard !statuses.isEmpty else { return }
@@ -717,7 +876,7 @@ actor SyncClient {
     /// like `updateTransactions`.
     func applyBankSyncUpdates(
         _ updates: [BankSyncUpdate],
-        expectedAccountId: String
+        expectedLink: ExpectedBankSyncLink
     ) async throws -> Int {
         guard let database else { throw SyncError.notConfigured }
         guard !updates.isEmpty else { return 0 }
@@ -741,7 +900,7 @@ actor SyncClient {
 
         let result = try database.applyBankSyncUpdates(
             updates,
-            expectedAccountId: expectedAccountId,
+            expectedLink: expectedLink,
             messages: messages
         )
         for msg in result.messages {
@@ -753,6 +912,50 @@ actor SyncClient {
 
         scheduleAutomaticSync()
         return result.updatedCount
+    }
+
+    func materializeBankSync(
+        updates: [BankSyncUpdate],
+        inserts: [PreparedBankSyncInsert],
+        openingInsert: BankSyncOpeningInsert?,
+        openingUpdate: BankSyncOpeningUpdate?,
+        expectedLink: ExpectedBankSyncLink,
+        preparedRulesFingerprint: BankSyncRulesFingerprint
+    ) async throws -> (updatedCount: Int, inserted: [Transaction]) {
+        guard let database else { throw SyncError.notConfigured }
+        var updateMessages: [CRDTMessage] = []
+        for update in updates {
+            updateMessages += try await messageGenerator.messages(
+                dataset: "transactions",
+                row: update.existingId,
+                fields: [
+                    ("financial_id", update.importedId),
+                    ("description", update.payeeId),
+                    ("imported_description", update.importedPayee),
+                    ("notes", update.notes),
+                    ("cleared", update.cleared ? 1 : 0)
+                ]
+            )
+        }
+        let result = try database.materializeBankSync(
+            updates: updates,
+            updateMessages: updateMessages,
+            inserts: inserts,
+            openingInsert: openingInsert,
+            openingUpdate: openingUpdate,
+            expectedLink: expectedLink,
+            rulesFingerprint: preparedRulesFingerprint
+        )
+        for msg in result.messages {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        guard !result.messages.isEmpty else {
+            return (result.updatedCount, result.inserted)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+        return (result.updatedCount, result.inserted)
     }
 
     /// Create a category group (optimistic local-first). Placement, the
@@ -1677,6 +1880,19 @@ actor SyncClient {
         }
     }
 
+    /// Cancel deferred work when the owning budget is being torn down. The
+    /// push task must be awaited so it cannot continue using the old database.
+    func cancelPendingSync() async {
+        syncTask?.cancel()
+        syncTask = nil
+        pushNeededAfterCurrent = false
+
+        let pushTask = self.pushTask
+        pushTask?.cancel()
+        await pushTask?.value
+        self.pushTask = nil
+    }
+
     /// Whether local writes are still waiting to reach the server. Call after
     /// `flushPendingSync()` to find out whether the push actually landed —
     /// pushes are detached, so a write path can't return that answer itself
@@ -1770,11 +1986,13 @@ actor SyncClient {
             lastSuccessfulSyncTime = Date()
             return true
         } catch SyncError.offline {
+            guard !Task.isCancelled else { return false }
             logger.notice("performSync() failed - offline")
             stateSubject.send(.offline)
             scheduleRetry()
             return false
         } catch {
+            guard !Task.isCancelled else { return false }
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()

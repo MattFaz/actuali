@@ -233,7 +233,7 @@ struct ReportsPageSelectionTests {
 struct ReportsLoadRequestTests {
 
     @Test func cancelledRequestCannotPublish() {
-        let request = ReportsLoadRequest(databaseID: nil, generation: 1)
+        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1)
 
         #expect(!ReportsTabView.shouldPublish(
             request: request,
@@ -244,8 +244,16 @@ struct ReportsLoadRequestTests {
 
     @Test func staleGenerationCannotPublish() {
         #expect(!ReportsTabView.shouldPublish(
-            request: ReportsLoadRequest(databaseID: nil, generation: 1),
-            currentRequest: ReportsLoadRequest(databaseID: nil, generation: 2),
+            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
+            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 2),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func dataVersionChangeInvalidatesRequest() {
+        #expect(!ReportsTabView.shouldPublish(
+            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
+            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1),
             taskIsCancelled: false
         ))
     }
@@ -257,10 +265,12 @@ struct ReportsLoadRequestTests {
         #expect(!ReportsTabView.shouldPublish(
             request: ReportsLoadRequest(
                 databaseID: ObjectIdentifier(previousDatabase),
+                dataVersion: 1,
                 generation: 1
             ),
             currentRequest: ReportsLoadRequest(
                 databaseID: ObjectIdentifier(currentDatabase),
+                dataVersion: 1,
                 generation: 1
             ),
             taskIsCancelled: false
@@ -268,7 +278,7 @@ struct ReportsLoadRequestTests {
     }
 
     @Test func currentRequestCanPublish() {
-        let request = ReportsLoadRequest(databaseID: nil, generation: 2)
+        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 2)
 
         #expect(ReportsTabView.shouldPublish(
             request: request,
@@ -276,15 +286,29 @@ struct ReportsLoadRequestTests {
             taskIsCancelled: false
         ))
     }
+
+    @Test func sameDataVersionKeepsRequestIdentityStable() {
+        let first = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
+        let second = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
+
+        #expect(first == second)
+    }
 }
 
 struct DashboardLoadRequestTests {
 
     @Test func localeChangeInvalidatesWidgetComputation() {
-        let english = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US")
-        let french = WidgetComputationRequest(transactions: [], localeIdentifier: "fr_FR")
+        let english = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 1)
+        let french = WidgetComputationRequest(transactions: [], localeIdentifier: "fr_FR", dataVersion: 1)
 
         #expect(english != french)
+    }
+
+    @Test func dataVersionChangeInvalidatesEqualTransactionsAndLocale() {
+        let previous = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 1)
+        let current = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 2)
+
+        #expect(previous != current)
     }
 
     private struct TestError: LocalizedError {
