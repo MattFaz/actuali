@@ -12,8 +12,10 @@ final class BudgetTabBadgeUITests: XCTestCase {
     @MainActor
     func testBadgeTracksOverspentCategories() throws {
         let app = XCUIApplication()
+        // Pin the style: setBudget finds the row by the Clean edit button's
+        // exact label; Compact appends the budgeted amount to it.
         app.launchArguments = [
-            "-loadDemoData", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
             "-showOverspentBadge", "YES",
         ]
         app.launch()

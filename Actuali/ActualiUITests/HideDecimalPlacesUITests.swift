@@ -15,7 +15,9 @@ final class HideDecimalPlacesUITests: XCTestCase {
     @MainActor
     func testPreferenceRemovesFractionalDigitsFromBudgetAmounts() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        // Pin the style: the budget check below looks for a Clean row label.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean",
+                               "-initialTab", "4"]
         app.launch()
 
         let privacy = app.buttons["Privacy"]

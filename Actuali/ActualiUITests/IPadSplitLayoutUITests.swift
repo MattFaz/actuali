@@ -20,7 +20,9 @@ final class IPadSplitLayoutUITests: XCTestCase {
         try XCTSkipUnless(UIDevice.current.userInterfaceIdiom == .pad,
                           "iPad-only layouts; this device is a phone")
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData", "-initialTab", String(initialTab)]
+        // Pin the style: the budget assertions use the Clean row labels.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean",
+                               "-initialTab", String(initialTab)]
         app.launch()
         return app
     }
