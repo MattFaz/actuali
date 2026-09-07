@@ -9,7 +9,9 @@ struct CustomReportEngineTests {
         return c.date(from: DateComponents(year: 2026, month: 7, day: 11))!
     }()
 
-    // Two groups, two categories each; "Secret" hidden category for visibility tests.
+    // Two expense groups, two categories each; "Secret" hidden category for
+    // visibility tests; an income group so Budgeted can skip it. Payees and
+    // accounts for the Payee/Account groupings.
     private var reportContext: CustomReportEngine.ReportContext {
         CustomReportEngine.ReportContext(
             categories: [
@@ -17,19 +19,30 @@ struct CustomReportEngineTests {
                 Category(id: "c-rent", name: "Rent", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 1),
                 Category(id: "c-fun", name: "Fun", groupId: "g-play", isIncome: false, hidden: false, sortOrder: 2),
                 Category(id: "c-hidden", name: "Secret", groupId: "g-play", isIncome: false, hidden: true, sortOrder: 3),
+                Category(id: "c-salary", name: "Salary", groupId: "g-income", isIncome: true, hidden: false, sortOrder: 4),
             ],
             groups: [
                 CategoryGroup(id: "g-living", name: "Living", isIncome: false, hidden: false, sortOrder: 0, categories: []),
                 CategoryGroup(id: "g-play", name: "Play", isIncome: false, hidden: false, sortOrder: 1, categories: []),
+                CategoryGroup(id: "g-income", name: "Income", isIncome: true, hidden: false, sortOrder: 2, categories: []),
             ],
             offBudgetAccountIds: [],
-            firstDayOfWeekIdx: 0)
+            firstDayOfWeekIdx: 0,
+            payees: [
+                Payee(id: "p-store", name: "Store", transferAccountId: nil, tombstone: false),
+                Payee(id: "p-xfer", name: "", transferAccountId: "a-savings", tombstone: false),
+            ],
+            accounts: [
+                Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
+                Account(id: "a-savings", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0),
+                Account(id: "a-off", name: "Brokerage", type: .investment, offBudget: true, closed: false, sortOrder: 2, balance: 0),
+            ])
     }
 
     private func tx(_ id: String, date: Int, amount: Int, category: String?,
-                    account: String = "a1") -> Transaction {
+                    account: String = "a1", payee: String? = nil) -> Transaction {
         Transaction(id: id, accountId: account, date: date, amount: amount,
-                    payeeId: nil, payeeName: nil, categoryId: category, categoryName: nil,
+                    payeeId: payee, payeeName: nil, categoryId: category, categoryName: nil,
                     notes: nil, cleared: true, reconciled: false, transferId: nil,
                     isParent: false, parentId: nil, tombstone: false,
                     sortOrder: nil, importedPayee: nil)
@@ -38,14 +51,21 @@ struct CustomReportEngineTests {
     private func config(
         mode: String, groupBy: String, balance: String, interval: String,
         graph: String, sortBy: String = "desc",
-        showOffBudget: Bool = false, showUncategorized: Bool = false
+        showEmpty: Bool = false, showOffBudget: Bool = false, showUncategorized: Bool = false,
+        showTrendLines: Bool = false, trimIntervals: Bool = false,
+        dateRange: String = "All time",
+        staticRange: (start: String, end: String)? = nil,
+        conditions: [WidgetRuleCondition]? = nil
     ) -> CustomReportConfig {
         CustomReportConfig(
             id: "r", name: "Test", mode: mode, groupBy: groupBy, balanceType: balance,
-            interval: interval, graphType: graph, dateRange: "All time", dateStatic: false,
-            startDate: nil, endDate: nil, includeCurrent: true, showEmpty: false,
+            interval: interval, graphType: graph, dateRange: dateRange,
+            dateStatic: staticRange != nil,
+            startDate: staticRange?.start, endDate: staticRange?.end,
+            includeCurrent: true, showEmpty: showEmpty,
             showOffBudget: showOffBudget, showHidden: false, showUncategorized: showUncategorized,
-            sortBy: sortBy, conditions: nil, conditionsOp: "and")
+            sortBy: sortBy, showTrendLines: showTrendLines, trimIntervals: trimIntervals,
+            conditions: conditions, conditionsOp: "and")
     }
 
     private var sampleTxs: [Transaction] {
@@ -118,14 +138,14 @@ struct CustomReportEngineTests {
     }
 
     @Test func unsupportedOptionsAreNamed() {
-        let donut = CustomReportEngine.compute(
+        let barLine = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "Category", balance: "Payment",
-                           interval: "Monthly", graph: "DonutGraph"),
+                           interval: "Monthly", graph: "BarLineGraph"),
             transactions: [], reportContext: reportContext, filterContext: .empty, today: today)
-        guard case .unsupported(let reason) = donut.kind else {
-            Issue.record("expected unsupported, got \(donut.kind)"); return
+        guard case .unsupported(let reason) = barLine.kind else {
+            Issue.record("expected unsupported, got \(barLine.kind)"); return
         }
-        #expect(reason.contains("DonutGraph"))
+        #expect(reason.contains("BarLineGraph"))
 
         let missing = CustomReportEngine.compute(
             config: nil, transactions: [], reportContext: reportContext,
@@ -220,5 +240,280 @@ struct CustomReportEngineTests {
         }
         #expect(rows.map(\.name) == ["Jun '26", "Jul '26"])
         #expect(rows.map(\.totalUnits) == [-300.0, -50.0])
+    }
+
+    // MARK: - groupBy Payee / Account
+
+    @Test func payeeBarsUseStoreOrderAndSkipPayeeless() {
+        // Upstream matches `payee === item.id` with no synthetic rows, so a
+        // tx without a payee lands nowhere; transfer payees show the linked
+        // account's name (v_payees).
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food", payee: "p-store"),
+            tx("2", date: 20260615, amount: -4_000,  category: "c-rent", payee: "p-xfer"),
+            tx("3", date: 20260701, amount: -5_000,  category: "c-fun"),   // no payee
+        ]
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Payee", balance: "Payment",
+                           interval: "Monthly", graph: "BarGraph", sortBy: "budget"),
+            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.map(\.label) == ["Store", "Savings"])
+        #expect(bars.map(\.valueUnits) == [100.0, 40.0])
+    }
+
+    @Test func accountBarsFollowShowOffBudget() {
+        var ctx = reportContext
+        ctx.offBudgetAccountIds = ["a-off"]
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
+            tx("2", date: 20260615, amount: -4_000,  category: nil, account: "a-off"),
+        ]
+        func run(showOffBudget: Bool) -> [CustomReportData.Bar] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: "Account", balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", sortBy: "budget",
+                               showOffBudget: showOffBudget),
+                transactions: txs, reportContext: ctx, filterContext: .empty, today: today)
+            guard case .bars(let bars, _) = data.kind else { return [] }
+            return bars
+        }
+        #expect(run(showOffBudget: true).map(\.label) == ["Checking", "Brokerage"])
+        #expect(run(showOffBudget: true).map(\.valueUnits) == [100.0, 40.0])
+        #expect(run(showOffBudget: false).map(\.label) == ["Checking"])
+    }
+
+    // MARK: - Net Payment / Net Deposit
+
+    @Test func netPaymentUsesRowTotalNotBucketSum() {
+        // Food: -100 in Jun, +150 in Jul → whole-range net +50. Upstream's
+        // recalculate() derives netDebts from that net, so the row is empty
+        // under Net Payment and 50 under Net Deposit; per-interval values
+        // still split by bucket.
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
+            tx("2", date: 20260701, amount: 15_000,  category: "c-food"),
+        ]
+        func run(balance: String, graph: String) -> CustomReportData.Kind {
+            CustomReportEngine.compute(
+                config: config(mode: graph == "BarGraph" ? "total" : "time", groupBy: "Category",
+                               balance: balance, interval: "Monthly", graph: graph),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today).kind
+        }
+        guard case .bars(let payment, _) = run(balance: "Net Payment", graph: "BarGraph"),
+              case .bars(let deposit, _) = run(balance: "Net Deposit", graph: "BarGraph"),
+              case .stacked(let perMonth) = run(balance: "Net Deposit", graph: "StackedBarGraph") else {
+            Issue.record("expected bars and stacked"); return
+        }
+        #expect(payment.isEmpty)
+        #expect(deposit.map(\.label) == ["Food"])
+        #expect(deposit.map(\.valueUnits) == [50.0])
+        #expect(perMonth.values == [[0.0, 150.0]])
+    }
+
+    @Test func netPaymentPerIntervalBars() {
+        // Jun net -300 → 300; Jul net -50 (income row dropped) → 50.
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Net Payment",
+                           interval: "Monthly", graph: "BarGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .bars(let bars, let signed) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(signed == false)
+        #expect(bars.map(\.valueUnits) == [300.0, 50.0])
+    }
+
+    // MARK: - Budgeted
+
+    @Test func budgetedReadsBudgetCellsAndOnlyCategoryConditions() {
+        // Upstream budgetDataQuery: months in range, non-income categories,
+        // and only category / category_group conditions apply.
+        var ctx = reportContext
+        ctx.budgetEntries = [
+            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "c-food", amountCents: 99_900),   // before range
+            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-food", amountCents: 50_000),
+            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-rent", amountCents: 120_000),
+            BudgetAnalysisBudgetEntry(month: 202607, categoryId: "c-food", amountCents: 50_000),
+            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-salary", amountCents: 300_000), // income
+        ]
+        func run(conditions: [WidgetRuleCondition]?) -> [CustomReportData.Bar] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: "Category", balance: "Budgeted",
+                               interval: "Monthly", graph: "BarGraph", sortBy: "budget",
+                               conditions: conditions),
+                transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today)
+            guard case .bars(let bars, _) = data.kind else { return [] }
+            return bars
+        }
+        let accountOnly = run(conditions: [.makeMock(op: "is", field: "account", stringValue: "a-off")])
+        #expect(accountOnly.map(\.label) == ["Food", "Rent"])
+        #expect(accountOnly.map(\.valueUnits) == [1000.0, 1200.0])
+        let foodOnly = run(conditions: [.makeMock(op: "is", field: "category", stringValue: "c-food")])
+        #expect(foodOnly.map(\.label) == ["Food"])
+        #expect(foodOnly.map(\.valueUnits) == [1000.0])
+    }
+
+    @Test func budgetedSurvivesInvertedRange() {
+        // "Last year" on a budget whose history starts this year resolves to
+        // a start after its end (ReportDateRange clamps the start to the
+        // earliest transaction). That is an empty chart, not a trap.
+        var ctx = reportContext
+        ctx.budgetEntries = [
+            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-food", amountCents: 50_000),
+        ]
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Category", balance: "Budgeted",
+                           interval: "Monthly", graph: "BarGraph", dateRange: "Last year"),
+            transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today)
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.isEmpty)
+    }
+
+    // MARK: - Donut
+
+    @Test func donutOverIntervals() {
+        // Upstream allows Interval grouping on a total-mode donut: one wedge
+        // per interval, empty intervals dropped.
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "DonutGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .donut(let slices, let groups) = data.kind else {
+            Issue.record("expected donut, got \(data.kind)"); return
+        }
+        #expect(groups.isEmpty)
+        #expect(slices.map(\.label) == ["Jun '26", "Jul '26"])
+        #expect(slices.map(\.valueUnits) == [300.0, 50.0])
+    }
+
+    @Test func donutDropsZeroSlices() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Category", balance: "Payment",
+                           interval: "Monthly", graph: "DonutGraph", showEmpty: true),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .donut(let slices, let groups) = data.kind else {
+            Issue.record("expected donut, got \(data.kind)"); return
+        }
+        #expect(groups.isEmpty)
+        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"])   // desc; empties gone
+        #expect(slices.map(\.valueUnits) == [200.0, 100.0, 50.0])
+        #expect(slices.allSatisfy { $0.group == nil })
+    }
+
+    @Test func donutTwoRingsAlignSlicesToGroups() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "CategoryGroup", balance: "Payment",
+                           interval: "Monthly", graph: "DonutGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .donut(let slices, let groups) = data.kind else {
+            Issue.record("expected donut, got \(data.kind)"); return
+        }
+        #expect(groups.map(\.label) == ["Living", "Play"])       // desc: 300 vs 50
+        #expect(groups.map(\.valueUnits) == [300.0, 50.0])
+        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"])  // grouped, desc within group
+        #expect(slices.map(\.group) == [0, 0, 1])
+        for (gi, group) in groups.enumerated() {
+            let members = slices.filter { $0.group == gi }.map(\.valueUnits).reduce(0, +)
+            #expect(members == group.valueUnits)
+        }
+    }
+
+    // MARK: - Line / Area
+
+    @Test func lineSeriesMatchStackedAndCarryTrends() {
+        func run(showTrendLines: Bool) -> CustomReportData.Kind {
+            CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: "Category", balance: "Payment",
+                               interval: "Monthly", graph: "LineGraph", showTrendLines: showTrendLines),
+                transactions: sampleTxs, reportContext: reportContext,
+                filterContext: .empty, today: today).kind
+        }
+        guard case .lines(let plain, let noTrends) = run(showTrendLines: false),
+              case .lines(let withTrends, let trends) = run(showTrendLines: true) else {
+            Issue.record("expected lines"); return
+        }
+        #expect(noTrends.isEmpty)
+        #expect(plain == withTrends)
+        #expect(plain.seriesNames == ["Rent", "Food", "Fun"])
+        #expect(plain.values == [[200.0, 0.0], [100.0, 0.0], [0.0, 50.0]])
+        // One trend per series; Rent [200, 0] fits a straight line exactly.
+        #expect(trends.count == 3)
+        #expect(trends[0] == .init(startUnits: 200.0, endUnits: 0.0))
+    }
+
+    @Test func trendLineIsLeastSquares() throws {
+        #expect(CustomReportEngine.trend([1, 2, 3]) == .init(startUnits: 1.0, endUnits: 3.0))
+        #expect(CustomReportEngine.trend([2, 2]) == .init(startUnits: 2.0, endUnits: 2.0))
+        // y = 1, 3, 2 → slope 0.5, intercept 1.5
+        let fitted = try #require(CustomReportEngine.trend([1, 3, 2]))
+        #expect(abs(fitted.startUnits - 1.5) < 1e-9)
+        #expect(abs(fitted.endUnits - 2.5) < 1e-9)
+        #expect(CustomReportEngine.trend([5]) == nil)
+    }
+
+    @Test func areaEmitsOnePointPerInterval() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Payment",
+                           interval: "Monthly", graph: "AreaGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today)
+        guard case .area(let points) = data.kind else {
+            Issue.record("expected area, got \(data.kind)"); return
+        }
+        #expect(points.map(\.label) == ["Jun '26", "Jul '26"])
+        #expect(points.map(\.valueUnits) == [300.0, 50.0])
+    }
+
+    // MARK: - Trim intervals / sort
+
+    @Test func trimIntervalsDropsEmptyEdges() {
+        // Static Mar–Aug range with activity only in May and June.
+        let txs = [
+            tx("1", date: 20260510, amount: -10_000, category: "c-food"),
+            tx("2", date: 20260620, amount: -5_000,  category: "c-fun"),
+        ]
+        func run(trim: Bool, groupBy: String) -> [String] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "time", groupBy: groupBy, balance: "Payment",
+                               interval: "Monthly", graph: groupBy == "Interval" ? "BarGraph" : "StackedBarGraph",
+                               trimIntervals: trim, staticRange: ("2026-03-01", "2026-08-31")),
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+            switch data.kind {
+            case .stacked(let s): return s.intervalLabels
+            case .bars(let bars, _): return bars.map(\.label)
+            default: return []
+            }
+        }
+        #expect(run(trim: false, groupBy: "Category").count == 6)
+        #expect(run(trim: true, groupBy: "Category") == ["May '26", "Jun '26"])
+        #expect(run(trim: true, groupBy: "Interval") == ["May '26", "Jun '26"])
+    }
+
+    @Test func descSortIsSignedForNet() {
+        // Upstream sortData compares the signed metric, so under Net the
+        // biggest inflow comes first and the biggest outflow last.
+        let txs = [
+            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
+            tx("2", date: 20260601, amount: 25_000,  category: "c-rent"),
+            tx("3", date: 20260601, amount: -5_000,  category: "c-fun"),
+        ]
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Category", balance: "Net",
+                           interval: "Monthly", graph: "BarGraph"),
+            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.map(\.label) == ["Rent", "Fun", "Food"])
+        #expect(bars.map(\.valueUnits) == [250.0, -50.0, -100.0])
     }
 }

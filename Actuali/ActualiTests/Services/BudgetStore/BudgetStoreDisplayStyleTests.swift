@@ -36,11 +36,24 @@ struct BudgetStoreDisplayStyleTests {
         }
     }
 
+    @Test func onlyCleanAndCompactAreSupported() {
+        #expect(Set(BudgetDisplayStyle.allCases.map(\.rawValue)) == ["clean", "compact"])
+    }
+
+    @Test func detailedPreferenceMigratesToCompact() {
+        #expect(BudgetDisplayStyle.resolved(from: "detailed") == .compact)
+    }
+
+    @Test func supportedAndMissingPreferencesResolve() {
+        #expect(BudgetDisplayStyle.resolved(from: "clean") == .clean)
+        #expect(BudgetDisplayStyle.resolved(from: "compact") == .compact)
+        #expect(BudgetDisplayStyle.resolved(from: nil) == .clean)
+        #expect(BudgetDisplayStyle.resolved(from: "unknown") == .clean)
+    }
+
     @Test func selectionPersistsToUserDefaults() {
         withSavedDefaults(for: [styleKey]) {
             let store = BudgetStore.previewInstance()
-            store.budgetDisplayStyle = .detailed
-            #expect(UserDefaults.standard.string(forKey: styleKey) == "detailed")
             store.budgetDisplayStyle = .compact
             #expect(UserDefaults.standard.string(forKey: styleKey) == "compact")
             store.budgetDisplayStyle = .clean

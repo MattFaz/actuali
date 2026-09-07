@@ -241,7 +241,7 @@ extension CategoryBudget {
     }
 }
 
-/// Column sums for one category group, shown in the detailed style's group
+/// Column sums for one category group, shown in the Compact style's group
 /// header the way the PWA's table totals its group rows. Always built from a
 /// group's full category list — "Hide Spent Categories" trims which rows are
 /// drawn, and a header total that quietly dropped those categories would

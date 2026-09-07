@@ -22,6 +22,8 @@ struct CustomReportConfig: Equatable {
     var showHidden: Bool
     var showUncategorized: Bool
     var sortBy: String        // "desc" | "asc" | "name" | "budget"
+    var showTrendLines: Bool   // LineGraph only (upstream show_trend_lines)
+    var trimIntervals: Bool    // drop empty leading/trailing intervals (upstream trim_intervals)
     var conditions: [WidgetRuleCondition]?
     var conditionsOp: String?
 }

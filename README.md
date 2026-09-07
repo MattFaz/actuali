@@ -50,7 +50,7 @@ This is an unofficial community project. It is not affiliated with or endorsed b
 
 - Category-by-category budgeted vs. spent with progress bars, month-to-month carryover, and in-app editing of budgeted amounts
 - Move money between categories and cover overspending
-- Two layouts — a clean card look or a detailed PWA-style table — plus group header totals, a pinned summary bar, expand/collapse all, and an option to hide categories with nothing left to spend
+- Two layouts — a clean card look or a compact monthly table — plus group header totals, a pinned summary bar, expand/collapse all, and an option to hide categories with nothing left to spend
 - Overspent categories surface as a tab badge that opens the affected list; an uncategorized-transactions view catches the rest
 - Envelope (`zero_budgets`) and tracking (`reflect_budgets`) budgets are both supported
 

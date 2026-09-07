@@ -35,6 +35,7 @@ enum NewTransactionNotifier {
     @MainActor
     static func notify(about transactions: [Transaction], currencyCode: String,
                        narrowSymbol: Bool = false,
+                       numberFormat: ActualNumberFormat = .commaDot,
                        accountNames: [String: String] = [:],
                        offBudgetAccountIds: Set<String> = [],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
@@ -42,6 +43,7 @@ enum NewTransactionNotifier {
         guard settings.isEnabled else { return }
         guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
+                                        numberFormat: numberFormat,
                                         accountNames: accountNames,
                                         offBudgetAccountIds: offBudgetAccountIds) else { return }
 
@@ -64,10 +66,12 @@ enum NewTransactionNotifier {
 
     static func makeRequest(for transactions: [Transaction], currencyCode: String,
                             narrowSymbol: Bool = false,
+                            numberFormat: ActualNumberFormat = .commaDot,
                             accountNames: [String: String] = [:],
                             offBudgetAccountIds: Set<String> = []) -> UNNotificationRequest? {
         guard let content = makeContent(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
+                                        numberFormat: numberFormat,
                                         accountNames: accountNames,
                                         offBudgetAccountIds: offBudgetAccountIds) else { return nil }
         return UNNotificationRequest(identifier: requestIdentifier, content: content, trigger: nil)
@@ -79,6 +83,7 @@ enum NewTransactionNotifier {
 
     static func makeContent(for transactions: [Transaction], currencyCode: String,
                             narrowSymbol: Bool = false,
+                            numberFormat: ActualNumberFormat = .commaDot,
                             accountNames: [String: String] = [:],
                             offBudgetAccountIds: Set<String> = []) -> UNNotificationContent? {
         guard !transactions.isEmpty else { return nil }
@@ -95,6 +100,7 @@ enum NewTransactionNotifier {
 
         var lines = transactions.prefix(maxDetailLines).map {
             line(for: $0, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                 numberFormat: numberFormat,
                  accountNames: accountNames, offBudgetAccountIds: offBudgetAccountIds)
         }
         if transactions.count > maxDetailLines {
@@ -111,11 +117,13 @@ enum NewTransactionNotifier {
     /// carry no marker (GH #104, #123).
     private static func line(for transaction: Transaction, currencyCode: String,
                              narrowSymbol: Bool,
+                             numberFormat: ActualNumberFormat,
                              accountNames: [String: String],
                              offBudgetAccountIds: Set<String>) -> String {
         var line = CurrencyAmountFormat.string(cents: transaction.amount,
                                                currencyCode: currencyCode,
-                                               narrowSymbol: narrowSymbol)
+                                               narrowSymbol: narrowSymbol,
+                                               numberFormat: numberFormat)
         if let payee = transaction.payeeName, !payee.isEmpty {
             line += " at \(payee)"
         }

@@ -94,6 +94,7 @@ struct BudgetStoreAppleWalletSyncTests {
                 )
                 """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
+            try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
             // Every display read joins through these; a backfill fetches the
             // opening balance back to correct it, so this fixture needs them.
             try db.execute(sql: """
@@ -425,6 +426,61 @@ struct BudgetStoreAppleWalletSyncTests {
 
         let second = try await store.syncBankAccounts()
         #expect(second.importedTransactions.isEmpty)
+    }
+
+    // MARK: - Deleted transactions
+
+    /// Deleting an imported Wallet transaction has to stick. The web UI never
+    /// offers its reimport toggle for a device-local link, so an unset
+    /// preference must not fall back to Actual's reimport-everything default
+    /// the way a SimpleFIN account's does (GH #435).
+    @Test func aDeletedWalletTransactionStaysDeletedOnTheNextSync() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let first = try await store.syncBankAccounts()
+        let coffee = try #require(first.importedTransactions.first {
+            $0.financialId == "11111111-1111-1111-1111-111111111111"
+        })
+
+        await store.deleteTransaction(coffee)
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        let deleted = try rows(path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'")
+        #expect(deleted.count == 1)
+        #expect(deleted[0]["tombstone"] == 1)
+        // The other imported row is untouched, so the deletion is all the
+        // balance moved by.
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL AND tombstone = 0").count == 1)
+        #expect(try accountBalance(path: url) == -51200 + 3345)
+    }
+
+    /// The synced preference still has the last word when someone did set it.
+    @Test func anExplicitReimportPreferenceStillReimportsDeletedWalletTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        try await queue.write { db in
+            try db.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, 'true')",
+                arguments: ["sync-reimport-deleted-\(accountId)"]
+            )
+        }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let first = try await store.syncBankAccounts()
+        let coffee = try #require(first.importedTransactions.first {
+            $0.financialId == "11111111-1111-1111-1111-111111111111"
+        })
+
+        await store.deleteTransaction(coffee)
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 1)
+        #expect(try rows(path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'").count == 2)
+        #expect(try rows(path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111' AND tombstone = 0").count == 1)
     }
 
     /// Early builds wrote financeKit links into the synced columns. Loading
