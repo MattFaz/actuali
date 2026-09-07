@@ -4179,10 +4179,9 @@ final class BudgetStore: ObservableObject {
       @discardableResult
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
         var form = form
-        // The add form hides categories for off-budget accounts; normalize
+        // The form hides categories for off-budget accounts; normalize
         // here too so stale picker or split state cannot bypass that rule.
-        if original == nil, form.type != .transfer,
-           offBudgetAccountIds.contains(form.accountId) {
+        if form.type != .transfer, offBudgetAccountIds.contains(form.accountId) {
             form.categoryId = nil
             form.splits = []
         }

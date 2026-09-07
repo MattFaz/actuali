@@ -270,6 +270,26 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["isParent"] == 0)
     }
 
+    @Test func editingAnOffBudgetTransactionDropsItsCategory() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.accounts = [
+            Account(id: "acct-1", name: "Brokerage", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 0, balance: 0)
+        ]
+        var original = transaction(payeeId: nil, payeeName: nil)
+        original.categoryId = "cat-food"
+        try database.insertTransaction(original)
+        var edit = form()
+        edit.categoryId = "cat-food"
+
+        try await store.saveTransaction(edit, editing: original)
+
+        let row = try #require(try transactionRows(path: path).first)
+        #expect(row["category"] == nil)
+    }
+
     @Test func editingATransactionPreservesImportedPayeeAndCarriedFields() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
