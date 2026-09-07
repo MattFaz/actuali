@@ -84,7 +84,11 @@ final class BudgetDisplayStyleUITests: XCTestCase {
     func testLegacyDetailedStyleOpensCompact() throws {
         let app = XCUIApplication()
         // NSArgumentDomain: seeds the persisted preference for this launch.
-        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "detailed", "-showCompactBudgetOverview", "YES"]
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "detailed",
+            "-showCompactBudgetOverview", "YES",
+            "-collapsedBudgetGroups", "",
+        ]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()

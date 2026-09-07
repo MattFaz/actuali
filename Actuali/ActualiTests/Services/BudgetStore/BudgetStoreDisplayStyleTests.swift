@@ -37,7 +37,7 @@ struct BudgetStoreDisplayStyleTests {
     }
 
     @Test func onlyCleanAndCompactAreSupported() {
-        #expect(BudgetDisplayStyle.allCases.map(\.rawValue) == ["clean", "compact"])
+        #expect(Set(BudgetDisplayStyle.allCases.map(\.rawValue)) == ["clean", "compact"])
     }
 
     @Test func detailedPreferenceMigratesToCompact() {

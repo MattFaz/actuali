@@ -77,7 +77,56 @@ final class BudgetGroupCollapseUITests: XCTestCase {
 
     @MainActor
     func testCompactGroupContextMenuHidesAndShowsExpenseGroup() throws {
-        try assertGroupHidesAndShowsExpenseGroup(displayStyle: "compact")
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "compact",
+            "-showHiddenCategories", "NO", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let essentials = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
+        ).firstMatch
+        XCTAssertTrue(essentials.waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Options for Essentials"].exists)
+
+        let expanded = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, expanded")
+        ).firstMatch
+        let collapsed = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "Essentials, collapsed")
+        ).firstMatch
+        if collapsed.exists {
+            collapsed.tap()
+        }
+        XCTAssertTrue(expanded.waitForExistence(timeout: 5))
+        expanded.tap()
+        XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
+        collapsed.tap()
+        XCTAssertTrue(expanded.waitForExistence(timeout: 5))
+
+        setGroupHidden(true, app: app, group: essentials)
+        XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
+
+        let optionsMenu = app.buttons["Budget options"]
+        optionsMenu.tap()
+        let showHidden = app.buttons.matching(
+            NSPredicate(
+                format: "label IN %@",
+                ["Show Hidden Categories", "Hidden Categories"]
+            )
+        ).firstMatch
+        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
+        showHidden.tap()
+        XCTAssertTrue(essentials.waitForExistence(timeout: 5))
+
+        setGroupHidden(false, app: app, group: essentials)
+
+        optionsMenu.tap()
+        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
+        showHidden.tap()
+        XCTAssertTrue(essentials.waitForExistence(timeout: 5),
+                      "the group should remain visible after hidden categories are turned off")
     }
 
     @MainActor
@@ -134,62 +183,6 @@ final class BudgetGroupCollapseUITests: XCTestCase {
             headerTravel + 30,
             "the category row should continue under the pinned compact group header"
         )
-    }
-
-    @MainActor
-    private func assertGroupHidesAndShowsExpenseGroup(displayStyle: String) throws {
-        let app = XCUIApplication()
-        app.launchArguments = [
-            "-loadDemoData", "-budgetDisplayStyle", displayStyle,
-            "-showHiddenCategories", "NO", "-initialTab", "1",
-        ]
-        app.launch()
-
-        let essentials = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH %@", "Essentials, ")
-        ).firstMatch
-        XCTAssertTrue(essentials.waitForExistence(timeout: 10))
-        if displayStyle == "compact" {
-            XCTAssertFalse(app.buttons["Options for Essentials"].exists)
-
-            let expanded = app.buttons.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Essentials, expanded")
-            ).firstMatch
-            let collapsed = app.buttons.matching(
-                NSPredicate(format: "label BEGINSWITH %@", "Essentials, collapsed")
-            ).firstMatch
-            if collapsed.exists {
-                collapsed.tap()
-            }
-            XCTAssertTrue(expanded.waitForExistence(timeout: 5))
-            expanded.tap()
-            XCTAssertTrue(collapsed.waitForExistence(timeout: 5))
-            collapsed.tap()
-            XCTAssertTrue(expanded.waitForExistence(timeout: 5))
-        }
-
-        setGroupHidden(true, app: app, group: essentials)
-        XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
-
-        let optionsMenu = app.buttons["Budget options"]
-        optionsMenu.tap()
-        let showHidden = app.buttons.matching(
-            NSPredicate(
-                format: "label IN %@",
-                ["Show Hidden Categories", "Hidden Categories"]
-            )
-        ).firstMatch
-        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
-        showHidden.tap()
-        XCTAssertTrue(essentials.waitForExistence(timeout: 5))
-
-        setGroupHidden(false, app: app, group: essentials)
-
-        optionsMenu.tap()
-        XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
-        showHidden.tap()
-        XCTAssertTrue(essentials.waitForExistence(timeout: 5),
-                      "the group should remain visible after hidden categories are turned off")
     }
 
     @MainActor

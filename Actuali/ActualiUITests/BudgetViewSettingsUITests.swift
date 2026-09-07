@@ -36,10 +36,10 @@ final class BudgetViewSettingsUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 5), "View Style picker not found")
         picker.tap()
-        XCTAssertFalse(app.buttons["Detailed"].exists)
 
         let option = app.buttons[style]
         XCTAssertTrue(option.waitForExistence(timeout: 5), "\(style) option not found")
+        XCTAssertFalse(app.buttons["Detailed"].exists)
         option.tap()
         XCTAssertTrue(app.navigationBars["Budget View"].waitForExistence(timeout: 5))
     }
