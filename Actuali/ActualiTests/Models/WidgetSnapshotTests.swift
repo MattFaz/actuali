@@ -106,6 +106,22 @@ struct WidgetSnapshotTests {
         #expect(picked.map(\.id) == ["a", "b"])
     }
 
+    @Test func relativeDateUsesExplicitLocale() {
+        let reference = Date(timeIntervalSince1970: 1_750_000_000)
+        let date = reference.addingTimeInterval(-2 * 86_400)
+
+        #expect(WidgetDateFormatting.relative(
+            date,
+            relativeTo: reference,
+            locale: Locale(identifier: "en_US")
+        ) == "2 days ago")
+        #expect(WidgetDateFormatting.relative(
+            date,
+            relativeTo: reference,
+            locale: Locale(identifier: "fr_FR")
+        ) == "il y a 2 jours")
+    }
+
     // MARK: - BudgetStore publishing
 
     private func makeBudget(id: String, name: String, month: String) -> CategoryBudget {

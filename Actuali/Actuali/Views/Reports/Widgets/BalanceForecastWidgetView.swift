@@ -32,7 +32,7 @@ struct BalanceForecastWidgetView: View {
                     VStack(alignment: .trailing, spacing: 2) {
                         Text(ReportStrings.format(
                             "Ending: %@",
-                            budgetStore.displayBalanceWholeUnits(ending.balanceCents),
+                            budgetStore.displayBalanceWholeUnits(ending.balanceCents, locale: locale),
                             locale: locale
                         ))
                             .font(.subheadline)
@@ -42,7 +42,7 @@ struct BalanceForecastWidgetView: View {
                            lowest.date != ending.date {
                             Text(ReportStrings.format(
                                 "Low: %@",
-                                budgetStore.displayBalanceWholeUnits(lowest.balanceCents),
+                                budgetStore.displayBalanceWholeUnits(lowest.balanceCents, locale: locale),
                                 locale: locale
                             ))
                                 .font(.caption)

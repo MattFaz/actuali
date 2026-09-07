@@ -288,7 +288,7 @@ struct CustomReportWidgetView: View {
                         HStack {
                             Text(row.name).font(.subheadline)
                             Spacer()
-                            Text(budgetStore.displayBalance(cents(row.totalUnits)))
+                            Text(budgetStore.displayBalance(cents(row.totalUnits), locale: locale))
                                 .font(.subheadline)
                                 .monospacedDigit()
                         }
@@ -381,7 +381,7 @@ struct CustomReportWidgetView: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label).font(.caption).lineLimit(1)
             Spacer()
-            Text(budgetStore.displayBalance(cents(units)))
+            Text(budgetStore.displayBalance(cents(units), locale: locale))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)

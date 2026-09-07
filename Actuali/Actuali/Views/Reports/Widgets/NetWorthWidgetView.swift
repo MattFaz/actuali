@@ -13,7 +13,7 @@ struct NetWorthWidgetView: View {
                 Text(displayName).font(.headline)
                 Spacer()
                 if let last = data.points.last {
-                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents))
+                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents, locale: locale))
                         .font(.subheadline)
                         .monospacedDigit()
                         .foregroundStyle(.secondary)

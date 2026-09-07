@@ -96,7 +96,7 @@ struct BudgetAnalysisWidgetView: View {
                 // Upstream's card headline: the latest interval's balance,
                 // green when non-negative, red otherwise.
                 if let last = data.intervalData.last {
-                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents))
+                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents, locale: locale))
                         .font(.subheadline)
                         .monospacedDigit()
                         .foregroundStyle(last.balanceCents >= 0 ? Color.green : Color.red)

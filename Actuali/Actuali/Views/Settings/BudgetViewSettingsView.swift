@@ -12,7 +12,6 @@ struct BudgetViewSettingsView: View {
             Section {
                 Picker(String(localized: "View Style"), selection: $budgetStore.budgetDisplayStyle) {
                     Text(String(localized: "Clean")).tag(BudgetDisplayStyle.clean)
-                    Text(String(localized: "Detailed")).tag(BudgetDisplayStyle.detailed)
                     Text(String(localized: "Compact")).tag(BudgetDisplayStyle.compact)
                 }
 
@@ -28,7 +27,7 @@ struct BudgetViewSettingsView: View {
                 Text(String(localized: "Presentation"))
             } footer: {
                 if budgetStore.budgetDisplayStyle == .clean {
-                    Text(String(localized: "Group Totals are available in Detailed and Compact views."))
+                    Text(String(localized: "Group Totals are available in Compact view."))
                 }
             }
 

@@ -43090,48 +43090,48 @@
         }
       }
     },
-    "Group Totals are available in Detailed and Compact views.": {
+    "Group Totals are available in Compact view.": {
       "localizations": {
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Group Totals are available in Detailed and Compact views."
+            "value": "Group Totals are available in Compact view."
           }
         },
         "fr": {
           "stringUnit": {
             "state": "translated",
-            "value": "Les totaux des groupes sont disponibles dans les vues Détaillée et Compacte."
+            "value": "Les totaux des groupes sont disponibles dans la vue Compacte."
           }
         },
         "es": {
           "stringUnit": {
             "state": "translated",
-            "value": "Los totales de grupo están disponibles en las vistas Detallada y Compacta."
+            "value": "Los totales de grupo están disponibles en la vista Compacta."
           }
         },
         "pt-BR": {
           "stringUnit": {
             "state": "translated",
-            "value": "Os totais dos grupos estão disponíveis nas visualizações Detalhada e Compacta."
+            "value": "Os totais dos grupos estão disponíveis na visualização Compacta."
           }
         },
         "de": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gruppensummen sind in der detaillierten und der kompakten Ansicht verfügbar."
+            "value": "Gruppensummen sind in der kompakten Ansicht verfügbar."
           }
         },
         "it": {
           "stringUnit": {
             "state": "translated",
-            "value": "I totali del gruppo sono disponibili nelle viste Dettagliata e Compatta."
+            "value": "I totali del gruppo sono disponibili nella vista Compatta."
           }
         },
         "nl": {
           "stringUnit": {
             "state": "translated",
-            "value": "Groepstotalen zijn beschikbaar in de gedetailleerde en compacte weergave."
+            "value": "Groepstotalen zijn beschikbaar in de compacte weergave."
           }
         }
       }

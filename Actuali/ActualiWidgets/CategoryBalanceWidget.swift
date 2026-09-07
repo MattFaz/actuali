@@ -72,6 +72,7 @@ struct CategoryBalanceProvider: AppIntentTimelineProvider {
 
 struct CategoryBalanceWidgetView: View {
     @Environment(\.widgetFamily) private var family
+    @Environment(\.locale) private var locale
 
     let entry: CategoryBalanceEntry
 
@@ -134,7 +135,10 @@ struct CategoryBalanceWidgetView: View {
                 }
             }
             Spacer(minLength: 0)
-            Text(String(format: String(localized: "Updated %@"), entry.date.formatted(.relative(presentation: .named))))
+            Text(String(
+                format: String(localized: "Updated %@", locale: locale),
+                WidgetDateFormatting.relative(entry.date, locale: locale)
+            ))
                 .font(.caption2)
                 .foregroundStyle(.tertiary)
         }

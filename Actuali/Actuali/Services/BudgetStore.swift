@@ -371,7 +371,7 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Whether the Compact Budget view style shows its pinned monthly overview.
-    /// This is independent of the Clean and Detailed summaries and defaults on.
+    /// This is independent of the Clean summary and defaults on.
     @Published var showCompactBudgetOverview: Bool = true {
         didSet {
             UserDefaults.standard.set(
@@ -434,7 +434,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the Detailed and Compact styles' group headers total their columns.
+    /// Whether the Compact style's group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -570,14 +570,26 @@ final class BudgetStore: ObservableObject {
 
     /// Formats a standard currency amount unless the privacy mask is enabled.
     func displayBalance(_ cents: Int) -> String {
+        displayBalance(cents, locale: .autoupdatingCurrent)
+    }
+
+    func displayBalance(_ cents: Int, locale: Locale) -> String {
         guard !hideBalances else { return Self.hiddenBalanceText }
-        return hideDecimalPlaces ? formatCurrencyWholeUnits(cents) : formatCurrency(cents)
+        return hideDecimalPlaces
+            ? formatCurrencyWholeUnits(cents, locale: locale)
+            : formatCurrency(cents, locale: locale)
     }
 
     /// Equivalent to `displayBalance(_:)` for reports that intentionally omit
     /// cents in their normal presentation.
     func displayBalanceWholeUnits(_ cents: Int) -> String {
-        hideBalances ? Self.hiddenBalanceText : formatCurrencyWholeUnits(cents)
+        displayBalanceWholeUnits(cents, locale: .autoupdatingCurrent)
+    }
+
+    func displayBalanceWholeUnits(_ cents: Int, locale: Locale) -> String {
+        hideBalances
+            ? Self.hiddenBalanceText
+            : formatCurrencyWholeUnits(cents, locale: locale)
     }
 
     /// The clean row's "Spent" caption, from the signed net activity
@@ -1245,9 +1257,9 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle(
-            rawValue: defaults.string(forKey: "budgetDisplayStyle") ?? ""
-        ) ?? .clean)
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
+            from: defaults.string(forKey: "budgetDisplayStyle")
+        ))
         _showCompactBudgetOverview = Published(
             initialValue: persistedBool("showCompactBudgetOverview", default: true))
         _showCompactSpentColumn = Published(
@@ -6291,17 +6303,25 @@ final class BudgetStore: ObservableObject {
     /// - Parameter cents: Amount in cents (e.g., 1050 = $10.50)
     /// - Returns: Formatted currency string (e.g., "$10.50")
     func formatCurrency(_ cents: Int) -> String {
+        formatCurrency(cents, locale: .autoupdatingCurrent)
+    }
+
+    func formatCurrency(_ cents: Int, locale: Locale) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
                                     narrowSymbol: useNarrowCurrencySymbol,
-                                    numberFormat: numberFormat)
+                                    numberFormat: numberFormat, locale: locale)
     }
 
     /// Like `formatCurrency`, but rounded to whole units (e.g., "$1,051").
     /// Used for compact chart annotations where cents add noise.
     func formatCurrencyWholeUnits(_ cents: Int) -> String {
+        formatCurrencyWholeUnits(cents, locale: .autoupdatingCurrent)
+    }
+
+    func formatCurrencyWholeUnits(_ cents: Int, locale: Locale) -> String {
         CurrencyAmountFormat.string(cents: cents, currencyCode: currencyCode,
                                     narrowSymbol: useNarrowCurrencySymbol, wholeUnits: true,
-                                    numberFormat: numberFormat)
+                                    numberFormat: numberFormat, locale: locale)
     }
 
     // MARK: - Helpers

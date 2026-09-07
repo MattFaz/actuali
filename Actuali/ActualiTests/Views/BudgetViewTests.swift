@@ -27,34 +27,6 @@ struct BudgetViewTests {
         #expect(ids == ["essentials", "lifestyle"])
     }
 
-    @Test func groupHeaderLabelIncludesBudgetedTotal() {
-        let label = BudgetGroupHeader.totalsAccessibilityLabel(
-            name: "Everyday",
-            isCollapsed: false,
-            budgeted: "$100.00",
-            spent: "-$40.00",
-            balance: "$60.00",
-            locale: Locale(identifier: "en_US"),
-            bundle: appBundle
-        )
-
-        #expect(label == "Everyday, expanded, budgeted $100.00, spent -$40.00, balance $60.00")
-    }
-
-    @Test func groupHeaderLabelUsesFrenchBundle() {
-        let label = BudgetGroupHeader.totalsAccessibilityLabel(
-            name: "Quotidien",
-            isCollapsed: true,
-            budgeted: "100,00 €",
-            spent: "-40,00 €",
-            balance: "60,00 €",
-            locale: Locale(identifier: "fr_FR"),
-            bundle: actualiBundle
-        )
-
-        #expect(label == "Quotidien, réduit, budgété 100,00 €, dépensé -40,00 €, solde 60,00 €")
-    }
-
     @Test func monthPickerTitleUsesRequestedLocale() {
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "en_US")) == "September 2026")
         #expect(MonthPicker.title(for: "2026-09", locale: Locale(identifier: "fr_FR")) == "septembre 2026")

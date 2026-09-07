@@ -23,7 +23,7 @@ struct SpendingWidgetView: View {
                     Text(ReportStrings.text("This month", locale: locale))
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(budgetStore.displayBalance(data.currentSpentCents))
+                    Text(budgetStore.displayBalance(data.currentSpentCents, locale: locale))
                         .font(.title2.monospacedDigit())
                 }
                 Spacer()
@@ -31,7 +31,7 @@ struct SpendingWidgetView: View {
                     Text(comparisonLabel)
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Text(budgetStore.displayBalance(data.comparisonCents))
+                    Text(budgetStore.displayBalance(data.comparisonCents, locale: locale))
                         .font(.title3.monospacedDigit())
                         .foregroundStyle(.secondary)
                 }
@@ -39,7 +39,7 @@ struct SpendingWidgetView: View {
             if data.comparisonCents != 0 {
                 HStack(spacing: 4) {
                     Image(systemName: delta > 0 ? "arrow.up" : (delta < 0 ? "arrow.down" : "equal"))
-                    Text(budgetStore.displayBalance(abs(delta)))
+                    Text(budgetStore.displayBalance(abs(delta), locale: locale))
                     Text(delta > 0 ? ReportStrings.text("more spent", locale: locale)
                         : (delta < 0 ? ReportStrings.text("less spent", locale: locale) : ""))
                 }

@@ -50,17 +50,18 @@ struct CalendarWidgetView: View {
 
 private struct CalendarTotalsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let incomeCents: Int
     let expenseCents: Int
 
     var body: some View {
         HStack(spacing: 8) {
             if incomeCents != 0 {
-                Label(budgetStore.displayBalance(incomeCents), systemImage: "arrowtriangle.up.fill")
+                Label(budgetStore.displayBalance(incomeCents, locale: locale), systemImage: "arrowtriangle.up.fill")
                     .foregroundStyle(.green)
             }
             if expenseCents != 0 {
-                Label(budgetStore.displayBalance(expenseCents), systemImage: "arrowtriangle.down.fill")
+                Label(budgetStore.displayBalance(expenseCents, locale: locale), systemImage: "arrowtriangle.down.fill")
                     .foregroundStyle(.red)
             }
         }

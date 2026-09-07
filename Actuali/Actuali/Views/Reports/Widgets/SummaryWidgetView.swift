@@ -18,7 +18,7 @@ struct SummaryWidgetView: View {
             // Display absolute value; the color communicates direction. Matches
             // the webapp's Summary widget rendering (e.g., "$95,597.58" in red
             // for spending instead of "-$95,597.58").
-            return budgetStore.displayBalance(abs(data.totalCents))
+            return budgetStore.displayBalance(abs(data.totalCents), locale: locale)
         case .percentage:
             return SummaryWidgetFormatting.percentage(abs(data.value), locale: locale)
         }
