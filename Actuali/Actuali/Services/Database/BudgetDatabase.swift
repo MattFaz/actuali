@@ -776,17 +776,18 @@ final class BudgetDatabase: Sendable {
                             FROM transactions child
                             LEFT JOIN payee_mapping cpm ON cpm.id = child.description
                             LEFT JOIN payees cpay ON cpay.id = cpm.targetId
+                            LEFT JOIN accounts child_account ON child_account.id = cpay.transfer_acct
+                                AND (child_account.tombstone = 0 OR child_account.tombstone IS NULL)
                             WHERE child.parent_id = t.id
                               AND (child.tombstone = 0 OR child.tombstone IS NULL)
                               AND (
-                                  cpay.name LIKE ? ESCAPE '\\'
+                                  COALESCE(child_account.name, cpay.name) LIKE ? ESCAPE '\\'
                                   OR child.notes LIKE ? ESCAPE '\\'
                               )
                         )
                     """)
 
                     arguments.append(contentsOf: [pattern, pattern])
-                    
                     if let range = matcher.amountCentsRange {
                         clauses.append("ABS(t.amount) BETWEEN ? AND ?")
                         arguments.append(range.lowerBound)
