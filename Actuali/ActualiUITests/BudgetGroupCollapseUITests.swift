@@ -76,11 +76,6 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testDetailedGroupSwipeHidesAndShowsExpenseGroup() throws {
-        try assertGroupHidesAndShowsExpenseGroup(displayStyle: "detailed")
-    }
-
-    @MainActor
     func testCompactGroupContextMenuHidesAndShowsExpenseGroup() throws {
         try assertGroupHidesAndShowsExpenseGroup(displayStyle: "compact")
     }
@@ -173,7 +168,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
             XCTAssertTrue(expanded.waitForExistence(timeout: 5))
         }
 
-        setGroupHidden(true, displayStyle: displayStyle, app: app, group: essentials)
+        setGroupHidden(true, app: app, group: essentials)
         XCTAssertTrue(essentials.waitForNonExistence(timeout: 5))
 
         let optionsMenu = app.buttons["Budget options"]
@@ -188,7 +183,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         showHidden.tap()
         XCTAssertTrue(essentials.waitForExistence(timeout: 5))
 
-        setGroupHidden(false, displayStyle: displayStyle, app: app, group: essentials)
+        setGroupHidden(false, app: app, group: essentials)
 
         optionsMenu.tap()
         XCTAssertTrue(showHidden.waitForExistence(timeout: 5))
@@ -200,17 +195,12 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     private func setGroupHidden(
         _ hidden: Bool,
-        displayStyle: String,
         app: XCUIApplication,
         group: XCUIElement
     ) {
         let wasCollapsed = group.label.contains("collapsed")
 
-        if displayStyle == "compact" {
-            group.press(forDuration: 1)
-        } else {
-            group.swipeLeft()
-        }
+        group.press(forDuration: 1)
         XCTAssertEqual(
             group.label.contains("collapsed"),
             wasCollapsed,
@@ -222,10 +212,10 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
-    func testDetailedIncomeGroupHasNoHideAction() throws {
+    func testCompactIncomeGroupHasNoHideAction() throws {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-loadDemoData", "-budgetDisplayStyle", "detailed", "-initialTab", "1",
+            "-loadDemoData", "-budgetDisplayStyle", "compact", "-initialTab", "1",
         ]
         app.launch()
 
@@ -237,7 +227,7 @@ final class BudgetGroupCollapseUITests: XCTestCase {
         }
         XCTAssertTrue(income.waitForExistence(timeout: 5))
 
-        income.swipeLeft()
+        income.press(forDuration: 1)
         XCTAssertFalse(app.buttons["Hide"].waitForExistence(timeout: 2),
                        "the Income group must not offer a hide action")
     }
@@ -245,11 +235,6 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     @MainActor
     func testIncomeGroupMatchesCollapseBehaviorInCleanStyle() throws {
         try assertIncomeGroupCollapses(displayStyle: "clean")
-    }
-
-    @MainActor
-    func testIncomeGroupMatchesCollapseBehaviorInDetailedStyle() throws {
-        try assertIncomeGroupCollapses(displayStyle: "detailed")
     }
 
     @MainActor

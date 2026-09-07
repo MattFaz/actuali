@@ -32,18 +32,19 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10))
         optionsMenu.tap()
 
-        for option in ["Clean", "Detailed", "Compact", "Expand All Groups",
+        for option in ["Clean", "Compact", "Expand All Groups",
                        "Collapse All Groups", "Status Filters",
                        "Hide Spent Categories", "Show Hidden Categories"] {
             XCTAssertTrue(app.buttons[option].waitForExistence(timeout: 5),
                           "the options menu should offer '\(option)'")
         }
+        XCTAssertFalse(app.buttons["Detailed"].exists)
         for compactOption in ["Show Overview", "Show Spent Column"] {
             XCTAssertFalse(app.buttons[compactOption].exists,
                            "Clean should not offer the Compact-only '\(compactOption)' control")
         }
         XCTAssertFalse(app.buttons["Group Totals"].exists,
-                       "Group Totals remains exclusive to Detailed")
+                       "Group Totals remains exclusive to Compact")
     }
 
     @MainActor
@@ -67,10 +68,10 @@ final class BudgetOptionsMenuUITests: XCTestCase {
         XCTAssertFalse(app.buttons["Progress Indicators"].exists,
                        "Compact uses the shared Budget Progress Bars setting")
 
-        app.buttons["Detailed"].tap()
+        app.buttons["Clean"].tap()
         optionsMenu.tap()
-        XCTAssertTrue(app.buttons["Group Totals"].waitForExistence(timeout: 5),
-                      "Detailed keeps its existing Group Totals control")
+        XCTAssertTrue(app.buttons["Compact"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Group Totals"].exists)
         XCTAssertFalse(app.buttons["Show Overview"].exists)
         XCTAssertFalse(app.buttons["Show Spent Column"].exists)
         XCTAssertFalse(app.buttons["Progress Indicators"].exists)

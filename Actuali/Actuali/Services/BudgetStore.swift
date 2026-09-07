@@ -366,7 +366,7 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Whether the Compact Budget view style shows its pinned monthly overview.
-    /// This is independent of the Clean and Detailed summaries and defaults on.
+    /// This is independent of the Clean summary and defaults on.
     @Published var showCompactBudgetOverview: Bool = true {
         didSet {
             UserDefaults.standard.set(
@@ -429,7 +429,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Whether the Detailed and Compact styles' group headers total their columns.
+    /// Whether the Compact style's group headers total their columns.
     /// Persisted to UserDefaults, defaults to on. Groups with long names are
     /// the reason this is optional: the totals cost the name real width, and
     /// not every budget file makes the sums worth it.
@@ -1231,9 +1231,9 @@ final class BudgetStore: ObservableObject {
             _appearanceMode = Published(initialValue: mode)
         }
         _startTab = Published(initialValue: StartTab.persisted)
-        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle(
-            rawValue: defaults.string(forKey: "budgetDisplayStyle") ?? ""
-        ) ?? .clean)
+        _budgetDisplayStyle = Published(initialValue: BudgetDisplayStyle.resolved(
+            from: defaults.string(forKey: "budgetDisplayStyle")
+        ))
         _showCompactBudgetOverview = Published(
             initialValue: persistedBool("showCompactBudgetOverview", default: true))
         _showCompactSpentColumn = Published(
