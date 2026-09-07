@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import Actuali
 
-/// Covers `PendingImportsView.seedAccountId` — the edit form's account seed
+/// Covers `PendingImportApprover.seedAccountId` — the edit form's account seed
 /// chain: strict hint resolution, then default account, then first open
 /// account. The strict matcher itself is covered by
 /// `BudgetStoreAccountMappingTests`.
@@ -23,12 +23,6 @@ struct PendingImportsResolveAccountTests {
         #expect(PendingImportsView.approvalFailureMessage(
             count: 2, locale: Locale(identifier: "fr_FR"), bundle: appBundle)
             == "2 transactions n’ont pas pu être approuvées. Vérifiez leurs détails.")
-    }
-
-    @Test func reviewRequiredMessageIsDistinct() {
-        #expect(PendingImportsView.reviewRequiredMessage(
-            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle)
-            == "2 transactions require review and were left pending.")
     }
 
     @Test func bulkApprovalFailuresRecoverConsistently() {
@@ -54,7 +48,7 @@ struct PendingImportsResolveAccountTests {
     @Test func resolvesViaCardMapping() {
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
         #expect(result == "acct_hsbc")
@@ -63,7 +57,7 @@ struct PendingImportsResolveAccountTests {
     @Test func mappingBeatsDefaultAccount() {
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_hsbc"], defaultAccountId: "acct_cash")
         #expect(result == "acct_hsbc")
@@ -72,7 +66,7 @@ struct PendingImportsResolveAccountTests {
     @Test func unmatchedHintFallsBackToDefaultAccount() {
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "9999", accounts: accounts,
             cardMappings: [:], defaultAccountId: "acct_hsbc")
         #expect(result == "acct_hsbc")
@@ -81,7 +75,7 @@ struct PendingImportsResolveAccountTests {
     @Test func missingHintFallsBackToDefaultAccount() {
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
             cardMappings: [:], defaultAccountId: "acct_hsbc")
         #expect(result == "acct_hsbc")
@@ -92,7 +86,7 @@ struct PendingImportsResolveAccountTests {
         // account; the seed chain then lands on the first open account.
         let accounts = [account("acct_old", "Old Card", closed: true), account("acct_cash", "Cash")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_old"], defaultAccountId: nil)
         #expect(result == "acct_cash")
@@ -101,7 +95,7 @@ struct PendingImportsResolveAccountTests {
     @Test func closedDefaultFallsBackToFirstOpenAccount() {
         let accounts = [account("acct_old", "Old", closed: true), account("acct_cash", "Cash")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
             cardMappings: [:], defaultAccountId: "acct_old")
         #expect(result == "acct_cash")
@@ -110,7 +104,7 @@ struct PendingImportsResolveAccountTests {
     @Test func noDefaultFallsBackToFirstOpenAccount() {
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
             cardMappings: [:], defaultAccountId: nil)
         #expect(result == "acct_cash")
@@ -119,7 +113,7 @@ struct PendingImportsResolveAccountTests {
     @Test func returnsNilOnlyWhenNoOpenAccounts() {
         let accounts = [account("acct_old", "Old", closed: true)]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_old"], defaultAccountId: "acct_old")
         #expect(result == nil)
@@ -133,20 +127,24 @@ struct PendingImportsResolveAccountTests {
         // Before the fix: fell through to Cash (first account).
         let accounts = [account("acct_cash", "Cash"), account("acct_hsbc", "HSBC")]
 
-        let result = PendingImportsView.seedAccountId(
+        let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
             cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
         #expect(result == "acct_hsbc")
     }
 
-    @Test func approvalUsesTheSameFirstOpenFallbackAsTheEditor() {
+    @Test func approvalUsesStrictRoutingWhileEditorKeepsFirstOpenFallback() {
         let accounts = [account("acct_old", "Closed", closed: true), account("acct_cash", "Cash")]
 
         let result = PendingImportApprover.resolveAccountId(
             cardHint: "unknown", accounts: accounts,
             cardMappings: [:], defaultAccountId: nil)
 
-        #expect(result == "acct_cash")
+        #expect(result == nil)
+        #expect(PendingImportApprover.seedAccountId(
+            cardHint: "unknown", accounts: accounts,
+            cardMappings: [:], defaultAccountId: nil
+        ) == "acct_cash")
     }
 
     @Test func legacyImportUsesReviewSeedForExplicitAdoption() {
@@ -156,22 +154,12 @@ struct PendingImportsResolveAccountTests {
         // A legacy record cannot be directly approved; opening the editor and
         // saving is the explicit adoption action into the active budget.
         #expect(legacy.originBudgetId == nil)
-        #expect(PendingImportsView.seedAccountId(
+        #expect(PendingImportApprover.seedAccountId(
             cardHint: legacy.cardHint,
             accounts: accounts,
             cardMappings: [:],
             defaultAccountId: nil
         ) == "acct_cash")
-    }
-
-    @Test func reviewSaveRequiresExplicitConfirmation() {
-        let adoption = PendingImportReviewRequirement.adoptIntoActiveBudget
-        let currency = PendingImportReviewRequirement.confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
-        #expect(!AddTransactionView.allowsReviewSave(requirement: adoption, confirmed: false))
-        #expect(!AddTransactionView.allowsReviewSave(requirement: currency, confirmed: false))
-        #expect(AddTransactionView.allowsReviewSave(requirement: adoption, confirmed: true))
-        #expect(AddTransactionView.allowsReviewSave(requirement: nil, confirmed: false))
-        #expect(currency.prompt.contains("no conversion"))
     }
 
     @Test func combinedReviewRequiresBothAcknowledgementsInOrder() {
@@ -182,11 +170,8 @@ struct PendingImportsResolveAccountTests {
             .adoptIntoActiveBudget,
             .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
         ])
-        #expect(!AddTransactionView.allowsReviewSave(requirements: requirements, confirmed: [.adoptIntoActiveBudget]))
-        #expect(AddTransactionView.allowsReviewSave(
-            requirements: requirements,
-            confirmed: Set(requirements)
-        ))
+        #expect(requirements.count == 2)
+        #expect(requirements[1].prompt.contains("no conversion"))
     }
 
     @Test func unknownCurrencyRequiresIndependentAcknowledgement() {
@@ -215,5 +200,17 @@ struct PendingImportsResolveAccountTests {
         #expect(PendingImportsView.amountString(
             12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
             locale: Locale(identifier: "en_US")) == "-$12.34")
+    }
+
+    @Test func bulkApprovalOutcomeDefersFailuresWhenReviewIsNeeded() {
+        let item = PendingImport(amount: 1)
+        #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: item, failedCount: 0)
+            == .review(deferredFailureCount: 0))
+        #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: item, failedCount: 2)
+            == .review(deferredFailureCount: 2))
+        #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: nil, failedCount: 2)
+            == .failure(count: 2))
+        #expect(PendingImportsView.bulkApprovalOutcome(reviewItem: nil, failedCount: 0)
+            == .none)
     }
 }

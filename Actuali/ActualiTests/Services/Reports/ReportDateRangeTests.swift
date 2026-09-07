@@ -67,6 +67,15 @@ struct ReportDateRangeTests {
         #expect(e == date(2026, 1, 31))
     }
 
+    @Test func staticRangeRejectsNonCanonicalDateParts() {
+        let (s, e) = ReportDateRange.resolve(
+            dateRange: nil, dateStatic: true, startDate: "2025-1", endDate: "2026-7-3",
+            includeCurrent: true, earliest: date(2024, 1, 2), latest: date(2026, 7, 3),
+            today: today, firstDayOfWeekIdx: 0)
+        #expect(s == date(2024, 1, 2))
+        #expect(e == today)
+    }
+
     @Test func lastThreeMonthsAcrossYearBoundary() {
         let janToday = date(2026, 1, 15)
         let (s1, e1) = ReportDateRange.resolve(

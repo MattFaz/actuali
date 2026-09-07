@@ -396,6 +396,32 @@ struct BudgetStoreBankSyncTests {
         #expect(opening[0]["date"] == Self.expectedDay(5))
     }
 
+    @Test func identicalProviderIdsImportTwiceAndStayIdempotent() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let body = accountSet(transactions: """
+            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+            """)
+        let store = try await makeStore(database: database, responseBody: body)
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 3)
+        #expect(first.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-identical' AND tombstone = 0").count == 2)
+        #expect(try row(
+            path: url,
+            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        )?["amount"] as Int? == 16_690)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-identical' AND tombstone = 0").count == 2)
+    }
+
     @Test func conflictingProviderIdsAreReportedAndNotClaimedAsUpToDate() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -470,6 +496,32 @@ struct BudgetStoreBankSyncTests {
             path: url,
             sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
         )?["amount"] as Int? == 10_000)
+    }
+
+    @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, importedId: "sf-duplicate")
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"},
+            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 1)
+        #expect(first.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate' AND tombstone = 0").isEmpty)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate' AND tombstone = 0").isEmpty)
     }
 
     @Test func defaultReimportSettingStillReimportsDeletedTransactions() async throws {
@@ -641,6 +693,12 @@ struct BudgetStoreBankSyncTests {
         #expect(result.updated == 0)
         #expect(result.importedTransactions.isEmpty)
         #expect(try rows(path: url, where: "financial_id = 'sf-suppressed'").isEmpty)
+        #expect(try row(path: url, sql: "SELECT id FROM payees WHERE name = 'Coffee'") == nil)
+        #expect(try row(path: url, sql: """
+            SELECT COALESCE(SUM(amount), 0) AS balance
+            FROM transactions
+            WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [Self.accountId])?["balance"] as Int? == 10_000)
     }
 
     @Test func automaticBankSyncReturnsPersistedRuleMutatedTransaction() async throws {
@@ -651,7 +709,7 @@ struct BudgetStoreBankSyncTests {
                 INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
                 VALUES ('set-rule-note',
                     '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"set","field":"notes","value":"Rule note"}]', 0, 'and')
+                    '[{"op":"set","field":"notes","value":"Rule note"},{"op":"set","field":"amount","value":5000}]', 0, 'and')
                 """)
         }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
@@ -663,12 +721,55 @@ struct BudgetStoreBankSyncTests {
 
         let imported = try #require(result.importedTransactions.first)
         #expect(imported.notes == "Rule note")
+        #expect(imported.amount == 5_000)
         let persistedRow = try #require(try rows(path: url, where: "financial_id = 'sf-rule-mutated'").first)
         #expect(persistedRow["notes"] as String? == imported.notes)
+        #expect(persistedRow["amount"] as Int? == 5_000)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == 5_000)
         #expect(try row(path: url, sql: """
             SELECT value FROM messages_crdt
             WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
             """, arguments: [imported.id])?["value"] as String? == "S:Rule note")
+    }
+
+    @Test func ruleMovingImportedTransactionDoesNotAffectSourceOpeningBalance() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let movedAccountId = "acct-2"
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, 'Savings', 'checking', 0, 0, 0, 2)
+                """, arguments: [movedAccountId])
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('move-imported-transaction',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"set","field":"acct","value":"acct-2"}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-moved", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let first = try await store.syncBankAccounts()
+
+        let imported = try #require(first.importedTransactions.first)
+        #expect(first.added == 2)
+        #expect(imported.accountId == movedAccountId)
+        #expect(try row(path: url, sql: """
+            SELECT acct FROM transactions WHERE financial_id = 'sf-moved'
+            """)?["acct"] as String? == movedAccountId)
+        #expect(try row(path: url, sql: """
+            SELECT amount FROM transactions
+            WHERE acct = ? AND starting_balance_flag = 1
+            """, arguments: [Self.accountId])?["amount"] as Int? == 10_000)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-moved' AND tombstone = 0").count == 1)
     }
 
     @Test func syncingWithoutAnAccessKeyIsRefused() async throws {

@@ -162,12 +162,6 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 // Safe to share across actors: the only stored property is an immutable
 // GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
 final class BudgetDatabase: Sendable {
-    enum TransactionFinancialIdState: Equatable {
-        case absent
-        case duplicate
-        case repair
-    }
-
     func messageTimestamps(dataset: String, row: String) throws -> [String] {
         try dbQueue.read { db in
             try String.fetchAll(db, sql: """
@@ -2684,58 +2678,97 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Persists an imported transaction and all of its CRDT messages as one
-    /// SQLite transaction. A retry can complete a deterministic transaction
-    /// row that was left without messages by an older writer, while a fully
-    /// messaged row remains a duplicate.
-    func transactionFinancialIdState(_ transaction: Transaction) throws -> TransactionFinancialIdState {
-        guard let financialId = transaction.financialId else { return .absent }
-        return try dbQueue.read { db in
-            guard let liveId = try String.fetchOne(db, sql: """
-                SELECT id FROM transactions
-                WHERE acct IS ? AND financial_id = ?
-                    AND (tombstone = 0 OR tombstone IS NULL)
-                LIMIT 1
-                """, arguments: [transaction.accountId, financialId]) else {
-                return .absent
-            }
-            guard liveId == transaction.id else { return .duplicate }
-
-            let columns = Set(try String.fetchAll(db, sql: """
-                SELECT column FROM messages_crdt
-                WHERE dataset = 'transactions' AND row = ?
-                """, arguments: [transaction.id]))
-            if columns.isEmpty { return .repair }
-            if columns == Set(transaction.syncableFields.keys) { return .duplicate }
-            throw TransactionWriteError.incompleteFinancialIdMessages
-        }
+    func insertTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        pendingPayees: [Payee] = []
+    ) throws -> [CRDTMessage] {
+        try insertTransactionWithMessages(
+            transaction,
+            messages: messages,
+            pendingPayees: pendingPayees,
+            financialIdPolicy: .unique
+        )
     }
 
-    func insertTransactionWithMessages(_ transaction: Transaction, messages: [CRDTMessage]) throws -> [CRDTMessage] {
+    func insertBankSyncTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        maxLiveFinancialIdOccurrences: Int,
+        pendingPayees: [Payee] = []
+    ) throws -> [CRDTMessage] {
+        precondition(maxLiveFinancialIdOccurrences > 0)
+        return try insertTransactionWithMessages(
+            transaction,
+            messages: messages,
+            pendingPayees: pendingPayees,
+            financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences)
+        )
+    }
+
+    private enum FinancialIdPolicy {
+        case unique
+        case occurrences(Int)
+    }
+
+    private func insertTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        pendingPayees: [Payee],
+        financialIdPolicy: FinancialIdPolicy
+    ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
-            if let financialId = transaction.financialId {
-                if let liveId = try String.fetchOne(db, sql: """
-                    SELECT id FROM transactions
-                    WHERE acct IS ? AND financial_id = ?
-                        AND (tombstone = 0 OR tombstone IS NULL)
-                    LIMIT 1
-                    """, arguments: [transaction.accountId, financialId]) {
-                    guard liveId == transaction.id else { return [] }
-                    let columns = Set(try String.fetchAll(db, sql: """
-                        SELECT column FROM messages_crdt
-                        WHERE dataset = 'transactions' AND row = ?
-                        """, arguments: [transaction.id]))
-                    if columns.isEmpty {
-                        try Self.updateTransactionRow(db, transaction)
-                        return try Self.insertMessageRows(db, messages)
-                    }
-                    if columns == Set(transaction.syncableFields.keys) {
-                        return []
-                    }
-                    throw TransactionWriteError.incompleteFinancialIdMessages
-                }
+            guard let financialId = transaction.financialId else {
+                try Self.insertTransactionRow(db, transaction)
+                return try Self.insertMessageRows(db, messages)
             }
 
+            if let sameId = try Bool.fetchOne(db, sql: """
+                SELECT EXISTS(
+                    SELECT 1 FROM transactions
+                    WHERE id = ? AND acct IS ? AND financial_id = ?
+                        AND (tombstone = 0 OR tombstone IS NULL)
+                )
+                """, arguments: [transaction.id, transaction.accountId, financialId]), sameId {
+                let columns = Set(try String.fetchAll(db, sql: """
+                    SELECT column FROM messages_crdt
+                    WHERE dataset = 'transactions' AND row = ?
+                    """, arguments: [transaction.id]))
+                if columns.isEmpty {
+                    try Self.applyMessageRows(db, messages)
+                    return try Self.insertMessageRows(db, messages)
+                }
+                if columns == Set(transaction.syncableFields.keys) { return [] }
+                throw TransactionWriteError.incompleteFinancialIdMessages
+            }
+
+            let liveCount = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE acct IS ? AND financial_id = ?
+                    AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [transaction.accountId, financialId]) ?? 0
+            switch financialIdPolicy {
+            case .unique where liveCount > 0:
+                return []
+            case .occurrences(let limit) where liveCount >= limit:
+                return []
+            default:
+                break
+            }
+
+            for payee in pendingPayees {
+                try db.execute(sql: """
+                    INSERT INTO payees (id, name, transfer_acct, tombstone)
+                    VALUES (?, ?, ?, ?)
+                    """, arguments: [
+                        payee.id, payee.name, payee.transferAccountId,
+                        payee.tombstone ? 1 : 0
+                    ])
+                try db.execute(sql: """
+                    INSERT INTO payee_mapping (id, targetId)
+                    VALUES (?, ?)
+                    """, arguments: [payee.id, payee.id])
+            }
             try Self.insertTransactionRow(db, transaction)
             return try Self.insertMessageRows(db, messages)
         }
@@ -2880,16 +2913,6 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    func containsFinancialId(_ financialId: String) throws -> Bool {
-        try dbQueue.read { db in
-            try Int.fetchOne(db, sql: """
-                SELECT 1 FROM transactions
-                WHERE financial_id = ?
-                LIMIT 1
-                """, arguments: [financialId]) != nil
-        }
-    }
-
     // MARK: - Bank Sync
 
     /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
@@ -3014,25 +3037,50 @@ final class BudgetDatabase: Sendable {
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncUpdates(
         _ updates: [BankSyncUpdate],
+        expectedAccountId: String,
         messages: [CRDTMessage]
-    ) throws -> [CRDTMessage] {
+    ) throws -> (updatedCount: Int, messages: [CRDTMessage]) {
         try dbQueue.write { db in
+            var appliedIds = Set<String>()
             for update in updates {
                 try db.execute(sql: """
                     UPDATE transactions
                     SET financial_id = ?, description = ?, imported_description = ?,
                         notes = ?, cleared = ?
-                    WHERE id = ?
+                    WHERE id = ? AND acct IS ?
+                                            AND (tombstone = 0 OR tombstone IS NULL)
+                                            AND (reconciled = 0 OR reconciled IS NULL)
+                                            AND (isChild = 0 OR isChild IS NULL)
+                                            AND COALESCE(date, 0) = ?
+                                            AND COALESCE(amount, 0) = ?
+                                            AND description IS ?
+                                            AND financial_id IS ?
+                                            AND imported_description IS ?
+                                            AND notes IS ?
+                                            AND COALESCE(cleared, 0) = ?
                     """, arguments: [
                         update.importedId,
                         update.payeeId,
                         update.importedPayee,
                         update.notes,
                         update.cleared ? 1 : 0,
-                        update.existingId
+                        update.existingId,
+                        expectedAccountId,
+                        update.expected.date,
+                        update.expected.amount,
+                        update.expected.payeeId,
+                        update.expected.importedId,
+                        update.expected.importedPayee,
+                        update.expected.notes,
+                        update.expected.cleared ? 1 : 0
                     ])
+                if db.changesCount > 0 { appliedIds.insert(update.existingId) }
             }
-            return try Self.insertMessageRows(db, messages)
+            let appliedMessages = messages.filter { appliedIds.contains($0.row) }
+            return (
+                appliedIds.count,
+                try Self.insertMessageRows(db, appliedMessages)
+            )
         }
     }
 

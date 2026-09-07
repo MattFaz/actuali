@@ -26,7 +26,7 @@ final class PendingImportStore: ObservableObject {
 
     var count: Int { imports.count }
 
-    func visibleImports(for budgetId: String?) -> [PendingImport] {
+    func visibleImports() -> [PendingImport] {
         imports
     }
 

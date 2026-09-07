@@ -355,6 +355,238 @@ struct SyncClientOfflineWriteTests {
         #expect(messageRows.count == inserted.syncableFields.count)
     }
 
+    @Test func bankSyncFinancialIdOccurrenceLimitIsAtomicAndRepairsFirst() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let prepared = SyncClient.PreparedRules(rules: [], context: .empty)
+
+        let first: Transaction = {
+            var value = transaction(id: "tx-bank-occurrence-1")
+            value.financialId = "financial-bank-occurrence"
+            return value
+        }()
+        let second: Transaction = {
+            var value = transaction(id: "tx-bank-occurrence-2")
+            value.financialId = "financial-bank-occurrence"
+            return value
+        }()
+        let third: Transaction = {
+            var value = transaction(id: "tx-bank-occurrence-3")
+            value.financialId = "financial-bank-occurrence"
+            return value
+        }()
+
+        #expect(try await syncClient.createBankSyncTransaction(
+            first, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+        ) == .inserted(first.id))
+        #expect(try await syncClient.createBankSyncTransaction(
+            second, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+        ) == .inserted(second.id))
+        #expect(try await syncClient.createBankSyncTransaction(
+            third, maxLiveFinancialIdOccurrences: 2, prepared: prepared
+        ) == .duplicate)
+
+        #expect(try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE acct = ? AND financial_id = ? AND tombstone = 0
+                """, arguments: [first.accountId, first.financialId]) ?? 0
+        } == 2)
+
+        let generic: Transaction = {
+            var value = transaction(id: "tx-bank-occurrence-generic")
+            value.financialId = "financial-bank-occurrence"
+            return value
+        }()
+        #expect(try await syncClient.createTransaction(generic, applyRules: false) == .duplicate)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "DELETE FROM messages_crdt WHERE row = ?", arguments: [first.id])
+        }
+        #expect(try await syncClient.createBankSyncTransaction(
+            first, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+        ) == .inserted(first.id))
+        #expect(try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [first.id]) ?? 0
+        } == first.syncableFields.count)
+    }
+
+    @Test(arguments: ["reconciled", "tombstone", "moved", "child", "date", "amount", "payee", "financial_id", "imported_description", "notes", "cleared"])
+    func bankSyncUpdateSkipsRowsThatChangedAfterPlanning(_ state: String) async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let existing = transaction(id: "tx-bank-race-\(state)")
+        try database.insertTransaction(existing)
+        let candidate = BankSyncCandidate(
+            importedId: "financial-race-\(state)",
+            date: existing.date,
+            amount: existing.amount,
+            payeeName: "Updated",
+            payeeId: "payee-updated",
+            notes: "Updated",
+            cleared: true
+        )
+        let window = try await database.bankSyncWindow(
+            accountId: existing.accountId,
+            from: candidate.date - 7,
+            to: candidate.date + 7,
+            importedIds: [candidate.importedId]
+        )
+        let plan = BankSyncReconciler.plan(candidates: [candidate], existing: window)
+        let update = try #require(plan.updates.first)
+
+        switch state {
+        case "reconciled":
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET reconciled = 1 WHERE id = ?", arguments: [existing.id])
+            }
+        case "tombstone":
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET tombstone = 1 WHERE id = ?", arguments: [existing.id])
+            }
+        case "moved":
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET acct = ? WHERE id = ?", arguments: ["acct-other", existing.id])
+            }
+        case "child":
+            try await database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET isChild = 1 WHERE id = ?", arguments: [existing.id])
+            }
+        case "date", "amount", "payee", "financial_id", "imported_description", "notes", "cleared":
+            switch state {
+            case "date":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET date = ? WHERE id = ?", arguments: [20260812, existing.id])
+                }
+            case "amount":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET amount = ? WHERE id = ?", arguments: [-4321, existing.id])
+                }
+            case "payee":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET description = ? WHERE id = ?", arguments: ["payee-concurrent", existing.id])
+                }
+            case "financial_id":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET financial_id = ? WHERE id = ?", arguments: ["financial-concurrent", existing.id])
+                }
+            case "imported_description":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET imported_description = ? WHERE id = ?", arguments: ["Imported concurrent", existing.id])
+                }
+            case "notes":
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET notes = ? WHERE id = ?", arguments: ["Concurrent notes", existing.id])
+                }
+            default:
+                try await database.dbQueueForTesting.write { db in
+                    try db.execute(sql: "UPDATE transactions SET cleared = ? WHERE id = ?", arguments: [1, existing.id])
+                }
+            }
+        default:
+            Issue.record("Unknown state: \(state)")
+        }
+
+        let applied = try await syncClient.applyBankSyncUpdates(
+            [update], expectedAccountId: existing.accountId
+        )
+
+        #expect(applied == 0)
+        #expect(try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'transactions' AND row = ?", arguments: [existing.id]) ?? 0
+        } == 0)
+        #expect(try await database.dbQueueForTesting.read { db in
+            let row = try Row.fetchOne(db, sql: "SELECT acct, date, amount, description, financial_id, imported_description, notes, cleared, reconciled, tombstone, isChild FROM transactions WHERE id = ?", arguments: [existing.id])
+            switch state {
+            case "reconciled": return row?["reconciled"] as Int? == 1
+            case "tombstone": return row?["tombstone"] as Int? == 1
+            case "moved": return row?["acct"] as String? == "acct-other"
+            case "child": return row?["isChild"] as Int? == 1
+            case "date": return row?["date"] as Int? == 20260812
+            case "amount": return row?["amount"] as Int? == -4321
+            case "payee": return row?["description"] as String? == "payee-concurrent"
+            case "financial_id": return row?["financial_id"] as String? == "financial-concurrent"
+            case "imported_description": return row?["imported_description"] as String? == "Imported concurrent"
+            case "notes": return row?["notes"] as String? == "Concurrent notes"
+            case "cleared": return row?["cleared"] as Int? == 1
+            default: return false
+            }
+        })
+    }
+
+    @Test func bankSyncUpdateAppliesUnchangedPlanAndInsertsMessages() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        let existing = transaction(id: "tx-bank-cas-control")
+        try database.insertTransaction(existing)
+        let candidate = BankSyncCandidate(
+            importedId: "financial-cas-control",
+            date: existing.date,
+            amount: existing.amount,
+            payeeName: "Updated",
+            payeeId: "payee-updated",
+            notes: "Updated",
+            cleared: true
+        )
+        let window = try await database.bankSyncWindow(
+            accountId: existing.accountId,
+            from: candidate.date - 7,
+            to: candidate.date + 7,
+            importedIds: [candidate.importedId]
+        )
+        let plan = BankSyncReconciler.plan(candidates: [candidate], existing: window)
+        let applied = try await syncClient.applyBankSyncUpdates(
+            plan.updates, expectedAccountId: existing.accountId
+        )
+
+        #expect(applied == 1)
+        #expect(try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'transactions' AND row = ?", arguments: [existing.id]) ?? 0
+        } == 5)
+    }
+
+    @Test func rejectedBankFinancialIdDoesNotLeavePendingPayeeRows() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let prepared = SyncClient.PreparedRules(rules: [], context: .empty)
+
+        var accepted = transaction(id: "tx-bank-payee-accepted")
+        accepted.financialId = "financial-payee-limit"
+        accepted.payeeId = "payee-existing"
+        #expect(try await syncClient.createBankSyncTransaction(
+            accepted, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+        ) == .inserted(accepted.id))
+
+        var rejected = transaction(id: "tx-bank-payee-rejected")
+        rejected.financialId = accepted.financialId
+        rejected.payeeId = nil
+        rejected.payeeName = "Never Seen Payee"
+        #expect(try await syncClient.createBankSyncTransaction(
+            rejected, maxLiveFinancialIdOccurrences: 1, prepared: prepared
+        ) == .duplicate)
+
+        let rejectedPayeeName = rejected.payeeName
+        let acceptedId = accepted.id
+        let counts = try await database.dbQueueForTesting.read { db in
+            (
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees WHERE name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping pm JOIN payees p ON p.id = pm.targetId WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt m JOIN payees p ON p.id = m.row WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [acceptedId]) ?? 0
+            )
+        }
+        #expect(counts.0 == 0)
+        #expect(counts.1 == 0)
+        #expect(counts.2 == 0)
+        #expect(counts.3 == 1)
+    }
+
     @Test func legacyNullAccountFinancialIdLookupIsNullSafeAndAccountScoped() throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
@@ -394,20 +626,51 @@ struct SyncClientOfflineWriteTests {
     @Test func zeroMessageFinancialIdRetryRepairsThroughSyncClient() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        let syncClient = try await makeSyncClient(database: database)
         let imported: Transaction = {
             var value = transaction(id: "tx-zero-message")
             value.financialId = "financial-zero-message"
+            value.importedPayee = "Imported Coffee"
+            value.schedule = "schedule-zero-message"
+            value.startingBalanceFlag = true
             return value
         }()
         try database.insertTransaction(imported)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE transactions
+                SET isChild = 1,
+                    sort_order = 123.0,
+                    imported_description = 'stale imported description',
+                    schedule = 'stale schedule',
+                    starting_balance_flag = 0
+                WHERE id = ?
+                """, arguments: [imported.id])
+        }
+
+        let syncClient = try await makeSyncClient(database: database)
 
         let result = try await syncClient.createTransaction(imported, applyRules: true)
         #expect(result == .inserted("tx-zero-message"))
-        let messageCount = try await database.dbQueueForTesting.read { db in
-            try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?", arguments: [imported.id]) ?? 0
+        let storedValues = try await database.dbQueueForTesting.read { db in
+            let messages = try Row.fetchAll(db, sql: """
+                SELECT column, value FROM messages_crdt
+                WHERE dataset = 'transactions' AND row = ?
+                """, arguments: [imported.id])
+            var values: [String: DatabaseValue] = [:]
+            for message in messages {
+                values[message["column"]] = CRDTValue.deserialize(message["value"])
+            }
+            return values
         }
-        #expect(messageCount == imported.syncableFields.count)
+        #expect(storedValues.count == imported.syncableFields.count)
+        let fetchedRow = try database.dbQueueForTesting.read { db in
+            try Row.fetchOne(db, sql: "SELECT * FROM transactions WHERE id = ?", arguments: [imported.id])
+        }
+        let repairedRow = try #require(fetchedRow)
+        for column in ["isChild", "sort_order", "imported_description", "schedule", "financial_id", "starting_balance_flag"] {
+            #expect(repairedRow[column] == storedValues[column], "Mismatch for \(column)")
+        }
+        #expect(repairedRow["sort_order"] == storedValues["sort_order"])
         #expect(try database.deriveMerkleFromMessageLog().root.hash != MerkleTree().root.hash)
     }
 

@@ -6,14 +6,18 @@ enum ScheduleDescription {
 
     // MARK: - Status
 
-    static func statusLabel(_ status: ScheduleStatus) -> String {
+    static func statusLabel(
+        _ status: ScheduleStatus,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
         switch status {
-        case .completed: String(localized: "Completed")
-        case .paid: String(localized: "Paid")
-        case .due: String(localized: "Due")
-        case .upcoming: String(localized: "Upcoming")
-        case .missed: String(localized: "Missed")
-        case .scheduled: String(localized: "Scheduled")
+        case .completed: ReportStrings.text("Completed", locale: locale, bundle: bundle)
+        case .paid: ReportStrings.text("Paid", locale: locale, bundle: bundle)
+        case .due: ReportStrings.text("Due", locale: locale, bundle: bundle)
+        case .upcoming: ReportStrings.text("Upcoming", locale: locale, bundle: bundle)
+        case .missed: ReportStrings.text("Missed", locale: locale, bundle: bundle)
+        case .scheduled: ReportStrings.text("Scheduled", locale: locale, bundle: bundle)
         }
     }
 
@@ -46,7 +50,9 @@ enum ScheduleDescription {
         switch config.endMode {
         case "after_n_occurrences":
             let count = config.endOccurrences ?? 1
-            endSuffix = ReportStrings.localized("\(count) times", locale: locale, bundle: bundle)
+            endSuffix = count == 1
+                ? ReportStrings.text("once", locale: locale, bundle: bundle)
+                : ReportStrings.localized("\(count) times", locale: locale, bundle: bundle)
         case "on_date":
             if let end = config.endDate {
                 endSuffix = ReportStrings.localized("until \(mediumDate(end, locale: locale))", locale: locale, bundle: bundle)
@@ -68,22 +74,32 @@ enum ScheduleDescription {
         let body: String
         switch config.frequency {
         case .daily:
-            body = ReportStrings.localized("Every \(interval) days", locale: locale, bundle: bundle)
+            body = interval == 1
+                ? ReportStrings.text("Every day", locale: locale, bundle: bundle)
+                : ReportStrings.localized("Every \(interval) days", locale: locale, bundle: bundle)
         case .weekly:
             let day = weekdayName(config.start.weekday, locale: locale)
-            body = ReportStrings.localized("Every \(interval) weeks on \(day)", locale: locale, bundle: bundle)
+            body = interval == 1
+                ? ReportStrings.localized("Every week on \(day)", locale: locale, bundle: bundle)
+                : ReportStrings.localized("Every \(interval) weeks on \(day)", locale: locale, bundle: bundle)
         case .monthly:
             let range = monthlyRange(config, locale: locale, bundle: bundle)
             if range.isEmpty {
                 let day = ordinal(config.start.day, locale: locale)
-                body = ReportStrings.localized("Every \(interval) months on the \(day)", locale: locale, bundle: bundle)
+                body = interval == 1
+                    ? ReportStrings.localized("Every month on the \(day)", locale: locale, bundle: bundle)
+                    : ReportStrings.localized("Every \(interval) months on the \(day)", locale: locale, bundle: bundle)
             } else {
-                body = ReportStrings.localized("Every \(interval) months on the \(range)", locale: locale, bundle: bundle)
+                body = interval == 1
+                    ? ReportStrings.localized("Every month on \(range)", locale: locale, bundle: bundle)
+                    : ReportStrings.localized("Every \(interval) months on \(range)", locale: locale, bundle: bundle)
             }
         case .yearly:
             let day = Transaction.date(fromYYYYMMDD: config.start.yyyymmdd)
                 .formatted(.dateTime.locale(locale).month(.abbreviated).day(.defaultDigits))
-            body = ReportStrings.localized("Every \(interval) years on \(day)", locale: locale, bundle: bundle)
+            body = interval == 1
+                ? ReportStrings.localized("Every year on \(day)", locale: locale, bundle: bundle)
+                : ReportStrings.localized("Every \(interval) years on \(day)", locale: locale, bundle: bundle)
         }
 
         return (body + suffix).trimmingCharacters(in: .whitespaces)
@@ -140,16 +156,12 @@ enum ScheduleDescription {
 
     // MARK: - Formatting helpers
 
-    private static let ordinalFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .ordinal
-        return formatter
-    }()
-
     /// "1st", "15th" — upstream's `makeNumberSuffix`.
     static func ordinal(_ value: Int, locale: Locale = .current) -> String {
-        ordinalFormatter.locale = locale
-        return ordinalFormatter.string(from: NSNumber(value: value)) ?? "\(value)"
+        let formatter = NumberFormatter()
+        formatter.numberStyle = .ordinal
+        formatter.locale = locale
+        return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
     /// 1 = Sunday ... 7 = Saturday, matching `DayDate.weekday`.

@@ -39,18 +39,24 @@ UI_COPY_NAMES = {"label", "title", "message", "statusText", "placeholder", "summ
 DISPLAY_HELPERS = {"shortTitle", "monthLabel", "formattedAmount", "limitText", "dayOrdinal"}
 ACCESSIBILITY_COPY_NAME = re.compile(r".*(?:accessibility|badge).*value|.*value.*(?:accessibility|badge)", re.IGNORECASE)
 CHART_TECHNICAL_VALUES = {"p10", "p25", "p75", "p90"}
-NON_PLURAL_COUNT_CONTEXT = re.compile(
-    r"\b(?:amount|balance|code|day|days|due|http|month|months|percent|repeating|times|year|years)\b|%"
-    r"|\b(?:pending|uncategorized|overspent|not funded|over budget|without a budget)\b",
+NON_PLURAL_COUNT_KEY = re.compile(
+    r"(?:\b(?:HTTP|status)(?:\s+error|\s+code)?\b.*%lld\b|%lld(?:st|nd|rd|th)\b|"
+    r"\b(?:day[ -]of[ -]month|month[ -]day|day\s+%lld\s+of\s+the\s+month)\b|%lldd\b|%lld\s*(?:%%|percent(?:age)?))",
     re.IGNORECASE,
 )
-PLURAL_COUNT_CONTEXT = re.compile(
-    r"\b(?:account|category|categories|duplicate|import|item|location|more|payee|recorded|schedule|selected|"
-    r"skipped|transaction|transactions|uncategorized transactions|found|matched|posted|applied|reconciled|saved|scopes?)\b",
+COMPACT_COUNT_BADGE = re.compile(
+    r"^\s*%lld\s+(?:pending|overspent|uncategorized|without a budget|not funded|nearing the limit|over budget)\s*$",
     re.IGNORECASE,
 )
 KNOWN_UI_FALLBACK = re.compile(r"^(?:Unknown (?:institution|payee|account|pool)|Schedule|Income)$")
-PLACEHOLDER_PATTERN = re.compile(r"%(?!%)(?:\d+\$)?[+\-0-9.*lh]*[a-zA-Z@]")
+PRINTF_CONVERSIONS = set("diouxXfFeEgGaAcCsSpn%@")
+PRINTF_LENGTH_MODIFIERS = ("hh", "ll", "h", "l", "j", "z", "t", "L")
+PRINTF_INTENT_STARTERS = set("0123456789$*")
+# Used only to build interpolation matching patterns; actual parsing is done
+# by _scan_printf below.
+PLACEHOLDER_PATTERN = re.compile(
+    r"%(?!%)(?:\d+\$)?[+\- #0]*(?:\*|\d+)?(?:\.(?:\*|\d+))?(?:hh|ll|h|l|j|z|t|L)?[diouxXfFeEgGaAcCsSpn@]"
+)
 # Swift string interpolation inside a localized key, e.g. "Found \(count) items"
 INTERPOLATION_PATTERN = re.compile(r"\\\(")
 APP_SHORTCUT_INTERPOLATION_PATTERN = re.compile(r"\\\([^()]*\)")
@@ -68,17 +74,103 @@ def swift_string_value(value: str) -> str:
     return value.replace(r"\n", "\n").replace(r'\"', '"').replace(r"\\", "\\")
 
 
+def _scan_printf(value: str) -> tuple[list[tuple[str, int, int]], list[str]]:
+    found: list[tuple[str, int, int]] = []
+    malformed: list[str] = []
+    index = 0
+    while index < len(value):
+        if value.startswith("%%", index):
+            index += 2
+            continue
+        if value[index] != "%":
+            index += 1
+            continue
+        if index + 1 < len(value) and value[index + 1].isspace():
+            index += 1
+            continue
+
+        start = index
+        cursor = index + 1
+        position_end = cursor
+        while cursor < len(value) and value[cursor].isdigit():
+            cursor += 1
+        if cursor < len(value) and value[cursor] == "$":
+            cursor += 1
+            position_end = cursor
+        else:
+            cursor = index + 1
+
+        while cursor < len(value) and value[cursor] in "+- #0":
+            cursor += 1
+        if cursor < len(value) and value[cursor] == "*":
+            cursor += 1
+        else:
+            while cursor < len(value) and value[cursor].isdigit():
+                cursor += 1
+        if cursor < len(value) and value[cursor] == ".":
+            cursor += 1
+            if cursor < len(value) and value[cursor] == "*":
+                cursor += 1
+            else:
+                while cursor < len(value) and value[cursor].isdigit():
+                    cursor += 1
+        for modifier in PRINTF_LENGTH_MODIFIERS:
+            if value.startswith(modifier, cursor):
+                cursor += len(modifier)
+                break
+
+        if cursor < len(value) and value[cursor] in PRINTF_CONVERSIONS - {"%"}:
+            cursor += 1
+            found.append((value[start:cursor], start, cursor))
+            index = cursor
+            continue
+
+        # A percent followed by format syntax is a malformed format intent;
+        # whitespace and ordinary punctuation remain natural prose percents.
+        next_character = value[index + 1] if index + 1 < len(value) else ""
+        if next_character in PRINTF_INTENT_STARTERS or next_character.isalpha():
+            malformed.append(value[start:max(cursor, position_end, start + 2)])
+            index = max(cursor, position_end, start + 2)
+        else:
+            index += 1
+    return found, malformed
+
+
 def placeholders(value: str) -> list[str]:
-    found = PLACEHOLDER_PATTERN.findall(value)
+    found, _ = _scan_printf(value)
+    placeholders = [placeholder for placeholder, _, _ in found]
     # Positional specifiers (%1$@) carry the argument order explicitly, so a
     # translation may reorder them in the sentence; canonicalize back to
     # argument order so it compares equal to the source's specifier list.
-    if found and all("$" in item for item in found):
-        found = [
+    if placeholders and all("$" in item for item in placeholders):
+        placeholders = [
             "%" + item.split("$", 1)[1]
-            for item in sorted(found, key=lambda item: int(item[1 : item.index("$")]))
+            for item in sorted(placeholders, key=lambda item: int(item[1 : item.index("$")]))
         ]
-    return found
+    return placeholders
+
+
+def _integer_placeholders(value: str) -> list[str]:
+    return [placeholder for placeholder in placeholders(value) if placeholder.endswith("lld")]
+
+
+def _canonicalize_integer_placeholders(value: str) -> str:
+    result: list[str] = []
+    index = 0
+    while index < len(value):
+        if value.startswith("%%", index):
+            result.append("%%")
+            index += 2
+            continue
+        scanned, _ = _scan_printf(value[index:])
+        if scanned and scanned[0][1] == 0:
+            placeholder, _, end = scanned[0]
+            result.append("%lld" if placeholder.endswith("lld") else placeholder)
+            index += end
+        else:
+            result.append(value[index])
+            index += 1
+    return "".join(result)
 
 
 def source_matches_english_placeholders(key: str, english_values: dict[tuple[str, ...], str]) -> bool:
@@ -520,33 +612,30 @@ def _extract_error_assignments(tokens: list[tuple[str, str]]) -> set[str]:
 
 
 def _is_plural_count_key(key: str) -> bool:
-    for start, end in _interpolation_ranges(key):
-        expression = key[start + 2:end - 1]
-        if not re.search(r"(?:\.count\b|\b(?:count|selectedCount|completedCount|importableCount|overspentCount|uncategorizedCount)\b)", expression):
-            continue
-        plain = _without_interpolation(key)
-        if NON_PLURAL_COUNT_CONTEXT.search(plain) and not PLURAL_COUNT_CONTEXT.search(plain):
-            continue
-        if PLURAL_COUNT_CONTEXT.search(plain):
-            return True
-    return False
+    interpolation_ranges = _interpolation_ranges(key)
+    normalized = key
+    for start, end in reversed(interpolation_ranges):
+        normalized = normalized[:start] + "%lld" + normalized[end:]
+    integer_placeholders = _integer_placeholders(normalized)
+    normalized = _canonicalize_integer_placeholders(normalized)
+    if not integer_placeholders:
+        return False
+    if NON_PLURAL_COUNT_KEY.search(normalized) or COMPACT_COUNT_BADGE.fullmatch(normalized):
+        return False
+    return True
 
 
-def extract_plural_count_keys(source: str) -> set[str]:
-    return {key for key in extract_source_keys(source) if _is_plural_count_key(key)}
-
-
-def validate_plural_count_variations(count_keys: set[str], catalog: dict, target: str = "catalog") -> list[str]:
+def validate_plural_count_variations(used: set[str], catalog: dict, target: str = "catalog") -> list[str]:
     errors: list[str] = []
     checked: set[str] = set()
-    for source_key in sorted(count_keys):
+    for source_key in sorted(used):
         matching = [
             (catalog_key, entry)
             for catalog_key, entry in catalog.items()
             if source_key == catalog_key or interpolated_key_matches(source_key, {catalog_key: entry})
         ]
         for catalog_key, entry in matching:
-            if catalog_key in checked:
+            if catalog_key in checked or not _is_plural_count_key(catalog_key):
                 continue
             checked.add(catalog_key)
             for locale in REQUIRED_LOCALES:
@@ -685,18 +774,32 @@ def validate_catalog_entries(catalog: dict, target: str = "catalog") -> list[str
             errors.append(f"{target} {key}: missing locales {', '.join(sorted(missing_locales))}")
 
         english_values = localized_values(localizations.get(SOURCE_LANGUAGE, {})) or {(): key}
+        malformed_values: set[tuple[str, str]] = set()
+
+        def collect_malformed(value: str, label: str) -> None:
+            for malformed in _scan_printf(value)[1]:
+                malformed_values.add((label, malformed))
+
+        collect_malformed(key, "source")
+        for path, value in english_values.items():
+            collect_malformed(value, f"English {path or 'value'}")
         source_placeholders_by_path = {
             path: tuple(placeholders(value)) for path, value in english_values.items()
         }
         if not source_matches_english_placeholders(key, english_values):
             errors.append(f"{target} {key}: source/English placeholder mismatch")
         for locale in REQUIRED_LOCALES:
+            locale_values = localized_values(localizations.get(locale, {}))
+            for path, value in locale_values.items():
+                collect_malformed(value, f"locale {locale} {path or 'value'}")
             locale_placeholders = {
                 path: tuple(placeholders(value))
-                for path, value in localized_values(localizations.get(locale, {})).items()
+                for path, value in locale_values.items()
             }
             if locale_placeholders != source_placeholders_by_path:
                 errors.append(f"{target} {key}: placeholder mismatch in {locale}")
+        for label, malformed in sorted(malformed_values):
+            errors.append(f"{target} {key}: malformed format {malformed!r} in {label}")
     return errors
 
 
@@ -936,7 +1039,6 @@ def main() -> int:
     app_shortcuts_used: set[str] = set()
     parameter_summaries: dict[str, tuple[str, ...]] = {}
     widget_used: set[str] = set()
-    plural_count_keys: set[str] = set()
     for source_root in SOURCE_ROOTS:
         for source in source_root.rglob("*.swift"):
             source_text = source.read_text(encoding="utf-8")
@@ -946,7 +1048,6 @@ def main() -> int:
             )
             (widget_used if source_root.name == "ActualiWidgets" else used).update(extracted)
             if source_root.name == "Actuali":
-                plural_count_keys.update(extract_plural_count_keys(source_text))
                 app_shortcuts_used.update(extract_app_shortcut_phrases(source_text))
                 parameter_summaries.update(extract_parameter_summaries(source_text))
 
@@ -1040,7 +1141,7 @@ def main() -> int:
     errors.extend(validate_source_keys(used, catalog))
 
     errors.extend(validate_catalog_entries(catalog))
-    errors.extend(validate_plural_count_variations(plural_count_keys, catalog))
+    errors.extend(validate_plural_count_variations(used, catalog))
 
     for key, entry in sorted(catalog.items()):
         localizations = entry.get("localizations", {})

@@ -213,6 +213,14 @@ struct ConditionsFilterTests {
         #expect(!ConditionsFilter.matches(transaction: makeTransaction(), conditions: [later], op: "and"))
     }
 
+    @Test func invalidDateConditionsAreDropped() {
+        let malformed = decode(#"{"op":"is","field":"date","value":"2026-3"}"#)
+        let impossible = decode(#"{"op":"is","field":"date","value":"2026-02-31"}"#)
+        let tx = makeTransaction()
+        #expect(ConditionsFilter.matches(transaction: tx, conditions: [malformed], op: "and"))
+        #expect(ConditionsFilter.matches(transaction: tx, conditions: [impossible], op: "and"))
+    }
+
     @Test func categoryIsNothingMatchesUncategorizedButNotTransfers() {
         let cond = decode(#"{"op":"is","field":"category","value":null}"#)
         #expect(ConditionsFilter.matches(transaction: makeTransaction(category: nil), conditions: [cond], op: "and"))

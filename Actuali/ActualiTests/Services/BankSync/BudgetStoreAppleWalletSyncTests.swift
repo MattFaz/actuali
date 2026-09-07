@@ -593,6 +593,40 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
     }
 
+    @Test func duplicateStableWalletIdImportsOneRowAndSubtractsItOnce() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let duplicateId = "44444444-4444-4444-4444-444444444444"
+        let wallet = StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.externalAccountId, name: "Apple Card",
+                institutionName: "Apple", balanceCents: -50000
+            )],
+            transactionsByAccount: [Self.externalAccountId: [
+                AppleWalletTransaction(
+                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    merchantName: "Coffee", description: "Coffee", status: .booked,
+                    date: Self.daysAgo(2)
+                ),
+                AppleWalletTransaction(
+                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    merchantName: "Coffee", description: "Coffee", status: .booked,
+                    date: Self.daysAgo(2)
+                )
+            ]]
+        )
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        let first = try await store.syncBankAccounts()
+        #expect(first.added == 2)
+        #expect(try rows(path: url, where: "financial_id = '\(duplicateId)' AND tombstone = 0").count == 1)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == -49_000)
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "financial_id = '\(duplicateId)' AND tombstone = 0").count == 1)
+    }
+
     @Test func linkingStaysDeviceLocal() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }

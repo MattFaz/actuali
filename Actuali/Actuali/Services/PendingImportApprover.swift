@@ -54,9 +54,8 @@ final class PendingImportApprover {
         self.store = store
     }
 
-    /// Resolves an import the same way whether it is approved immediately or
-    /// opened in the editor. The final fallback is safe because only open
-    /// accounts are returned.
+    /// Resolves an account for direct approval. Automatic approval is only
+    /// allowed when the card mapping or explicit default is trustworthy.
     nonisolated static func resolveAccountId(
         cardHint: String?,
         accounts: [Account],
@@ -72,7 +71,23 @@ final class PendingImportApprover {
            accounts.contains(where: { $0.id == defaultAccountId && !$0.closed }) {
             return defaultAccountId
         }
-        return accounts.first(where: { !$0.closed })?.id
+        return nil
+    }
+
+    /// Seeds the editor with a usable open account when strict automatic
+    /// approval cannot choose one. The user can inspect and change this value.
+    nonisolated static func seedAccountId(
+        cardHint: String?,
+        accounts: [Account],
+        cardMappings: [String: String],
+        defaultAccountId: String?
+    ) -> String? {
+        resolveAccountId(
+            cardHint: cardHint,
+            accounts: accounts,
+            cardMappings: cardMappings,
+            defaultAccountId: defaultAccountId
+        ) ?? accounts.first(where: { !$0.closed })?.id
     }
 
     /// Logs the pending import to the budget via `TransactionLogger`.
@@ -179,13 +194,8 @@ final class PendingImportApprover {
             activeBudgetId: currentBudgetId,
             budgetCurrency: store.currencyCode
         )
-        let confirmedReviewRequirements = form.reviewConfirmations.isEmpty
-            && form.reviewConfirmed
-            && reviewRequirements.count == 1
-            ? Set(reviewRequirements)
-            : form.reviewConfirmations
         if !reviewRequirements.isEmpty
-            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) {
+            && !form.reviewConfirmations.isSuperset(of: reviewRequirements) {
             throw ApproveError.reviewConfirmationRequired
         }
         if let sourceCurrencyCode = item.sourceCurrencyCode {
@@ -196,7 +206,7 @@ final class PendingImportApprover {
                 budget: budget
             )
             guard source == budget
-                || confirmedReviewRequirements.contains(currencyRequirement) else {
+                || form.reviewConfirmations.contains(currencyRequirement) else {
                 throw ApproveError.sourceCurrencyMismatch(source: source, budget: budget)
             }
         }

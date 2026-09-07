@@ -207,6 +207,42 @@ actor SyncClient {
         applyRules: Bool = true,
         prepared: PreparedRules? = nil
     ) async throws -> TransactionCreateResult {
+        try await createTransaction(
+            transaction,
+            applyRules: applyRules,
+            prepared: prepared,
+            financialIdPolicy: .unique,
+            resolveOriginalBankPayee: false
+        )
+    }
+
+    func createBankSyncTransaction(
+        _ transaction: Transaction,
+        maxLiveFinancialIdOccurrences: Int,
+        prepared: PreparedRules
+    ) async throws -> TransactionCreateResult {
+        precondition(maxLiveFinancialIdOccurrences > 0)
+        return try await createTransaction(
+            transaction,
+            applyRules: true,
+            prepared: prepared,
+            financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
+            resolveOriginalBankPayee: true
+        )
+    }
+
+    private enum FinancialIdPolicy {
+        case unique
+        case occurrences(Int)
+    }
+
+    private func createTransaction(
+        _ transaction: Transaction,
+        applyRules: Bool,
+        prepared: PreparedRules?,
+        financialIdPolicy: FinancialIdPolicy,
+        resolveOriginalBankPayee: Bool
+    ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -216,6 +252,7 @@ actor SyncClient {
         //    transfer flow already builds both legs explicitly and we don't want
         //    rules rewriting the linked payee/account.
         var finalTransaction = transaction
+        var pendingPayees: [Payee] = []
         if applyRules, transaction.transferId == nil {
             let prepared = prepared ?? prepareRules()
             let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
@@ -230,31 +267,57 @@ actor SyncClient {
 
             finalTransaction = result.transaction
             if let name = result.pendingPayeeName {
-                finalTransaction.payeeId = try await resolvePayee(named: name)
+                finalTransaction.payeeId = try await resolvePayee(
+                    named: name,
+                    deferCreation: transaction.financialId != nil,
+                    pendingPayees: &pendingPayees
+                )
+            } else if resolveOriginalBankPayee,
+                      !result.changedFields.contains("payee"),
+                      !result.changedFields.contains("payee_name"),
+                      finalTransaction.payeeId == nil,
+                      let originalPayeeName = transaction.payeeName {
+                finalTransaction.payeeId = try await resolvePayee(
+                    named: originalPayeeName,
+                    deferCreation: transaction.financialId != nil,
+                    pendingPayees: &pendingPayees
+                )
             }
             if !result.changedFields.isEmpty {
                 logger.info("Rules updated \(result.changedFields.count, privacy: .public) field(s) on new transaction")
             }
         }
 
-        // 1. A complete live deterministic row is already the result. Check
-        // before generating fresh HLC timestamps so a retry cannot create a
-        // second incomparable message set.
-        if finalTransaction.financialId != nil,
-           try database.transactionFinancialIdState(finalTransaction) == .duplicate {
-            return .duplicate
-        }
-
-        // 2. Generate CRDT messages before persistence so a generation failure
+        // 1. Generate CRDT messages before persistence so a generation failure
         // cannot leave a financial-id row that looks like a completed import.
-        let messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        var messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        for payee in pendingPayees {
+            messages += try await messageGenerator.messagesForInsert(payee)
+            messages += try await messageGenerator.messagesForInsert(
+                PayeeMapping(id: payee.id, targetId: payee.id)
+            )
+        }
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
-        // 3. Store the row and messages atomically. Financial-id retries can
+        // 2. Store the row and messages atomically. Financial-id retries can
         // repair a deterministic row that has no messages yet.
         let insertedMessages: [CRDTMessage]
         if finalTransaction.financialId != nil {
-            insertedMessages = try database.insertTransactionWithMessages(finalTransaction, messages: messages)
+            switch financialIdPolicy {
+            case .unique:
+                insertedMessages = try database.insertTransactionWithMessages(
+                    finalTransaction,
+                    messages: messages,
+                    pendingPayees: pendingPayees
+                )
+            case .occurrences(let limit):
+                insertedMessages = try database.insertBankSyncTransactionWithMessages(
+                    finalTransaction,
+                    messages: messages,
+                    maxLiveFinancialIdOccurrences: limit,
+                    pendingPayees: pendingPayees
+                )
+            }
         } else {
             try database.insertTransaction(finalTransaction)
             insertedMessages = try database.insertMessages(messages)
@@ -460,7 +523,11 @@ actor SyncClient {
     
     /// Turn a `payee_name` a rule set into a payee id, creating the payee when
     /// it's new — upstream `resolvePayeeNameForRules`.
-    private func resolvePayee(named name: String) async throws -> String? {
+    private func resolvePayee(
+        named name: String,
+        deferCreation: Bool = false,
+        pendingPayees: inout [Payee]
+    ) async throws -> String? {
         guard let database else { throw SyncError.notConfigured }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
@@ -468,7 +535,11 @@ actor SyncClient {
         if let existing = try database.payee(named: trimmed) { return existing.id }
 
         let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
-        try await createPayee(payee)
+        if deferCreation {
+            pendingPayees.append(payee)
+        } else {
+            try await createPayee(payee)
+        }
         return payee.id
     }
 
@@ -644,9 +715,12 @@ actor SyncClient {
     /// Fold a bank download into the transactions it matched (optimistic
     /// local-first). One merkle/clock save and one sync for the whole batch,
     /// like `updateTransactions`.
-    func applyBankSyncUpdates(_ updates: [BankSyncUpdate]) async throws {
+    func applyBankSyncUpdates(
+        _ updates: [BankSyncUpdate],
+        expectedAccountId: String
+    ) async throws -> Int {
         guard let database else { throw SyncError.notConfigured }
-        guard !updates.isEmpty else { return }
+        guard !updates.isEmpty else { return 0 }
 
         logger.debug("applyBankSyncUpdates() - \(updates.count, privacy: .public) rows")
 
@@ -665,13 +739,20 @@ actor SyncClient {
             )
         }
 
-        for msg in try database.applyBankSyncUpdates(updates, messages: messages) {
+        let result = try database.applyBankSyncUpdates(
+            updates,
+            expectedAccountId: expectedAccountId,
+            messages: messages
+        )
+        for msg in result.messages {
             merkle = merkle.inserting(msg.timestamp)
         }
+        guard result.updatedCount > 0 else { return 0 }
         merkle = merkle.pruned()
         try saveClock()
 
         scheduleAutomaticSync()
+        return result.updatedCount
     }
 
     /// Create a category group (optimistic local-first). Placement, the

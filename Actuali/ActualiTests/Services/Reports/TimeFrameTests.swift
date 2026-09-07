@@ -74,6 +74,13 @@ struct TimeFrameTests {
         #expect(ymd(end) == "2026-04-30")
     }
 
+    @Test func staticRejectsNonCanonicalDateParts() {
+        let tf = WidgetTimeFrame(start: "2025-8", end: "2026-4-15", mode: .static)
+        let (start, end) = TimeFrame.resolve(tf, asOf: referenceDate)
+        #expect(ymd(start) == "2026-05-01")
+        #expect(ymd(end) == "2026-05-14")
+    }
+
     @Test func fullWithNilBoundsReturnsWideRange() {
         let tf = WidgetTimeFrame(start: nil, end: nil, mode: .full)
         let (start, end) = TimeFrame.resolve(tf, asOf: referenceDate)

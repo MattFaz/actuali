@@ -170,16 +170,27 @@ struct PendingImportApproverTests {
         }
     }
 
-    @Test func fallsBackToFirstOpenAccountWhenNoMappingOrDefaultExists() async throws {
-        let (store, url) = try await makeWritableStore()
-        defer { try? FileManager.default.removeItem(at: url) }
+    @Test func refusesDirectApprovalWhenNoMappingOrDefaultExists() async {
+        let store = makeStore()
         store.accounts = [account("acct_closed", "Closed", closed: true), account("acct_cash", "Cash")]
         store.defaultAccountId = nil
 
-        let approver = PendingImportApprover(store: store)
-        let result = try await approver.approve(
-            PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50, sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown", rawText: "msg")
-        )
+        await #expect(throws: PendingImportApprover.ApproveError.noAccountAvailable) {
+            try await PendingImportApprover(store: store).approve(
+                PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
+                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown"))
+        }
+    }
+
+    @Test func directApprovalUsesFirstOpenAccountOnlyWhenExplicitlyDefaulted() async throws {
+        let (store, url) = try await makeWritableStore()
+        defer { try? FileManager.default.removeItem(at: url) }
+        store.accounts = [account("acct_closed", "Closed", closed: true), account("acct_cash", "Cash")]
+        store.defaultAccountId = "acct_cash"
+
+        let result = try await PendingImportApprover(store: store).approve(
+            PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
+                          sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown"))
 
         #expect(result.transaction.accountId == "acct_cash")
     }
@@ -195,17 +206,17 @@ struct PendingImportApproverTests {
         }
     }
 
-    @Test func closedMappingFallsBackToFirstOpenAccount() async throws {
-        let (store, url) = try await makeWritableStore()
-        defer { try? FileManager.default.removeItem(at: url) }
+    @Test func closedMappingWithoutDefaultRefusesDirectApproval() async {
+        let store = makeStore()
         store.accounts = [account("acct_closed", "Old Card", closed: true), account("acct_cash", "Cash")]
         store.cardAccountMappings = ["1234": "acct_closed"]
+        store.defaultAccountId = nil
 
-        let result = try await PendingImportApprover(store: store).approve(
-            PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50, sourceCurrencyCode: "USD",
-                          payee: "Coffee", cardHint: "1234", rawText: "msg"))
-
-        #expect(result.transaction.accountId == "acct_cash")
+        await #expect(throws: PendingImportApprover.ApproveError.noAccountAvailable) {
+            try await PendingImportApprover(store: store).approve(
+                PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
+                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "1234"))
+        }
     }
 
     @Test func refusesWhenTargetAccountIsClosed() async {
@@ -222,9 +233,12 @@ struct PendingImportApproverTests {
         }
     }
 
-    @Test func closedDefaultFallsBackOnlyToAnOpenAccount() {
+    @Test func closedDefaultDoesNotQualifyForDirectApproval() {
         let accounts = [account("acct_closed", "Closed", closed: true), account("acct_open", "Open")]
         #expect(PendingImportApprover.resolveAccountId(
+            cardHint: nil, accounts: accounts, cardMappings: [:], defaultAccountId: "acct_closed"
+        ) == nil)
+        #expect(PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts, cardMappings: [:], defaultAccountId: "acct_closed"
         ) == "acct_open")
     }
@@ -268,6 +282,7 @@ struct PendingImportApproverTests {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }
         store.accounts = [account("acct_checking", "Checking")]
+        store.defaultAccountId = "acct_checking"
         let item = PendingImport(
             originBudgetId: store.currentBudgetId,
             amount: 9.99,
@@ -316,6 +331,7 @@ struct PendingImportApproverTests {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }
         store.accounts = [account("acct_checking", "Checking")]
+        store.defaultAccountId = "acct_checking"
         let item = PendingImport(
             originBudgetId: store.currentBudgetId,
             amount: 12.50,
@@ -375,6 +391,7 @@ struct PendingImportApproverTests {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }
         store.accounts = [account("acct_checking", "Checking")]
+        store.defaultAccountId = "acct_checking"
         let item = PendingImport(
             originBudgetId: store.currentBudgetId, amount: 12.50,
             sourceCurrencyCode: "USD", payee: "Coffee"
@@ -449,8 +466,7 @@ struct PendingImportApproverTests {
         let baseForm = BudgetStore.TransactionForm(
             accountId: "acct_checking", type: .expense, amount: "12.50",
             payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
-            notes: "edited", date: Date(), cleared: false,
-            reviewConfirmed: true
+            notes: "edited", date: Date(), cleared: false
         )
 
         await #expect(throws: PendingImportApprover.ApproveError.reviewConfirmationRequired) {
@@ -480,7 +496,11 @@ struct PendingImportApproverTests {
         let form = BudgetStore.TransactionForm(
             accountId: "acct_checking", type: .expense, amount: "12.50",
             payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
-            notes: "edited", date: Date(), cleared: false, reviewConfirmed: true
+            notes: "edited", date: Date(), cleared: false,
+            reviewConfirmations: Set(item.reviewRequirements(
+                activeBudgetId: store.currentBudgetId,
+                budgetCurrency: store.currencyCode
+            ))
         )
 
         let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
@@ -547,7 +567,11 @@ struct PendingImportApproverTests {
         let form = BudgetStore.TransactionForm(
             accountId: "acct_checking", type: .expense, amount: "12.50",
             payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
-            notes: "edited", date: Date(), cleared: false, reviewConfirmed: true
+            notes: "edited", date: Date(), cleared: false,
+            reviewConfirmations: Set(item.reviewRequirements(
+                activeBudgetId: store.currentBudgetId,
+                budgetCurrency: store.currencyCode
+            ))
         )
 
         let result = try await PendingImportApprover(store: store).saveEdited(item, form: form)
@@ -564,7 +588,7 @@ struct PendingImportApproverTests {
         var form = BudgetStore.TransactionForm(
             accountId: "acct_checking", type: .expense, amount: "12.50",
             payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
-            notes: "edited", date: Date(), cleared: false, reviewConfirmed: true
+            notes: "edited", date: Date(), cleared: false
         )
 
         await #expect(throws: PendingImportApprover.ApproveError.reviewConfirmationRequired) {

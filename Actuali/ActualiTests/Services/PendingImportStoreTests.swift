@@ -92,7 +92,7 @@ struct PendingImportStoreTests {
         #expect(decoded.sourceCurrencyCode == nil)
     }
 
-    @Test @MainActor func visibleImportsKeepLegacyAndAnotherBudgetForReview() {
+    @Test @MainActor func visibleImportsKeepAllBudgetsVisibleForReview() {
         let (store, url) = makeStore()
         defer { try? FileManager.default.removeItem(at: url) }
 
@@ -103,7 +103,7 @@ struct PendingImportStoreTests {
         try! store.add(other)
         try! store.add(legacy)
 
-        let visible = store.visibleImports(for: "budget-a")
+        let visible = store.visibleImports()
         #expect(Set(visible.map(\.id)) == Set([current.id, other.id, legacy.id]))
     }
 

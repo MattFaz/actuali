@@ -27797,52 +27797,6 @@
         }
       }
     },
-    "Fallback server URL (optional)": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fallback server URL (optional)"
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "URL de serveur de secours (facultative)"
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "URL del servidor alternativo (opcional)"
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "URL do servidor alternativo (opcional)"
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fallback-Server-URL (optional)"
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "URL del server alternativo (facoltativo)"
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fallback-server-URL (optioneel)"
-          }
-        }
-      }
-    },
     "Used when the primary server cannot be reached": {
       "localizations": {
         "en": {
@@ -34834,92 +34788,25 @@
     "%lld reconciled transaction stayed locked. Unlock from the status dot to change it.": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld reconciled transaction stayed locked. Unlock from the status dot to change it."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld reconciled transaction stayed locked. Unlock from the status dot to change it." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld reconciled transactions stayed locked. Unlock from the status dot to change them." } } } }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transaction rapprochée est restée verrouillée. Déverrouillez-la depuis le point d’état pour la modifier."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld transaction rapprochée est restée verrouillée. Déverrouillez-la depuis le point d’état pour la modifier." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld transactions rapprochées sont restées verrouillées. Déverrouillez-les depuis le point d’état pour les modifier." } } } }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transacción conciliada permanece bloqueada. Desbloquéala desde el indicador de estado para cambiarla."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld transacción conciliada permanece bloqueada. Desbloquéala desde el indicador de estado para cambiarla." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld transacciones conciliadas permanecen bloqueadas. Desbloquéalas desde el indicador de estado para cambiarlas." } } } }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transação reconciliada permaneceu bloqueada. Desbloqueie-a pelo indicador de status para alterá-la."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld transação reconciliada permaneceu bloqueada. Desbloqueie-a pelo indicador de status para alterá-la." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld transações reconciliadas permaneceram bloqueadas. Desbloqueie-as pelo indicador de status para alterá-las." } } } }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld abgeglichene Transaktion blieb gesperrt. Entsperren Sie sie über den Statuspunkt, um sie zu ändern."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld abgeglichene Transaktion blieb gesperrt. Entsperren Sie sie über den Statuspunkt, um sie zu ändern." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld abgeglichene Transaktionen blieben gesperrt. Entsperren Sie sie über den Statuspunkt, um sie zu ändern." } } } }
         },
         "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transazione riconciliata è rimasta bloccata. Sblocca dall’indicatore di stato per modificarla."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld transazione riconciliata è rimasta bloccata. Sblocca dall’indicatore di stato per modificarla." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld transazioni riconciliate sono rimaste bloccate. Sbloccatele dall’indicatore di stato per modificarle." } } } }
         },
         "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld afgestemde transactie bleef vergrendeld. Ontgrendel deze via de statusstip om haar te wijzigen."
-          }
-        }
-      }
-    },
-    "%lld reconciled transactions stayed locked. Unlock from the status dot to change them.": {
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld reconciled transactions stayed locked. Unlock from the status dot to change them."
-          }
-        },
-        "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transactions rapprochées sont restées verrouillées. Déverrouillez-les depuis le point d’état pour les modifier."
-          }
-        },
-        "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transacciones conciliadas permanecen bloqueadas. Desbloquéalas desde el indicador de estado para cambiarlas."
-          }
-        },
-        "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transações reconciliadas permaneceram bloqueadas. Desbloqueie-as pelo indicador de status para alterá-las."
-          }
-        },
-        "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld abgeglichene Transaktionen blieben gesperrt. Entsperren Sie sie über den Statuspunkt, um sie zu ändern."
-          }
-        },
-        "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld transazioni riconciliate sono rimaste bloccate. Sbloccatele dall’indicatore di stato per modificarle."
-          }
-        },
-        "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld afgestemde transacties bleven vergrendeld. Ontgrendel ze via de statusstip om ze te wijzigen."
-          }
+          "variations": { "plural": { "one": { "stringUnit": { "state": "translated", "value": "%lld afgestemde transactie bleef vergrendeld. Ontgrendel deze via de statusstip om haar te wijzigen." } }, "other": { "stringUnit": { "state": "translated", "value": "%lld afgestemde transacties bleven vergrendeld. Ontgrendel ze via de statusstip om ze te wijzigen." } } } }
         }
       }
     },

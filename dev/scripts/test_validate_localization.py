@@ -355,6 +355,53 @@ class SourceExtractionTests(unittest.TestCase):
             )
         )
 
+    def test_placeholders_consume_escaped_percent_pairs(self):
+        self.assertEqual(VALIDATOR.placeholders("%%%lld items"), ["%lld"])
+        self.assertTrue(VALIDATOR._is_plural_count_key("%%%lld items"))
+        self.assertEqual(VALIDATOR.placeholders("%%%%@"), [])
+        self.assertFalse(VALIDATOR._is_plural_count_key("%%%%@"))
+        self.assertEqual(VALIDATOR.placeholders("%1$lld %2$@"), ["%lld", "%@"])
+        self.assertEqual(VALIDATOR.placeholders("%lld%%"), ["%lld"])
+        self.assertEqual(VALIDATOR.placeholders("%%lld"), [])
+
+    def test_printf_scanner_accepts_foundation_forms_and_consumes_percent_pairs(self):
+        cases = {
+            "%@": ["%@"],
+            "%lld": ["%lld"],
+            "%1$@ %2$lld": ["%@", "%lld"],
+            "%lld%%": ["%lld"],
+            "%%%lld": ["%lld"],
+            "%%lld": [],
+            "%lldd": ["%lld"],
+            "%ld %f %d %s %p": ["%ld", "%f", "%d", "%s", "%p"],
+        }
+        for value, expected in cases.items():
+            with self.subTest(value=value):
+                self.assertEqual(VALIDATOR.placeholders(value), expected)
+
+    def test_printf_scanner_reports_malformed_format_intent_but_not_prose(self):
+        for value in ("%q", "%1$q", "%1$", "%ll", "%*"):
+            with self.subTest(value=value):
+                self.assertTrue(VALIDATOR._scan_printf(value)[1])
+        for value in ("100%", "100%.", "0% and 100%", "% ", "%,", "% of income"):
+            with self.subTest(value=value):
+                self.assertEqual(VALIDATOR._scan_printf(value)[1], [])
+
+    def test_catalog_rejects_matching_malformed_format_in_every_value(self):
+        value = "Broken %q"
+        catalog = {
+            value: {
+                "localizations": {
+                    locale: {"stringUnit": {"value": value}}
+                    for locale in VALIDATOR.REQUIRED_LOCALES
+                }
+            }
+        }
+        errors = VALIDATOR.validate_catalog_entries(catalog)
+        self.assertTrue(any("source" in error and "%q" in error for error in errors))
+        self.assertTrue(any("English value" in error and "%q" in error for error in errors))
+        self.assertTrue(any("locale fr value" in error and "%q" in error for error in errors))
+
     def test_english_variation_paths_must_match_localized_paths(self):
         self.assertNotEqual(
             set(VALIDATOR.localized_values({"variations": {"plural": {"one": {"stringUnit": {"value": "one"}}}}})),
@@ -570,16 +617,59 @@ class SourceExtractionTests(unittest.TestCase):
 
     def test_count_bearing_interpolation_requires_plural_variations(self):
         source = r'''
-        Text("Found \(count) items")
-        Text("HTTP error \(code)")
-        Text("Due in \(day)d")
+        Text("Found \(locked) items")
+        Text("Total: \(totalItems) items")
+        Text("Active in \(scopes) scopes")
+        Text("String interpolation \(name)")
+        Text("HTTP error %lld")
+        Text("Status code %lld")
+        Text("Ordinal %lldth")
+        Text("Day of month %lld")
+        Text("Compact %lldd")
+        Text("Progress %lld%%")
+        Text("%lld pending")
+        Text("%lld overspent")
+        Text("%lld uncategorized")
+        Text("%lld without a budget")
+        Text("%lld not funded")
+        Text("%lld nearing the limit")
         '''
-        self.assertEqual(VALIDATOR.extract_plural_count_keys(source), {r"Found \(count) items"})
-        flat = {"Found %lld items": {"localizations": {locale: {"stringUnit": {"value": "Found %lld items"}} for locale in VALIDATOR.REQUIRED_LOCALES}}}
-        errors = VALIDATOR.validate_plural_count_variations({r"Found \(count) items"}, flat)
+        flat = {
+            "Found %lld items": {"localizations": {locale: {"stringUnit": {"value": "Found %lld items"}} for locale in VALIDATOR.REQUIRED_LOCALES}},
+            "Active in %lld scopes": {"localizations": {locale: {"stringUnit": {"value": "Active in %lld scopes"}} for locale in VALIDATOR.REQUIRED_LOCALES}},
+            "String interpolation %@": {"localizations": {locale: {"stringUnit": {"value": "String interpolation %@"}} for locale in VALIDATOR.REQUIRED_LOCALES}},
+        }
+        errors = VALIDATOR.validate_plural_count_variations(
+            VALIDATOR.extract_source_keys(source), flat
+        )
         self.assertTrue(any("requires plural variation in fr" in error for error in errors))
-        plural = {"Found %lld items": {"localizations": {locale: {"variations": {"plural": {"one": {}, "other": {}}}} for locale in VALIDATOR.REQUIRED_LOCALES}}}
-        self.assertEqual(VALIDATOR.validate_plural_count_variations({r"Found \(count) items"}, plural), [])
+        self.assertTrue(any("Active in %lld scopes" in error for error in errors))
+        self.assertFalse(any("String interpolation %@" in error for error in errors))
+
+        plural = {
+            key: {"localizations": {locale: {"variations": {"plural": {"one": {}, "other": {}}}} for locale in VALIDATOR.REQUIRED_LOCALES}}
+            for key in ("Found %lld items", "Active in %lld scopes")
+        }
+        self.assertEqual(
+            VALIDATOR.validate_plural_count_variations(
+                VALIDATOR.extract_source_keys(source), plural | {"String interpolation %@": flat["String interpolation %@"]}
+            ),
+            [],
+        )
+
+    def test_plural_count_classification_uses_integer_placeholders_and_exceptions(self):
+        true_keys = ["%lld items", "%lld times", "Every %lld days", "%lld months", "%lld years"]
+        false_keys = [
+            "HTTP %lld", "Status code %lld", "%lldth item", "Day-of-month %lld", "%lldd", "%lld%%",
+            "%lld pending", "%lld overspent", "%lld uncategorized", "%lld without a budget",
+            "%lld not funded", "%lld nearing the limit", "%lld over budget", "String %@",
+            "%%lld",
+        ]
+        for key in true_keys:
+            self.assertTrue(VALIDATOR._is_plural_count_key(key), key)
+        for key in false_keys:
+            self.assertFalse(VALIDATOR._is_plural_count_key(key), key)
+        self.assertTrue(VALIDATOR._is_plural_count_key("%1$lld items"))
 
     def test_main_catalog_reports_placeholder_mismatch_in_variation_locale(self):
         catalog = {

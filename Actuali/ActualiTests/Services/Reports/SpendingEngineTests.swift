@@ -192,6 +192,20 @@ struct SpendingEngineTests {
         #expect(result.comparisonCents == 7777)
     }
 
+    @Test func singleMonthRejectsNonCanonicalCompareDates() {
+        let transactions = [
+            tx(date: 20260101, amount: -1111),
+            tx(date: 20260401, amount: -8888),
+            tx(date: 20260501, amount: -100)
+        ]
+        let result = SpendingEngine.compute(
+            meta: meta(compare: "2026", isLive: false, mode: .singleMonth),
+            transactions: transactions, today: asOf
+        )
+        #expect(result.currentSpentCents == 100)
+        #expect(result.comparisonCents == 8888)
+    }
+
     @Test func budgetModeReturnsZeroComparison() {
         let result = SpendingEngine.compute(meta: meta(mode: .budget), transactions: [], today: asOf)
         #expect(result.comparisonCents == 0)

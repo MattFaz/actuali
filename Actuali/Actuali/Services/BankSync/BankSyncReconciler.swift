@@ -2,7 +2,7 @@ import Foundation
 
 /// One downloaded transaction, normalized into the budget's own units and
 /// ready to be matched against what's already in the account.
-struct BankSyncCandidate: Sendable, Equatable {
+struct BankSyncCandidate: Sendable, Hashable, Equatable {
     /// The provider's transaction id — stored as `financial_id` and the
     /// highest-fidelity way to recognise a transaction we already imported.
     var importedId: String
@@ -36,6 +36,7 @@ struct BankSyncExistingTransaction: Sendable, Equatable {
 
 /// The columns a matched transaction takes from the downloaded one.
 struct BankSyncUpdate: Sendable, Equatable {
+    var expected: BankSyncExistingTransaction
     var existingId: String
     var importedId: String
     var payeeId: String?
@@ -106,7 +107,6 @@ enum BankSyncReconciler {
             let deletedMatch = reimportDeleted ? nil : sortedExisting.first(where: {
                 $0.importedId == candidate.importedId
                     && $0.tombstone
-                    && !matchedIds.contains($0.id)
             })
             if let match = liveMatch ?? deletedMatch {
                 matchedIds.insert(match.id)
@@ -193,15 +193,17 @@ enum BankSyncReconciler {
         rejectedConflicts: inout Int
     ) -> [BankSyncCandidate] {
         let grouped = Dictionary(grouping: candidates, by: \.importedId)
-        return grouped.keys.sorted().compactMap { importedId in
+        var normalized: [BankSyncCandidate] = []
+        for importedId in grouped.keys.sorted() {
             let variants = grouped[importedId, default: []]
             guard let first = variants.first,
                   variants.dropFirst().allSatisfy({ $0 == first }) else {
                 rejectedConflicts += 1
-                return nil
+                continue
             }
-            return first
+            normalized.append(contentsOf: variants)
         }
+        return normalized
     }
 
     /// What a matched transaction ends up with. Anything the person already
@@ -212,6 +214,7 @@ enum BankSyncReconciler {
         matching existing: BankSyncExistingTransaction
     ) -> BankSyncUpdate {
         BankSyncUpdate(
+            expected: existing,
             existingId: existing.id,
             importedId: candidate.importedId,
             payeeId: existing.payeeId ?? candidate.payeeId,

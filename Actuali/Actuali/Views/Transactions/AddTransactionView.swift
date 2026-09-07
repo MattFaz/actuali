@@ -53,15 +53,12 @@ struct AddTransactionView: View {
         cleared: Bool = false,
         saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil,
         onSaved: ((String?) throws -> Void)? = nil,
-        reviewRequirement: PendingImportReviewRequirement? = nil,
         reviewRequirements: [PendingImportReviewRequirement] = []
     ) {
         self.editing = nil
         self.onSaved = onSaved
         self.saveOverride = saveOverride
-        self.reviewRequirements = reviewRequirements.isEmpty
-            ? reviewRequirement.map { [$0] } ?? []
-            : reviewRequirements
+        self.reviewRequirements = reviewRequirements
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -462,21 +459,23 @@ struct AddTransactionView: View {
                     }
                 }
 
-                Section {
-                    ForEach(reviewRequirements, id: \.self) { requirement in
-                        Toggle(
-                            requirement.prompt,
-                            isOn: Binding(
-                                get: { confirmedReviewRequirements.contains(requirement) },
-                                set: { isConfirmed in
-                                    if isConfirmed {
-                                        confirmedReviewRequirements.insert(requirement)
-                                    } else {
-                                        confirmedReviewRequirements.remove(requirement)
+                if !reviewRequirements.isEmpty {
+                    Section {
+                        ForEach(reviewRequirements, id: \.self) { requirement in
+                            Toggle(
+                                requirement.prompt,
+                                isOn: Binding(
+                                    get: { confirmedReviewRequirements.contains(requirement) },
+                                    set: { isConfirmed in
+                                        if isConfirmed {
+                                            confirmedReviewRequirements.insert(requirement)
+                                        } else {
+                                            confirmedReviewRequirements.remove(requirement)
+                                        }
                                     }
-                                }
+                                )
                             )
-                        )
+                        }
                     }
                 }
 
@@ -714,20 +713,6 @@ struct AddTransactionView: View {
         return false
     }
 
-    nonisolated static func allowsReviewSave(
-        requirement: PendingImportReviewRequirement?,
-        confirmed: Bool
-    ) -> Bool {
-        requirement == nil || confirmed
-    }
-
-    nonisolated static func allowsReviewSave(
-        requirements: [PendingImportReviewRequirement],
-        confirmed: Set<PendingImportReviewRequirement>
-    ) -> Bool {
-        confirmed.isSuperset(of: requirements)
-    }
-
     private func saveTransaction() async {
         isLoading = true
         errorMessage = nil
@@ -746,7 +731,6 @@ struct AddTransactionView: View {
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation,
-            reviewConfirmed: confirmedReviewRequirements.count == 1,
             reviewConfirmations: confirmedReviewRequirements
         )
 

@@ -10,18 +10,25 @@ struct PendingImportsView: View {
         case failure
     }
 
+    enum BulkApprovalOutcome: Equatable {
+        case none
+        case review(deferredFailureCount: Int)
+        case failure(count: Int)
+    }
+
     @EnvironmentObject private var budgetStore: BudgetStore
     @ObservedObject private var store = PendingImportStore.shared
     @Environment(\.dismiss) private var dismiss
 
     @State private var editingItem: PendingImport?
     @State private var errorMessage: String?
+    @State private var deferredFailureCount: Int?
     @State private var isProcessing = false
 
     var body: some View {
         NavigationStack {
             Group {
-                let visibleImports = store.visibleImports(for: budgetStore.currentBudgetId)
+                let visibleImports = store.visibleImports()
                 if visibleImports.isEmpty {
                     ContentUnavailableView(
                         "No Pending Imports",
@@ -90,7 +97,7 @@ struct PendingImportsView: View {
                     Text(errorMessage)
                 }
             }
-            .sheet(item: $editingItem) { item in
+            .sheet(item: $editingItem, onDismiss: presentDeferredFailure) { item in
                 NavigationStack {
                     editView(for: item)
                 }
@@ -104,32 +111,66 @@ struct PendingImportsView: View {
         // Ignore a per-row swipe while Approve All is running: both paths log
         // and remove by id, so overlapping them could log the same item twice.
         guard !isProcessing else { return }
+        isProcessing = true
         let approver = PendingImportApprover(store: budgetStore)
         Task {
             do {
                 _ = try await approver.approve(item)
                 await MainActor.run {
-                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
+                    defer { isProcessing = false }
+                    do { try store.remove(id: item.id) } catch {
+                        editingItem = nil
+                        deferredFailureCount = nil
+                        errorMessage = error.localizedDescription
+                    }
                 }
             } catch PendingImportApprover.ApproveError.noAccountAvailable {
                 // Can't confidently pick an account (no card match, no default).
                 // Send the user to the review form to choose one rather than
                 // dead-ending on an error — same destination as tapping the row.
-                await MainActor.run { editingItem = item }
+                await MainActor.run {
+                    isProcessing = false
+                    errorMessage = nil
+                    editingItem = item
+                }
             } catch PendingImportApprover.ApproveError.budgetIdentityRequired {
-                await MainActor.run { editingItem = item }
+                await MainActor.run {
+                    isProcessing = false
+                    errorMessage = nil
+                    editingItem = item
+                }
             } catch PendingImportApprover.ApproveError.budgetMismatch {
-                await MainActor.run { editingItem = item }
+                await MainActor.run {
+                    isProcessing = false
+                    errorMessage = nil
+                    editingItem = item
+                }
             } catch PendingImportApprover.ApproveError.sourceCurrencyRequired {
-                await MainActor.run { editingItem = item }
+                await MainActor.run {
+                    isProcessing = false
+                    errorMessage = nil
+                    editingItem = item
+                }
             } catch PendingImportApprover.ApproveError.sourceCurrencyMismatch {
-                await MainActor.run { editingItem = item }
+                await MainActor.run {
+                    isProcessing = false
+                    errorMessage = nil
+                    editingItem = item
+                }
             } catch PendingImportApprover.ApproveError.alreadyApproved {
                 await MainActor.run {
-                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
+                    defer { isProcessing = false }
+                    do { try store.remove(id: item.id) } catch {
+                        editingItem = nil
+                        deferredFailureCount = nil
+                        errorMessage = error.localizedDescription
+                    }
                 }
             } catch {
                 await MainActor.run {
+                    isProcessing = false
+                    editingItem = nil
+                    deferredFailureCount = nil
                     errorMessage = error.localizedDescription
                 }
             }
@@ -138,20 +179,19 @@ struct PendingImportsView: View {
 
     private func approveAll() {
         let approver = PendingImportApprover(store: budgetStore)
-        let items = store.visibleImports(for: budgetStore.currentBudgetId)
+        let items = store.visibleImports()
+        deferredFailureCount = nil
+        errorMessage = nil
         isProcessing = true
 
         Task {
             var failedCount = 0
-            var reviewCount = 0
             var reviewItem: PendingImport?
             for item in items {
                 do {
                     _ = try await approver.approve(item)
-                    await MainActor.run {
-                        do { try store.remove(id: item.id) }
-                        catch { errorMessage = error.localizedDescription }
-                    }
+                    do { try await MainActor.run { try store.remove(id: item.id) } }
+                    catch { failedCount += 1 }
                 } catch {
                     switch Self.bulkApprovalDisposition(for: error) {
                     case .removePendingImport:
@@ -161,7 +201,6 @@ struct PendingImportsView: View {
                             failedCount += 1
                         }
                     case .review:
-                        reviewCount += 1
                         reviewItem = reviewItem ?? item
                     case .failure:
                         failedCount += 1
@@ -170,16 +209,27 @@ struct PendingImportsView: View {
             }
             await MainActor.run {
                 isProcessing = false
-                if let reviewItem {
+                switch Self.bulkApprovalOutcome(reviewItem: reviewItem, failedCount: failedCount) {
+                case .none:
+                    break
+                case .review(let deferredFailureCount):
+                    errorMessage = nil
+                    self.deferredFailureCount = deferredFailureCount > 0 ? deferredFailureCount : nil
                     editingItem = reviewItem
-                }
-                if reviewCount > 0 {
-                    errorMessage = Self.reviewRequiredMessage(count: reviewCount)
-                } else if failedCount > 0 {
-                    errorMessage = Self.approvalFailureMessage(count: failedCount)
+                case .failure(let count):
+                    editingItem = nil
+                    deferredFailureCount = nil
+                    errorMessage = Self.approvalFailureMessage(count: count)
                 }
             }
         }
+    }
+
+    private func presentDeferredFailure() {
+        guard let count = deferredFailureCount else { return }
+        deferredFailureCount = nil
+        editingItem = nil
+        errorMessage = Self.approvalFailureMessage(count: count)
     }
 
     nonisolated static func bulkApprovalDisposition(
@@ -200,17 +250,14 @@ struct PendingImportsView: View {
         }
     }
 
-    nonisolated static func reviewRequiredMessage(
-        count: Int,
-        locale: Locale = .autoupdatingCurrent,
-        bundle: Bundle = .main
-    ) -> String {
-        let resource = LocalizedStringResource(
-            "\(count) transactions require review and were left pending.",
-            locale: locale,
-            bundle: bundle
-        )
-        return String(localized: resource)
+    nonisolated static func bulkApprovalOutcome(
+        reviewItem: PendingImport?,
+        failedCount: Int
+    ) -> BulkApprovalOutcome {
+        if reviewItem != nil {
+            return .review(deferredFailureCount: failedCount)
+        }
+        return failedCount > 0 ? .failure(count: failedCount) : .none
     }
 
     nonisolated static func approvalFailureMessage(
@@ -289,7 +336,7 @@ struct PendingImportsView: View {
     }
 
     private func resolveAccountId(for item: PendingImport) -> String? {
-        PendingImportApprover.resolveAccountId(
+        PendingImportApprover.seedAccountId(
             cardHint: item.cardHint,
             accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings,
@@ -297,25 +344,6 @@ struct PendingImportsView: View {
         )
     }
 
-    /// Seed account for the edit form: strict hint resolution, then the default
-    /// account, then any open account. The form has an account picker, so the
-    /// fallbacks are a starting point the user can change — nothing is written
-    /// silently, and nil only when there is truly no open account. This chain
-    /// must be at least as permissive as `PendingImportApprover.approve`, whose
-    /// `noAccountAvailable` recovery path sends the user here to pick one.
-    nonisolated static func seedAccountId(
-        cardHint: String?,
-        accounts: [Account],
-        cardMappings: [String: String],
-        defaultAccountId: String?
-    ) -> String? {
-        PendingImportApprover.resolveAccountId(
-            cardHint: cardHint,
-            accounts: accounts,
-            cardMappings: cardMappings,
-            defaultAccountId: defaultAccountId
-        )
-    }
 }
 
 // MARK: - Row

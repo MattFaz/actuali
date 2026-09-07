@@ -3369,30 +3369,21 @@ final class BudgetStore: ObservableObject {
             reimportDeleted: reimportDeleted
         )
 
-        // The opening balance counts as an import too (upstream folds its id
-        // into `added`). Only subtract rows this sync will actually insert.
-        if existingOldestDay == nil {
-            added += try await insertStartingBalance(
-                for: target,
-                currentBalanceCents: download.currentBalanceCents,
-                imported: plan.inserts,
-                startingDay: earliest
-            ) ? 1 : 0
-        }
-
-        try await syncClient.applyBankSyncUpdates(plan.updates)
+        let updated = try await syncClient.applyBankSyncUpdates(
+            plan.updates,
+            expectedAccountId: target.id
+        )
 
         // Oldest first: sort_order is stamped at insert, so inserting in date
         // order leaves the newest transaction at the top of the account.
         var inserted: [Transaction] = []
         for candidate in plan.inserts.sorted(by: { $0.date < $1.date }) {
-            let payeeId = try await resolvePayeeId(name: candidate.payeeName, editing: nil)
             let transaction = Transaction(
                 id: UUID().uuidString,
                 accountId: target.id,
                 date: candidate.date,
                 amount: candidate.amount,
-                payeeId: payeeId,
+                payeeId: candidate.payeeId,
                 payeeName: candidate.payeeName,
                 categoryId: nil,
                 categoryName: nil,
@@ -3407,7 +3398,14 @@ final class BudgetStore: ObservableObject {
                 importedPayee: candidate.payeeName,
                 financialId: candidate.importedId
             )
-            switch try await syncClient.createTransaction(transaction, prepared: prepared) {
+            let maxOccurrences = target.source == .financeKit
+                ? 1
+                : candidates.count { $0 == candidate }
+            switch try await syncClient.createBankSyncTransaction(
+                transaction,
+                maxLiveFinancialIdOccurrences: maxOccurrences,
+                prepared: prepared
+            ) {
             case .inserted(let persistedId):
                 added += 1
                 if let persisted = try await database.fetchTransaction(id: persistedId) {
@@ -3418,6 +3416,20 @@ final class BudgetStore: ObservableObject {
             }
         }
 
+        let targetInserted = inserted.filter { $0.accountId == target.id }
+
+        // The opening balance counts as an import too (upstream folds its id
+        // into `added`). Use only rows that survived rules, deduplication, and
+        // persistence so their final dates and amounts drive the math.
+        if existingOldestDay == nil {
+            added += try await insertStartingBalance(
+                for: target,
+                currentBalanceCents: download.currentBalanceCents,
+                imported: targetInserted,
+                startingDay: earliest
+            ) ? 1 : 0
+        }
+
         // Anything older than the history this account already had was folded
         // into its opening balance when that was worked out. Importing those
         // rows now would count them twice, so the opening gives back exactly
@@ -3425,11 +3437,11 @@ final class BudgetStore: ObservableObject {
         if let existingOldestDay {
             try await absorbIntoStartingBalance(
                 for: target,
-                backfilled: inserted.filter { $0.date < existingOldestDay }
+                backfilled: targetInserted.filter { $0.date < existingOldestDay }
             )
         }
 
-        return (added, plan.updates.count, inserted, plan.rejectedConflicts)
+        return (added, updated, inserted, plan.rejectedConflicts)
     }
 
     /// Keep a backfill balance-neutral. Without this the account drifts from
@@ -3464,7 +3476,7 @@ final class BudgetStore: ObservableObject {
     private func insertStartingBalance(
         for target: BankSyncAccount,
         currentBalanceCents: Int?,
-        imported: [BankSyncCandidate],
+        imported: [Transaction],
         startingDay: Int
     ) async throws -> Bool {
         guard let syncClient, let balance = currentBalanceCents else { return false }
@@ -3923,7 +3935,7 @@ final class BudgetStore: ObservableObject {
         // selection stayed put.
         let locked = transactions.filter { $0.reconciled && $0.cleared != cleared }.count
         if locked > 0 {
-            self.error = String(localized: "\(locked) reconciled transactions stayed locked. Unlock from the status dot to change them.")
+            self.error = Self.lockedReconciledMessage(count: locked)
         }
         guard !updated.isEmpty else { return }
         do {
@@ -3932,6 +3944,18 @@ final class BudgetStore: ObservableObject {
             self.error = String(format: String(localized: "Failed to update cleared status: %@"), error.localizedDescription)
         }
         await refreshDataOnly()
+    }
+
+    nonisolated static func lockedReconciledMessage(
+        count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.localized(
+            "\(count) reconciled transaction stayed locked. Unlock from the status dot to change it.",
+            locale: locale,
+            bundle: bundle
+        )
     }
 
     // MARK: - Reconciliation
@@ -4074,7 +4098,6 @@ final class BudgetStore: ObservableObject {
         /// Per-save opt-out for payee location recording (GH #24). Defaults
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
-        var reviewConfirmed: Bool = false
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
     }
 

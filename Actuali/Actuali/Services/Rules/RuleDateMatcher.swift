@@ -11,22 +11,25 @@ import Foundation
 enum RuleDateMatcher {
 
     static func matches(transactionDate: Int, op: String, value: String) -> Bool? {
-        let digits = value.replacingOccurrences(of: "-", with: "")
-        guard let target = Int(digits) else { return nil }
+        guard let targetDate = CanonicalDateParser.parse(value) else { return nil }
+        let precision = value.count
+        let components = calendar.dateComponents([.year, .month, .day], from: targetDate)
+        guard let year = components.year else { return nil }
+        let target = year * 10_000 + (components.month ?? 1) * 100 + (components.day ?? 1)
 
-        switch (op, digits.count) {
-        case ("is", 8): return transactionDate == target
-        case ("is", 6): return transactionDate / 100 == target        // YYYY-MM
-        case ("is", 4): return transactionDate / 10000 == target      // YYYY
-        case ("isapprox", 8):
+        switch (op, precision) {
+        case ("is", 10): return transactionDate == target
+        case ("is", 7): return transactionDate / 100 == target / 100        // YYYY-MM
+        case ("is", 4): return transactionDate / 10000 == target / 10000      // YYYY
+        case ("isapprox", 10):
             // Upstream widens an exact date by ±2 days.
             guard let targetDate = date(from: target),
                   let txDate = date(from: transactionDate) else { return nil }
             return abs(txDate.timeIntervalSince(targetDate)) <= 2 * 86_400 + 1
-        case ("gt", 8): return transactionDate > target
-        case ("gte", 8): return transactionDate >= target
-        case ("lt", 8): return transactionDate < target
-        case ("lte", 8): return transactionDate <= target
+        case ("gt", 10): return transactionDate > target
+        case ("gte", 10): return transactionDate >= target
+        case ("lt", 10): return transactionDate < target
+        case ("lte", 10): return transactionDate <= target
         default:
             // Comparison ops require an exact date upstream; month/year values
             // fail `Condition`'s parse assertions and the rule never loads.
@@ -49,6 +52,11 @@ enum RuleDateMatcher {
         components.year = yyyymmdd / 10000
         components.month = (yyyymmdd % 10000) / 100
         components.day = yyyymmdd % 100
-        return calendar.date(from: components)
+        guard let date = calendar.date(from: components) else { return nil }
+        let parsed = calendar.dateComponents([.year, .month, .day], from: date)
+        guard parsed.year == components.year,
+              parsed.month == components.month,
+              parsed.day == components.day else { return nil }
+        return date
     }
 }

@@ -201,8 +201,68 @@ struct BankSyncReconcilerTests {
         )
 
         #expect(forward == reversed)
-        #expect(forward.inserts == [first])
+        #expect(forward.inserts == [first, same])
         #expect(forward.rejectedConflicts == 0)
+    }
+
+    @Test func oneExactExistingRowLeavesTheOtherIdenticalCandidateAsAnInsert() {
+        let first = candidate(importedId: "sf-duplicate")
+        let second = candidate(importedId: "sf-duplicate")
+        let plan = BankSyncReconciler.plan(
+            candidates: [first, second],
+            existing: [existing(id: "tx-existing", importedId: "sf-duplicate", cleared: true)]
+        )
+        #expect(plan.updates.count == 1)
+        #expect(plan.updates[0].existingId == "tx-existing")
+        #expect(plan.unchanged == 0)
+        #expect(plan.inserts == [second])
+    }
+
+    @Test func oneTombstoneDeduplicatesEveryRepeatedCandidateWhenReimportIsDisabled() {
+        let candidates = [
+            candidate(importedId: "sf-duplicate"),
+            candidate(importedId: "sf-duplicate")
+        ]
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: [existing(id: "tx-deleted", importedId: "sf-duplicate", tombstone: true)],
+            reimportDeleted: false
+        )
+
+        #expect(plan.inserts.isEmpty)
+        #expect(plan.updates.isEmpty)
+        #expect(plan.unchanged == candidates.count)
+    }
+
+    @Test func oneTombstoneDoesNotBlockRepeatedCandidatesWhenReimportIsEnabled() {
+        let candidates = [
+            candidate(importedId: "sf-duplicate"),
+            candidate(importedId: "sf-duplicate")
+        ]
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: [existing(id: "tx-deleted", importedId: "sf-duplicate", tombstone: true)],
+            reimportDeleted: true
+        )
+
+        #expect(plan.inserts == candidates)
+        #expect(plan.unchanged == 0)
+    }
+
+    @Test func twoExactExistingRowsAreClaimedSeparately() {
+        let plan = BankSyncReconciler.plan(
+            candidates: [
+                candidate(importedId: "sf-duplicate"),
+                candidate(importedId: "sf-duplicate")
+            ],
+            existing: [
+                existing(id: "tx-b", importedId: "sf-duplicate", cleared: true),
+                existing(id: "tx-a", importedId: "sf-duplicate", cleared: true)
+            ]
+        )
+
+        #expect(plan.inserts.isEmpty)
+        #expect(plan.updates.map(\.existingId) == ["tx-a", "tx-b"])
     }
 
     @Test func conflictingProviderIdsAreRejectedRatherThanChosenByOrder() {

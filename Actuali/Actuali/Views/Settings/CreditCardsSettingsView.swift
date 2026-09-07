@@ -3,6 +3,7 @@ import SwiftUI
 /// View for managing credit card accounts and their monthly billing cycles.
 struct CreditCardsSettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
@@ -146,7 +147,7 @@ struct CreditCardsSettingsView: View {
 
                     Picker(String(localized: "Statement Closing Day"), selection: $selectedStatementDay) {
                         ForEach(1...31, id: \.self) { day in
-                            Text(dayOrdinal(day)).tag(day)
+                            Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                         }
                     }
 
@@ -228,15 +229,6 @@ struct CreditCardsSettingsView: View {
         return String(format: "%.2f", Double(cents) / 100.0)
     }
 
-    private static let ordinalFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .ordinal
-        return formatter
-    }()
-
-    private func dayOrdinal(_ n: Int) -> String {
-        Self.ordinalFormatter.string(from: NSNumber(value: n)) ?? "\(n)th"
-    }
 }
 
 /// Compact card row: name + balance on top, spend + due pill on bottom.
