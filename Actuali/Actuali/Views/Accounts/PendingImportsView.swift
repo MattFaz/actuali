@@ -29,6 +29,14 @@ struct PendingImportsView: View {
         NavigationStack {
             Group {
                 let visibleImports = store.visibleImports()
+                let directlyApprovableImports = Self.directlyApprovableImports(
+                    from: visibleImports,
+                    activeBudgetId: budgetStore.currentBudgetId,
+                    budgetCurrency: budgetStore.currencyCode,
+                    accounts: budgetStore.accounts,
+                    cardMappings: budgetStore.cardAccountMappings,
+                    defaultAccountId: budgetStore.defaultAccountId
+                )
                 if visibleImports.isEmpty {
                     ContentUnavailableView(
                         "No Pending Imports",
@@ -61,10 +69,10 @@ struct PendingImportsView: View {
                             }
                         }
 
-                        if visibleImports.count > 1 {
+                        if Self.showsBulkApproval(for: directlyApprovableImports) {
                             Section {
                                 Button {
-                                    approveAll()
+                                    approveAll(directlyApprovableImports)
                                 } label: {
                                     if isProcessing {
                                         ProgressView()
@@ -177,9 +185,8 @@ struct PendingImportsView: View {
         }
     }
 
-    private func approveAll() {
+    private func approveAll(_ items: [PendingImport]) {
         let approver = PendingImportApprover(store: budgetStore)
-        let items = store.visibleImports()
         deferredFailureCount = nil
         errorMessage = nil
         isProcessing = true
@@ -230,6 +237,37 @@ struct PendingImportsView: View {
         deferredFailureCount = nil
         editingItem = nil
         errorMessage = Self.approvalFailureMessage(count: count)
+    }
+
+    nonisolated static func directlyApprovableImports(
+        from imports: [PendingImport],
+        activeBudgetId: String?,
+        budgetCurrency: String,
+        accounts: [Account],
+        cardMappings: [String: String],
+        defaultAccountId: String?
+    ) -> [PendingImport] {
+        imports.filter { item in
+            guard let amount = item.amount,
+                  amount > 0,
+                  amount.isFinite,
+                  item.reviewRequirements(
+                      activeBudgetId: activeBudgetId,
+                      budgetCurrency: budgetCurrency
+                  ).isEmpty else {
+                return false
+            }
+            return PendingImportApprover.resolveAccountId(
+                cardHint: item.cardHint,
+                accounts: accounts,
+                cardMappings: cardMappings,
+                defaultAccountId: defaultAccountId
+            ) != nil
+        }
+    }
+
+    nonisolated static func showsBulkApproval(for imports: [PendingImport]) -> Bool {
+        imports.count > 1
     }
 
     nonisolated static func bulkApprovalDisposition(

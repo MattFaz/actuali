@@ -1132,12 +1132,36 @@ struct BudgetStoreBankSyncTests {
     @Test func syncingWithoutAnAccessKeyIsRefused() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ?, bank_sync_status = 'ok' WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
         let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
 
         store.setSimpleFINAccessKeyForTesting(nil)
         await #expect(throws: BudgetStoreError.bankSyncNotConfigured) {
             _ = try await store.syncBankAccounts()
         }
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT last_sync, bank_sync_status FROM accounts WHERE id = ?",
+            arguments: [accountId]
+        ))
+        #expect(account["last_sync"] == "1600000000000")
+        #expect(account["bank_sync_status"] == "failed")
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'bank_sync_status'",
+            arguments: [accountId]
+        )?["count"] as Int? == 1)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'last_sync'",
+            arguments: [accountId]
+        )?["count"] as Int? == 0)
     }
 
     @Test func anAccountTheBridgeDoesntReturnIsReportedNotSilentlySkipped() async throws {
@@ -1383,6 +1407,51 @@ struct BudgetStoreBankSyncTests {
         #expect(imported.count == 1)
         #expect(imported[0]["amount"] == -3345)
         #expect(imported[0]["cleared"] == 1)
+    }
+
+    @Test func partialServerFailureImportsDataWithoutReplacingLastSuccessfulSync() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ? WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
+        let store = try await makeServerStore(database: database, bodies: [
+            "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
+            "/simplefin/transactions": """
+            {"status":"ok","data":{
+              "\(Self.externalAccountId)":{
+                "startingBalance": 10000,
+                "transactions": {"all": [
+                  {"transactionId": "sf-partial", "date": "\(Self.isoDaysAgo(5))",
+                   "payeeName": "Blue Bottle", "booked": true,
+                   "transactionAmount": {"amount": "-33.45", "currency": "USD"}}
+                ]}},
+              "errors":{"\(Self.externalAccountId)":[
+                {"error_type":"TIMED_OUT","error_code":"TIMED_OUT",
+                 "reason":"Some data may be delayed."}
+              ]}}}
+            """
+        ])
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.accountsSynced == 1)
+        #expect(result.problems == ["Checking: Some data may be delayed."])
+        #expect(try rows(path: url, where: "financial_id = 'sf-partial'").count == 1)
+        let account = try #require(
+            try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
+        #expect(account["bank_sync_status"] == "timed-out")
+        #expect(account["last_sync"] == "1600000000000")
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'last_sync'",
+            arguments: [Self.accountId]
+        )?["count"] as Int? == 0)
     }
 
     /// A server without its own connection, and no key here either, is the one

@@ -3685,14 +3685,19 @@ final class BudgetDatabase: Sendable {
     /// this device ran.
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)],
-        messages: [CRDTMessage]
+        _ entries: [(
+            accountId: String,
+            lastSync: String?,
+            status: String,
+            expectedLink: ExpectedBankSyncLink,
+            messages: [CRDTMessage]
+        )]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
-            for entry in statuses {
-                try Self.requireBankSyncLink(db, entry.expectedLink)
-            }
-            for entry in statuses {
+            var appliedMessages: [CRDTMessage] = []
+            for entry in entries {
+                guard entry.accountId == entry.expectedLink.accountId,
+                      try Self.bankSyncLinkMatches(db, entry.expectedLink) else { continue }
                 // A failed sync leaves last_sync alone rather than nulling it:
                 // "we last had good data at X" stays true, and upstream does
                 // the same (it only writes bank_sync_status on failure).
@@ -3701,13 +3706,15 @@ final class BudgetDatabase: Sendable {
                         sql: "UPDATE accounts SET bank_sync_status = ? WHERE id = ?",
                         arguments: [entry.status, entry.accountId]
                     )
+                    appliedMessages += entry.messages
                     continue
                 }
                 try db.execute(sql: """
                     UPDATE accounts SET last_sync = ?, bank_sync_status = ? WHERE id = ?
                     """, arguments: [lastSync, entry.status, entry.accountId])
+                appliedMessages += entry.messages
             }
-            return try Self.insertMessageRows(db, messages)
+            return try Self.insertMessageRows(db, appliedMessages)
         }
     }
 

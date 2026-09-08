@@ -849,8 +849,15 @@ actor SyncClient {
         guard let database else { throw SyncError.notConfigured }
         guard !statuses.isEmpty else { return }
 
-        var messages: [CRDTMessage] = []
+        var entries: [(
+            accountId: String,
+            lastSync: String?,
+            status: String,
+            expectedLink: ExpectedBankSyncLink,
+            messages: [CRDTMessage]
+        )] = []
         for entry in statuses {
+            guard entry.accountId == entry.expectedLink.accountId else { continue }
             var fields: [(column: String, value: (any Sendable)?)] = [
                 ("bank_sync_status", entry.status)
             ]
@@ -859,12 +866,15 @@ actor SyncClient {
             if let lastSync = entry.lastSync {
                 fields.append(("last_sync", lastSync))
             }
-            messages += try await messageGenerator.messages(
+            let messages = try await messageGenerator.messages(
                 dataset: "accounts", row: entry.accountId, fields: fields
             )
+            entries.append((
+                entry.accountId, entry.lastSync, entry.status, entry.expectedLink, messages
+            ))
         }
 
-        for msg in try database.applyBankSyncStatus(statuses, messages: messages) {
+        for msg in try database.applyBankSyncStatus(entries) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()

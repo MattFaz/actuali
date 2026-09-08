@@ -722,6 +722,129 @@ struct SyncClientOfflineWriteTests {
         #expect(counts == (0, 0))
     }
 
+    @Test func staleBankStatusDoesNotDiscardOrReplicateValidStatuses() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, account_id, account_sync_source)
+                VALUES ('acct-2', 'external-acct-2-new', 'simpleFin')
+                """)
+        }
+
+        try await syncClient.recordBankSyncStatus([
+            (
+                accountId: "acct-1",
+                lastSync: "1700000000000",
+                status: "ok",
+                expectedLink: Self.expectedBankSyncLink
+            ),
+            (
+                accountId: "acct-2",
+                lastSync: "1700000000000",
+                status: "failed",
+                expectedLink: ExpectedBankSyncLink(
+                    accountId: "acct-2",
+                    externalAccountId: "external-acct-2-old",
+                    source: "simpleFin"
+                )
+            )
+        ])
+
+        let state = try await database.dbQueueForTesting.read { db in
+            (
+                validStatus: try String.fetchOne(
+                    db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-1'"
+                ),
+                staleStatus: try String.fetchOne(
+                    db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-2'"
+                ),
+                validMessages: try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-1'"
+                ) ?? 0,
+                staleMessages: try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-2'"
+                ) ?? 0
+            )
+        }
+        #expect(state.validStatus == "ok")
+        #expect(state.staleStatus == nil)
+        #expect(state.validMessages == 2)
+        #expect(state.staleMessages == 0)
+    }
+
+    @Test func staleDuplicateBankStatusDoesNotReplicateItsMessages() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        try await syncClient.recordBankSyncStatus([
+            (
+                accountId: "acct-1",
+                lastSync: nil,
+                status: "failed",
+                expectedLink: ExpectedBankSyncLink(
+                    accountId: "acct-1",
+                    externalAccountId: "external-acct-1-old",
+                    source: "simpleFin"
+                )
+            ),
+            (
+                accountId: "acct-1",
+                lastSync: "1700000000000",
+                status: "ok",
+                expectedLink: Self.expectedBankSyncLink
+            )
+        ])
+
+        let state = try await database.dbQueueForTesting.read { db in
+            (
+                status: try String.fetchOne(
+                    db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-1'"
+                ),
+                lastSync: try String.fetchOne(
+                    db, sql: "SELECT last_sync FROM accounts WHERE id = 'acct-1'"
+                ),
+                messageCount: try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-1'"
+                ) ?? 0
+            )
+        }
+        #expect(state.status == "ok")
+        #expect(state.lastSync == "1700000000000")
+        #expect(state.messageCount == 2)
+    }
+
+    @Test func bankStatusCannotValidateOneAccountAndUpdateAnother() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "INSERT INTO accounts (id) VALUES ('acct-2')")
+        }
+
+        try await syncClient.recordBankSyncStatus([(
+            accountId: "acct-2",
+            lastSync: "1700000000000",
+            status: "ok",
+            expectedLink: Self.expectedBankSyncLink
+        )])
+
+        let state = try await database.dbQueueForTesting.read { db in
+            (
+                status: try String.fetchOne(
+                    db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-2'"
+                ),
+                messageCount: try Int.fetchOne(
+                    db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-2'"
+                ) ?? 0
+            )
+        }
+        #expect(state.status == nil)
+        #expect(state.messageCount == 0)
+    }
+
     @Test func bankSyncMaterializationRejectsStalePreparedRulesBeforeWriting() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

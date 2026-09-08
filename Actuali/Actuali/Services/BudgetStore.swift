@@ -3609,7 +3609,21 @@ final class BudgetStore: ObservableObject {
                 downloaded.byAccount.merge(set.byAccount) { first, _ in first }
                 simpleFinProblems += set.problems
             } catch {
-                guard !walletTargets.isEmpty else { throw error }
+                guard !walletTargets.isEmpty else {
+                    try? await syncClient.recordBankSyncStatus(simpleFinTargets.map {
+                        (
+                            accountId: $0.id,
+                            lastSync: nil,
+                            status: "failed",
+                            expectedLink: ExpectedBankSyncLink(
+                                accountId: $0.id,
+                                externalAccountId: $0.externalAccountId,
+                                source: $0.syncSource
+                            )
+                        )
+                    })
+                    throw error
+                }
                 simpleFinProblems.append(error.localizedDescription)
             }
         }
@@ -3698,7 +3712,7 @@ final class BudgetStore: ObservableObject {
                 }
                 result.accountsSynced += 1
                 statuses.append((
-                    target.id, syncedAt, download.status,
+                    target.id, download.status == "ok" ? syncedAt : nil, download.status,
                     ExpectedBankSyncLink(
                         accountId: target.id,
                         externalAccountId: target.externalAccountId,

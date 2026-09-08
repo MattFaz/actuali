@@ -36,6 +36,9 @@ struct PendingImportsResolveAccountTests {
             for: PendingImportApprover.ApproveError.sourceCurrencyRequired
         ) == .review)
         #expect(PendingImportsView.bulkApprovalDisposition(
+            for: PendingImportApprover.ApproveError.suppressedByRule
+        ) == .failure)
+        #expect(PendingImportsView.bulkApprovalDisposition(
             for: PendingImportApprover.ApproveError.writeFailed("disk full")
         ) == .failure)
     }
@@ -203,6 +206,55 @@ struct PendingImportsResolveAccountTests {
         #expect(PendingImportsView.amountString(
             1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
             numberFormat: .dotComma, locale: Locale(identifier: "en_US")) == "-$1.234,50")
+    }
+
+    @Test func bulkApprovalIncludesOnlyImportsReadyForDirectApproval() {
+        let first = PendingImport(
+            originBudgetId: "active-budget", amount: 10,
+            sourceCurrencyCode: "USD", cardHint: "1111"
+        )
+        let second = PendingImport(
+            originBudgetId: "active-budget", amount: 20,
+            sourceCurrencyCode: "USD", cardHint: "2222"
+        )
+        let unknownCurrency = PendingImport(
+            originBudgetId: "active-budget", amount: 30, cardHint: "1111"
+        )
+        let foreignBudget = PendingImport(
+            originBudgetId: "other-budget", amount: 40,
+            sourceCurrencyCode: "USD", cardHint: "1111"
+        )
+        let invalidAmount = PendingImport(
+            originBudgetId: "active-budget", amount: 0,
+            sourceCurrencyCode: "USD", cardHint: "1111"
+        )
+        let unresolvedAccount = PendingImport(
+            originBudgetId: "active-budget", amount: 50,
+            sourceCurrencyCode: "USD", cardHint: "9999"
+        )
+        let accounts = [account("checking", "Checking")]
+        let mappings = ["1111": "checking", "2222": "checking"]
+
+        let result = PendingImportsView.directlyApprovableImports(
+            from: [first, unknownCurrency, foreignBudget, second, invalidAmount, unresolvedAccount],
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD",
+            accounts: accounts,
+            cardMappings: mappings,
+            defaultAccountId: nil
+        )
+
+        #expect(result.map(\.id) == [first.id, second.id])
+        #expect(PendingImportsView.directlyApprovableImports(
+            from: [first, unknownCurrency],
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD",
+            accounts: accounts,
+            cardMappings: mappings,
+            defaultAccountId: nil
+        ).count == 1)
+        #expect(PendingImportsView.showsBulkApproval(for: result))
+        #expect(!PendingImportsView.showsBulkApproval(for: [first]))
     }
 
     @Test func bulkApprovalOutcomeDefersFailuresWhenReviewIsNeeded() {
