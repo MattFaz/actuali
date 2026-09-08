@@ -3602,6 +3602,7 @@ final class BudgetStore: ObservableObject {
         var downloaded = BankSyncDownloadSet()
         var simpleFinProblems: [String] = []
         var walletProblems: [String] = []
+        var simpleFinFailureIsDeviceLocal = false
         if !simpleFinTargets.isEmpty {
             do {
                 let provider = try await makeBankSyncProvider()
@@ -3609,7 +3610,25 @@ final class BudgetStore: ObservableObject {
                 downloaded.byAccount.merge(set.byAccount) { first, _ in first }
                 simpleFinProblems += set.problems
             } catch {
-                guard !walletTargets.isEmpty else { throw error }
+                simpleFinFailureIsDeviceLocal =
+                    (error as? BudgetStoreError) == .bankSyncNotConfigured
+                guard !walletTargets.isEmpty else {
+                    if !simpleFinFailureIsDeviceLocal {
+                        try? await syncClient.recordBankSyncStatus(simpleFinTargets.map {
+                            (
+                                accountId: $0.id,
+                                lastSync: nil,
+                                status: "failed",
+                                expectedLink: ExpectedBankSyncLink(
+                                    accountId: $0.id,
+                                    externalAccountId: $0.externalAccountId,
+                                    source: $0.syncSource
+                                )
+                            )
+                        })
+                    }
+                    throw error
+                }
                 simpleFinProblems.append(error.localizedDescription)
             }
         }
@@ -3646,7 +3665,7 @@ final class BudgetStore: ObservableObject {
                 // Missing Wallet data is device-local state, so don't stamp it
                 // into synced status columns. SimpleFIN is a shared feed, so
                 // its missing/failed state belongs there.
-                if target.source != .financeKit {
+                if target.source != .financeKit && !simpleFinFailureIsDeviceLocal {
                     statuses.append((
                         target.id, nil, sourceHasProblems ? "failed" : "account-missing",
                         ExpectedBankSyncLink(
@@ -3697,8 +3716,15 @@ final class BudgetStore: ObservableObject {
                     )
                 }
                 result.accountsSynced += 1
+                // Upstream `handleSyncResponse` stamps both columns after a
+                // completed download, while `persistBankSyncError` preserves
+                // `last_sync` (`packages/loot-core/src/server/accounts/app.ts`).
+                // SimpleFIN may attach an attention warning to a complete
+                // account payload, so that case still completed.
+                let completedDownload = download.status == "ok"
+                    || (download.status == "attention-required" && download.accountDataReceived)
                 statuses.append((
-                    target.id, syncedAt, download.status,
+                    target.id, completedDownload ? syncedAt : nil, download.status,
                     ExpectedBankSyncLink(
                         accountId: target.id,
                         externalAccountId: target.externalAccountId,

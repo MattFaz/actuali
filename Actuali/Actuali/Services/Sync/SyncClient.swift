@@ -842,15 +842,25 @@ actor SyncClient {
 
     /// Record what a bank sync did on each account it touched — `last_sync`
     /// and `bank_sync_status`, the two columns every Actual client stamps, so
-    /// a sync run here reads the same in the web UI.
+    /// a sync run here reads the same in the web UI. Callers pass `lastSync`
+    /// only for completed downloads, following upstream `handleSyncResponse`
+    /// and `persistBankSyncError` in
+    /// `packages/loot-core/src/server/accounts/app.ts`.
     func recordBankSyncStatus(
         _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)]
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
         guard !statuses.isEmpty else { return }
 
-        var messages: [CRDTMessage] = []
+        var entries: [(
+            accountId: String,
+            lastSync: String?,
+            status: String,
+            expectedLink: ExpectedBankSyncLink,
+            messages: [CRDTMessage]
+        )] = []
         for entry in statuses {
+            guard entry.accountId == entry.expectedLink.accountId else { continue }
             var fields: [(column: String, value: (any Sendable)?)] = [
                 ("bank_sync_status", entry.status)
             ]
@@ -859,12 +869,15 @@ actor SyncClient {
             if let lastSync = entry.lastSync {
                 fields.append(("last_sync", lastSync))
             }
-            messages += try await messageGenerator.messages(
+            let messages = try await messageGenerator.messages(
                 dataset: "accounts", row: entry.accountId, fields: fields
             )
+            entries.append((
+                entry.accountId, entry.lastSync, entry.status, entry.expectedLink, messages
+            ))
         }
 
-        for msg in try database.applyBankSyncStatus(statuses, messages: messages) {
+        for msg in try database.applyBankSyncStatus(entries) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
