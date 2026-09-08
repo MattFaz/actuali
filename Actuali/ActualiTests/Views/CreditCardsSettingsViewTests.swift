@@ -31,6 +31,20 @@ struct CreditCardsSettingsViewTests {
         #expect(sorted.map(\.account.name) == ["Zeta", "Alpha"])
     }
 
+    @Test func sortsWithMixOfOffsetAndDayOfMonth() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        // Statement day 15, due 1st of month: Feb 15 statement is due Mar 1 (9 days out)
+        let dayOfMonthCard = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Statement day 15, default 15-day offset: Feb 15 statement is due Mar 2 (10 days out)
+        let offsetCard = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+
+        let sorted = CreditCardsSettingsView.sortedCards(
+            [(account: account("Offset"), cycle: offsetCard), (account: account("DayOfMonth"), cycle: dayOfMonthCard)],
+            today: today
+        )
+        #expect(sorted.map(\.account.name) == ["DayOfMonth", "Offset"])
+    }
+
     /// `daysUntilDue` clamps at 0, so past-due cards all tie there. Without the
     /// name tie-break the surviving order comes from a Dictionary, which Swift
     /// reseeds every launch.

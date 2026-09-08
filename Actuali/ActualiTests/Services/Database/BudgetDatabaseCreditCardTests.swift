@@ -85,6 +85,11 @@ struct BudgetDatabaseCreditCardTests {
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
                 arguments: ["actuali:credit_card:acct_corrupt", "{invalid_json}"]
             )
+            // Synced preferences are external input; reject impossible fixed due days.
+            try conn.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: ["actuali:credit_card:acct_invalid_due_day", #"{"statementDay":15,"dueDay":0}"#]
+            )
         }
 
         let configs = try await db.fetchCreditCardConfigs()

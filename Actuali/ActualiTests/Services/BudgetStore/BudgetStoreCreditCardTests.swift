@@ -128,7 +128,7 @@ struct BudgetStoreCreditCardTests {
         store.currentBudgetId = "test-budget"
         store.configureForTesting(database: database, syncClient: syncClient)
 
-        await store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25, limit: 500_000)
+        await store.setCreditCard(accountId: "acct_chase", statementDay: 18, paymentDue: .daysAfter(25), limit: 500_000)
 
         #expect(store.creditCardStatementDays["acct_chase"] == 18)
         #expect(store.creditCardDueOffsets["acct_chase"] == 25)
