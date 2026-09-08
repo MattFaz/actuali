@@ -312,7 +312,7 @@ struct PendingImportsView: View {
         } else {
             ContentUnavailableView(
                 "No Accounts",
-                systemImage: "banknote",
+                systemImage: "building.columns",
                 description: Text("Please add an account before editing this import.")
             )
         }
