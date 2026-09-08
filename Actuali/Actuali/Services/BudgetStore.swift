@@ -802,6 +802,7 @@ final class BudgetStore: ObservableObject {
             creditCardConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
+        await scheduleCreditCardDueNotifications()
     }
 
     func creditCardCycle(for accountId: String) -> CreditCardCycle? {
@@ -819,6 +820,23 @@ final class BudgetStore: ObservableObject {
     func activeCreditCardCycle(for accountId: String) -> CreditCardCycle? {
         guard let account = accounts.first(where: { $0.id == accountId }), !account.closed else { return nil }
         return creditCardCycle(for: accountId)
+    }
+
+    /// Schedules or cancels credit card payment due date reminder notifications
+    /// based on the current accounts, credit card cycles, and user preference.
+    func scheduleCreditCardDueNotifications() async {
+        var cycles: [String: CreditCardCycle] = [:]
+        for accountId in creditCardConfigs.keys {
+            if let cycle = creditCardCycle(for: accountId) {
+                cycles[accountId] = cycle
+            }
+        }
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: accounts,
+            cycles: cycles,
+            currencyCode: currencyCode,
+            narrowSymbol: useNarrowCurrencySymbol
+        )
     }
 
     /// Credit still available on a tracked card: the limit less what is owed.
@@ -2245,6 +2263,7 @@ final class BudgetStore: ObservableObject {
             }
 
             refreshPayeeLocationSupport()
+            await scheduleCreditCardDueNotifications()
 
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
@@ -2416,6 +2435,7 @@ final class BudgetStore: ObservableObject {
             await loadSchedules()
             await loadBankSyncAccounts()
             publishWidgetSnapshot()
+            await scheduleCreditCardDueNotifications()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.

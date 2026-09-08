@@ -5,6 +5,7 @@ import UserNotifications
 struct TransactionAutomationSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
+    @State private var creditCardDueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
     @State private var showingWalletImport = false
 
@@ -21,6 +22,22 @@ struct TransactionAutomationSettingsView: View {
                     Task { await enableTransactionNotifications() }
                 } else {
                     notificationPermissionDenied = false
+                }
+            }
+        )
+    }
+
+    private var creditCardDueRemindersBinding: Binding<Bool> {
+        Binding(
+            get: { creditCardDueNotificationsEnabled },
+            set: { enabled in
+                creditCardDueNotificationsEnabled = enabled
+                CreditCardNotificationSettings().isEnabled = enabled
+                Task {
+                    if enabled {
+                        await enableTransactionNotifications()
+                    }
+                    await budgetStore.scheduleCreditCardDueNotifications()
                 }
             }
         )
@@ -126,6 +143,7 @@ struct TransactionAutomationSettingsView: View {
 
             Section {
                 Toggle(String(localized: "New Transaction Alerts"), isOn: transactionNotificationsBinding)
+                Toggle(String(localized: "Credit Card Due Reminders"), isOn: creditCardDueRemindersBinding)
 
                 if notificationPermissionDenied {
                     Button(String(localized: "Open Settings to Allow Notifications")) {
@@ -138,9 +156,9 @@ struct TransactionAutomationSettingsView: View {
                 Text(String(localized: "Notifications"))
             } footer: {
                 if notificationPermissionDenied {
-                    Text(String(localized: "Notifications are turned off for Actuali in the Settings app, so transaction alerts can't be delivered."))
+                    Text(String(localized: "Notifications are turned off for Actuali in the Settings app, so alerts can't be delivered."))
                 } else {
-                    Text(String(localized: "Get notified when transactions from bank sync or other devices arrive, so you can categorize them. iOS checks a few times a day and requires Background App Refresh."))
+                    Text(String(localized: "New transaction alerts require Background App Refresh. Credit card due reminders are sent 7, 5, 3, and 1 days before payment is due for cards with an unpaid balance."))
                 }
             }
 
@@ -199,7 +217,7 @@ struct TransactionAutomationSettingsView: View {
     /// Permission can change in the Settings app while we're backgrounded;
     /// re-check whenever the screen appears.
     private func refreshNotificationPermissionState() async {
-        guard transactionNotificationsEnabled else { return }
+        guard transactionNotificationsEnabled || creditCardDueNotificationsEnabled else { return }
         let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
         notificationPermissionDenied = status == .denied
     }

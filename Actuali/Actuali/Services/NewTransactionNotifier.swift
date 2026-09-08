@@ -5,9 +5,10 @@ import os
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "NewTransactionNotifier")
 
 /// Seam over UNUserNotificationCenter so notify's gating is testable.
-protocol NotificationPosting {
+protocol NotificationPosting: Sendable {
     func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
     func add(_ request: UNNotificationRequest) async throws
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
 }
 
 extension UNUserNotificationCenter: NotificationPosting {}

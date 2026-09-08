@@ -24,7 +24,6 @@ struct CreditCardsSettingsView: View {
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
-
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
         return Self.sortedCards(budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
@@ -34,18 +33,21 @@ struct CreditCardsSettingsView: View {
         })
     }
 
-    /// Soonest payment first. The name tie-break is what makes this a total
-    /// order: `daysUntilDue` clamps at 0, so every past-due card ties there, and
-    /// the input arrives from a `Dictionary` whose order is reseeded per launch.
-    /// `today` is sampled once rather than per comparison so the ordering can't
-    /// change underneath `sorted` at midnight.
+    /// Soonest payment first for cards with an unpaid balance; accounts with
+    /// zero (or positive/overpaid) balance sort at the very end. The name
+    /// tie-break makes this a total order: `daysUntilDue` clamps at 0, so every
+    /// past-due card ties there, and the input arrives from a `Dictionary` whose
+    /// order is reseeded per launch. `today` is sampled once rather than per
+    /// comparison so the ordering can't change underneath `sorted` at midnight.
     nonisolated static func sortedCards(
         _ cards: [(account: Account, cycle: CreditCardCycle)],
         today: DayDate = .today()
     ) -> [(account: Account, cycle: CreditCardCycle)] {
         cards.sorted {
-            ($0.cycle.daysUntilDue(for: today), $0.account.name)
-                < ($1.cycle.daysUntilDue(for: today), $1.account.name)
+            let zero0 = $0.account.balance >= 0 ? 1 : 0
+            let zero1 = $1.account.balance >= 0 ? 1 : 0
+            return (zero0, $0.cycle.daysUntilDue(for: today), $0.account.name)
+                < (zero1, $1.cycle.daysUntilDue(for: today), $1.account.name)
         }
     }
 
@@ -137,6 +139,7 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
+
         }
         .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
