@@ -30,6 +30,7 @@ struct AccountsListView: View {
     @State private var path = NavigationPath()
     @State private var showingAddAccount = false
     @State private var showingCreditCards = false
+    @State private var showingBills = false
     @State private var showingPendingImports = false
     @StateObject private var pendingImportStore = PendingImportStore.shared
     /// Split layout only. Starts on All Accounts so the detail column has
@@ -340,6 +341,11 @@ struct AccountsListView: View {
                         } label: {
                             Label(String(localized: "Credit Cards"), systemImage: "creditcard")
                         }
+                        Button {
+                            showingBills = true
+                        } label: {
+                            Label("Bills & Calendar", systemImage: "calendar")
+                        }
                         Divider()
                         Toggle(isOn: $budgetStore.hideClosedAccounts) {
                             Label(String(localized: "Hide Closed"), systemImage: "archivebox")
@@ -397,6 +403,17 @@ struct AccountsListView: View {
                         .toolbar {
                             ToolbarItem(placement: .confirmationAction) {
                                 Button(String(localized: "common.done")) { showingCreditCards = false }
+                            }
+                        }
+                }
+            }
+            .sheet(isPresented: $showingBills) {
+                NavigationStack {
+                    BillsCalendarView()
+                        .environmentObject(budgetStore)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button("Done") { showingBills = false }
                             }
                         }
                 }

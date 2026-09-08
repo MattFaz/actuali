@@ -217,6 +217,7 @@ final class BudgetStore: ObservableObject {
     @Published var schedules: [ScheduleSummary] = []
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
+    @Published var schedulePaymentDates: [String: Set<DayDate>] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
@@ -5502,11 +5503,13 @@ final class BudgetStore: ObservableObject {
         guard let database else {
             schedules = []
             scheduleStatuses = [:]
+            schedulePaymentDates = [:]
             return
         }
         do {
             let loaded = try await database.fetchSchedules()
             let paid = try await database.fetchPaidScheduleIds(for: loaded)
+            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
             let today = DayDate.today()
 
             var statuses: [String: ScheduleStatus] = [:]
@@ -5521,10 +5524,12 @@ final class BudgetStore: ObservableObject {
 
             schedules = loaded.sorted(by: Self.scheduleOrder)
             scheduleStatuses = statuses
+            schedulePaymentDates = paymentDates
         } catch {
             logger.error("Failed to load schedules: \(error, privacy: .public)")
             schedules = []
             scheduleStatuses = [:]
+            schedulePaymentDates = [:]
         }
     }
 

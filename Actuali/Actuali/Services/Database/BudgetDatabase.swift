@@ -4316,6 +4316,30 @@ final class BudgetDatabase: Sendable {
             return paid
         }
     }
+
+    /// Live transaction dates linked to each schedule, used to render past calendar occurrences.
+    func fetchSchedulePaymentDates(for schedules: [ScheduleSummary]) async throws -> [String: Set<DayDate>] {
+        let ids = schedules.map(\.id)
+        guard !ids.isEmpty else { return [:] }
+
+        return try await dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT schedule, date
+                FROM transactions
+                WHERE schedule IN (\(placeholders))
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: StatementArguments(ids))
+
+            return rows.reduce(into: [String: Set<DayDate>]()) { dates, row in
+                guard let scheduleId: String = row["schedule"],
+                      let rawDate: Int = row["date"],
+                      let date = DayDate(yyyymmdd: rawDate)
+                else { return }
+                dates[scheduleId, default: []].insert(date)
+            }
+        }
+    }
     
     /// Is another live schedule already using this name? Mirrors loot-core
     /// `checkIfScheduleExists`, which enforces unique names so the "link to
