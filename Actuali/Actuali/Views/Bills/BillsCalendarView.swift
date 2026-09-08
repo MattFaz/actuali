@@ -64,16 +64,10 @@ struct BillsCalendarView: View {
         }
     }
 
-    private var itemsByDate: [DayDate: [BillCalendarItem]] {
-        Dictionary(grouping: rawItems, by: \.date)
-    }
-
-    private var summary: BillsMonthSummary {
-        BillsCalendarEngine.summarize(items: rawItems)
-    }
-
-    private var filteredItems: [BillCalendarItem] {
-        BillsCalendarEngine.filter(items: rawItems, filter: activeFilter, selectedDate: selectedDate)
+    private var weekdaySymbols: [String] {
+        let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols
+            ?? ["S", "M", "T", "W", "T", "F", "S"]
+        return (1..<8).map { symbols[$0 % 7] }   // Monday first
     }
 
     private func run(_ operation: @escaping () async throws -> Void) {
@@ -86,6 +80,12 @@ struct BillsCalendarView: View {
     // MARK: - View Body
 
     var body: some View {
+        let items = rawItems
+        let itemsByDate = Dictionary(grouping: items, by: \.date)
+        let summary = BillsCalendarEngine.summarize(items: items)
+        let filtered = BillsCalendarEngine.filter(
+            items: items, filter: activeFilter, selectedDate: selectedDate)
+
         ScrollView {
             VStack(spacing: 16) {
                 // Mode switcher (Recurring vs Card Bills)
@@ -136,11 +136,11 @@ struct BillsCalendarView: View {
                 .padding(.horizontal)
 
                 // Calendar Grid
-                calendarGridSection
+                calendarGridSection(itemsByDate: itemsByDate)
                     .padding(.horizontal)
 
                 // Summary Stats Strip
-                summaryStripSection
+                summaryStripSection(summary: summary)
                     .padding(.horizontal)
 
                 // Filter Pills
@@ -148,7 +148,7 @@ struct BillsCalendarView: View {
                     .padding(.horizontal)
 
                 // Cards List Section
-                cardsListSection
+                cardsListSection(items: filtered)
                     .padding(.horizontal)
             }
             .padding(.vertical, 8)
@@ -229,11 +229,11 @@ struct BillsCalendarView: View {
 
     // MARK: - Calendar Grid
 
-    private var calendarGridSection: some View {
+    private func calendarGridSection(itemsByDate: [DayDate: [BillCalendarItem]]) -> some View {
         VStack(spacing: 8) {
             // Weekday symbols
             HStack(spacing: 0) {
-                ForEach(BillsCalendarEngine.weekdaySymbols, id: \.self) { symbol in
+                ForEach(Array(weekdaySymbols.enumerated()), id: \.offset) { _, symbol in
                     Text(symbol)
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(.secondary)
@@ -274,7 +274,7 @@ struct BillsCalendarView: View {
 
     // MARK: - Summary Strip
 
-    private var summaryStripSection: some View {
+    private func summaryStripSection(summary: BillsMonthSummary) -> some View {
         HStack(spacing: 12) {
             summaryMetric(title: "Upcoming", amount: summary.upcomingTotal, color: .primary)
             Divider().frame(height: 24)
@@ -346,8 +346,8 @@ struct BillsCalendarView: View {
     // MARK: - Cards List
 
     @ViewBuilder
-    private var cardsListSection: some View {
-        if filteredItems.isEmpty {
+    private func cardsListSection(items: [BillCalendarItem]) -> some View {
+        if items.isEmpty {
             VStack(spacing: 12) {
                 Image(systemName: "calendar.badge.checkmark")
                     .font(.largeTitle)
@@ -364,7 +364,7 @@ struct BillsCalendarView: View {
             .padding(.vertical, 20)
         } else {
             LazyVStack(spacing: 10) {
-                ForEach(filteredItems) { item in
+                ForEach(items) { item in
                     BillCardView(
                         item: item,
                         budgetStore: budgetStore,
@@ -567,34 +567,6 @@ private struct BillCardView: View {
                 } label: {
                     Label("Configure Credit Cards", systemImage: "gearshape")
                 }
-            }
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let schedule = item.scheduleSummary {
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Label("Delete", systemImage: "trash")
-                }
-
-                if !schedule.completed, schedule.isRecurring {
-                    Button {
-                        onSkip()
-                    } label: {
-                        Label("Skip", systemImage: "forward.end")
-                    }
-                    .tint(.orange)
-                }
-            }
-        }
-        .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            if let schedule = item.scheduleSummary, !schedule.completed {
-                Button {
-                    onPost(false)
-                } label: {
-                    Label("Post", systemImage: "plus.circle")
-                }
-                .tint(.green)
             }
         }
     }

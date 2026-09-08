@@ -30,8 +30,6 @@ struct BillsMonthSummary: Equatable, Sendable {
 /// Pure functions for generating calendar grid cells, occurrences, and summary statistics.
 enum BillsCalendarEngine: Sendable {
 
-    /// Mon-Sun headers matching the mockup layout.
-    static let weekdaySymbols = ["M", "T", "W", "T", "F", "S", "S"]
 
     /// Number of blank leading cells in a Monday-first monthly calendar grid.
     /// In `DayDate`, 1 = Sunday, 2 = Monday ... 7 = Saturday.
@@ -118,31 +116,13 @@ enum BillsCalendarEngine: Sendable {
                 // If nextDate is explicitly set and falls in the month, include it
                 var occurrenceDates: Set<DayDate> = []
 
-                if let next = schedule.nextDate {
-                    if next.year == year, next.month == month {
-                        occurrenceDates.insert(next)
-                    }
-                    // Generate subsequent occurrences within this month if nextDate is <= monthEnd
-                    if next <= monthEnd {
-                        let searchStart = max(next.adding(days: 1), monthStart)
-                        var cursor = searchStart
-                        while cursor <= monthEnd {
-                            guard let occ = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: cursor) else { break }
-                            if occ > monthEnd { break }
-                            if occ >= monthStart { occurrenceDates.insert(occ) }
-                            cursor = occ.adding(days: 1)
-                        }
-                    }
-                } else {
-                    // No nextDate set, search whole month
-                    var cursor = monthStart
-                    while cursor <= monthEnd {
-                        guard let occ = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: cursor) else { break }
-                        if occ > monthEnd { break }
-                        if occ >= monthStart { occurrenceDates.insert(occ) }
-                        cursor = occ.adding(days: 1)
-                    }
+                if let next = schedule.nextDate, next.year == year, next.month == month {
+                    occurrenceDates.insert(next)
                 }
+                occurrenceDates.formUnion(
+                    ScheduleRecurrence.upcomingDates(for: config, count: 31, from: monthStart)
+                        .filter { $0 >= monthStart && $0 <= monthEnd }
+                )
 
                 for date in occurrenceDates.sorted() {
                     let itemStatus: ScheduleStatus
@@ -222,7 +202,7 @@ enum BillsCalendarEngine: Sendable {
 
         for account in accounts where !account.closed {
             guard let cycle = cycles[account.id] else { continue }
-            let dueDate = cycle.upcomingDueDate(for: today)
+            let dueDate = cycle.upcomingDueDate(for: DayDate(year: year, month: month, day: 1))
 
             // Include if the payment due date is in this month
             if dueDate.year == year, dueDate.month == month {

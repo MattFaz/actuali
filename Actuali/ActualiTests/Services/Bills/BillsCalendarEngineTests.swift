@@ -82,7 +82,6 @@ struct BillsCalendarEngineTests {
     }
 
     @Test func computesSummaryTotalsAndFilter() {
-        let today = DayDate(year: 2026, month: 9, day: 4)
 
         let item1 = BillCalendarItem(
             id: "1",
@@ -186,4 +185,145 @@ struct BillsCalendarEngineTests {
         #expect(items[0].date == DayDate(year: 2026, month: 9, day: 30))
         #expect(items[0].isCreditCard == true)
     }
+
+    @Test func skipWeekendAndBeforeSolveModeDoesNotLoopInfinitely() {
+        // September 6, 2026 is Sunday.
+        // With skipWeekend: true and weekendSolveMode: "before", the occurrence shifts to Friday, Sept 4.
+        let config = RecurConfig(
+            frequency: .monthly,
+            start: DayDate(year: 2026, month: 9, day: 6),
+            skipWeekend: true,
+            weekendSolveMode: "before"
+        )
+        let schedule = ScheduleSummary(
+            id: "sch-weekend",
+            name: "Weekend Bill",
+            nextDate: DayDate(year: 2026, month: 9, day: 4),
+            amount: .fixed(-5000),
+            amountOp: .isExactly,
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: ["sch-weekend": .upcoming],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 1)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 4))
+    }
+
+    @Test func exhaustedBoundedRecurrenceTerminates() {
+        // Bounded recurrence that ran out after 1 occurrence in August 2026.
+        let config = RecurConfig(
+            frequency: .monthly,
+            start: DayDate(year: 2026, month: 8, day: 10),
+            endMode: "after_n_occurrences",
+            endOccurrences: 1
+        )
+        let schedule = ScheduleSummary(
+            id: "sch-bounded",
+            name: "Trial Subscription",
+            nextDate: DayDate(year: 2026, month: 8, day: 10),
+            amount: .fixed(-1000),
+            amountOp: .isExactly,
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: [:],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 1)
+        )
+
+        #expect(items.isEmpty)
+    }
+
+    @Test func recurringScheduleProjectsInPastMonth() {
+        let monthlyConfig = RecurConfig(
+            frequency: .monthly,
+            start: DayDate(year: 2026, month: 1, day: 15)
+        )
+        let schedule = ScheduleSummary(
+            id: "sch-history",
+            name: "Cloud Storage",
+            nextDate: DayDate(year: 2026, month: 9, day: 15),
+            amount: .fixed(-999),
+            amountOp: .isExactly,
+            dateCondition: .recurring(monthlyConfig),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        // Viewing August 2026 even though nextDate is in September 2026
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: [:],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 8,
+            today: DayDate(year: 2026, month: 9, day: 4)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 8, day: 15))
+        #expect(items[0].status == .missed)
+    }
+
+    @Test func creditCardCyclesProjectPerNavigatedMonth() {
+        let today = DayDate(year: 2026, month: 9, day: 4)
+        let account = Account(
+            id: "acc-cc",
+            name: "Visa Signature",
+            type: .credit,
+            offBudget: false,
+            closed: false,
+            sortOrder: 0,
+            balance: -25000
+        )
+        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 15)
+
+        let augustItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            year: 2026,
+            month: 8,
+            today: today
+        )
+        #expect(augustItems.count == 1)
+        #expect(augustItems[0].date == DayDate(year: 2026, month: 8, day: 30))
+        #expect(augustItems[0].status == .missed)
+
+        let octoberItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            year: 2026,
+            month: 10,
+            today: today
+        )
+        #expect(octoberItems.count == 1)
+        #expect(octoberItems[0].date == DayDate(year: 2026, month: 10, day: 30))
+        #expect(octoberItems[0].status == .upcoming)
+    }
 }
+

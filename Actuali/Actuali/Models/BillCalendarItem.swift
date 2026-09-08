@@ -39,8 +39,10 @@ struct BillCalendarItem: Identifiable, Equatable, Sendable {
 
     /// Three-letter uppercase month abbreviation, e.g. "SEP".
     var monthAbbreviation: String {
-        let months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
         guard (1...12).contains(date.month) else { return "" }
-        return months[date.month - 1]
+        let symbols = DateFormatter().shortStandaloneMonthSymbols ?? []
+        return symbols.indices.contains(date.month - 1)
+            ? symbols[date.month - 1].uppercased()
+            : ""
     }
 }
