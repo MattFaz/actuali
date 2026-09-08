@@ -1151,6 +1151,41 @@ struct BudgetStoreBankSyncTests {
             arguments: [accountId]
         ))
         #expect(account["last_sync"] == "1600000000000")
+        #expect(account["bank_sync_status"] == "ok")
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'bank_sync_status'",
+            arguments: [accountId]
+        )?["count"] as Int? == 0)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'last_sync'",
+            arguments: [accountId]
+        )?["count"] as Int? == 0)
+    }
+
+    @Test func operationalProviderFailurePreservesLastSyncAndRecordsFailure() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ?, bank_sync_status = 'ok' WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
+        let store = try await makeStore(database: database, responseBody: "not json")
+
+        await #expect(throws: SimpleFINError.invalidResponse) {
+            _ = try await store.syncBankAccounts()
+        }
+
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT last_sync, bank_sync_status FROM accounts WHERE id = ?",
+            arguments: [accountId]
+        ))
+        #expect(account["last_sync"] == "1600000000000")
         #expect(account["bank_sync_status"] == "failed")
         #expect(try row(
             path: url,
@@ -1181,6 +1216,13 @@ struct BudgetStoreBankSyncTests {
     @Test func bridgeErrorsAreCarriedIntoTheResult() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ? WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
         let body = """
         {"errors": ["Connection to My Bank may need attention"], "accounts": [{
           "org": {"domain": "mybank.com", "name": "My Bank"},
@@ -1202,6 +1244,12 @@ struct BudgetStoreBankSyncTests {
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
         )
         #expect(account["bank_sync_status"] == "attention-required")
+        #expect(account["last_sync"] != "1600000000000")
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'last_sync'",
+            arguments: [Self.accountId]
+        )?["count"] as Int? == 1)
     }
 
     // MARK: - Linking
@@ -1484,6 +1532,13 @@ struct BudgetStoreBankSyncTests {
     @Test func reportsAnAccountTheServerCouldntFetch() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET last_sync = ? WHERE id = ?",
+                arguments: ["1600000000000", accountId]
+            )
+        }
         let store = try await makeServerStore(database: database, bodies: [
             "/simplefin/status": #"{"status":"ok","data":{"configured":true}}"#,
             "/simplefin/transactions": """
@@ -1504,6 +1559,12 @@ struct BudgetStoreBankSyncTests {
             try row(path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId])
         )
         #expect(account["bank_sync_status"] == "attention-required")
+        #expect(account["last_sync"] == "1600000000000")
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'last_sync'",
+            arguments: [Self.accountId]
+        )?["count"] as Int? == 0)
     }
 
     @Test func aRejectedServerKeyIsReportedNotSwallowed() async throws {
@@ -1595,6 +1656,17 @@ struct BudgetStoreBankSyncTests {
         #expect(try rows(
             path: url, where: "financial_id = '11111111-1111-1111-1111-111111111111'"
         ).count == 1)
+        let simpleFinAccount = try #require(try row(
+            path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        let status: String? = simpleFinAccount["bank_sync_status"]
+        #expect(status == nil)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts' AND row = ? AND column = 'bank_sync_status'",
+            arguments: [Self.accountId]
+        )?["count"] as Int? == 0)
     }
 
     /// And the mirror image: a Wallet read blowing up must not cost the

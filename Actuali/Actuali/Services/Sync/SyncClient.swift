@@ -842,7 +842,10 @@ actor SyncClient {
 
     /// Record what a bank sync did on each account it touched — `last_sync`
     /// and `bank_sync_status`, the two columns every Actual client stamps, so
-    /// a sync run here reads the same in the web UI.
+    /// a sync run here reads the same in the web UI. Callers pass `lastSync`
+    /// only for completed downloads, following upstream `handleSyncResponse`
+    /// and `persistBankSyncError` in
+    /// `packages/loot-core/src/server/accounts/app.ts`.
     func recordBankSyncStatus(
         _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)]
     ) async throws {

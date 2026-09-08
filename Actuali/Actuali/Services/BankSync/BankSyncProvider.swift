@@ -19,6 +19,9 @@ struct BankSyncDownload: Sendable, Equatable {
     /// Actual's `bank_sync_status` value for this account after the download,
     /// so the web UI reads the same state this device saw.
     var status: String = "ok"
+    /// Whether the provider returned the account payload, even if it contained
+    /// no transactions. An error-only response leaves this false.
+    var accountDataReceived = false
 }
 
 struct BankSyncDownloadSet: Sendable, Equatable {
@@ -75,7 +78,8 @@ struct SimpleFINDirectProvider: BankSyncProvider {
                 candidates: remote.transactions
                     .compactMap(BankSyncCandidate.init(simpleFIN:))
                     .filter { $0.date >= target.startDay },
-                currentBalanceCents: remote.balanceCents
+                currentBalanceCents: remote.balanceCents,
+                accountDataReceived: true
             )
             // The bridge's errors aren't keyed by account, so pair them up the
             // way upstream's server does — by the institution they name.
@@ -137,7 +141,7 @@ struct ActualServerBankSyncProvider: BankSyncProvider {
             // account at all; leave the key out so the caller says so.
             guard account != nil || error != nil else { continue }
 
-            var download = BankSyncDownload()
+            var download = BankSyncDownload(accountDataReceived: account != nil)
             if let error {
                 download.problem = error.reason ?? error.errorCode
                 download.status = error.bankSyncStatus
