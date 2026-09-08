@@ -79,10 +79,6 @@ struct MainTabView: View {
                 Label("Budget", systemImage: "wallet.bifold")
             }
             .badge(overspentCount)
-            // On the tab, not its label: under the Tab API the tab's own
-            // modifiers are what reach the tab bar item. (Neither placement
-            // surfaces the value to XCUITest on iOS 26 — BudgetTabBadgeUITests
-            // fails on main for that reason, unrelated to this.)
             .accessibilityValue(Text(overspentBadgeValue))
 
             Tab(value: 0) {

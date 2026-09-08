@@ -12,12 +12,14 @@ import UserNotifications
 struct ActualiApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var budgetStore = BudgetStore.shared
+    private let historyObserver: HistoryObserver
     @Environment(\.scenePhase) private var scenePhase
 
     init() {
         // BGTaskScheduler requires all handlers registered before launch ends.
         // (The notification delegate is set in AppDelegate.)
         BackgroundRefresh.register()
+        historyObserver = HistoryObserver(store: BudgetStore.shared)
         #if DEBUG
         // Clean slate so BackgroundRefreshRowUITests always starts at "Never"
         // regardless of what earlier runs left in UserDefaults.
