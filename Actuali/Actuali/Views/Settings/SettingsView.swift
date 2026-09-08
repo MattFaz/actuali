@@ -1,7 +1,35 @@
 import SwiftUI
 
+private struct SettingsItem: Identifiable {
+    let id = UUID()
+    let title: String
+    let systemImage: String
+    let destination: AnyView
+}
+
 struct SettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+
+    private var preferencesItems: [SettingsItem] {
+        [
+            SettingsItem(title: String(localized: "Budget View"), systemImage: "wallet.bifold", destination: AnyView(BudgetViewSettingsView())),
+            SettingsItem(title: String(localized: "Display"), systemImage: "iphone", destination: AnyView(DisplaySettingsView())),
+            SettingsItem(title: String(localized: "Privacy"), systemImage: "hand.raised", destination: AnyView(PrivacySettingsView())),
+            SettingsItem(title: String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right", destination: AnyView(TransactionAutomationSettingsView()))
+        ].sorted { $0.title < $1.title }
+    }
+
+    private var manageItems: [SettingsItem] {
+        var items = [
+            SettingsItem(title: String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns", destination: AnyView(BankSyncSetupView())),
+            SettingsItem(title: "Bills & Calendar", systemImage: "calendar", destination: AnyView(BillsCalendarView())),
+            SettingsItem(title: String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock", destination: AnyView(SchedulesListView()))
+        ]
+        if budgetStore.currentBudgetId != nil {
+            items.append(SettingsItem(title: String(localized: "Rules"), systemImage: "list.bullet.rectangle", destination: AnyView(RulesListView())))
+        }
+        return items.sorted { $0.title < $1.title }
+    }
 
     var body: some View {
         NavigationStack {
@@ -13,61 +41,24 @@ struct SettingsView: View {
                         Label(String(localized: "Connection & Data"), systemImage: "server.rack")
                     }
                 }
-
                 Section(String(localized: "Preferences")) {
-                    NavigationLink {
-                        BudgetViewSettingsView()
-                    } label: {
-                        Label(String(localized: "Budget View"), systemImage: "wallet.bifold")
-                    }
-
-                    NavigationLink {
-                        TransactionAutomationSettingsView()
-                    } label: {
-                        Label(String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right")
-                    }
-
-                    NavigationLink {
-                        DisplaySettingsView()
-                    } label: {
-                        Label(String(localized: "Display"), systemImage: "iphone")
-                    }
-
-                    NavigationLink {
-                        PrivacySettingsView()
-                    } label: {
-                        Label(String(localized: "Privacy"), systemImage: "hand.raised")
-                    }
-                }
-
-                Section(String(localized: "Manage")) {
-                    NavigationLink {
-                        BillsCalendarView()
-                    } label: {
-                        Label("Bills & Calendar", systemImage: "calendar")
-                    }
-
-                    NavigationLink {
-                        SchedulesListView()
-                    } label: {
-                        Label(String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock")
-                    }
-
-                    if budgetStore.currentBudgetId != nil {
+                    ForEach(preferencesItems) { item in
                         NavigationLink {
-                            RulesListView()
+                            item.destination
                         } label: {
-                            Label(String(localized: "Rules"), systemImage: "list.bullet.rectangle")
+                            Label(item.title, systemImage: item.systemImage)
                         }
                     }
-
-                    NavigationLink {
-                        BankSyncSetupView()
-                    } label: {
-                        Label(String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns")
+                }
+                Section(String(localized: "Manage")) {
+                    ForEach(manageItems) { item in
+                        NavigationLink {
+                            item.destination
+                        } label: {
+                            Label(item.title, systemImage: item.systemImage)
+                        }
                     }
                 }
-
                 Section(String(localized: "Information")) {
                     NavigationLink {
                         AboutSettingsView()
@@ -80,9 +71,6 @@ struct SettingsView: View {
             .navigationTitle(String(localized: "navigation.settings"))
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
-        // Keep the store-wide loading indicator above the navigation stack so
-        // operations started from any destination remain covered, not only
-        // work launched from the hub form.
         .overlay {
             if budgetStore.isLoading {
                 ProgressView()
