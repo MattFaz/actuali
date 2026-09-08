@@ -1206,6 +1206,36 @@ actor SyncClient {
         try await setPreference(key: key, value: jsonString)
     }
 
+    /// Persists changed card-to-account mappings one per preference row, so concurrent
+    /// edits to different keywords converge instead of replacing the whole dictionary.
+    func setCardAccountMappings(
+        _ mappings: [String: String],
+        replacing previous: [String: String]
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        let changedKeywords = Set(mappings.keys)
+            .union(previous.keys)
+            .filter { mappings[$0] != previous[$0] }
+            .sorted()
+        guard !changedKeywords.isEmpty else { return }
+
+        var messages: [CRDTMessage] = []
+        for keyword in changedKeywords {
+            let fields: [(column: String, value: (any Sendable)?)] = [("value", mappings[keyword])]
+            messages += try await messageGenerator.messages(
+                dataset: "preferences",
+                row: BudgetDatabase.cardMappingPreferenceKey(for: keyword),
+                fields: fields
+            )
+        }
+        for message in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Set the budgeted amount for a category in a month (optimistic
     /// local-first). Mirrors upstream setBudget: update the existing
     /// (month, category) row's amount, or create the row with the

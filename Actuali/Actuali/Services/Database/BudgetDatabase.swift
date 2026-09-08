@@ -4566,6 +4566,35 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Preference key prefix for synced card-to-account mappings.
+    static let cardMappingPreferenceKeyPrefix = "actuali:card_mapping:"
+
+    /// Preference key for one card-to-account mapping.
+    static func cardMappingPreferenceKey(for keyword: String) -> String {
+        "\(cardMappingPreferenceKeyPrefix)\(keyword)"
+    }
+
+    /// Fetches synced card-to-account mappings stored one per `preferences` row.
+    /// Returns a dictionary mapping `keyword -> accountId`.
+    func fetchCardAccountMappings() async throws -> [String: String] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return [:] }
+            let prefix = Self.cardMappingPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
+            )
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let accountId: String = row["value"] else { return }
+                let keyword = String(id.dropFirst(prefix.count))
+                guard !keyword.isEmpty else { return }
+                result[keyword] = accountId
+            }
+        }
+    }
+
     /// Fetch currency code from preferences table (stored by Actual Budget)
     /// Returns nil if not set, caller should default to "USD"
     func fetchCurrencyCode() async throws -> String? {
