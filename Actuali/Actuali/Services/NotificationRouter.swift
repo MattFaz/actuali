@@ -97,6 +97,9 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
             destination = await Self.destination(for: newTransactionRoute, in: BudgetStore.shared)
             return
         }
+        if content.categoryIdentifier == CreditCardDueNotifier.categoryIdentifier {
+            await BudgetStore.shared.ensureBudgetReady()
+        }
         route(userInfo: content.userInfo, categoryIdentifier: content.categoryIdentifier)
     }
 

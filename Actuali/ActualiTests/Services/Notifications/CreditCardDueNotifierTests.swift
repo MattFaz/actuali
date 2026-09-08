@@ -99,6 +99,7 @@ struct CreditCardDueNotifierTests {
         let request1d = center.added.first(where: { $0.identifier.hasSuffix(".1d") })!
         #expect(request1d.content.title == "Visa payment due tomorrow")
         #expect(request1d.content.body.contains("75.00"))
+        #expect(request1d.content.body.contains("Current balance"))
         #expect(request1d.content.userInfo[CreditCardDueNotifier.accountIdKey] as? String == "card1")
         #expect(request1d.content.categoryIdentifier == CreditCardDueNotifier.categoryIdentifier)
 
@@ -133,10 +134,28 @@ struct CreditCardDueNotifierTests {
         #expect(scheduledOffsets.count == 2)
         #expect(scheduledOffsets.contains(CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: 3)))
         #expect(scheduledOffsets.contains(CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: 1)))
+        let removedOffsets = Set(center.removedIdentifiers)
+        #expect(removedOffsets.contains(CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: 7)))
+        #expect(removedOffsets.contains(CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: 5)))
+    }
+
+    @Test func cardWithoutCycleCancelsPendingNotifications() async {
+        let center = FakeCreditCardNotificationCenter()
+        let card = account(id: "card1", name: "Visa", balance: -5000)
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card], cycles: [:], currencyCode: "USD",
+            settings: makeDefaults(enabled: true), center: center
+        )
+
+        let expected = [7, 5, 3, 1].map {
+            CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: $0)
+        }
+        #expect(center.removedIdentifiers == expected)
     }
 }
 
-private final class FakeCreditCardNotificationCenter: CreditCardNotificationCenter, @unchecked Sendable {
+private final class FakeCreditCardNotificationCenter: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
     var added: [UNNotificationRequest] = []
     var removedIdentifiers: [String] = []

@@ -4,15 +4,6 @@ import os
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "CreditCardDueNotifier")
 
-/// Seam over UNUserNotificationCenter so scheduling and removal are testable.
-protocol CreditCardNotificationCenter: Sendable {
-    func requestAuthorization(options: UNAuthorizationOptions) async throws -> Bool
-    func add(_ request: UNNotificationRequest) async throws
-    func removePendingNotificationRequests(withIdentifiers identifiers: [String])
-}
-
-extension UNUserNotificationCenter: CreditCardNotificationCenter {}
-
 /// Schedules local notifications for credit cards with upcoming payment due dates.
 /// Reminders are posted at 7, 5, 3, and 1 days before the due date if the card has
 /// an unpaid balance (`balance < 0`).
@@ -41,14 +32,14 @@ enum CreditCardDueNotifier {
         currencyCode: String,
         narrowSymbol: Bool = false,
         settings: CreditCardNotificationSettings = CreditCardNotificationSettings(),
-        center: any CreditCardNotificationCenter = UNUserNotificationCenter.current(),
+        center: any NotificationPosting = UNUserNotificationCenter.current(),
         now: Date = Date(),
         calendar: Calendar = .current
     ) async {
         guard settings.isEnabled else {
             // Setting is disabled: clear any pending due-date reminders for known accounts.
-            let allIds = accounts.flatMap { account in
-                reminderOffsets.map { requestIdentifier(accountId: account.id, offsetDays: $0) }
+            let allIds = Set(accounts.map(\.id)).union(cycles.keys).flatMap { accountId in
+                reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
             }
             if !allIds.isEmpty {
                 center.removePendingNotificationRequests(withIdentifiers: allIds)
@@ -68,16 +59,12 @@ enum CreditCardDueNotifier {
         let accountsById = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0) })
         let today = DayDate.today(calendar: calendar, now: now)
 
-        for (accountId, cycle) in cycles {
-            guard let account = accountsById[accountId], !account.closed else {
-                let ids = reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
-                center.removePendingNotificationRequests(withIdentifiers: ids)
-                continue
-            }
-
-            // If the bill is paid (balance >= 0), cancel any pending reminders for this card.
-            if account.balance >= 0 {
-                let ids = reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
+        for accountId in Set(accounts.map(\.id)).union(cycles.keys) {
+            let ids = reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
+            guard let account = accountsById[accountId],
+                  !account.closed,
+                  account.balance < 0,
+                  let cycle = cycles[accountId] else {
                 center.removePendingNotificationRequests(withIdentifiers: ids)
                 continue
             }
@@ -94,14 +81,14 @@ enum CreditCardDueNotifier {
                 components.minute = 0
 
                 // Do not schedule notifications for dates/times already in the past.
+                let id = requestIdentifier(accountId: accountId, offsetDays: offset)
                 guard let scheduledDate = calendar.date(from: components), scheduledDate > now else {
+                    center.removePendingNotificationRequests(withIdentifiers: [id])
                     continue
                 }
 
-                let id = requestIdentifier(accountId: accountId, offsetDays: offset)
                 let content = makeContent(
                     account: account,
-                    cycle: cycle,
                     dueDate: dueDate,
                     offsetDays: offset,
                     currencyCode: currencyCode,
@@ -122,7 +109,6 @@ enum CreditCardDueNotifier {
 
     nonisolated static func makeContent(
         account: Account,
-        cycle: CreditCardCycle,
         dueDate: DayDate,
         offsetDays: Int,
         currencyCode: String,
@@ -133,8 +119,10 @@ enum CreditCardDueNotifier {
         content.userInfo = [accountIdKey: account.id]
         content.sound = .default
 
-        let daysText = offsetDays == 1 ? "tomorrow" : "in \(offsetDays) days"
-        content.title = "\(account.name) payment due \(daysText)"
+        let daysText = offsetDays == 1
+            ? String(localized: "tomorrow")
+            : String(format: String(localized: "in %lld days"), Int64(offsetDays))
+        content.title = String(format: String(localized: "%@ payment due %@"), account.name, daysText)
 
         let formattedAmount = CurrencyAmountFormat.string(
             cents: abs(account.balance),
@@ -142,7 +130,7 @@ enum CreditCardDueNotifier {
             narrowSymbol: narrowSymbol
         )
         let dueDateFormatted = Transaction.formattedDate(from: dueDate.yyyymmdd, style: .abbreviated)
-        content.body = "\(formattedAmount) due on \(dueDateFormatted)."
+        content.body = String(format: String(localized: "Current balance %@. Payment due %@."), formattedAmount, dueDateFormatted)
 
         return content
     }

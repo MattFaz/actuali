@@ -1,5 +1,4 @@
 import SwiftUI
-import UserNotifications
 
 /// View for managing credit card accounts and their monthly billing cycles.
 struct CreditCardsSettingsView: View {
@@ -25,35 +24,6 @@ struct CreditCardsSettingsView: View {
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
-    @State private var dueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
-    @State private var notificationPermissionDenied = false
-
-    private var dueRemindersBinding: Binding<Bool> {
-        Binding(
-            get: { dueNotificationsEnabled },
-            set: { enabled in
-                dueNotificationsEnabled = enabled
-                CreditCardNotificationSettings().isEnabled = enabled
-                Task {
-                    if enabled {
-                        let center = UNUserNotificationCenter.current()
-                        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
-                        notificationPermissionDenied = !granted
-                    } else {
-                        notificationPermissionDenied = false
-                    }
-                    await budgetStore.scheduleCreditCardDueNotifications()
-                }
-            }
-        )
-    }
-
-    private func refreshNotificationPermissionState() async {
-        guard dueNotificationsEnabled else { return }
-        let status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus
-        notificationPermissionDenied = status == .denied
-    }
-
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
         return Self.sortedCards(budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
@@ -170,27 +140,7 @@ struct CreditCardsSettingsView: View {
                 }
             }
 
-            Section {
-                Toggle("Payment Due Reminders", isOn: dueRemindersBinding)
-
-                if notificationPermissionDenied {
-                    Button("Open Settings to Allow Notifications") {
-                        if let url = URL(string: UIApplication.openSettingsURLString) {
-                            UIApplication.shared.open(url)
-                        }
-                    }
-                }
-            } header: {
-                Text("Reminders")
-            } footer: {
-                if notificationPermissionDenied {
-                    Text("Notifications are turned off for Actuali in the Settings app, so due date reminders can't be delivered.")
-                } else {
-                    Text("Get reminded 7, 5, 3, and 1 day before payment is due if a card has an unpaid balance.")
-                }
-            }
         }
-        .task { await refreshNotificationPermissionState() }
         .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSheet) {

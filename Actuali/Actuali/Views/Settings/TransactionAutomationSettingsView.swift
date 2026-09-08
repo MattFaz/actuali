@@ -143,7 +143,7 @@ struct TransactionAutomationSettingsView: View {
 
             Section {
                 Toggle(String(localized: "New Transaction Alerts"), isOn: transactionNotificationsBinding)
-                Toggle("Credit Card Due Reminders", isOn: creditCardDueRemindersBinding)
+                Toggle(String(localized: "Credit Card Due Reminders"), isOn: creditCardDueRemindersBinding)
 
                 if notificationPermissionDenied {
                     Button(String(localized: "Open Settings to Allow Notifications")) {
@@ -156,9 +156,9 @@ struct TransactionAutomationSettingsView: View {
                 Text(String(localized: "Notifications"))
             } footer: {
                 if notificationPermissionDenied {
-                    Text("Notifications are turned off for Actuali in the Settings app, so alerts can't be delivered.")
+                    Text(String(localized: "Notifications are turned off for Actuali in the Settings app, so alerts can't be delivered."))
                 } else {
-                    Text("New transaction alerts require Background App Refresh. Credit card due reminders send alerts 7, 5, 3, and 1 day before payment is due if a card has an unpaid balance.")
+                    Text(String(localized: "New transaction alerts require Background App Refresh. Credit card due reminders are sent 7, 5, 3, and 1 days before payment is due for cards with an unpaid balance."))
                 }
             }
 

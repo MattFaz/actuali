@@ -826,7 +826,7 @@ final class BudgetStore: ObservableObject {
     /// based on the current accounts, credit card cycles, and user preference.
     func scheduleCreditCardDueNotifications() async {
         var cycles: [String: CreditCardCycle] = [:]
-        for accountId in activeCreditCardStatementDays.keys {
+        for accountId in creditCardConfigs.keys {
             if let cycle = creditCardCycle(for: accountId) {
                 cycles[accountId] = cycle
             }
@@ -2263,6 +2263,7 @@ final class BudgetStore: ObservableObject {
             }
 
             refreshPayeeLocationSupport()
+            await scheduleCreditCardDueNotifications()
 
         } catch {
             // If a concurrent load replaced our database mid-fetch, this
@@ -2434,6 +2435,7 @@ final class BudgetStore: ObservableObject {
             await loadSchedules()
             await loadBankSyncAccounts()
             publishWidgetSnapshot()
+            await scheduleCreditCardDueNotifications()
         } catch is CancellationError {
             // The caller's task was cancelled (e.g. a .refreshable task the
             // system tore down). Nothing failed — never alarm the user.
@@ -5401,7 +5403,6 @@ final class BudgetStore: ObservableObject {
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
     func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
         await notifyAboutTransactions(await detectNewTransactionsForNotification() + additional)
-        await scheduleCreditCardDueNotifications()
     }
 
     private func notifyAboutTransactions(_ fresh: [Transaction]) async {
