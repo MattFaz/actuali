@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FormulaWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let result: FormulaEngine.Result
 
@@ -10,7 +11,7 @@ struct FormulaWidgetView: View {
             Text(displayName).font(.headline)
             switch result {
             case .value(let units):
-                Text(budgetStore.displayBalance(Int((units * 100).rounded())))
+                Text(budgetStore.displayBalance(Int((units * 100).rounded()), locale: locale))
                     .font(.system(size: 34, weight: .bold))
                     .monospacedDigit()
                     .minimumScaleFactor(0.5)

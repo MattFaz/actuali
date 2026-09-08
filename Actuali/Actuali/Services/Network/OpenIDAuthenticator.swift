@@ -9,18 +9,42 @@ enum OpenIDAuthError: LocalizedError {
     case server(String)
     case sessionFailed(any Error)
 
+    private static func localizedString(
+        _ key: String,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.localizedBundle(for: locale, in: bundle)
+            .localizedString(forKey: key, value: key, table: nil)
+    }
+
+    static func sessionStartFailureDescription(
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        localizedString("Could not start the sign-in session", locale: locale, bundle: bundle)
+    }
+
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return "Sign-in was cancelled"
+            return Self.localizedString("Sign-in was cancelled")
         case .missingToken:
-            return "The server did not return a sign-in token"
+            return Self.localizedString("The server did not return a sign-in token")
         case .noWindow:
-            return "Sign-in needs an open window. Try again with the app in the foreground."
+            return Self.localizedString("Sign-in needs an open window. Try again with the app in the foreground.")
         case .server(let reason):
-            return "Sign-in failed: \(reason)"
+            return String(
+                format: Self.localizedString("Sign-in failed: %@"),
+                locale: .current,
+                reason
+            )
         case .sessionFailed(let error):
-            return "Sign-in failed: \(error.localizedDescription)"
+            return String(
+                format: Self.localizedString("Sign-in failed: %@"),
+                locale: .current,
+                error.localizedDescription
+            )
         }
     }
 }
@@ -108,7 +132,7 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
             if !session.start() {
                 continuation.resume(throwing: OpenIDAuthError.sessionFailed(
                     NSError(domain: "OpenIDAuthenticator", code: -1,
-                            userInfo: [NSLocalizedDescriptionKey: "Could not start the sign-in session"])
+                            userInfo: [NSLocalizedDescriptionKey: OpenIDAuthError.sessionStartFailureDescription()])
                 ))
             }
         }

@@ -25,7 +25,7 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
             currencyCode: "USD")
 
-        #expect(content?.title == "New transaction")
+        #expect(content?.title == "1 new transaction")
         #expect(content?.body.contains("12.50") == true)
         #expect(content?.body.contains("Starbucks") == true)
         #expect(content?.body.localizedCaseInsensitiveContains("category") == false)

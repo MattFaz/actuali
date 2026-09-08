@@ -416,7 +416,7 @@ struct BankAccountLinkView: View {
                         Button(role: .destructive) {
                             perform { try await budgetStore.unlinkBankAccount(accountId: linked.id) }
                         } label: {
-                            Label("Unlink from \(linked.name)", systemImage: "link.badge.plus")
+                            Label(String(format: String(localized: "Unlink from %@"), linked.name), systemImage: "link.badge.plus")
                         }
                     } footer: {
                         Text("Transactions already imported stay in the account.")
@@ -428,12 +428,12 @@ struct BankAccountLinkView: View {
                     Button {
                         createAndLink()
                     } label: {
-                        Label("Create “\(remote.name)”", systemImage: "plus.circle")
+                        Label(String(format: String(localized: "Create “%@”"), remote.name), systemImage: "plus.circle")
                     }
                 } header: {
                     Text("New account")
                 } footer: {
-                    Text("Creates a budget account for \(remote.name) at \(remote.institutionName) and links it. Its opening balance is worked out on the first sync.")
+                    Text(String(format: String(localized: "Creates a budget account for %@ at %@ and links it. Its opening balance is worked out on the first sync."), remote.name, remote.institutionName))
                 }
 
                 Section("Link to an existing account") {

@@ -4,36 +4,36 @@ import Foundation
 struct LogTransactionIntent: AppIntent {
     static let title: LocalizedStringResource = "Log Transaction"
     static let description = IntentDescription(
-        "Add a transaction to your Actual budget.",
-        categoryName: "Transactions"
+        LocalizedStringResource("Add a transaction to your Actual budget."),
+        categoryName: LocalizedStringResource("Transactions")
     )
     static let openAppWhenRun = false
 
-    @Parameter(title: "Account")
+    @Parameter(title: LocalizedStringResource("Account"))
     var account: AccountEntity?
 
-    @Parameter(title: "Card or Account Hint", default: "")
+    @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
     // String, not Double: Wallet's amount coerces to 0 as a Number for some
     // cards, but the text form carries the real value (issue #41). Parsed
     // via AmountParser, which handles currency symbols and locale separators.
-    @Parameter(title: "Amount")
+    @Parameter(title: LocalizedStringResource("Amount"))
     var amount: String
 
-    @Parameter(title: "Payee")
+    @Parameter(title: LocalizedStringResource("Payee"))
     var payee: String
 
-    @Parameter(title: "Notes", default: "")
+    @Parameter(title: LocalizedStringResource("Notes"), default: "")
     var notes: String
 
-    @Parameter(title: "Date")
+    @Parameter(title: LocalizedStringResource("Date"))
     var date: Date?
 
-    @Parameter(title: "Is Income", default: false)
+    @Parameter(title: LocalizedStringResource("Is Income"), default: false)
     var isIncome: Bool
 
-    @Parameter(title: "Cleared", default: true)
+    @Parameter(title: LocalizedStringResource("Cleared"), default: true)
     var cleared: Bool
 
     // Siri speaks a returned dialog, but Shortcuts and Wallet automations render
@@ -41,7 +41,7 @@ struct LogTransactionIntent: AppIntent {
     // normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
     // invocation surface, so the Siri App Shortcut opts in explicitly and every
     // other caller stays silent; the success notification is the feedback there.
-    @Parameter(title: "Show Confirmation", default: false)
+    @Parameter(title: LocalizedStringResource("Show Confirmation"), default: false)
     var showConfirmation: Bool
 
     init() {}
@@ -164,10 +164,11 @@ struct LogTransactionIntent: AppIntent {
                 narrowSymbol: store.useNarrowCurrencySymbol,
                 numberFormat: store.numberFormat
             )
-            let verb = written.synced ? "Logged" : "Saved locally:"
-            let dialogText = displayPayee.isEmpty
-                ? "\(verb) \(amountString)"
-                : "\(verb) \(amountString) at \(displayPayee)"
+            let dialogText = LogTransactionDialogFormatter.string(
+                amount: amountString,
+                payee: displayPayee,
+                synced: written.synced
+            )
             return Self.result(dialogText: dialogText, showConfirmation: showConfirmation)
         } catch {
             let mapped: LogTransactionError = (error as? LogTransactionError)
@@ -199,5 +200,25 @@ struct LogTransactionIntent: AppIntent {
             ),
             numberFormat: store.numberFormat
         )
+    }
+}
+
+enum LogTransactionDialogFormatter {
+    static func string(
+        amount: String,
+        payee: String,
+        synced: Bool,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        let key = synced
+            ? (payee.isEmpty ? "Logged %@" : "Logged %@ at %@")
+            : (payee.isEmpty ? "Saved locally: %@" : "Saved locally: %@ at %@")
+        let format = String(localized: LocalizedStringResource(
+            String.LocalizationValue(key), locale: locale, bundle: bundle
+        ))
+        return payee.isEmpty
+            ? String(format: format, amount)
+            : String(format: format, amount, payee)
     }
 }

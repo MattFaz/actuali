@@ -102,10 +102,10 @@ struct CreditCardCycle: Equatable, Hashable {
     /// fact differently.
     func dueSummary(for today: DayDate = .today()) -> String {
         let days = daysUntilDue(for: today)
-        if days == 0 { return "Due today" }
-        if days == 1 { return "Due tomorrow" }
+        if days == 0 { return String(localized: "Due today") }
+        if days == 1 { return String(localized: "Due tomorrow") }
         let dueStr = Transaction.formattedDate(from: upcomingDueDate(for: today).yyyymmdd, style: .abbreviated)
-        return "Due \(dueStr) (\(days)d)"
+        return String(format: String(localized: "Due %@ (%lldd)"), dueStr, Int64(days))
     }
 
     /// Compact variant of `dueSummary` for pill badges ("Due in 27d"). Defers to
@@ -113,6 +113,6 @@ struct CreditCardCycle: Equatable, Hashable {
     /// wording that matters most.
     func dueShortSummary(for today: DayDate = .today()) -> String {
         let days = daysUntilDue(for: today)
-        return days <= 1 ? dueSummary(for: today) : "Due in \(days)d"
+        return days <= 1 ? dueSummary(for: today) : String(format: String(localized: "Due in %lldd"), Int64(days))
     }
 }

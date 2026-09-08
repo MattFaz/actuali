@@ -17,7 +17,11 @@ enum AmountParser {
         let tokens = text.matches(of: /-?\d[\d.,'\u{2019}\u{202F}\u{00A0}]*/)
         guard tokens.count == 1 else { return nil }
 
-        var token = String(tokens[0].output)
+        let match = tokens[0]
+        let suffix = text[match.range.upperBound...]
+        guard suffix.first != "-" || suffix.dropFirst().first?.isLetter != true else { return nil }
+
+        var token = String(match.output)
         // A minus counts only if attached to the number or leading the whole
         // string — a hyphenated merchant name ("Coca-Cola") is not a sign.
         let negative = token.hasPrefix("-")

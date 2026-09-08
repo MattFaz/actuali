@@ -23,19 +23,19 @@ enum SimpleFINError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidSetupToken:
-            return "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again."
+            return String(localized: "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again.")
         case .invalidAccessKey:
-            return "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again."
+            return String(localized: "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again.")
         case .claimRejected:
-            return "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that."
+            return String(localized: "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that.")
         case .forbidden:
-            return "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token."
+            return String(localized: "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token.")
         case .httpError(let statusCode):
-            return "SimpleFIN returned an unexpected response (HTTP \(statusCode))."
+            return String(localized: "SimpleFIN returned an unexpected response (HTTP \(statusCode)).")
         case .invalidResponse:
-            return "SimpleFIN returned a response Actuali couldn't read."
+            return String(localized: "SimpleFIN returned a response Actuali couldn't read.")
         case .networkError(let message):
-            return "Couldn't reach SimpleFIN: \(message)"
+            return String(localized: "Couldn't reach SimpleFIN: \(message)")
         }
     }
 }

@@ -3,6 +3,7 @@ import Charts
 
 struct CashFlowWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: CashFlowData
 
@@ -17,8 +18,8 @@ struct CashFlowWidgetView: View {
     private var bars: [Bar] {
         data.points.flatMap { p in
             [
-                Bar(period: p.periodStart, kind: "Income", amount: Double(p.incomeCents) / 100),
-                Bar(period: p.periodStart, kind: "Expense", amount: Double(p.expenseCents) / 100)
+                Bar(period: p.periodStart, kind: ReportStrings.text("Income", locale: locale), amount: Double(p.incomeCents) / 100),
+                Bar(period: p.periodStart, kind: ReportStrings.text("Expense", locale: locale), amount: Double(p.expenseCents) / 100)
             ]
         }
     }
@@ -31,27 +32,32 @@ struct CashFlowWidgetView: View {
         VStack(alignment: .leading, spacing: 8) {
             Text(displayName).font(.headline)
             if data.points.isEmpty || allEmpty {
-                Text("No data")
+                Text(ReportStrings.text("No data", locale: locale))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
             } else {
                 Chart(bars) { bar in
                     BarMark(
-                        x: .value("Period", bar.period, unit: .month),
-                        y: .value("Amount", bar.amount)
+                        x: .value(ReportStrings.text("Period", locale: locale), bar.period, unit: .month),
+                        y: .value(ReportStrings.text("Amount", locale: locale), bar.amount)
                     )
-                    .foregroundStyle(by: .value("Kind", bar.kind))
-                    .position(by: .value("Kind", bar.kind))
+                    .foregroundStyle(by: .value(ReportStrings.text("Kind", locale: locale), bar.kind))
+                    .position(by: .value(ReportStrings.text("Kind", locale: locale), bar.kind))
                 }
                 .chartForegroundStyleScale([
-                    "Income": Color.green,
-                    "Expense": Color.red
+                    ReportStrings.text("Income", locale: locale): Color.green,
+                    ReportStrings.text("Expense", locale: locale): Color.red
                 ])
                 .frame(height: 200)
                 // The bars retain their trend, but hiding the numeric axis
                 // prevents the chart from disclosing an exact amount.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

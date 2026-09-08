@@ -20,21 +20,21 @@ enum SyncError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return "Sync isn't configured. Open a budget first."
+            return String(localized: "Sync isn't configured. Open a budget first.")
         case .offline:
-            return "You're offline. Sync will resume automatically."
+            return String(localized: "You're offline. Sync will resume automatically.")
         case .outOfSync:
-            return "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover."
+            return String(localized: "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover.")
         case .encodingFailed:
-            return "Failed to encode the sync request."
+            return String(localized: "Failed to encode the sync request.")
         case .serverError(let message):
-            return "Server error: \(message)"
+            return String(localized: "Server error: \(message)")
         case .budgetTableMissing:
-            return "This budget file has no budget table to write to."
+            return String(localized: "This budget file has no budget table to write to.")
         case .notesTableMissing:
-            return "This budget file has no notes table to write to."
+            return String(localized: "This budget file has no notes table to write to.")
         case .rulesTableMissing:
-            return "This budget file has no rules table to write to."
+            return String(localized: "This budget file has no rules table to write to.")
         }
     }
 }
@@ -180,13 +180,30 @@ actor SyncClient {
     struct PreparedRules {
         let rules: [Rule]
         let context: RuleContext
+        let fingerprint: BankSyncRulesFingerprint
+
+        init(rules: [Rule], context: RuleContext, fingerprint: BankSyncRulesFingerprint) {
+            self.rules = rules
+            self.context = context
+            self.fingerprint = fingerprint
+        }
     }
 
-    func prepareRules() -> PreparedRules {
-        guard let database else { return PreparedRules(rules: [], context: .empty) }
+    enum TransactionCreateResult: Equatable {
+        case inserted(String)
+        case duplicate
+        case suppressedByRule
+    }
+
+    func prepareRules() async throws -> PreparedRules {
+        guard let database else {
+            return PreparedRules(rules: [], context: .empty, fingerprint: .empty)
+        }
+        let snapshot = try database.prepareRulesSnapshot()
         return PreparedRules(
-            rules: (try? database.fetchRules()) ?? [],
-            context: (try? database.ruleContext()) ?? .empty
+            rules: snapshot.rules,
+            context: snapshot.context,
+            fingerprint: snapshot.fingerprint
         )
     }
 
@@ -195,11 +212,124 @@ actor SyncClient {
     /// Create a transaction (optimistic local-first).
     /// `applyRules: false` skips the rules pass — used for split children,
     /// whose every field the caller spelled out explicitly (like `createSplit`).
+    @discardableResult
     func createTransaction(
         _ transaction: Transaction,
         applyRules: Bool = true,
         prepared: PreparedRules? = nil
-    ) async throws {
+    ) async throws -> TransactionCreateResult {
+        try await createTransaction(
+            transaction,
+            applyRules: applyRules,
+            prepared: prepared,
+            financialIdPolicy: .unique,
+            resolveOriginalBankPayee: false
+        )
+    }
+
+    func createBankSyncTransaction(
+        _ transaction: Transaction,
+        maxLiveFinancialIdOccurrences: Int,
+        prepared: PreparedRules,
+        expectedLink: ExpectedBankSyncLink
+    ) async throws -> TransactionCreateResult {
+        precondition(maxLiveFinancialIdOccurrences > 0)
+        return try await createTransaction(
+            transaction,
+            applyRules: true,
+            prepared: prepared,
+            financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
+            resolveOriginalBankPayee: true,
+            expectedLink: expectedLink
+        )
+    }
+
+    func prepareBankSyncTransaction(
+        _ transaction: Transaction,
+        prepared: PreparedRules,
+        pendingPayeesByName: [String: Payee] = [:]
+    ) async throws -> (transaction: Transaction, messages: [CRDTMessage], pendingPayees: [Payee], pendingPayeesByName: [String: Payee])? {
+        guard database != nil else { throw SyncError.notConfigured }
+        var finalTransaction = transaction
+        var pendingPayees: [Payee] = []
+        var pendingPayeesByName = pendingPayeesByName
+        let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
+        if result.isDeleted { return nil }
+        finalTransaction = result.transaction
+        if let name = result.pendingPayeeName {
+            finalTransaction.payeeId = try await resolvePayee(
+                named: name,
+                deferCreation: true,
+                pendingPayees: &pendingPayees,
+                pendingPayeesByName: &pendingPayeesByName
+            )
+        } else if !result.changedFields.contains("payee"),
+                  !result.changedFields.contains("payee_name"),
+                  finalTransaction.payeeId == nil,
+                  let originalPayeeName = transaction.payeeName {
+            finalTransaction.payeeId = try await resolvePayee(
+                named: originalPayeeName,
+                deferCreation: true,
+                pendingPayees: &pendingPayees,
+                pendingPayeesByName: &pendingPayeesByName
+            )
+        }
+        var messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        for payee in pendingPayees {
+            messages += try await messageGenerator.messagesForInsert(payee)
+            messages += try await messageGenerator.messagesForInsert(
+                PayeeMapping(id: payee.id, targetId: payee.id)
+            )
+        }
+        return (finalTransaction, messages, pendingPayees, pendingPayeesByName)
+    }
+
+    func prepareBankSyncOpeningInsert(
+        _ transaction: Transaction,
+        payee: Payee,
+        expectedInsertedIds: Set<String>
+    ) async throws -> BankSyncOpeningInsert {
+        var messages = try await messageGenerator.messagesForInsert(payee)
+        messages += try await messageGenerator.messagesForInsert(
+            PayeeMapping(id: payee.id, targetId: payee.id)
+        )
+        messages += try await messageGenerator.messagesForInsert(transaction)
+        return BankSyncOpeningInsert(
+            transaction: transaction,
+            payee: payee,
+            messages: messages,
+            expectedInsertedIds: expectedInsertedIds
+        )
+    }
+
+    func prepareBankSyncOpeningUpdate(
+        _ transaction: Transaction,
+        expectedAmount: Int,
+        expectedInsertedIds: Set<String>
+    ) async throws -> BankSyncOpeningUpdate {
+        BankSyncOpeningUpdate(
+            expectedAmount: expectedAmount,
+            transaction: transaction,
+            messages: try await messageGenerator.messagesForUpdate(
+                transaction, changedFields: ["amount"]
+            ),
+            expectedInsertedIds: expectedInsertedIds
+        )
+    }
+
+    private enum FinancialIdPolicy {
+        case unique
+        case occurrences(Int)
+    }
+
+    private func createTransaction(
+        _ transaction: Transaction,
+        applyRules: Bool,
+        prepared: PreparedRules?,
+        financialIdPolicy: FinancialIdPolicy,
+        resolveOriginalBankPayee: Bool,
+        expectedLink: ExpectedBankSyncLink? = nil
+    ) async throws -> TransactionCreateResult {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createTransaction() - id: \(transaction.id, privacy: .private)")
@@ -209,37 +339,93 @@ actor SyncClient {
         //    transfer flow already builds both legs explicitly and we don't want
         //    rules rewriting the linked payee/account.
         var finalTransaction = transaction
+        var pendingPayees: [Payee] = []
+        var pendingPayeesByName: [String: Payee] = [:]
         if applyRules, transaction.transferId == nil {
-            let prepared = prepared ?? prepareRules()
-            let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
+            let preparedRules: PreparedRules
+            if let prepared {
+                preparedRules = prepared
+            } else {
+                preparedRules = try await prepareRules()
+            }
+            let result = RulesEngine.apply(transaction, rules: preparedRules.rules, context: preparedRules.context)
 
             if result.isDeleted {
                 // A `delete-transaction` rule matched. Upstream tombstones the
                 // row; for a transaction that doesn't exist yet, not creating it
                 // is the same outcome with less to sync.
                 logger.notice("Rules deleted the incoming transaction — skipping insert")
-                return
+                return .suppressedByRule
             }
 
             finalTransaction = result.transaction
             if let name = result.pendingPayeeName {
-                finalTransaction.payeeId = try await resolvePayee(named: name)
+                finalTransaction.payeeId = try await resolvePayee(
+                    named: name,
+                    deferCreation: transaction.financialId != nil,
+                    pendingPayees: &pendingPayees,
+                    pendingPayeesByName: &pendingPayeesByName
+                )
+            } else if resolveOriginalBankPayee,
+                      !result.changedFields.contains("payee"),
+                      !result.changedFields.contains("payee_name"),
+                      finalTransaction.payeeId == nil,
+                      let originalPayeeName = transaction.payeeName {
+                finalTransaction.payeeId = try await resolvePayee(
+                    named: originalPayeeName,
+                    deferCreation: transaction.financialId != nil,
+                    pendingPayees: &pendingPayees,
+                    pendingPayeesByName: &pendingPayeesByName
+                )
             }
             if !result.changedFields.isEmpty {
                 logger.info("Rules updated \(result.changedFields.count, privacy: .public) field(s) on new transaction")
             }
         }
 
-        // 1. Insert locally (optimistic)
-        try database.insertTransaction(finalTransaction)
-        logger.debug("Transaction inserted locally")
-
-        // 2. Generate CRDT messages
-        let messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        // 1. Generate CRDT messages before persistence so a generation failure
+        // cannot leave a financial-id row that looks like a completed import.
+        var messages = try await messageGenerator.messagesForInsert(finalTransaction)
+        for payee in pendingPayees {
+            messages += try await messageGenerator.messagesForInsert(payee)
+            messages += try await messageGenerator.messagesForInsert(
+                PayeeMapping(id: payee.id, targetId: payee.id)
+            )
+        }
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 2. Store the row and messages atomically. Financial-id retries can
+        // repair a deterministic row that has no messages yet.
+        let insertedMessages: [CRDTMessage]
+        if finalTransaction.financialId != nil {
+            switch financialIdPolicy {
+            case .unique:
+                insertedMessages = try database.insertTransactionWithMessages(
+                    finalTransaction,
+                    messages: messages,
+                    pendingPayees: pendingPayees
+                )
+            case .occurrences(let limit):
+                guard let expectedLink else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
+                insertedMessages = try database.insertBankSyncTransactionWithMessages(
+                    finalTransaction,
+                    messages: messages,
+                    maxLiveFinancialIdOccurrences: limit,
+                    expectedLink: expectedLink,
+                    pendingPayees: pendingPayees
+                )
+            }
+        } else {
+            try database.insertTransaction(finalTransaction)
+            insertedMessages = try database.insertMessages(messages)
+        }
+        guard !insertedMessages.isEmpty else { return .duplicate }
+        logger.debug("Transaction and messages inserted locally")
+
+        // 3. Update merkle
+        for msg in insertedMessages {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -248,6 +434,7 @@ actor SyncClient {
 
         // 4. Push to the server in the background (never blocks the caller)
         scheduleAutomaticSync()
+        return .inserted(finalTransaction.id)
     }
 
     /// Create both legs of a transfer atomically (optimistic local-first).
@@ -347,21 +534,20 @@ actor SyncClient {
 
         logger.debug("updateTransaction() - id: \(transaction.id, privacy: .private), fields: \(changedFields.count, privacy: .public)")
 
-        // 1. Update locally (optimistic)
-        try database.updateTransaction(transaction)
-        logger.debug("Transaction updated locally")
-
+        // 1. Generate CRDT messages before persistence. The database commits
+        // the row and messages together so a message failure cannot strand a
+        // local-only edit.
         guard !changedFields.isEmpty else {
-            logger.debug("No changed fields - skipping CRDT messages")
+            try database.updateTransaction(transaction)
+            logger.debug("No changed fields - updated local-only fields")
             return
         }
 
-        // 2. Generate CRDT messages for the changed fields only
         let messages = try await messageGenerator.messagesForUpdate(transaction, changedFields: changedFields)
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 2. Store the row and messages atomically, then update merkle.
+        for msg in try database.updateTransactionWithMessages(transaction, messages: messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -383,18 +569,17 @@ actor SyncClient {
 
         logger.debug("updateTransactions() - \(transactions.count, privacy: .public) rows, fields: \(changedFields.count, privacy: .public)")
 
-        // 1. Update locally (optimistic) and generate CRDT messages
-        var messages: [CRDTMessage] = []
+        // 1. Generate every message before touching any row.
+        var updates: [(transaction: Transaction, messages: [CRDTMessage])] = []
         for transaction in transactions {
-            try database.updateTransaction(transaction)
-            guard !changedFields.isEmpty else { continue }
-            messages.append(contentsOf: try await messageGenerator.messagesForUpdate(
-                transaction, changedFields: changedFields
-            ))
+            let messages = changedFields.isEmpty
+                ? []
+                : try await messageGenerator.messagesForUpdate(transaction, changedFields: changedFields)
+            updates.append((transaction: transaction, messages: messages))
         }
 
-        // 2. Store messages and update merkle once for the batch
-        for msg in try database.insertMessages(messages) {
+        // 2. Store all rows and messages atomically, then update Merkle once.
+        for msg in try database.updateTransactionsWithMessages(updates) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -437,15 +622,30 @@ actor SyncClient {
     
     /// Turn a `payee_name` a rule set into a payee id, creating the payee when
     /// it's new — upstream `resolvePayeeNameForRules`.
-    private func resolvePayee(named name: String) async throws -> String? {
+    private func resolvePayee(
+        named name: String,
+        deferCreation: Bool = false,
+        pendingPayees: inout [Payee],
+        pendingPayeesByName: inout [String: Payee]
+    ) async throws -> String? {
         guard let database else { throw SyncError.notConfigured }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
+        let key = trimmed.lowercased()
+        if let pending = pendingPayeesByName[key] {
+            pendingPayees.append(pending)
+            return pending.id
+        }
         if let existing = try database.payee(named: trimmed) { return existing.id }
 
         let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
-        try await createPayee(payee)
+        if deferCreation {
+            pendingPayeesByName[key] = payee
+            pendingPayees.append(payee)
+        } else {
+            try await createPayee(payee)
+        }
         return payee.id
     }
 
@@ -515,38 +715,53 @@ actor SyncClient {
         externalAccountId: String,
         source: BankSyncSource,
         institutionId: String,
-        institutionName: String
+        institutionName: String,
+        expectedOldLink: ExpectedBankSyncLink? = nil,
+        verifyExpectedOldLink: Bool = false
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("linkAccount() - id: \(accountId, privacy: .private)")
 
-        let existingBank = try await database.bank(withBankId: institutionId)
-        let bank = existingBank ?? Bank(
+        let proposedBank = Bank(
             id: UUID().uuidString, bankId: institutionId, name: institutionName
         )
+        for attempt in 0..<2 {
+            let link = try database.proposeBankSyncLink(proposedBank: proposedBank)
+            var messages = try await messageGenerator.messages(
+                dataset: "accounts",
+                row: accountId,
+                fields: [
+                    ("account_id", externalAccountId),
+                    ("account_sync_source", source.rawValue),
+                    ("bank", link.bank.id)
+                ]
+            )
+            if link.created {
+                messages += try await messageGenerator.messagesForInsert(link.bank)
+            } else if link.revived {
+                messages += try await messageGenerator.messagesForUpdate(
+                    link.bank,
+                    changedFields: ["bank_id", "name", "tombstone"]
+                )
+            }
 
-        var messages = try await messageGenerator.messages(
-            dataset: "accounts",
-            row: accountId,
-            fields: [
-                ("account_id", externalAccountId),
-                ("account_sync_source", source.rawValue),
-                ("bank", bank.id)
-            ]
-        )
-        if existingBank == nil {
-            messages += try await messageGenerator.messagesForInsert(bank)
-        }
-
-        for msg in try database.applyBankSyncLink(
-            accountId: accountId,
-            externalAccountId: externalAccountId,
-            syncSource: source.rawValue,
-            bank: bank,
-            messages: messages
-        ) {
-            merkle = merkle.inserting(msg.timestamp)
+            do {
+                for msg in try database.applyBankSyncLink(
+                    accountId: accountId,
+                    externalAccountId: externalAccountId,
+                    syncSource: source.rawValue,
+                    proposal: link,
+                    expectedOldLink: expectedOldLink,
+                    verifyExpectedOldLink: verifyExpectedOldLink,
+                    messages: messages
+                ) {
+                    merkle = merkle.inserting(msg.timestamp)
+                }
+                break
+            } catch let error as BankSyncDatabaseError where error == .bankSyncLinkChanged && attempt == 0 {
+                continue
+            }
         }
         merkle = merkle.pruned()
         try saveClock()
@@ -554,10 +769,48 @@ actor SyncClient {
         await automaticSync()
     }
 
+    func linkFinanceKitAccount(
+        accountId: String,
+        externalAccountId: String,
+        expectedOldLink: ExpectedBankSyncLink?
+    ) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        var messages: [CRDTMessage] = []
+        if let expectedOldLink, expectedOldLink.source != BankSyncSource.financeKit.rawValue {
+            messages = try await messageGenerator.messages(
+                dataset: "accounts",
+                row: accountId,
+                fields: [
+                    ("account_id", nil),
+                    ("account_sync_source", nil),
+                    ("bank", nil),
+                    ("balance_current", nil),
+                    ("balance_available", nil),
+                    ("balance_limit", nil),
+                    ("bank_sync_status", nil)
+                ]
+            )
+        }
+        for msg in try database.applyBankSyncLocalLink(
+            ExpectedBankSyncLink(
+                accountId: accountId,
+                externalAccountId: externalAccountId,
+                source: BankSyncSource.financeKit.rawValue
+            ),
+            expectedOldLink: expectedOldLink,
+            messages: messages
+        ) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Cut an account loose from its bank feed. The transactions it already
     /// imported stay — only the link goes, matching the web UI's unlink, which
     /// clears the cached balances and the status badge along with the pointer.
-    func unlinkAccount(accountId: String) async throws {
+    func unlinkAccount(accountId: String, expectedLink: ExpectedBankSyncLink) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("unlinkAccount() - id: \(accountId, privacy: .private)")
@@ -576,7 +829,9 @@ actor SyncClient {
             ]
         )
 
-        for msg in try database.applyBankSyncUnlink(accountId: accountId, messages: messages) {
+        for msg in try database.applyBankSyncUnlink(
+            accountId: accountId, expectedLink: expectedLink, messages: messages
+        ) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -589,7 +844,7 @@ actor SyncClient {
     /// and `bank_sync_status`, the two columns every Actual client stamps, so
     /// a sync run here reads the same in the web UI.
     func recordBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String)]
+        _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)]
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
         guard !statuses.isEmpty else { return }
@@ -621,9 +876,12 @@ actor SyncClient {
     /// Fold a bank download into the transactions it matched (optimistic
     /// local-first). One merkle/clock save and one sync for the whole batch,
     /// like `updateTransactions`.
-    func applyBankSyncUpdates(_ updates: [BankSyncUpdate]) async throws {
+    func applyBankSyncUpdates(
+        _ updates: [BankSyncUpdate],
+        expectedLink: ExpectedBankSyncLink
+    ) async throws -> Int {
         guard let database else { throw SyncError.notConfigured }
-        guard !updates.isEmpty else { return }
+        guard !updates.isEmpty else { return 0 }
 
         logger.debug("applyBankSyncUpdates() - \(updates.count, privacy: .public) rows")
 
@@ -642,13 +900,64 @@ actor SyncClient {
             )
         }
 
-        for msg in try database.applyBankSyncUpdates(updates, messages: messages) {
+        let result = try database.applyBankSyncUpdates(
+            updates,
+            expectedLink: expectedLink,
+            messages: messages
+        )
+        for msg in result.messages {
             merkle = merkle.inserting(msg.timestamp)
         }
+        guard result.updatedCount > 0 else { return 0 }
         merkle = merkle.pruned()
         try saveClock()
 
         scheduleAutomaticSync()
+        return result.updatedCount
+    }
+
+    func materializeBankSync(
+        updates: [BankSyncUpdate],
+        inserts: [PreparedBankSyncInsert],
+        openingInsert: BankSyncOpeningInsert?,
+        openingUpdate: BankSyncOpeningUpdate?,
+        expectedLink: ExpectedBankSyncLink,
+        preparedRulesFingerprint: BankSyncRulesFingerprint
+    ) async throws -> (updatedCount: Int, inserted: [Transaction]) {
+        guard let database else { throw SyncError.notConfigured }
+        var updateMessages: [CRDTMessage] = []
+        for update in updates {
+            updateMessages += try await messageGenerator.messages(
+                dataset: "transactions",
+                row: update.existingId,
+                fields: [
+                    ("financial_id", update.importedId),
+                    ("description", update.payeeId),
+                    ("imported_description", update.importedPayee),
+                    ("notes", update.notes),
+                    ("cleared", update.cleared ? 1 : 0)
+                ]
+            )
+        }
+        let result = try database.materializeBankSync(
+            updates: updates,
+            updateMessages: updateMessages,
+            inserts: inserts,
+            openingInsert: openingInsert,
+            openingUpdate: openingUpdate,
+            expectedLink: expectedLink,
+            rulesFingerprint: preparedRulesFingerprint
+        )
+        for msg in result.messages {
+            merkle = merkle.inserting(msg.timestamp)
+        }
+        guard !result.messages.isEmpty else {
+            return (result.updatedCount, result.inserted)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+        return (result.updatedCount, result.inserted)
     }
 
     /// Create a category group (optimistic local-first). Placement, the
@@ -735,9 +1044,7 @@ actor SyncClient {
             row: id,
             fields: [("name", name)]
         )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
+        for message in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(message.timestamp)
         }
         merkle = merkle.pruned()
@@ -762,9 +1069,7 @@ actor SyncClient {
             row: id,
             fields: [("hidden", hidden ? 1 : 0)]
         )
-        try database.applyMessages(messages)
-
-        for message in try database.insertMessages(messages) {
+        for message in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(message.timestamp)
         }
         merkle = merkle.pruned()
@@ -867,9 +1172,7 @@ actor SyncClient {
         let fields: [(column: String, value: (any Sendable)?)] = [("value", value)]
         let messages = try await messageGenerator.messages(dataset: "preferences", row: key, fields: fields)
 
-        try database.applyMessages(messages)
-
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -930,10 +1233,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -977,10 +1278,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1022,10 +1321,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1057,8 +1354,7 @@ actor SyncClient {
                 dataset: "categories", row: update.categoryId, fields: fields)
         }
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1089,8 +1385,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "categories", row: categoryId, fields: fields)
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1113,8 +1408,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "cleanup_groups", row: id, fields: fields)
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1163,8 +1457,7 @@ actor SyncClient {
                 dataset: cell.table, row: cell.rowId, fields: fields)
         }
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1184,8 +1477,7 @@ actor SyncClient {
         let messages = try await messageGenerator.messages(
             dataset: "preferences", row: id, fields: [("value", value)])
 
-        try database.applyMessages(messages)
-        for msg in try database.insertMessages(messages) {
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1222,10 +1514,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving from
         //    another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1259,10 +1549,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving from
         //    another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1282,9 +1570,7 @@ actor SyncClient {
         logger.debug("deleteRule() - id: \(rule.id, privacy: .private)")
 
         let message = try await messageGenerator.messageForDelete(rule)
-        try database.applyMessages([message])
-
-        for msg in try database.insertMessages([message]) {
+        for msg in try database.applyMessagesAndInsertMessages([message]) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1318,10 +1604,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local advance and the identical advance
         //    arriving from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1422,10 +1706,8 @@ actor SyncClient {
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving
         //    from another device converge byte-for-byte.
-        try database.applyMessages(messages)
-
-        // 3. Store messages and update merkle
-        for msg in try database.insertMessages(messages) {
+        // 3. Apply and store messages atomically, then update merkle
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()
@@ -1600,12 +1882,36 @@ actor SyncClient {
         }
     }
 
+    /// Cancel deferred work when the owning budget is being torn down. The
+    /// push task must be awaited so it cannot continue using the old database.
+    func cancelPendingSync() async {
+        syncTask?.cancel()
+        syncTask = nil
+        pushNeededAfterCurrent = false
+
+        let pushTask = self.pushTask
+        pushTask?.cancel()
+        await pushTask?.value
+        self.pushTask = nil
+    }
+
     /// Whether local writes are still waiting to reach the server. Call after
     /// `flushPendingSync()` to find out whether the push actually landed —
     /// pushes are detached, so a write path can't return that answer itself
     /// (issue #139).
     func hasPendingLocalWrites() -> Bool {
         hasUnsyncedLocalMessages()
+    }
+
+    /// Whether this row still has a message newer than the sync watermark.
+    /// Unrelated pending rows do not affect this transaction's outcome.
+    func hasPendingLocalWrites(dataset: String, row: String) -> Bool {
+        guard let database,
+              let timestamps = try? database.messageTimestamps(dataset: dataset, row: row),
+              !timestamps.isEmpty else { return false }
+        let watermark = lastSyncedTimestamp ?? downloadBaselineTimestamp
+        guard let watermark, !watermark.isEmpty else { return true }
+        return timestamps.contains { $0 > watermark }
     }
 
     private func startPushTask(rateLimited: Bool) {
@@ -1682,11 +1988,13 @@ actor SyncClient {
             lastSuccessfulSyncTime = Date()
             return true
         } catch SyncError.offline {
+            guard !Task.isCancelled else { return false }
             logger.notice("performSync() failed - offline")
             stateSubject.send(.offline)
             scheduleRetry()
             return false
         } catch {
+            guard !Task.isCancelled else { return false }
             logger.error("performSync() failed: \(error.localizedDescription, privacy: .public)")
             stateSubject.send(.error(error.localizedDescription))
             scheduleRetry()
@@ -1862,15 +2170,11 @@ actor SyncClient {
         let newMessages = try database.filterNewMessages(messages)
         logger.debug("After filtering: \(newMessages.count, privacy: .public) new messages to apply")
 
-        // Apply to local DB
-        try database.applyMessages(newMessages)
-        logger.debug("Applied messages to database")
-
-        // Store in messages_crdt and merkle-insert only what was actually new.
+        // Apply new messages and persist all received messages atomically.
         // The merkle hash is XOR-based, so re-inserting an existing timestamp
         // (server echo, multi-pass recursion, retry) would cancel it out of the
         // trie and force a permanent divergence from the server.
-        let insertedMessages = try database.insertMessages(messages)
+        let insertedMessages = try database.applyMessagesAndInsertMessages(messages, applying: newMessages)
         for msg in insertedMessages {
             merkle = merkle.inserting(msg.timestamp)
         }

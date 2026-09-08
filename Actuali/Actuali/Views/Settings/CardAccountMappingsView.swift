@@ -17,14 +17,14 @@ struct CardAccountMappingsView: View {
     var body: some View {
         List {
             Section {
-                Text("Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your accounts. When a shortcut logs a transaction with a card or account hint — such as the card name from an Apple Wallet automation — it routes to the matching account automatically.")
+                Text(String(localized: "Map card last-4 digits or bank keywords (e.g. \"1234\", \"HSBC\") to your accounts. When a shortcut logs a transaction with a card or account hint — such as the card name from an Apple Wallet automation — it routes to the matching account automatically."))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
 
-            Section("Card Mappings") {
+            Section(String(localized: "Card Mappings")) {
                 if sortedMappings.isEmpty {
-                    Text("No card mappings added yet.")
+                    Text(String(localized: "No card mappings added yet."))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(sortedMappings, id: \.keyword) { mapping in
@@ -32,7 +32,7 @@ struct CardAccountMappingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(mapping.keyword)
                                     .font(.headline)
-                                Text("Routes to \(mapping.accountName)")
+                                Text(String(format: String(localized: "Routes to %@"), mapping.accountName))
                                     .font(.subheadline)
                                     .foregroundStyle(.secondary)
                             }
@@ -61,21 +61,21 @@ struct CardAccountMappingsView: View {
             NavigationStack {
                 Form {
                     Section {
-                        TextField("Card Last-4 or Keyword (e.g. 1234, HSBC)", text: $newKeyword)
+                        TextField(String(localized: "Card Last-4 or Keyword (e.g. 1234, HSBC)"), text: $newKeyword)
                             .autocorrectionDisabled()
                         
-                        Picker("Target Account", selection: $selectedAccountId) {
+                        Picker(String(localized: "Target Account"), selection: $selectedAccountId) {
                             ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
                     } header: {
-                        Text("Mapping Details")
+                        Text(String(localized: "Mapping Details"))
                     } footer: {
-                        Text("Enter the digits or keyword exactly as your shortcut passes them in the Card or Account Hint field.")
+                        Text(String(localized: "Enter the digits or keyword exactly as your shortcut passes them in the Card or Account Hint field."))
                     }
                 }
-                .navigationTitle("Add Mapping")
+                .navigationTitle(String(localized: "Add Mapping"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {

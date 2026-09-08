@@ -12,17 +12,17 @@ enum BudgetFileError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidZipFile:
-            return "The downloaded file is not a valid ZIP archive"
+            return String(localized: "The downloaded file is not a valid ZIP archive")
         case .missingDatabase:
-            return "The budget file is missing the database"
+            return String(localized: "The budget file is missing the database")
         case .missingMetadata:
-            return "The budget file is missing metadata"
+            return String(localized: "The budget file is missing metadata")
         case .extractionFailed(let error):
-            return "Failed to extract budget file: \(error.localizedDescription)"
+            return String(localized: "Failed to extract budget file: \(error.localizedDescription)")
         case .metadataParsingFailed:
-            return "Failed to parse budget metadata"
+            return String(localized: "Failed to parse budget metadata")
         case .unsafeArchive(let error):
-            return "The archive failed a safety check: \(error)"
+            return String(localized: "The archive failed a safety check: \(error)")
         }
     }
 }

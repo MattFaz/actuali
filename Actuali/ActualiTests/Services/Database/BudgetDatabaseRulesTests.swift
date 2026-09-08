@@ -51,6 +51,26 @@ struct BudgetDatabaseRulesTests {
         #expect(try database.fetchRules().isEmpty)
     }
 
+    @Test func preparesLiveRulesWithPartialContextSchemas() throws {
+      let (database, path) = try makeDatabase(seedSQL: """
+        CREATE TABLE accounts (id TEXT PRIMARY KEY);
+        CREATE TABLE categories (id TEXT PRIMARY KEY, tombstone INTEGER DEFAULT 0);
+        CREATE TABLE payees (id TEXT PRIMARY KEY, tombstone INTEGER DEFAULT 0);
+        INSERT INTO rules (id, conditions_op, conditions, actions, tombstone) VALUES
+          ('r-live', 'and',
+           '[{"op":"contains","field":"imported_description","value":"coffee","type":"string"}]',
+           '[{"op":"set","field":"category","value":"cat-1","type":"id"}]', 0);
+        """)
+      defer { cleanup(path) }
+
+      let snapshot = try database.prepareRulesSnapshot()
+
+      #expect(snapshot.rules.map(\.id) == ["r-live"])
+      #expect(snapshot.context.offBudgetAccountIds.isEmpty)
+      #expect(snapshot.context.categoryGroupIds.isEmpty)
+      #expect(snapshot.context.payeeNames.isEmpty)
+    }
+
     /// `fetchRulesRanked` mirrors upstream `rules-get`: least specific first
     /// within a stage, and `post` after `default`.
     @Test func rankedFetchOrdersLeastSpecificFirst() async throws {

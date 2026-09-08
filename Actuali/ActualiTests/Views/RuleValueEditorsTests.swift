@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -33,5 +34,27 @@ struct RuleValueEditorsTests {
         // A hidden id can still be removed explicitly.
         let removed = RuleIdMultiPicker.toggling("hidden-cat", in: toggled, visibleIds: visible)
         #expect(removed == .list([.string("cat-a"), .string("cat-b")]))
+    }
+
+    private var appBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
+
+    @Test func selectedCountUsesFrenchPluralForms() {
+        let expected: [Locale: [String]] = [
+            Locale(identifier: "en_US"): ["0 selected", "1 selected", "2 selected"],
+            Locale(identifier: "fr_FR"): ["0 sélectionné", "1 sélectionné", "2 sélectionnés"],
+            Locale(identifier: "pt_BR"): ["0 selecionado", "1 selecionado", "2 selecionados"]
+        ]
+
+        for (locale, values) in expected {
+            for (count, expectedValue) in values.enumerated() {
+                #expect(RuleValueEditorLocalization.selectedCount(
+                    count,
+                    locale: locale,
+                    bundle: appBundle
+                ) == expectedValue)
+            }
+        }
     }
 }

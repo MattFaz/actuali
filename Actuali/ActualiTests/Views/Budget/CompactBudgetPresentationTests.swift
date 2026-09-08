@@ -4,6 +4,10 @@ import UIKit
 @testable import Actuali
 
 struct CompactBudgetPresentationTests {
+
+    private var actualiBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
@@ -51,10 +55,10 @@ struct CompactBudgetPresentationTests {
             currentMonth: "2026-08"
         )
 
-        #expect(overview.leading == .init(label: "To Budget", amount: 12_500))
+        #expect(overview.leading == .init(kind: .toBudget, amount: 12_500))
         #expect(overview.columns == [
-            .init(label: "Budgeted", amount: 50_000),
-            .init(label: "Balance", amount: 18_500),
+            .init(kind: .budgeted, amount: 50_000),
+            .init(kind: .balance, amount: 18_500),
         ])
         #expect(CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
             .budgeted,
@@ -101,11 +105,11 @@ struct CompactBudgetPresentationTests {
             currentMonth: "2026-08"
         )
 
-        #expect(overview.leading == .init(label: "Income", amount: 110_000))
+        #expect(overview.leading == .init(kind: .income, amount: 110_000))
         #expect(overview.columns == [
-            .init(label: "Budgeted", amount: 80_000),
-            .init(label: "Spent", amount: -60_000),
-            .init(label: "Projected", amount: 45_000),
+            .init(kind: .budgeted, amount: 80_000),
+            .init(kind: .spent, amount: -60_000),
+            .init(kind: .projected, amount: 45_000),
         ])
         #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
             .budgeted,
@@ -132,7 +136,7 @@ struct CompactBudgetPresentationTests {
             currentMonth: "2026-08"
         )
 
-        #expect(overview.columns.last == .init(label: "Saved", amount: 50_000))
+        #expect(overview.columns.last == .init(kind: .saved, amount: 50_000))
     }
 
     @Test func balanceToneDistinguishesEverySemanticStateAndPrivacyMasking() {
@@ -143,6 +147,80 @@ struct CompactBudgetPresentationTests {
         #expect(CompactBalanceTone(amount: 0, isMasked: true) == .masked)
         #expect(CompactBalanceTone(amount: 1, isMasked: true) == .masked)
         #expect(CompactBalanceTone(amount: 1, isMasked: true).accessibilityStatus == "hidden")
+    }
+
+    @Test func compactDisplayLabelsLocalizeWithoutChangingStableIdentities() {
+        let columnIdentities: [(CompactBudgetColumn, String)] = [
+            (.budgeted, "Budgeted"), (.spent, "Spent"), (.balance, "Balance"), (.received, "Received")
+        ]
+        let statIdentities: [(CompactBudgetOverview.Stat.Kind, String)] = [
+            (.toBudget, "toBudget"), (.income, "income"), (.budgeted, "budgeted"),
+            (.spent, "spent"), (.saved, "saved"), (.projected, "projected"), (.balance, "balance")
+        ]
+        for (column, rawValue) in columnIdentities {
+            #expect(column.rawValue == rawValue)
+        }
+        for (kind, rawValue) in statIdentities {
+            #expect(kind.rawValue == rawValue)
+        }
+
+        let columns: [(CompactBudgetColumn, [String])] = [
+            (.budgeted, ["Budgeted", "Budgété", "Presupuestado", "Orçado", "Budgetiert", "Budgetizzato", "Begroot"]),
+            (.spent, ["Spent", "Dépensé", "Gastado", "Gasto", "Ausgegeben", "Speso", "Besteed"]),
+            (.balance, ["Balance", "Solde", "Saldo", "Saldo", "Saldo", "Saldo", "Saldo"]),
+            (.received, ["Received", "Reçu", "Recibido", "Recebido", "Erhalten", "Ricevuto", "Ontvangen"])
+        ]
+        let stats: [(CompactBudgetOverview.Stat.Kind, [String])] = [
+            (.toBudget, ["To Budget", "À budgéter", "Por presupuestar", "A orçar", "Zu budgetieren", "Da assegnare", "Te budgetteren"]),
+            (.income, ["Income", "Revenus", "Ingresos", "Receitas", "Einkommen", "Reddito", "Inkomen"]),
+            (.budgeted, ["Budgeted", "Budgété", "Presupuestado", "Orçado", "Budgetiert", "Budgetizzato", "Begroot"]),
+            (.spent, ["Spent", "Dépensé", "Gastado", "Gasto", "Ausgegeben", "Speso", "Besteed"]),
+            (.saved, ["Saved", "Enregistré", "Guardado", "Salvo", "Gespeichert", "Salvato", "Opgeslagen"]),
+            (.projected, ["Projected", "Prévisionnel", "Previsto", "Projetado", "Prognose", "Previsto", "Verwacht"]),
+            (.balance, ["Balance", "Solde", "Saldo", "Saldo", "Saldo", "Saldo", "Saldo"])
+        ]
+        let locales = ["en_US", "fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"]
+
+        for (index, identifier) in locales.enumerated() {
+            let locale = Locale(identifier: identifier)
+            for (column, values) in columns {
+                #expect(column.label(locale: locale, bundle: actualiBundle) == values[index])
+            }
+            for (kind, values) in stats {
+                #expect(CompactBudgetOverview.Stat(kind: kind, amount: 0)
+                    .label(locale: locale, bundle: actualiBundle) == values[index])
+            }
+        }
+    }
+
+    @Test func compactAccessibilityHelpersKeepCompleteArgumentShapes() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(CompactBudgetAccessibility.editBudget(
+            category: "Courses",
+            amount: "10,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Modifier le montant prévu pour Courses, 10,00 € prévu")
+        #expect(CompactBudgetAccessibility.monthTransactions(
+            category: "Courses",
+            month: "août 2026",
+            amountLabel: "dépensé",
+            amount: "5,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Transactions de Courses en août 2026 dépensé 5,00 €")
+        #expect(CompactBudgetAccessibility.details(
+            category: "Courses",
+            status: "Financé",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Détails pour Courses, Financé")
+        #expect(CompactBudgetAccessibility.incomeBudgeted(
+            category: "Salaire",
+            amount: "1 000,00 €",
+            locale: locale,
+            bundle: actualiBundle
+        ) == "Budget prévu pour Salaire, 1 000,00 €")
     }
 
     @Test @MainActor func balanceColorUsesGoalStateWhenEnabled() {

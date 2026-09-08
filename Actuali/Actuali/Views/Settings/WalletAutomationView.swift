@@ -22,7 +22,7 @@ struct WalletAutomationView: View {
     var body: some View {
         List {
             Section {
-                Text("Log tap-to-pay purchases automatically. When you pay with a card in Apple Wallet, a Shortcuts automation runs Actuali's Log Transaction action in the background — no need to open the app.")
+                Text(String(localized: "Log tap-to-pay purchases automatically. When you pay with a card in Apple Wallet, a Shortcuts automation runs Actuali's Log Transaction action in the background — no need to open the app."))
             }
 
             Section {
@@ -35,21 +35,21 @@ struct WalletAutomationView: View {
                     }
                 }
             } header: {
-                Text("Set It Up")
+                Text(String(localized: "Set It Up"))
             } footer: {
-                Text("Repeat for each card you want to track. If you skip the Account step, transactions go to your Default Account. Actuali confirms each logged purchase with a notification.")
+                Text(String(localized: "Repeat for each card you want to track. If you skip the Account step, transactions go to your Default Account. Actuali confirms each logged purchase with a notification."))
             }
 
             Section {
                 Link(destination: shortcutsAppURL) {
-                    Label("Open Shortcuts", systemImage: "arrow.up.forward.app")
+                    Label(String(localized: "Open Shortcuts"), systemImage: "arrow.up.forward.app")
                 }
                 Link(destination: webGuideURL) {
-                    Label("View Guide with Screenshots", systemImage: "safari")
+                    Label(String(localized: "View Guide with Screenshots"), systemImage: "safari")
                 }
             }
         }
-        .navigationTitle("Wallet Automation")
+        .navigationTitle(String(localized: "Wallet Automation"))
         .navigationBarTitleDisplayMode(.inline)
     }
 }

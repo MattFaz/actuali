@@ -16,19 +16,22 @@ struct CategoryTransactionsDestination: Hashable {
 /// the "Spent" figure the user tapped.
 struct CategoryTransactionsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let destination: CategoryTransactionsDestination
 
     @State private var transactions: [Transaction] = []
     @State private var searchText = ""
     @State private var loaded = false
     @State private var editingTransaction: Transaction?
+    @State private var reloadGeneration = 0
+    @State private var noteReloadGeneration = 0
     /// Starts `.unsupported` so the section stays hidden until the read
     /// confirms this file can store notes (GH #131).
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
 
     private var scopeTitle: String {
-        destination.month.map { MonthPicker.title(for: $0) } ?? "All Time"
+        Self.scopeTitle(for: destination.month, locale: locale, bundle: .main)
     }
 
     private var filteredTransactions: [Transaction] {
@@ -105,13 +108,54 @@ struct CategoryTransactionsView: View {
     /// Kept as a row inside the List rather than replacing the whole view, so a
     /// category with no transactions yet still shows (and can add) its note.
     private var emptyTransactionsRow: some View {
-        ContentUnavailableView(
-            "No Transactions",
-            systemImage: "list.bullet.rectangle",
-            description: Text("Nothing in \(destination.categoryName) for \(scopeTitle.lowercased() == "all time" ? "any month" : scopeTitle)")
-        )
+        ContentUnavailableView {
+            Label {
+                Text(Self.emptyStateTitle(locale: locale, bundle: .main))
+            } icon: {
+                Image(systemName: "list.bullet.rectangle")
+            }
+        } description: {
+            Text(Self.emptyStateDescription(
+                categoryName: destination.categoryName,
+                month: destination.month,
+                locale: locale,
+                bundle: .main
+            ))
+        }
         .listRowSeparator(.hidden)
         .listRowBackground(Color.clear)
+    }
+
+    nonisolated static func scopeTitle(
+        for month: String?,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        month.map { MonthPicker.title(for: $0, locale: locale) }
+            ?? ReportStrings.text("All Time", locale: locale, bundle: bundle)
+    }
+
+    nonisolated static func emptyStateTitle(
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.text("No Transactions", locale: locale, bundle: bundle)
+    }
+
+    nonisolated static func emptyStateDescription(
+        categoryName: String,
+        month: String?,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.format(
+            "Nothing in %@ for %@",
+            categoryName,
+            month.map { MonthPicker.title(for: $0, locale: locale) }
+                ?? ReportStrings.text("any month", locale: locale, bundle: bundle),
+            locale: locale,
+            bundle: bundle
+        )
     }
 
     @ViewBuilder
@@ -163,7 +207,7 @@ struct CategoryTransactionsView: View {
             Spacer()
             // Sums the filtered rows so the total matches what's on screen
             // while searching.
-            Text("Total \(budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount }))")
+            Text(String(format: String(localized: "Total %@", locale: locale), budgetStore.displayBalance(filteredTransactions.reduce(0) { $0 + $1.amount })))
         }
     }
 
@@ -241,16 +285,40 @@ struct CategoryTransactionsView: View {
     }
 
     private func reload() async {
-        transactions = await budgetStore.fetchCategoryTransactions(
+        reloadGeneration += 1
+        let generation = reloadGeneration
+        let fetchedTransactions = await budgetStore.fetchCategoryTransactions(
             categoryId: destination.categoryId,
             month: destination.month
         )
-        await reloadNote()
+        guard Self.shouldPublishReload(
+            generation: generation,
+            currentGeneration: reloadGeneration,
+            taskIsCancelled: Task.isCancelled
+        ) else { return }
+        transactions = fetchedTransactions
         loaded = true
+        await reloadNote()
     }
 
     private func reloadNote() async {
-        note = await budgetStore.fetchNote(id: destination.categoryId)
+        noteReloadGeneration += 1
+        let generation = noteReloadGeneration
+        let fetchedNote = await budgetStore.fetchNote(id: destination.categoryId)
+        guard Self.shouldPublishReload(
+            generation: generation,
+            currentGeneration: noteReloadGeneration,
+            taskIsCancelled: Task.isCancelled
+        ) else { return }
+        note = fetchedNote
+    }
+
+    nonisolated static func shouldPublishReload(
+        generation: Int,
+        currentGeneration: Int,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled && generation == currentGeneration
     }
 }
 

@@ -59,6 +59,16 @@ struct BudgetStoreWalletImportTests {
                     value BLOB NOT NULL
                 )
                 """)
+            try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0,
+                    conditions_op TEXT DEFAULT 'and'
+                )
+                """)
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
     }
@@ -155,6 +165,30 @@ struct BudgetStoreWalletImportTests {
         #expect(try transactionRows(path: url).count == 3)
     }
 
+    @Test func sameFinancialIdCanBeImportedIntoDifferentAccounts() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        let first = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-1")
+        let second = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-2")
+        let sameAccountRetry = try await store.importWalletTransactions(
+            [candidate(id: "shared-wallet-id")], accountId: "acct-2")
+
+        #expect(first == BudgetStore.WalletImportResult(imported: 1, skippedDuplicates: 0))
+        #expect(second == BudgetStore.WalletImportResult(imported: 1, skippedDuplicates: 0))
+        #expect(sameAccountRetry == BudgetStore.WalletImportResult(imported: 0, skippedDuplicates: 1))
+        #expect(try transactionRows(path: url).filter { row in
+            let financialId: String? = row["financial_id"]
+            return financialId == "shared-wallet-id"
+        }.map { row in
+            let accountId: String? = row["acct"]
+            return accountId
+        }.compactMap { $0 }.sorted() == ["acct-1", "acct-2"])
+    }
+
     @Test func duplicateWithinBatchImportsOnce() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -181,6 +215,26 @@ struct BudgetStoreWalletImportTests {
         let second = try await store.importWalletTransactions(
             [candidate(id: "eee-1")], accountId: "acct-1")
         #expect(second == BudgetStore.WalletImportResult(imported: 0, skippedDuplicates: 1))
+    }
+
+    @Test func ruleSuppressionIsNotCountedAsImportedOrDuplicate() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('suppress-coffee',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"delete-transaction","value":null}]', 0, 'and')
+                """)
+        }
+
+        let result = try await store.importWalletTransactions(
+            [candidate(id: "suppressed-1", payeeName: "Coffee")], accountId: "acct-1")
+
+        #expect(result == BudgetStore.WalletImportResult(imported: 0, skippedDuplicates: 0))
+        #expect(try transactionRows(path: url).isEmpty)
     }
 
     @Test func manualSaveLeavesFinancialIdNull() async throws {

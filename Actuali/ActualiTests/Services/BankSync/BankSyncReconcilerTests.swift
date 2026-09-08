@@ -88,6 +88,18 @@ struct BankSyncReconcilerTests {
         #expect(plan.updates.first?.cleared == true)
     }
 
+    @Test func duplicateExactIdsChooseTheLowestExistingId() throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(importedId: "sf-1")],
+            existing: [
+                existing(id: "tx-z", importedId: "sf-1"),
+                existing(id: "tx-a", importedId: "sf-1")
+            ]
+        )
+
+        #expect(try #require(plan.updates.first).existingId == "tx-a")
+    }
+
     /// The id match beats the fuzzy window even when the window has a nearer
     /// row: it's the only match the provider actually vouched for.
     @Test func theIdMatchWinsOverACloserDate() throws {
@@ -178,6 +190,97 @@ struct BankSyncReconcilerTests {
         #expect(plan.inserts.count == 1)
     }
 
+    @Test func duplicateProviderIdsAreOrderIndependent() {
+        let first = candidate(importedId: "sf-duplicate", notes: "Coffee")
+        let same = candidate(importedId: "sf-duplicate", notes: "Coffee")
+        let forward = BankSyncReconciler.plan(
+            candidates: [first, same], existing: []
+        )
+        let reversed = BankSyncReconciler.plan(
+            candidates: [same, first], existing: []
+        )
+
+        #expect(forward == reversed)
+        #expect(forward.inserts == [first, same])
+        #expect(forward.rejectedConflicts == 0)
+    }
+
+    @Test func oneExactExistingRowLeavesTheOtherIdenticalCandidateAsAnInsert() {
+        let first = candidate(importedId: "sf-duplicate")
+        let second = candidate(importedId: "sf-duplicate")
+        let plan = BankSyncReconciler.plan(
+            candidates: [first, second],
+            existing: [existing(id: "tx-existing", importedId: "sf-duplicate", cleared: true)]
+        )
+        #expect(plan.updates.count == 1)
+        #expect(plan.updates[0].existingId == "tx-existing")
+        #expect(plan.unchanged == 0)
+        #expect(plan.inserts == [second])
+    }
+
+    @Test func oneTombstoneDeduplicatesEveryRepeatedCandidateWhenReimportIsDisabled() {
+        let candidates = [
+            candidate(importedId: "sf-duplicate"),
+            candidate(importedId: "sf-duplicate")
+        ]
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: [existing(id: "tx-deleted", importedId: "sf-duplicate", tombstone: true)],
+            reimportDeleted: false
+        )
+
+        #expect(plan.inserts.isEmpty)
+        #expect(plan.updates.isEmpty)
+        #expect(plan.unchanged == candidates.count)
+    }
+
+    @Test func oneTombstoneDoesNotBlockRepeatedCandidatesWhenReimportIsEnabled() {
+        let candidates = [
+            candidate(importedId: "sf-duplicate"),
+            candidate(importedId: "sf-duplicate")
+        ]
+        let plan = BankSyncReconciler.plan(
+            candidates: candidates,
+            existing: [existing(id: "tx-deleted", importedId: "sf-duplicate", tombstone: true)],
+            reimportDeleted: true
+        )
+
+        #expect(plan.inserts == candidates)
+        #expect(plan.unchanged == 0)
+    }
+
+    @Test func twoExactExistingRowsAreClaimedSeparately() {
+        let plan = BankSyncReconciler.plan(
+            candidates: [
+                candidate(importedId: "sf-duplicate"),
+                candidate(importedId: "sf-duplicate")
+            ],
+            existing: [
+                existing(id: "tx-b", importedId: "sf-duplicate", cleared: true),
+                existing(id: "tx-a", importedId: "sf-duplicate", cleared: true)
+            ]
+        )
+
+        #expect(plan.inserts.isEmpty)
+        #expect(plan.updates.map(\.existingId) == ["tx-a", "tx-b"])
+    }
+
+    @Test func conflictingProviderIdsAreRejectedRatherThanChosenByOrder() {
+        let first = candidate(importedId: "sf-conflict", amount: -1250)
+        let second = candidate(importedId: "sf-conflict", amount: -1300)
+        let forward = BankSyncReconciler.plan(
+            candidates: [first, second], existing: []
+        )
+        let reversed = BankSyncReconciler.plan(
+            candidates: [second, first], existing: []
+        )
+
+        #expect(forward == reversed)
+        #expect(forward.inserts.isEmpty)
+        #expect(forward.updates.isEmpty)
+        #expect(forward.rejectedConflicts == 1)
+    }
+
     @Test func theNearestDateInTheWindowIsMatchedFirst() throws {
         let plan = BankSyncReconciler.plan(
             candidates: [candidate(date: 20240310)],
@@ -188,6 +291,18 @@ struct BankSyncReconcilerTests {
         )
 
         #expect(try #require(plan.updates.first).existingId == "tx-near")
+    }
+
+    @Test func equallyNearMatchesUseTheLowestExistingId() throws {
+        let plan = BankSyncReconciler.plan(
+            candidates: [candidate(date: 20240310)],
+            existing: [
+                existing(id: "tx-z", date: 20240309),
+                existing(id: "tx-a", date: 20240311)
+            ]
+        )
+
+        #expect(try #require(plan.updates.first).existingId == "tx-a")
     }
 
     /// Providers reissue ids for the same transaction (a pending charge that

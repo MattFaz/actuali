@@ -427,6 +427,19 @@ struct CustomReportEngineTests {
         }
     }
 
+    @Test func donutTwoRingsLocalizeSyntheticGroup() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "CategoryGroup", balance: "Payment",
+                           interval: "Monthly", graph: "DonutGraph", showUncategorized: true),
+            transactions: [tx("uncategorized", date: 20260701, amount: -5_000, category: nil)],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            locale: Locale(identifier: "fr_FR"), bundle: Bundle.main)
+        guard case .donut(_, let groups) = data.kind else {
+            Issue.record("expected donut, got \(data.kind)"); return
+        }
+        #expect(groups.map(\.label) == ["Sans catégorie et hors budget"])
+    }
+
     // MARK: - Line / Area
 
     @Test func lineSeriesMatchStackedAndCarryTrends() {
@@ -515,5 +528,112 @@ struct CustomReportEngineTests {
         }
         #expect(bars.map(\.label) == ["Rent", "Fun", "Food"])
         #expect(bars.map(\.valueUnits) == [250.0, -50.0, -100.0])
+    }
+
+    @Test func nameSortUsesExplicitLocaleAndStableTies() {
+        var context = reportContext
+        context.categories = [
+            Category(id: "c-zebra", name: "Zebra", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 0),
+            Category(id: "c-angstrom", name: "Ångström", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 1),
+            Category(id: "c-cafe", name: "Cafe", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 2),
+            Category(id: "c-cafe-accent", name: "Café", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 3),
+        ]
+        let transactions = [
+            tx("zebra", date: 20260701, amount: -100, category: "c-zebra"),
+            tx("angstrom", date: 20260701, amount: -100, category: "c-angstrom"),
+            tx("cafe", date: 20260701, amount: -100, category: "c-cafe"),
+            tx("cafe-accent", date: 20260701, amount: -100, category: "c-cafe-accent"),
+        ]
+        func names(_ locale: Locale) -> [String] {
+            let data = CustomReportEngine.compute(
+                config: config(mode: "total", groupBy: "Category", balance: "Payment",
+                               interval: "Monthly", graph: "BarGraph", sortBy: "name"),
+                transactions: transactions, reportContext: context,
+                filterContext: .empty, today: today, locale: locale)
+            guard case .bars(let bars, _) = data.kind else { return [] }
+            return bars.map(\.label)
+        }
+
+        #expect(names(Locale(identifier: "en_US")) == ["Ångström", "Cafe", "Café", "Zebra"])
+        #expect(names(Locale(identifier: "sv_SE")) == ["Cafe", "Café", "Zebra", "Ångström"])
+    }
+
+    @Test func chartAmountFormattingUsesSelectedNumberFormat() {
+        let arguments: [(ActualNumberFormat, String)] = [
+            (.commaDot, "$1,000.33"),
+            (.dotComma, "$1.000,33"),
+            (.spaceComma, "$1\u{202F}000,33"),
+        ]
+        for (format, expected) in arguments {
+            #expect(CustomReportChartAccessibility.amount(
+                units: 1000.33, numberFormat: format, currencyCode: "USD",
+                narrowSymbol: true, locale: Locale(identifier: "en_US")) == expected)
+        }
+    }
+
+    @Test func reportCurrencyAxisUsesSelectedNumberFormat() {
+        let locale = Locale(identifier: "en_US")
+        #expect(ReportCurrencyAxisFormatting.label(
+            units: 1000.33, numberFormat: .commaDot, currencyCode: "USD",
+            narrowSymbol: true, locale: locale) == "$1,000.33")
+        #expect(ReportCurrencyAxisFormatting.label(
+            units: 1000.33, numberFormat: .dotComma, currencyCode: "USD",
+            narrowSymbol: true, locale: locale) == "$1.000,33")
+    }
+
+    @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
+        #expect(ReportCurrencyAxisFormatting.hidesAxis(for: true))
+        #expect(!ReportCurrencyAxisFormatting.hidesAxis(for: false))
+    }
+
+    @Test func chartAccessibilityRowsExposeSeriesLabelsAndValues() {
+        let format = ActualNumberFormat.commaDot
+        let locale = Locale(identifier: "en_US")
+        let bars = CustomReportChartAccessibility.rows(
+            for: .bars([.init(label: "Food", valueUnits: 12.34)], signed: false),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(bars == [.init(series: nil, label: "Food", value: "$12.34")])
+
+        let stacked = CustomReportChartAccessibility.rows(
+            for: .stacked(.init(intervalLabels: ["Jun '26"], seriesNames: ["Living"], values: [[12.34]])),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(stacked == [.init(series: "Living", label: "Jun '26", value: "$12.34")])
+
+        let lines = CustomReportChartAccessibility.rows(
+            for: .lines(.init(intervalLabels: ["Jun '26"], seriesNames: ["Living"], values: [[12.34]]), trends: []),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(lines == stacked)
+
+        let area = CustomReportChartAccessibility.rows(
+            for: .area([.init(label: "Jun '26", valueUnits: 12.34)]),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(area == [.init(series: nil, label: "Jun '26", value: "$12.34")])
+
+        let oneRing = CustomReportChartAccessibility.rows(
+            for: .donut(slices: [.init(label: "Food", valueUnits: 12.34, group: nil)], groups: []),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(oneRing == [.init(series: nil, label: "Food", value: "$12.34")])
+
+        let twoRing = CustomReportChartAccessibility.rows(
+            for: .donut(
+                slices: [.init(label: "Food", valueUnits: 12.34, group: 0)],
+                groups: [.init(label: "Living", valueUnits: 12.34)]),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+        #expect(twoRing == [
+            .init(series: nil, label: "Living", value: "$12.34"),
+            .init(series: "Living", label: "Food", value: "$12.34"),
+        ])
+    }
+}
+
+extension CustomReportEngineTests {
+    @Test func gregorianYearForThaiRegion() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Net",
+                           interval: "Yearly", graph: "BarGraph"),
+            transactions: sampleTxs, reportContext: reportContext,
+            filterContext: .empty, today: today, locale: Locale(identifier: "th_TH"))
+        guard case .bars(let bars, _) = data.kind else { Issue.record("Expected bars"); return }
+        #expect(bars.map(\.label) == ["2026"])
     }
 }

@@ -123,7 +123,7 @@ enum CategoryFundingAutomation {
             }
             transaction = fetched
         } catch {
-            budgetStore.error = "Category funding automation couldn't verify the saved transaction: \(error.localizedDescription)"
+            budgetStore.error = String(format: String(localized: "Category funding automation couldn't verify the saved transaction: %@"), error.localizedDescription)
             return
         }
 
@@ -149,7 +149,7 @@ enum CategoryFundingAutomation {
         do {
             budgetMonth = try await database.fetchBudgetMonth(month: month)
         } catch {
-            budgetStore.error = "Category funding automation couldn't load the budget month: \(error.localizedDescription)"
+            budgetStore.error = String(format: String(localized: "Category funding automation couldn't load the budget month: %@"), error.localizedDescription)
             return
         }
 
@@ -175,7 +175,7 @@ enum CategoryFundingAutomation {
             guard let sourceCategory = budgetMonth.allCategoryBudgets.first(where: {
                 $0.categoryId == sourceId
             }) else {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): the selected funding category is unavailable."
+                budgetStore.error = String(format: String(localized: "Couldn't automatically fund %@: the selected funding category is unavailable."), category.categoryName)
                 return
             }
 
@@ -194,9 +194,9 @@ enum CategoryFundingAutomation {
         case .none:
             return
         case .invalidSource:
-            budgetStore.error = "Couldn't automatically fund \(category.categoryName): To Budget is not available for tracking budgets. Choose a funding category."
+            budgetStore.error = String(format: String(localized: "Couldn't automatically fund %@: To Budget is not available for tracking budgets. Choose a funding category."), category.categoryName)
         case .insufficientSource:
-            budgetStore.error = "Couldn't automatically fund \(category.categoryName): the funding category doesn't have enough available."
+            budgetStore.error = String(format: String(localized: "Couldn't automatically fund %@: the funding category doesn't have enough available."), category.categoryName)
         case .sameSourceAndTarget:
             return
         case .fund(let amountToFund):
@@ -210,7 +210,7 @@ enum CategoryFundingAutomation {
                     amountCents: amountToFund
                 )
             } catch {
-                budgetStore.error = "Couldn't automatically fund \(category.categoryName): \(error.localizedDescription)"
+                budgetStore.error = String(format: String(localized: "Couldn't automatically fund %@: %@"), category.categoryName, error.localizedDescription)
             }
 
             // transferBudget refreshes the transaction's month. Restore the

@@ -127,6 +127,28 @@ struct TransactionLoggerSyncOutcomeTests {
                 )
                 """)
             try db.execute(sql: """
+                CREATE TABLE accounts (
+                    id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
+                    closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
+                """)
+            try db.execute(sql: """
+                CREATE TABLE categories (
+                    id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
+                    actions TEXT, tombstone INTEGER DEFAULT 0,
+                    conditions_op TEXT DEFAULT 'and'
+                )
+                """)
+            try db.execute(sql: """
                 CREATE TABLE messages_crdt (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL UNIQUE,
@@ -178,6 +200,86 @@ struct TransactionLoggerSyncOutcomeTests {
         let result = try await log(to: store)
 
         #expect(result.synced)
+    }
+
+    @Test func unrelatedPendingMessagesDoNotChangeThisTransactionOutcome() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+
+        let result = try await log(to: store)
+        let unrelated = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_900_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: "unrelated-row", column: "amount", value: "N:-1"
+        )
+        _ = try database.insertMessages([unrelated])
+
+        #expect(await store.hasPendingLocalWrites())
+        #expect(!(await store.hasPendingLocalWrites(
+            dataset: Transaction.datasetName,
+            row: result.transaction.id
+        )))
+    }
+
+    @Test func partialDeterministicImportIsRecoverableWithoutAppendingMessages() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        let transactionId = UUID().uuidString
+        let financialId = "actuali-pending-import:partial"
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+                VALUES (?, 'acct-1', 20260811, -820, ?, 0)
+                """, arguments: [transactionId, financialId])
+        }
+        let partial = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "transactions", row: transactionId, column: "amount", value: "N:-820"
+        )
+        _ = try database.insertMessages([partial])
+
+        await #expect(throws: TransactionLogger.LoggerError.transactionNeedsRecovery) {
+            try await TransactionLogger(store: store).logTransaction(
+                accountId: "acct-1",
+                amountCents: -820,
+                rawMerchant: "BLUE BOTTLE COFFEE",
+                notes: nil,
+                date: Date(timeIntervalSince1970: 1_750_000_000),
+                financialId: financialId,
+                transactionId: transactionId
+            )
+        }
+        let messageCount = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT COUNT(*) FROM messages_crdt WHERE row = ?",
+                arguments: [transactionId]
+            ) ?? 0
+        }
+        #expect(messageCount == 1)
+    }
+
+    @Test func resultContainsTheRuleModifiedPersistedTransaction() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, serverReachable: true)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+                VALUES ('set-category', NULL, 'and',
+                    '[{"op":"contains","field":"imported_description","value":"BLUE"}]',
+                    '[{"op":"set","field":"category","value":"cat-rule","type":"id"}]', 0)
+                """)
+        }
+
+        let result = try await log(to: store)
+
+        #expect(result.transaction.categoryId == "cat-rule")
+        let persistedCategory: String? = try await database.dbQueueForTesting.read { db in
+            try String.fetchOne(db, sql: "SELECT category FROM transactions WHERE id = ?", arguments: [result.transaction.id])
+        }
+        #expect(persistedCategory == "cat-rule")
     }
 
     /// Unreachable server: the row is still written (nothing is lost), but the

@@ -94,9 +94,7 @@ enum NewTransactionNotifier {
         content.userInfo = [transactionIdsKey: transactions.map(\.id)]
         // No sound — a quiet reminder, matching the Wallet-automation banners.
 
-        content.title = transactions.count == 1
-            ? "New transaction"
-            : "\(transactions.count) new transactions"
+        content.title = String(localized: "\(transactions.count) new transactions")
 
         var lines = transactions.prefix(maxDetailLines).map {
             line(for: $0, currencyCode: currencyCode, narrowSymbol: narrowSymbol,
@@ -104,7 +102,7 @@ enum NewTransactionNotifier {
                  accountNames: accountNames, offBudgetAccountIds: offBudgetAccountIds)
         }
         if transactions.count > maxDetailLines {
-            lines.append("…and \(transactions.count - maxDetailLines) more")
+            lines.append(String(localized: "…and \(transactions.count - maxDetailLines) more"))
         }
         content.body = lines.joined(separator: "\n")
 
@@ -125,13 +123,13 @@ enum NewTransactionNotifier {
                                                narrowSymbol: narrowSymbol,
                                                numberFormat: numberFormat)
         if let payee = transaction.payeeName, !payee.isEmpty {
-            line += " at \(payee)"
+            line = String(format: String(localized: "%@ at %@"), line, payee)
         }
         if let account = accountNames[transaction.accountId], !account.isEmpty {
-            line += " on \(account)"
+            line = String(format: String(localized: "%@ on %@"), line, account)
         }
         if transaction.needsCategory(offBudgetAccountIds: offBudgetAccountIds) {
-            line += " · Needs a category"
+            line += " · " + String(localized: "Needs a category")
         }
         return line
     }

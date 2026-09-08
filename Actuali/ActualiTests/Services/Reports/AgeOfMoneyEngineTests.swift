@@ -3,6 +3,7 @@ import Testing
 @testable import Actuali
 
 struct AgeOfMoneyEngineTests {
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
     private let today = { // 2026-07-11 UTC
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
@@ -158,7 +159,7 @@ struct AgeOfMoneyEngineTests {
                 tx("3", date: 20240120, amount: -300),
                 tx("4", date: 20240130, amount: -300),
             ],
-            today: today, context: .empty)
+            today: today, context: .empty, locale: Locale(identifier: "en_US"))
         #expect(data.insufficientData == false)
         // Headline = avg of ages (9 + 19 + 29) / 3 = 19; single Jan point.
         #expect(data.currentAge == 19)
@@ -181,7 +182,8 @@ struct AgeOfMoneyEngineTests {
         ]
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-01", end: "2024-03", mode: .static),
-            transactions: txs, today: today, context: context)
+            transactions: txs, today: today, context: context,
+            locale: Locale(identifier: "en_US"))
         #expect(data.insufficientData == false)
         // Jan point = 9; Feb carries 9; Mar point = round((9 + 14) / 2) = 12.
         #expect(data.points == [.init(monthLabel: "Jan 2024", age: 9),
@@ -246,5 +248,44 @@ struct AgeOfMoneyEngineTests {
         #expect(data.currentAge == nil)
         #expect(data.points.isEmpty)
         #expect(data.insufficientData == false)
+    }
+
+    @Test func labelsUseInjectedEnglishLocale() {
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(start: "2024-01", end: "2024-01", mode: .static),
+            transactions: [tx("i", date: 20240101, amount: 1000),
+                           tx("e", date: 20240110, amount: -300)],
+            today: today, context: .empty, locale: Locale(identifier: "en_US"))
+        #expect(data.points.first?.monthLabel == "Jan 2024")
+    }
+
+    @Test(arguments: [
+        ("fr_FR", "janv. 2024"),
+        ("pt_BR", "jan. de 2024"),
+        ("de_DE", "Jan. 2024")
+    ])
+    func labelsUseInjectedLocale(localeIdentifier: String, expectedLabel: String) {
+        let data = AgeOfMoneyEngine.compute(
+            meta: meta(start: "2024-01", end: "2024-01", mode: .static),
+            transactions: [tx("i", date: 20240101, amount: 1000),
+                           tx("e", date: 20240110, amount: -300)],
+            today: today, context: .empty, locale: Locale(identifier: localeIdentifier))
+        #expect(data.points.first?.monthLabel == expectedLabel)
+    }
+
+    @Test(arguments: [
+        ("en_US", 1, "1 day"),
+        ("en_US", 2, "2 days"),
+        ("fr_FR", 1, "1 jour"),
+        ("fr_FR", 2, "2 jours"),
+        ("de_DE", 1, "1 Tag"),
+        ("de_DE", 2, "2 Tage")
+    ])
+    func widgetDayLabelUsesCatalogPluralRules(
+        localeIdentifier: String, age: Int, expected: String
+    ) {
+        let resource = LocalizedStringResource(
+            "\(age) days", locale: Locale(identifier: localeIdentifier), bundle: appBundle)
+        #expect(String(localized: resource) == expected)
     }
 }

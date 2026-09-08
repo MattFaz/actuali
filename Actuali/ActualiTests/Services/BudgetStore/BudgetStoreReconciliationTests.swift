@@ -9,6 +9,22 @@ import Testing
 @MainActor
 struct BudgetStoreReconciliationTests {
 
+    @Test func lockedReconciledMessageUsesPluralLocalization() {
+        let bundle = Bundle(identifier: "com.mfazz.ActualiOS") ?? .main
+        #expect(BudgetStore.lockedReconciledMessage(
+            count: 1, locale: Locale(identifier: "en_US"), bundle: bundle
+        ) == "1 reconciled transaction stayed locked. Unlock from the status dot to change it.")
+        #expect(BudgetStore.lockedReconciledMessage(
+            count: 2, locale: Locale(identifier: "en_US"), bundle: bundle
+        ) == "2 reconciled transactions stayed locked. Unlock from the status dot to change them.")
+        #expect(BudgetStore.lockedReconciledMessage(
+            count: 1, locale: Locale(identifier: "fr_FR"), bundle: bundle
+        ) == "1 transaction rapprochée est restée verrouillée. Déverrouillez-la depuis le point d’état pour la modifier.")
+        #expect(BudgetStore.lockedReconciledMessage(
+            count: 2, locale: Locale(identifier: "fr_FR"), bundle: bundle
+        ) == "2 transactions rapprochées sont restées verrouillées. Déverrouillez-les depuis le point d’état pour les modifier.")
+    }
+
     /// transactions, payees and messages_crdt normally come from the
     /// downloaded budget file, so create them with the upstream schema
     /// (matches BudgetStoreSaveTransactionTests).

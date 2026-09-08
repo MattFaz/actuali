@@ -3,25 +3,55 @@ import Testing
 @testable import Actuali
 
 private final class FallbackTransport: URLProtocol {
-    nonisolated(unsafe) static var requestedURLs: [URL] = []
-    nonisolated(unsafe) static var failures: [String: URLError] = [:]
-    nonisolated(unsafe) static var statuses: [String: Int] = [:]
+    private struct State {
+        var requestedURLs: [URL] = []
+        var failures: [String: URLError] = [:]
+        var statuses: [String: Int] = [:]
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var state = State()
+
+    static var requestedURLs: [URL] {
+        lock.withLock { state.requestedURLs }
+    }
+
+    static var failures: [String: URLError] {
+        get { lock.withLock { state.failures } }
+        set { lock.withLock { state.failures = newValue } }
+    }
+
+    static var statuses: [String: Int] {
+        get { lock.withLock { state.statuses } }
+        set { lock.withLock { state.statuses = newValue } }
+    }
+
+    static func reset() {
+        lock.withLock {
+            state = State(
+                failures: ["primary.example.com": URLError(.cannotConnectToHost)]
+            )
+        }
+    }
 
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
 
     override func startLoading() {
         let host = request.url?.host ?? ""
-        Self.requestedURLs.append(request.url!)
+        let (failure, status) = Self.lock.withLock {
+            Self.state.requestedURLs.append(request.url!)
+            return (Self.state.failures[host], Self.state.statuses[host] ?? 200)
+        }
 
-        if let failure = Self.failures[host] {
+        if let failure {
             client?.urlProtocol(self, didFailWithError: failure)
             return
         }
 
         let response = HTTPURLResponse(
             url: request.url!,
-            statusCode: Self.statuses[host] ?? 200,
+            statusCode: status,
             httpVersion: "HTTP/1.1",
             headerFields: ["Content-Type": "application/json"]
         )!
@@ -39,9 +69,7 @@ private final class FallbackTransport: URLProtocol {
 @Suite(.serialized)
 struct ActualServerClientFallbackTests {
     private func makeSession() -> URLSession {
-        FallbackTransport.requestedURLs = []
-        FallbackTransport.failures = ["primary.example.com": URLError(.cannotConnectToHost)]
-        FallbackTransport.statuses = [:]
+        FallbackTransport.reset()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [FallbackTransport.self]
         return URLSession(configuration: configuration)

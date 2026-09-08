@@ -72,6 +72,23 @@ struct BudgetStoreBankSyncTests {
 
     private static let accountId = "acct-1"
     private static let externalAccountId = "sf-acct-1"
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+
+    @Test func bankSyncSummaryUsesRequestedLocaleAndPreservesProblems() {
+        let one = BudgetStore.BankSyncResult(added: 1, problems: ["Bridge said: retry later"])
+        let many = BudgetStore.BankSyncResult(added: 2)
+        let updatedOne = BudgetStore.BankSyncResult(updated: 1)
+        let updatedMany = BudgetStore.BankSyncResult(updated: 2)
+
+        #expect(one.summary(locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            == "1 transaction importée.\n\nBridge said: retry later")
+        #expect(many.summary(locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            == "2 transactions importées.")
+        #expect(updatedOne.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "Matched 1 transaction you already had.")
+        #expect(updatedMany.summary(locale: Locale(identifier: "en_US"), bundle: appBundle)
+            == "Matched 2 transactions you already had.")
+    }
 
     /// Timestamps relative to now, so the download always lands inside the
     /// 90-day sync window however long this test lives.
@@ -125,7 +142,10 @@ struct BudgetStoreBankSyncTests {
         )
     }
 
-    private func makeDatabase(seedTransactions: Bool = false) throws -> (BudgetDatabase, URL) {
+    private func makeDatabase(
+        seedTransactions: Bool = false,
+        accountId: String = Self.accountId
+    ) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
@@ -178,6 +198,30 @@ struct BudgetStoreBankSyncTests {
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
             try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
             try db.execute(sql: """
+                CREATE TABLE category_mapping (
+                    id TEXT PRIMARY KEY,
+                    transferId TEXT
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE categories (
+                    id TEXT PRIMARY KEY,
+                    name TEXT,
+                    cat_group TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0,
+                    conditions_op TEXT DEFAULT 'and'
+                )
+                """)
+            try db.execute(sql: """
                 CREATE TABLE banks (
                     id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
                 )
@@ -196,12 +240,12 @@ struct BudgetStoreBankSyncTests {
                 INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order,
                                       account_id, account_sync_source)
                 VALUES (?, 'Checking', 'checking', 0, 0, 0, 1, ?, 'simpleFin')
-                """, arguments: [Self.accountId, Self.externalAccountId])
+                """, arguments: [accountId, Self.externalAccountId])
             if seedTransactions {
                 try db.execute(sql: """
                     INSERT INTO transactions (id, acct, date, amount, cleared, tombstone, sort_order)
                     VALUES ('tx-manual', ?, ?, -3345, 0, 0, 1)
-                    """, arguments: [Self.accountId, Self.expectedDay(6)])
+                    """, arguments: [accountId, Self.expectedDay(6)])
             }
         }
         return (try BudgetDatabase(path: tempURL), tempURL)
@@ -313,6 +357,98 @@ struct BudgetStoreBankSyncTests {
         #expect(linked.source == .simpleFin)
     }
 
+    @Test func staleBankSyncLoadCannotPublishOrDeleteTheCurrentBudgetsLinks() async throws {
+        let (oldDatabase, oldURL) = try makeDatabase(accountId: "shared-account")
+        let (newDatabase, newURL) = try makeDatabase(accountId: "new-account")
+        defer {
+            cleanup(oldURL)
+            cleanup(newURL)
+        }
+
+        try await newDatabase.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET account_id = NULL, account_sync_source = NULL"
+            )
+        }
+
+        let store = try await makeStore(
+            database: oldDatabase,
+            responseBody: accountSet(transactions: "")
+        )
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreBankSyncTests"))
+        store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "old-budget")
+        defaults.set(
+            ["shared-account": "old-wallet-account"],
+            forKey: "appleWalletLinks_old-budget"
+        )
+
+        var releaseOldLoad: CheckedContinuation<Void, Never>?
+        var pauseNextLoad = true
+        let oldLoadEntered = Task { @MainActor in
+            await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+                store.bankSyncAccountsFetchedForTesting = {
+                    guard pauseNextLoad else { return }
+                    pauseNextLoad = false
+                    continuation.resume()
+                    await withCheckedContinuation { releaseOldLoad = $0 }
+                }
+            }
+        }
+        let oldLoad = Task { @MainActor in
+            await store.loadBankSyncAccounts()
+        }
+        await oldLoadEntered.value
+
+        let newSyncClient = SyncClient(
+            serverClient: ActualServerClient(),
+            nodeId: "89e0e8e90b203f9"
+        )
+        try await newSyncClient.configure(database: newDatabase, fileId: "new-file", groupId: "new-group")
+        store.configureForTesting(database: newDatabase, syncClient: newSyncClient)
+        store.configureAppleWalletLinksForTesting(defaults: defaults, budgetId: "new-budget")
+        defaults.set(
+            ["shared-account": "new-wallet-account"],
+            forKey: "appleWalletLinks_new-budget"
+        )
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccounts.isEmpty)
+        #expect(defaults.dictionary(forKey: "appleWalletLinks_new-budget") == nil)
+
+        releaseOldLoad?.resume()
+        await oldLoad.value
+
+        #expect(store.bankSyncAccounts.isEmpty)
+        #expect(defaults.dictionary(forKey: "appleWalletLinks_new-budget") == nil)
+    }
+
+    @Test func unknownSynchronizedSourceRemainsUnsupportedButCanBeUnlinked() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        let queue = try DatabaseQueue(path: url.path)
+        let accountId = Self.accountId
+        try await queue.write { db in
+            try db.execute(
+                sql: "UPDATE accounts SET account_sync_source = 'futureProvider' WHERE id = ?",
+                arguments: [accountId]
+            )
+        }
+        await store.loadBankSyncAccounts()
+
+        let linked = try #require(store.bankSyncAccount(forAccountId: Self.accountId))
+        #expect(linked.source == nil)
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        #expect(account["account_id"] as String? == nil)
+        #expect(account["account_sync_source"] as String? == nil)
+    }
+
     @Test func firstSyncImportsTransactionsAndAnOpeningBalance() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -353,6 +489,326 @@ struct BudgetStoreBankSyncTests {
         #expect(opening.count == 1)
         #expect(opening[0]["amount"] == 14545)
         #expect(opening[0]["date"] == Self.expectedDay(5))
+    }
+
+    @Test func bankSyncHookDoesNotLeakFromAnEarlyReturn() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        var hookCalls = 0
+        store.bankSyncBeforeMaterializationHook = { hookCalls += 1 }
+
+        _ = try await store.syncBankAccounts(accountIds: ["missing-account"])
+        #expect(hookCalls == 0)
+
+        store.setSimpleFINClientForTesting(
+            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(transactions: """
+                {"id": "sf-hook-leak", "posted": \(Self.daysAgo(1)), "amount": "-10.00", "payee": "Hook Leak"}
+                """)))
+        )
+        _ = try await store.syncBankAccounts()
+        #expect(hookCalls == 0)
+    }
+
+    @Test func bankSyncRetriesOnceWithRulesChangedDuringPreparation() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('import-rule', '[{"op":"contains","field":"imported_description","value":"Rule Retry Merchant"}]', '[{"op":"set","field":"category","value":"cat-old"}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-rule-retry", "posted": \(Self.daysAgo(2)), "amount": "-12.00", "payee": "Rule Retry Merchant"}
+            """))
+        store.bankSyncBeforeMaterializationHook = {
+            try! database.dbQueueForTesting.write { db in
+                try db.execute(
+                    sql: "UPDATE rules SET actions = ? WHERE id = 'import-rule'",
+                    arguments: ["[{\"op\":\"set\",\"field\":\"category\",\"value\":\"cat-new\"}]"]
+                )
+            }
+        }
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.problems.isEmpty)
+        #expect(result.accountsSynced == 1)
+        #expect(result.importedTransactions.count == 1)
+        #expect(result.added == 2)
+        let imported = try #require(try row(
+            path: url,
+            sql: "SELECT category FROM transactions WHERE financial_id = 'sf-rule-retry'"
+        ))
+        #expect(imported["category"] as String? == "cat-new")
+        #expect(try rows(path: url, where: "financial_id = 'sf-rule-retry'").count == 1)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'transactions' AND column = 'financial_id'"
+        )?["count"] as Int? == 1)
+    }
+
+    @Test func firstSyncReusesOnePendingPayeeAcrossSameNameTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let body = accountSet(transactions: """
+            {"id": "sf-shared-payee-1", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "New Merchant"},
+            {"id": "sf-shared-payee-2", "posted": \(Self.daysAgo(4)), "amount": "-12.00", "payee": "NEW MERCHANT"}
+            """)
+        let store = try await makeStore(database: database, responseBody: body)
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.problems.isEmpty)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM payees WHERE lower(name) = 'new merchant'"
+        )?["count"] as Int? == 1)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE lower(id) IN (SELECT lower(id) FROM payees WHERE lower(name) = 'new merchant')"
+        )?["count"] as Int? == 1)
+        let payeeIds = try #require(try row(
+            path: url,
+            sql: "SELECT id FROM payees WHERE lower(name) = 'new merchant'"
+        ))["id"] as String
+        let imported = try rows(path: url, where: "financial_id IS NOT NULL")
+        #expect(imported.count == 2)
+        #expect(imported.allSatisfy { ($0["description"] as String?) == payeeIds })
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM payees WHERE lower(name) = 'new merchant'"
+        )?["count"] as Int? == 1)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+    }
+
+    @Test func emptySimpleFINFirstSyncCreatesOpeningBalanceOnImportStartDay() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        let importStart = 20240115
+        store.setBankSyncImportStartDay(importStart)
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 1)
+        let opening = try rows(path: url, where: "starting_balance_flag = 1")
+        #expect(opening.count == 1)
+        #expect(opening[0]["amount"] == 10_000)
+        #expect(opening[0]["date"] == importStart)
+        #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank_sync_status"] as String? == "ok")
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
+    }
+
+    @Test func emptySimpleFINFirstSyncSuppressesZeroOpeningBalance() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(balance: "0.00", transactions: ""))
+        store.setBankSyncImportStartDay(20240115)
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 0)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").isEmpty)
+    }
+
+    @Test func firstBankSyncRollsBackTransactionsPayeesOpeningAndMessagesTogether() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let body = accountSet(transactions: """
+            {"id": "sf-atomic-first", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Deferred Merchant"}
+            """)
+        let store = try await makeStore(database: database, responseBody: body)
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        let queue = database.dbQueueForTesting
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_bank_opening_insert
+                BEFORE INSERT ON transactions
+                WHEN NEW.starting_balance_flag = 1
+                BEGIN
+                    SELECT RAISE(ABORT, 'blocked opening balance');
+                END
+                """)
+        }
+
+        let failed = try await store.syncBankAccounts()
+        #expect(failed.accountsSynced == 0)
+        #expect(failed.problems.contains { $0.contains("blocked opening balance") })
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Deferred Merchant'")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Deferred Merchant')")?["count"] as Int? == 0)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == 0)
+
+        try await queue.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_bank_opening_insert")
+        }
+        let retried = try await store.syncBankAccounts()
+        #expect(retried.accountsSynced == 1)
+        let importedAfterRetry = try rows(path: url, where: "financial_id IS NOT NULL")
+        #expect(importedAfterRetry.count == 1)
+        let deferredPayeesAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Deferred Merchant'")?["count"] as Int? ?? 0
+        #expect(deferredPayeesAfterRetry == 1)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Deferred Merchant')")?["count"] as Int? == 1)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
+        let payeeCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Deferred Merchant'")?["count"] as Int? ?? 0
+        let mappingCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Deferred Merchant')")?["count"] as Int? ?? 0
+        let messageCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? ?? 0
+        #expect(payeeCountAfterRetry == 1)
+        #expect(mappingCountAfterRetry == 1)
+        #expect(messageCountAfterRetry > 0)
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 1)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Deferred Merchant'")?["count"] as Int? == payeeCountAfterRetry)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Deferred Merchant')")?["count"] as Int? == mappingCountAfterRetry)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messageCountAfterRetry)
+    }
+
+    @Test func backfillBankSyncRollsBackBackfillAndOpeningAdjustmentTogether() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let firstBody = accountSet(balance: "100.00", transactions: """
+            {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)
+        let store = try await makeStore(database: database, responseBody: firstBody)
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        _ = try await store.syncBankAccounts()
+        let openingBefore = try #require(try row(
+            path: url,
+            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        ))["amount"] as Int
+        let messagesBeforeBackfill = try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')"
+        )?["count"] as Int? ?? 0
+
+        store.setSimpleFINClientForTesting(
+            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
+                {"id": "sf-atomic-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
+                {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+                """)))
+        )
+        let queue = database.dbQueueForTesting
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_bank_opening_update
+                BEFORE UPDATE OF amount ON transactions
+                WHEN OLD.starting_balance_flag = 1
+                BEGIN
+                    SELECT RAISE(ABORT, 'blocked opening adjustment');
+                END
+                """)
+        }
+
+        let failed = try await store.syncBankAccounts()
+        #expect(failed.accountsSynced == 0)
+        #expect(failed.problems.contains { $0.contains("blocked opening adjustment") })
+        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name = 'Older Merchant'")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name = 'Older Merchant')")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messagesBeforeBackfill)
+        let amountAfterFailure = try #require(try row(
+            path: url,
+            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        ))["amount"] as Int
+        #expect(amountAfterFailure == openingBefore)
+
+        try await queue.write { db in
+            try db.execute(sql: "DROP TRIGGER reject_bank_opening_update")
+        }
+        let retried = try await store.syncBankAccounts()
+        #expect(retried.accountsSynced == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").count == 1)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == openingBefore + 700)
+        let payeeCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name IN ('Base Merchant', 'Older Merchant')")?["count"] as Int? ?? 0
+        let mappingCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name IN ('Base Merchant', 'Older Merchant'))")?["count"] as Int? ?? 0
+        let messageCountAfterRetry = try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? ?? 0
+        #expect(payeeCountAfterRetry == 2)
+        #expect(mappingCountAfterRetry == 2)
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-atomic-old'").count == 1)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == openingBefore + 700)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payees WHERE name IN ('Base Merchant', 'Older Merchant')")?["count"] as Int? == payeeCountAfterRetry)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM payee_mapping WHERE id IN (SELECT id FROM payees WHERE name IN ('Base Merchant', 'Older Merchant'))")?["count"] as Int? == mappingCountAfterRetry)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset IN ('transactions', 'payees', 'payee_mapping')")?["count"] as Int? == messageCountAfterRetry)
+    }
+
+    @Test func identicalProviderIdsImportTwiceAndStayIdempotent() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let body = accountSet(transactions: """
+            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+            {"id": "sf-identical", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"}
+            """)
+        let store = try await makeStore(database: database, responseBody: body)
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 3)
+        #expect(first.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-identical' AND tombstone = 0").count == 2)
+        #expect(try row(
+            path: url,
+            sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
+        )?["amount"] as Int? == 16_690)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-identical' AND tombstone = 0").count == 2)
+    }
+
+    @Test func conflictingProviderIdsAreReportedAndNotClaimedAsUpToDate() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-33.45", "payee": "Blue Bottle"},
+            {"id": "sf-conflict", "posted": \(Self.daysAgo(5)), "amount": "-34.45", "payee": "Blue Bottle"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1) // the opening balance, but no conflict
+        #expect(result.updated == 0)
+        #expect(result.accountsSynced == 1)
+        let localizedConflictProblem = BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 1,
+            locale: .autoupdatingCurrent, bundle: appBundle
+        )
+        let actualConflictProblem = try #require(result.problems.first)
+        #expect(result.problems == [localizedConflictProblem])
+        #expect(result.summary(locale: Locale(identifier: "en_US"), bundle: appBundle) == "Imported 1 transaction.\n\n\(actualConflictProblem)")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 1,
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == "Checking: Skipped 1 transaction because the bank returned conflicting details for the same transaction.")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 2,
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "Checking : 2 transactions ignorées, car la banque a renvoyé des détails contradictoires pour la même transaction.")
+        #expect(BudgetStore.BankSyncResult.conflictProblem(
+            accountName: "Checking", count: 2,
+            locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == "Checking: 2 transações ignoradas porque o banco retornou detalhes conflitantes para a mesma transação.")
+        #expect(try rows(path: url, where: "financial_id = 'sf-conflict'").isEmpty)
     }
 
     @Test func syncingAgainImportsNothingTwice() async throws {
@@ -397,6 +853,32 @@ struct BudgetStoreBankSyncTests {
             path: url,
             sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1"
         )?["amount"] as Int? == 10_000)
+    }
+
+    @Test func disabledReimportKeepsRepeatedSimpleFINRecordsAbsentAcrossSyncs() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await seedDeletedTransaction(at: url, importedId: "sf-duplicate")
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"},
+            {"id": "sf-duplicate", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Deleted Merchant"}
+            """))
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 1)
+        #expect(first.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate' AND tombstone = 0").isEmpty)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(second.updated == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate'").count == 1)
+        #expect(try rows(path: url, where: "financial_id = 'sf-duplicate' AND tombstone = 0").isEmpty)
     }
 
     @Test func defaultReimportSettingStillReimportsDeletedTransactions() async throws {
@@ -546,6 +1028,107 @@ struct BudgetStoreBankSyncTests {
         #expect(financialIdMessages == 1)
     }
 
+    @Test func automaticBankSyncRuleSuppressionIsNeitherAddedNorImported() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('suppress-coffee',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"delete-transaction","value":null}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-suppressed", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(result.added == 1) // opening balance only
+        #expect(result.updated == 0)
+        #expect(result.importedTransactions.isEmpty)
+        #expect(try rows(path: url, where: "financial_id = 'sf-suppressed'").isEmpty)
+        #expect(try row(path: url, sql: "SELECT id FROM payees WHERE name = 'Coffee'") == nil)
+        #expect(try row(path: url, sql: """
+            SELECT COALESCE(SUM(amount), 0) AS balance
+            FROM transactions
+            WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [Self.accountId])?["balance"] as Int? == 10_000)
+    }
+
+    @Test func automaticBankSyncReturnsPersistedRuleMutatedTransaction() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('set-rule-note',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"set","field":"notes","value":"Rule note"},{"op":"set","field":"amount","value":5000}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-rule-mutated", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let result = try await store.syncBankAccounts()
+
+        let imported = try #require(result.importedTransactions.first)
+        #expect(imported.notes == "Rule note")
+        #expect(imported.amount == 5_000)
+        let persistedRow = try #require(try rows(path: url, where: "financial_id = 'sf-rule-mutated'").first)
+        #expect(persistedRow["notes"] as String? == imported.notes)
+        #expect(persistedRow["amount"] as Int? == 5_000)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == 5_000)
+        #expect(try row(path: url, sql: """
+            SELECT value FROM messages_crdt
+            WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
+            """, arguments: [imported.id])?["value"] as String? == "S:Rule note")
+    }
+
+    @Test func ruleMovingImportedTransactionDoesNotAffectSourceOpeningBalance() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let movedAccountId = "acct-2"
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, 'Savings', 'checking', 0, 0, 0, 2)
+                """, arguments: [movedAccountId])
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+                VALUES ('move-imported-transaction',
+                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                    '[{"op":"set","field":"acct","value":"acct-2"}]', 0, 'and')
+                """)
+        }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: """
+            {"id": "sf-moved", "posted": \(Self.daysAgo(5)),
+             "amount": "-33.45", "payee": "Coffee"}
+            """))
+
+        let first = try await store.syncBankAccounts()
+
+        let imported = try #require(first.importedTransactions.first)
+        #expect(first.added == 2)
+        #expect(imported.accountId == movedAccountId)
+        #expect(try row(path: url, sql: """
+            SELECT acct FROM transactions WHERE financial_id = 'sf-moved'
+            """)?["acct"] as String? == movedAccountId)
+        #expect(try row(path: url, sql: """
+            SELECT amount FROM transactions
+            WHERE acct = ? AND starting_balance_flag = 1
+            """, arguments: [Self.accountId])?["amount"] as Int? == 10_000)
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "financial_id = 'sf-moved' AND tombstone = 0").count == 1)
+    }
+
     @Test func syncingWithoutAnAccessKeyIsRefused() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -648,6 +1231,78 @@ struct BudgetStoreBankSyncTests {
         #expect(status == nil)
         #expect(cachedBalance == nil)
         #expect(try rows(path: url).count == 1)
+    }
+
+    @Test func staleSimpleFINUnlinkPreservesRelinkedIdentityAndMessages() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        let newer = ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: "sf-acct-new",
+            source: BankSyncSource.simpleFin.rawValue
+        )
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts SET account_id = ?, account_sync_source = ? WHERE id = ?
+                """, arguments: [newer.externalAccountId, newer.source, accountId])
+        }
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.unlinkBankAccount(accountId: Self.accountId)
+        }
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == newer.externalAccountId)
+        #expect(try row(path: url, sql: "SELECT account_id FROM accounts WHERE id = ?", arguments: [Self.accountId])?["account_id"] as String? == newer.externalAccountId)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+
+    @Test func simpleFINWritesAfterAccountTombstoneMaterializeNothing() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(
+            database: database,
+            responseBody: accountSet(transactions: """
+                {"id": "sf-tombstoned", "posted": \(Self.daysAgo(1)),
+                 "amount": "-10.00", "payee": "Tombstoned Merchant"}
+                """)
+        )
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+        }
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(!BridgeTransport.requestedURLs.isEmpty)
+        #expect(result.problems.count == 1)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank_sync_status"] as String? == nil)
+    }
+
+    @Test func linkingSimpleFINAfterAccountTombstoneIsRejected() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, responseBody: accountSet(transactions: ""))
+        let remote = try JSONDecoder().decode(SimpleFINAccount.self, from: Data("""
+            {"org": {"domain": "otherbank.com", "name": "Other Bank"},
+             "id": "sf-acct-new", "name": "Savings", "balance": "0.00"}
+            """.utf8))
+        let accountId = Self.accountId
+        let existingExternalAccountId = Self.externalAccountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+        }
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.linkBankAccount(accountId: accountId, to: remote.remoteAccount)
+        }
+
+        #expect(try row(path: url, sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?", arguments: [accountId])?["account_id"] as String? == existingExternalAccountId)
+        #expect(try rows(path: url).isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM banks")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
     @Test func aSyncStampsLastSyncAndStatusForTheWebUI() async throws {
@@ -924,5 +1579,423 @@ struct BudgetStoreBankSyncTests {
             path: url, sql: "SELECT * FROM accounts WHERE id = ?", arguments: [Self.accountId]
         ))
         #expect(simpleFinAccount["bank_sync_status"] == "account-missing")
+    }
+
+    private nonisolated static func linkMessages(
+        accountId: String,
+        externalAccountId: String,
+        proposal: BankSyncLinkProposal,
+        seed: Int64
+    ) -> [CRDTMessage] {
+        var messages = [
+            CRDTMessage(timestamp: HLCTimestamp(millis: seed, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "account_id", value: CRDTValue.serialize(externalAccountId)),
+            CRDTMessage(timestamp: HLCTimestamp(millis: seed + 1, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "account_sync_source", value: CRDTValue.serialize("simpleFin")),
+            CRDTMessage(timestamp: HLCTimestamp(millis: seed + 2, counter: 0, node: "0000000000000001"), dataset: "accounts", row: accountId, column: "bank", value: CRDTValue.serialize(proposal.bank.id))
+        ]
+        if proposal.created || proposal.revived {
+            messages += [
+                CRDTMessage(timestamp: HLCTimestamp(millis: seed + 3, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "bank_id", value: CRDTValue.serialize(proposal.bank.bankId)),
+                CRDTMessage(timestamp: HLCTimestamp(millis: seed + 4, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "name", value: CRDTValue.serialize(proposal.bank.name)),
+                CRDTMessage(timestamp: HLCTimestamp(millis: seed + 5, counter: 0, node: "0000000000000001"), dataset: "banks", row: proposal.bank.id, column: "tombstone", value: CRDTValue.serialize(0))
+            ]
+        }
+        return messages
+    }
+
+    @Test func concurrentLinksShareOneCanonicalBankAndAccountPointer() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let accountId = Self.accountId
+        let source = BankSyncSource.simpleFin.rawValue
+
+        let results = try await withThrowingTaskGroup(of: Bool.self) { group in
+            for index in 0..<2 {
+                group.addTask {
+                    let proposal = try database.proposeBankSyncLink(
+                        proposedBank: Bank(id: "candidate-\(index)", bankId: "same-bank", name: "Same Bank")
+                    )
+                    do {
+                        _ = try database.applyBankSyncLink(
+                            accountId: accountId,
+                            externalAccountId: "external-\(index)",
+                            syncSource: source,
+                            proposal: proposal,
+                            messages: Self.linkMessages(
+                                accountId: accountId,
+                                externalAccountId: "external-\(index)",
+                                proposal: proposal,
+                                seed: 1_700_000_000_000 + Int64(index * 10)
+                            )
+                        )
+                        return true
+                    } catch let error as BankSyncDatabaseError where error == .bankSyncLinkChanged {
+                        return false
+                    }
+                }
+            }
+            var results: [Bool] = []
+            for try await result in group { results.append(result) }
+            return results
+        }
+
+        #expect(results.count == 2)
+        #expect(results.filter { $0 }.count == 1)
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT bank FROM accounts WHERE id = ?",
+            arguments: [accountId]
+        ))
+        let accountBankValue: String? = account["bank"]
+        let accountBank = try #require(accountBankValue)
+        #expect(accountBank == "candidate-0" || accountBank == "candidate-1")
+        let bankCountRow = try #require(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM banks WHERE bank_id = ? AND tombstone = 0",
+            arguments: ["same-bank"]
+        ))
+        let bankCount: Int? = bankCountRow["count"]
+        let bankCountValue = try #require(bankCount)
+        #expect(bankCountValue == 1)
+        let messageRows = try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'banks'"
+        )
+        let messageCount: Int? = messageRows?["count"]
+        #expect(messageCount == 3)
+    }
+
+    @Test func staleBankLinkProposalIsRejectedThenReproposalCommitsCanonicalPointer() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        let staleProposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "stale-candidate", bankId: "same-bank", name: "Same Bank")
+        )
+        let competingProposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "winning-candidate", bankId: "same-bank", name: "Same Bank")
+        )
+        _ = try database.applyBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: "winning-external",
+            syncSource: BankSyncSource.simpleFin.rawValue,
+            proposal: competingProposal,
+            messages: Self.linkMessages(
+                accountId: Self.accountId,
+                externalAccountId: "winning-external",
+                proposal: competingProposal,
+                seed: 1_700_000_000_300
+            )
+        )
+
+        #expect(throws: BankSyncDatabaseError.bankSyncLinkChanged) {
+            _ = try database.applyBankSyncLink(
+                accountId: Self.accountId,
+                externalAccountId: Self.externalAccountId,
+                syncSource: BankSyncSource.simpleFin.rawValue,
+                proposal: staleProposal,
+                messages: Self.linkMessages(
+                    accountId: Self.accountId,
+                    externalAccountId: Self.externalAccountId,
+                    proposal: staleProposal,
+                    seed: 1_700_000_000_400
+                )
+            )
+        }
+
+        let reproposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "retry-candidate", bankId: "same-bank", name: "Same Bank")
+        )
+        #expect(reproposal.bank.id == competingProposal.bank.id)
+        #expect(!reproposal.created)
+        #expect(!reproposal.revived)
+        _ = try database.applyBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: Self.externalAccountId,
+            syncSource: BankSyncSource.simpleFin.rawValue,
+            proposal: reproposal,
+            messages: Self.linkMessages(
+                accountId: Self.accountId,
+                externalAccountId: Self.externalAccountId,
+                proposal: reproposal,
+                seed: 1_700_000_000_500
+            )
+        )
+
+        #expect(try row(
+            path: url,
+            sql: "SELECT bank FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        )?["bank"] as String? == competingProposal.bank.id)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM banks WHERE bank_id = ? AND tombstone = 0",
+            arguments: ["same-bank"]
+        )?["count"] as Int? == 1)
+    }
+
+    @Test func liveBankProposalIsRejectedIfBankIsTombstonedBeforeApply() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO banks (id, bank_id, name, tombstone)
+                VALUES ('existing-bank', 'same-bank', 'Same Bank', 0)
+                """)
+        }
+
+        let proposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "unused-candidate", bankId: "same-bank", name: "Same Bank")
+        )
+        try queue.write { db in
+            try db.execute(sql: "UPDATE banks SET tombstone = 1 WHERE id = 'existing-bank'")
+        }
+
+        #expect(throws: BankSyncDatabaseError.bankSyncLinkChanged) {
+            _ = try database.applyBankSyncLink(
+                accountId: Self.accountId,
+                externalAccountId: Self.externalAccountId,
+                syncSource: BankSyncSource.simpleFin.rawValue,
+                proposal: proposal,
+                messages: Self.linkMessages(
+                    accountId: Self.accountId,
+                    externalAccountId: Self.externalAccountId,
+                    proposal: proposal,
+                    seed: 1_700_000_000_600
+                )
+            )
+        }
+        #expect(try row(
+            path: url,
+            sql: "SELECT bank FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        )?["bank"] as String? == nil)
+        #expect(try row(
+            path: url,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt"
+        )?["count"] as Int? == 0)
+    }
+
+    @Test func linkRevivesMatchingTombstonedBankId() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                INSERT INTO banks (id, bank_id, name, tombstone)
+                VALUES ('deleted-bank', 'same-bank', 'Old Name', 1)
+                """)
+        }
+
+        let proposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "new-candidate", bankId: "same-bank", name: "New Name")
+        )
+
+        #expect(proposal.bank.id == "deleted-bank")
+        #expect(proposal.revived)
+        #expect(!proposal.created)
+        let before = try #require(try row(path: url, sql: "SELECT * FROM banks WHERE id = 'deleted-bank'"))
+        let beforeTombstone: Int? = before["tombstone"]
+        #expect(beforeTombstone == 1)
+        _ = try database.applyBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: Self.externalAccountId,
+            syncSource: BankSyncSource.simpleFin.rawValue,
+            proposal: proposal,
+            messages: Self.linkMessages(
+                accountId: Self.accountId,
+                externalAccountId: Self.externalAccountId,
+                proposal: proposal,
+                seed: 1_700_000_000_100
+            )
+        )
+        let bank = try #require(try row(
+            path: url,
+            sql: "SELECT * FROM banks WHERE id = 'deleted-bank'"
+        ))
+        let bankName: String? = bank["name"]
+        let bankTombstone: Int? = bank["tombstone"]
+        let bankNameValue = try #require(bankName)
+        let bankTombstoneValue = try #require(bankTombstone)
+        #expect(bankNameValue == "New Name")
+        #expect(bankTombstoneValue == 0)
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT bank FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        let accountBank: String? = account["bank"]
+        let accountBankValue = try #require(accountBank)
+        #expect(accountBankValue == "deleted-bank")
+    }
+
+    @Test func bankLinkRollsBackMaterializedRowsWhenMessageInsertAborts() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_bank_link_messages
+                BEFORE INSERT ON messages_crdt
+                WHEN NEW.dataset = 'banks'
+                BEGIN
+                    SELECT RAISE(ABORT, 'blocked bank message');
+                END
+                """)
+        }
+
+        let proposal = try database.proposeBankSyncLink(
+            proposedBank: Bank(id: "candidate", bankId: "blocked-bank", name: "Blocked Bank")
+        )
+        var didThrow = false
+        do {
+            _ = try database.applyBankSyncLink(
+                accountId: Self.accountId,
+                externalAccountId: Self.externalAccountId,
+                syncSource: BankSyncSource.simpleFin.rawValue,
+                proposal: proposal,
+                messages: Self.linkMessages(
+                    accountId: Self.accountId,
+                    externalAccountId: Self.externalAccountId,
+                    proposal: proposal,
+                    seed: 1_700_000_000_200
+                )
+            )
+        } catch {
+            didThrow = true
+        }
+        #expect(didThrow)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM banks")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT bank FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank"] as String? == nil)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+
+    @Test func staleProviderReplacementCASLeavesRowsAndMessagesUnchanged() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let before = try #require(try row(
+            path: url,
+            sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        let proposal = BankSyncLinkProposal(
+            bank: Bank(id: "new-bank", bankId: "new-provider", name: "New Provider"),
+            created: true,
+            revived: false
+        )
+        do {
+            _ = try database.applyBankSyncLink(
+                accountId: Self.accountId,
+                externalAccountId: "new-account",
+                syncSource: BankSyncSource.simpleFin.rawValue,
+                proposal: proposal,
+                expectedOldLink: ExpectedBankSyncLink(
+                    accountId: Self.accountId,
+                    externalAccountId: "stale-account",
+                    source: BankSyncSource.simpleFin.rawValue
+                ),
+                verifyExpectedOldLink: true,
+                messages: []
+            )
+            Issue.record("stale provider replacement unexpectedly committed")
+        } catch let error as BankSyncDatabaseError {
+            #expect(error == .bankSyncMaterializationStale)
+        }
+        let after = try #require(try row(
+            path: url,
+            sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        #expect(before["account_id"] as String? == after["account_id"] as String?)
+        #expect(before["account_sync_source"] as String? == after["account_sync_source"] as String?)
+        #expect(before["bank"] as String? == after["bank"] as String?)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+
+    @Test func crossProviderLocalReplacementRollsBackWhenMessagesFail() throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER reject_provider_replacement_messages
+                BEFORE INSERT ON messages_crdt
+                WHEN NEW.dataset = 'accounts'
+                BEGIN
+                    SELECT RAISE(ABORT, 'blocked provider replacement');
+                END
+                """)
+        }
+        let old = ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: Self.externalAccountId,
+            source: BankSyncSource.simpleFin.rawValue
+        )
+        let clear = CRDTMessage(
+            timestamp: HLCTimestamp(millis: 1_700_000_000_300, counter: 0, node: "0000000000000001"),
+            dataset: "accounts",
+            row: Self.accountId,
+            column: "account_id",
+            value: CRDTValue.serialize(nil as String?)
+        )
+        do {
+            _ = try database.applyBankSyncLocalLink(
+                ExpectedBankSyncLink(
+                    accountId: Self.accountId,
+                    externalAccountId: "wallet-account",
+                    source: BankSyncSource.financeKit.rawValue
+                ),
+                expectedOldLink: old,
+                messages: [clear]
+            )
+            Issue.record("provider replacement unexpectedly committed")
+        } catch {
+            // The trigger failure is expected; the transaction must roll back.
+        }
+        let account = try #require(try row(
+            path: url,
+            sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        ))
+        #expect(account["account_id"] as String? == Self.externalAccountId)
+        #expect(account["account_sync_source"] as String? == BankSyncSource.simpleFin.rawValue)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM bank_sync_local_links WHERE account_id = ?", arguments: [Self.accountId])?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+}
+
+extension BudgetStoreBankSyncTests {
+    @Test(arguments: ["notes = 'Concurrent user edit'", "amount = 22000",
+                      "tombstone = 1", "acct = 'other-account'", "reconciled = 1"])
+    func backfillPreservesConcurrentOpeningEdit(change: String) async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let firstBody = accountSet(balance: "100.00", transactions: """
+            {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+            """)
+        let store = try await makeStore(database: database, responseBody: firstBody)
+        store.setBankSyncImportStartDay(Self.expectedDay(30))
+        _ = try await store.syncBankAccounts()
+        store.setSimpleFINClientForTesting(
+            SimpleFINClient(session: BridgeTransport.makeSession(body: accountSet(balance: "100.00", transactions: """
+                {"id": "sf-review-old", "posted": \(Self.daysAgo(10)), "amount": "-7.00", "payee": "Older Merchant"},
+                {"id": "sf-review-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
+                """)))
+        )
+        store.bankSyncBeforeMaterializationHook = {
+            try! database.dbQueueForTesting.write { db in
+                try db.execute(sql: "UPDATE transactions SET \(change) WHERE starting_balance_flag = 1")
+            }
+        }
+        let result = try await store.syncBankAccounts()
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM transactions WHERE starting_balance_flag = 1 AND \(change)")?["count"] as Int? == 1)
+        if change.hasPrefix("notes") {
+            #expect(result.problems.isEmpty)
+            #expect(result.accountsSynced == 1)
+        } else {
+            #expect(!result.problems.isEmpty)
+            #expect(result.accountsSynced == 0)
+            #expect(try rows(path: url, where: "financial_id = 'sf-review-old'").isEmpty)
+        }
     }
 }

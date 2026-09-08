@@ -9,6 +9,12 @@ enum BankSyncSource: String, Sendable, Equatable {
     case financeKit = "financeKit"
 }
 
+struct ExpectedBankSyncLink: Sendable, Equatable {
+    let accountId: String
+    let externalAccountId: String
+    let source: String
+}
+
 /// An account wired up to a bank feed: the budget's account plus the
 /// provider-side id its transactions come from.
 struct BankSyncAccount: Sendable, Equatable, Identifiable {

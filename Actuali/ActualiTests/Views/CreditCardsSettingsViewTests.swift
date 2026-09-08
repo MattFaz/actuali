@@ -53,6 +53,11 @@ struct CreditCardsSettingsViewTests {
         #expect(CreditCardsSettingsView.sortedCards([]).isEmpty)
     }
 
+    @Test func statementDayOrdinalUsesRequestedLocale() {
+        #expect(ScheduleDescription.ordinal(1, locale: Locale(identifier: "fr_FR")) == "1er")
+        #expect(ScheduleDescription.ordinal(1, locale: Locale(identifier: "en_US")) == "1st")
+    }
+
     // MARK: - Urgency color
 
     @Test func urgencyColorSwitchesAtThreeAndSevenDays() {

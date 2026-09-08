@@ -3,6 +3,31 @@ import GRDB
 import Testing
 @testable import Actuali
 
+private enum WalletCallCounter {
+    nonisolated(unsafe) static var accounts = 0
+}
+
+private struct CountingWalletStore: AppleWalletReading {
+    let base: StubWalletStore
+
+    func availability() async -> AppleWalletAvailability {
+        await base.availability()
+    }
+
+    func requestAccess() async throws -> Bool {
+        try await base.requestAccess()
+    }
+
+    func accounts() async throws -> [AppleWalletAccount] {
+        WalletCallCounter.accounts += 1
+        return try await base.accounts()
+    }
+
+    func transactions(accountId: String, sinceDay: Int) async throws -> [AppleWalletTransaction] {
+        try await base.transactions(accountId: accountId, sinceDay: sinceDay)
+    }
+}
+
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreAppleWalletSyncTests {
@@ -440,7 +465,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let store = try await makeStore(database: database, walletStore: appleCard())
         let first = try await store.syncBankAccounts()
         let coffee = try #require(first.importedTransactions.first {
-            $0.financialId == "11111111-1111-1111-1111-111111111111"
+            $0.amount == -3345
         })
 
         await store.deleteTransaction(coffee)
@@ -472,7 +497,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let store = try await makeStore(database: database, walletStore: appleCard())
         let first = try await store.syncBankAccounts()
         let coffee = try #require(first.importedTransactions.first {
-            $0.financialId == "11111111-1111-1111-1111-111111111111"
+            $0.amount == -3345
         })
 
         await store.deleteTransaction(coffee)
@@ -522,6 +547,42 @@ struct BudgetStoreAppleWalletSyncTests {
         // …and the account still syncs.
         let result = try await store.syncBankAccounts()
         #expect(result.accountsSynced == 1)
+    }
+
+    @Test func failedLegacyColumnMigrationPreservesSyncedIdentityAndSkipsCleanup() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let queue = try DatabaseQueue(path: url.path)
+        let externalAccountId = Self.externalAccountId
+        let accountId = Self.accountId
+        try await queue.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+                WHERE id = ?
+            """, arguments: [externalAccountId, accountId])
+            try db.execute(sql: """
+                CREATE TRIGGER fail_legacy_wallet_adoption
+                BEFORE INSERT ON bank_sync_local_links
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced legacy adoption failure');
+                END
+                """)
+        }
+        let store = try await makeStore(
+            database: database, walletStore: appleCard(), linked: false
+        )
+
+        let account = try #require(
+            try row(path: url, sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
+        #expect(account["account_id"] as String? == Self.externalAccountId)
+        #expect(account["account_sync_source"] as String? == BankSyncSource.financeKit.rawValue)
+        #expect(account["bank"] as String? == "bank-1")
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == Self.externalAccountId)
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
     /// A device that can't serve the feed skips the automatic pass entirely —
@@ -579,6 +640,34 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(account["bank_sync_status"] == "ok")
     }
 
+    @Test func emptyFinanceKitFirstSyncCreatesOpeningBalanceOnImportStartDay() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let wallet = StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.externalAccountId, name: "Apple Card",
+                institutionName: "Apple", balanceCents: -50000
+            )]
+        )
+        let store = try await makeStore(database: database, walletStore: wallet)
+        let importStart = 20240115
+        store.setBankSyncImportStartDay(importStart)
+
+        let first = try await store.syncBankAccounts()
+
+        #expect(first.added == 1)
+        let opening = try rows(path: url, where: "starting_balance_flag = 1")
+        #expect(opening.count == 1)
+        #expect(opening[0]["amount"] == -50_000)
+        #expect(opening[0]["date"] == importStart)
+        #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank_sync_status"] as String? == "ok")
+
+        let second = try await store.syncBankAccounts()
+
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "starting_balance_flag = 1").count == 1)
+    }
+
     @Test func syncingAgainImportsNothingTwice() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -591,6 +680,40 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(second.added == 0)
         #expect(second.updated == 0)
         #expect(try rows(path: url, where: "financial_id IS NOT NULL").count == 2)
+    }
+
+    @Test func duplicateStableWalletIdImportsOneRowAndSubtractsItOnce() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let duplicateId = "44444444-4444-4444-4444-444444444444"
+        let wallet = StubWalletStore(
+            accountsValue: [AppleWalletAccount(
+                id: Self.externalAccountId, name: "Apple Card",
+                institutionName: "Apple", balanceCents: -50000
+            )],
+            transactionsByAccount: [Self.externalAccountId: [
+                AppleWalletTransaction(
+                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    merchantName: "Coffee", description: "Coffee", status: .booked,
+                    date: Self.daysAgo(2)
+                ),
+                AppleWalletTransaction(
+                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    merchantName: "Coffee", description: "Coffee", status: .booked,
+                    date: Self.daysAgo(2)
+                )
+            ]]
+        )
+        let store = try await makeStore(database: database, walletStore: wallet)
+
+        let first = try await store.syncBankAccounts()
+        #expect(first.added == 2)
+        #expect(try rows(path: url, where: "financial_id = '\(duplicateId)' AND tombstone = 0").count == 1)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == -49_000)
+
+        let second = try await store.syncBankAccounts()
+        #expect(second.added == 0)
+        #expect(try rows(path: url, where: "financial_id = '\(duplicateId)' AND tombstone = 0").count == 1)
     }
 
     @Test func linkingStaysDeviceLocal() async throws {
@@ -615,6 +738,170 @@ struct BudgetStoreAppleWalletSyncTests {
                 == Self.externalAccountId)
     }
 
+    @Test func legacyWalletDefaultsMigrateOnceAndAreRemoved() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        defaults.set(
+            [Self.accountId: Self.externalAccountId],
+            forKey: "appleWalletLinks_wallet-tests"
+        )
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == Self.externalAccountId)
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+        #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: Self.externalAccountId,
+            source: BankSyncSource.financeKit.rawValue
+        )])
+    }
+
+    @Test func legacyWalletDefaultsMigrateLiveLinksAndDiscardStaleLinks() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let tombstonedAccountId = "acct-tombstoned"
+        let missingAccountId = "acct-missing"
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+                VALUES (?, 'Deleted Card', 'credit', 0, 0, 1, 2)
+                """, arguments: [tombstonedAccountId])
+        }
+        let originalDefaults = [
+            Self.accountId: Self.externalAccountId,
+            tombstonedAccountId: "tombstoned-wallet-id",
+            missingAccountId: "missing-wallet-id"
+        ]
+        defaults.set(originalDefaults, forKey: "appleWalletLinks_wallet-tests")
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == Self.externalAccountId)
+        #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: Self.externalAccountId,
+            source: BankSyncSource.financeKit.rawValue
+        )])
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+    }
+
+    @Test func staleLegacyWalletDefaultsDoNotBlockUnlinkingAValidLocalLink() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        defaults.set(
+            ["acct-missing": "missing-wallet-id"],
+            forKey: "appleWalletLinks_wallet-tests"
+        )
+
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+    }
+
+    @Test func failedLegacyWalletDefaultsMigrationPreservesDefaultsAndLocalLinks() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let originalDefaults = [
+            Self.accountId: Self.externalAccountId,
+            "acct-missing": "missing-wallet-id"
+        ]
+        defaults.set(originalDefaults, forKey: "appleWalletLinks_wallet-tests")
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER fail_legacy_defaults_migration
+                BEFORE INSERT ON bank_sync_local_links
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced legacy defaults migration failure');
+                END
+                """)
+        }
+
+        await store.loadBankSyncAccounts()
+
+        #expect(defaults.dictionary(forKey: "appleWalletLinks_wallet-tests") as? [String: String]
+                == originalDefaults)
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+    }
+
+    @Test func legacyWalletDefaultsAdoptOverStaleFinanceKitColumns() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        let localExternalId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb"
+        let externalAccountId = Self.externalAccountId
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+                WHERE id = ?
+            """, arguments: [externalAccountId, accountId])
+        }
+        defaults.set(
+            [Self.accountId: localExternalId],
+            forKey: "appleWalletLinks_wallet-tests"
+        )
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == localExternalId)
+        #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: localExternalId,
+            source: BankSyncSource.financeKit.rawValue
+        )])
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+        let account = try #require(
+            try row(path: url, sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
+        #expect(account["account_id"] as String? == nil)
+        #expect(account["account_sync_source"] as String? == nil)
+        #expect(account["bank"] as String? == nil)
+    }
+
+    @Test func newerSQLiteWalletRelinkWinsOverStaleDefaults() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let newerExternalId = "99999999-9999-9999-9999-999999999999"
+        let newer = BankSyncRemoteAccount(
+            id: newerExternalId, name: "New Card", institutionId: "Apple",
+            institutionName: "Apple", balanceCents: nil, source: .financeKit
+        )
+        try await store.linkBankAccount(accountId: Self.accountId, to: newer)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        defaults.set(
+            [Self.accountId: Self.externalAccountId],
+            forKey: "appleWalletLinks_wallet-tests"
+        )
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == newerExternalId)
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+        #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: newerExternalId,
+            source: BankSyncSource.financeKit.rawValue
+        )])
+    }
+
     @Test func unlinkingRemovesTheDeviceLocalLink() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -623,6 +910,291 @@ struct BudgetStoreAppleWalletSyncTests {
         try await store.unlinkBankAccount(accountId: Self.accountId)
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+    }
+
+    @Test(arguments: [
+        "22222222-2222-2222-2222-222222222222",
+        "99999999-9999-9999-9999-999999999999"
+    ])
+    func unlinkingFinanceKitCleansUpArrivedLegacyFinanceKitColumns(
+        synchronizedExternalId: String
+    ) async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+                WHERE id = ?
+                """, arguments: [synchronizedExternalId, accountId])
+        }
+
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        let account = try #require(
+            try row(path: url, sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?", arguments: [Self.accountId])
+        )
+        #expect(account["account_id"] as String? == nil)
+        #expect(account["account_sync_source"] as String? == nil)
+        #expect(account["bank"] as String? == nil)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt WHERE dataset = 'accounts'")?["count"] as Int? == 7)
+    }
+
+    @Test func synchronizedSimpleFINWinsAndReconcilesHiddenFinanceKitLink() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+                WHERE id = ?
+                """, arguments: [accountId])
+        }
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.unlinkBankAccount(accountId: Self.accountId)
+        }
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId == "simplefin-account")
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        #expect(try row(path: url, sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?", arguments: [Self.accountId])?["account_id"] as String? == "simplefin-account")
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+
+    @Test func relinkingFinanceKitAfterSynchronizedProviderArrivalPreservesProvider() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+                WHERE id = ?
+                """, arguments: [accountId])
+        }
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.linkBankAccount(
+                accountId: Self.accountId,
+                to: AppleWalletAccount(
+                    id: "33333333-3333-3333-3333-333333333333",
+                    name: "New Apple Card", institutionName: "Apple", balanceCents: nil
+                ).remoteAccount
+            )
+        }
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId == "simplefin-account")
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        #expect(try row(path: url, sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?", arguments: [Self.accountId])?["account_id"] as String? == "simplefin-account")
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+    }
+
+    @Test func loadingSynchronizedSimpleFINRemovesHiddenFinanceKitLink() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+                WHERE id = ?
+                """, arguments: [accountId])
+        }
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.source == .simpleFin)
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId == "simplefin-account")
+        #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
+        #expect(try row(path: url, sql: "SELECT account_id FROM accounts WHERE id = ?", arguments: [Self.accountId])?["account_id"] as String? == "simplefin-account")
+    }
+
+    @Test func unlinkThenReloadCannotResurrectLegacyWalletLink() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+
+        await store.loadBankSyncAccounts()
+
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+    }
+
+    @Test func staleFinanceKitUnlinkPreservesRelinkedIdentity() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard())
+        let newer = ExpectedBankSyncLink(
+            accountId: Self.accountId,
+            externalAccountId: "99999999-9999-9999-9999-999999999999",
+            source: BankSyncSource.financeKit.rawValue
+        )
+        try database.setBankSyncLocalLink(newer)
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.unlinkBankAccount(accountId: Self.accountId)
+        }
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
+                == newer.externalAccountId)
+        #expect(try await database.fetchBankSyncLocalLinks() == [newer])
+    }
+
+    @Test func replacingSimpleFINWithFinanceKitLeavesOnlyLocalAuthority() async throws {
+        let (database, path) = try makeDatabase()
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        try await store.linkBankAccount(
+            accountId: Self.accountId,
+            to: BankSyncRemoteAccount(
+                id: "simplefin-account",
+                name: "Checking",
+                institutionId: "simplefin-bank",
+                institutionName: "SimpleFIN",
+                balanceCents: nil,
+                source: .simpleFin
+            )
+        )
+        await store.loadBankSyncAccounts()
+        let before = try row(
+            path: path,
+            sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        )
+        let beforeMessageCount = try row(
+            path: path,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt"
+        )!["count"] as Int
+
+        try await store.linkBankAccount(
+            accountId: Self.accountId,
+            to: AppleWalletAccount(
+                id: Self.externalAccountId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: nil
+            ).remoteAccount
+        )
+
+        let account = try row(
+            path: path,
+            sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        )
+        let local = try row(
+            path: path,
+            sql: "SELECT external_account_id, source FROM bank_sync_local_links WHERE account_id = ?",
+            arguments: [Self.accountId]
+        )
+        let afterMessageCount = try row(
+            path: path,
+            sql: "SELECT COUNT(*) AS count FROM messages_crdt"
+        )!["count"] as Int
+
+        #expect(before?["account_id"] as String? == "simplefin-account")
+        #expect(account?["account_id"] as String? == nil)
+        #expect(account?["account_sync_source"] as String? == nil)
+        #expect(local?["external_account_id"] as String? == Self.externalAccountId)
+        #expect(local?["source"] as String? == BankSyncSource.financeKit.rawValue)
+        #expect(afterMessageCount > beforeMessageCount)
+    }
+
+    @Test func replacingFinanceKitWithSimpleFINRemovesLocalAuthorityAfterReload() async throws {
+        let (database, path) = try makeDatabase()
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        try await store.linkBankAccount(
+            accountId: Self.accountId,
+            to: AppleWalletAccount(
+                id: Self.externalAccountId,
+                name: "Apple Card",
+                institutionName: "Apple",
+                balanceCents: nil
+            ).remoteAccount
+        )
+        await store.loadBankSyncAccounts()
+
+        try await store.linkBankAccount(
+            accountId: Self.accountId,
+            to: BankSyncRemoteAccount(
+                id: "simplefin-account",
+                name: "Checking",
+                institutionId: "simplefin-bank",
+                institutionName: "SimpleFIN",
+                balanceCents: nil,
+                source: .simpleFin
+            )
+        )
+        await store.loadBankSyncAccounts()
+        try await store.unlinkBankAccount(accountId: Self.accountId)
+        await store.loadBankSyncAccounts()
+
+        let localCount = try row(
+            path: path,
+            sql: "SELECT COUNT(*) AS count FROM bank_sync_local_links WHERE account_id = ?",
+            arguments: [Self.accountId]
+        )!["count"] as Int
+        let account = try row(
+            path: path,
+            sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
+            arguments: [Self.accountId]
+        )
+        #expect(localCount == 0)
+        #expect(account?["account_id"] as String? == nil)
+        #expect(store.bankSyncAccount(forAccountId: Self.accountId) == nil)
+    }
+
+    @Test func walletWritesAfterAccountTombstoneMaterializeNothing() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        WalletCallCounter.accounts = 0
+        let wallet = CountingWalletStore(base: appleCard())
+        let store = try await makeStore(database: database, walletStore: wallet)
+        let accountId = Self.accountId
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+        }
+
+        let result = try await store.syncBankAccounts()
+
+        #expect(WalletCallCounter.accounts == 1)
+        #expect(result.problems.count == 1)
+        #expect(try rows(path: url, where: "financial_id IS NOT NULL").isEmpty)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
+        #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [accountId])?["bank_sync_status"] as String? == nil)
+    }
+
+    @Test func linkingFinanceKitAfterAccountTombstoneIsRejected() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database, walletStore: appleCard(), linked: false)
+        let remote = try #require(try await store.fetchAppleWalletAccounts().first).remoteAccount
+        let accountId = Self.accountId
+        let defaults = try #require(UserDefaults(suiteName: "BudgetStoreAppleWalletSyncTests"))
+        defaults.set(
+            [accountId: Self.externalAccountId],
+            forKey: "appleWalletLinks_wallet-tests"
+        )
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: "UPDATE accounts SET tombstone = 1 WHERE id = ?", arguments: [accountId])
+        }
+
+        await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
+            try await store.linkBankAccount(accountId: accountId, to: remote)
+        }
+
+        #expect(try row(path: url, sql: "SELECT account_id, account_sync_source, bank FROM accounts WHERE id = ?", arguments: [accountId])?["account_id"] as String? == nil)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM bank_sync_local_links")?["count"] as Int? == 0)
+        #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
+        #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
 
     /// A device without FinanceKit can't service its local Wallet link. That

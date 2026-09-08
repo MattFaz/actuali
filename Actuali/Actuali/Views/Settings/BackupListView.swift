@@ -18,19 +18,19 @@ struct BackupListView: View {
         List {
             if hasLatest {
                 Section {
-                    Button("Revert to Original Version") {
+                    Button(String(localized: "Revert to Original Version")) {
                         Task { await budgetStore.revertToLatest() }
                     }
                 } header: {
-                    Text("You're Working From a Backup")
+                    Text(String(localized: "You're Working From a Backup"))
                 } footer: {
-                    Text("Reverting restores the budget exactly as it was before the backup was loaded.")
+                    Text(String(localized: "Reverting restores the budget exactly as it was before the backup was loaded."))
                 }
             }
 
             Section {
                 if archives.isEmpty {
-                    Text("No backups yet")
+                    Text(String(localized: "No backups yet"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(archives) { backup in
@@ -56,7 +56,7 @@ struct BackupListView: View {
                 }
             }
         }
-        .navigationTitle("Backups")
+        .navigationTitle(String(localized: "Backups"))
         .task { await budgetStore.refreshBackups() }
         .confirmationDialog(
             "Restore this backup?",

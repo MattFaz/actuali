@@ -1,8 +1,135 @@
 import SwiftUI
 import Charts
 
+struct CustomReportChartAccessibilityRow: Equatable {
+    let series: String?
+    let label: String
+    let value: String
+}
+
+enum CustomReportChartAccessibility {
+    static func rows(
+        for kind: CustomReportData.Kind,
+        numberFormat: ActualNumberFormat,
+        currencyCode: String,
+        narrowSymbol: Bool,
+        locale: Locale
+    ) -> [CustomReportChartAccessibilityRow] {
+        switch kind {
+        case .bars(let bars, _):
+            return bars.map { row(series: nil, label: $0.label, units: $0.valueUnits,
+                                  numberFormat: numberFormat, currencyCode: currencyCode,
+                                  narrowSymbol: narrowSymbol, locale: locale) }
+        case .stacked(let stacked), .lines(let stacked, _):
+            return stacked.seriesNames.enumerated().flatMap { seriesIndex, series in
+                stacked.intervalLabels.indices.map { intervalIndex in
+                    row(series: series, label: stacked.intervalLabels[intervalIndex],
+                        units: stacked.values[seriesIndex][intervalIndex],
+                        numberFormat: numberFormat, currencyCode: currencyCode,
+                        narrowSymbol: narrowSymbol, locale: locale)
+                }
+            }
+        case .area(let bars):
+            return bars.map { row(series: nil, label: $0.label, units: $0.valueUnits,
+                                  numberFormat: numberFormat, currencyCode: currencyCode,
+                                  narrowSymbol: narrowSymbol, locale: locale) }
+        case .donut(let slices, let groups):
+            if groups.isEmpty {
+                return slices.map { row(series: nil, label: $0.label, units: $0.valueUnits,
+                                       numberFormat: numberFormat, currencyCode: currencyCode,
+                                       narrowSymbol: narrowSymbol, locale: locale) }
+            }
+            let groupRows = groups.map { row(series: nil, label: $0.label, units: $0.valueUnits,
+                                             numberFormat: numberFormat, currencyCode: currencyCode,
+                                             narrowSymbol: narrowSymbol, locale: locale) }
+            let sliceRows = slices.map { slice in
+                row(series: slice.group.flatMap { $0 < groups.count ? groups[$0].label : nil },
+                    label: slice.label, units: slice.valueUnits,
+                    numberFormat: numberFormat, currencyCode: currencyCode,
+                    narrowSymbol: narrowSymbol, locale: locale)
+            }
+            return groupRows + sliceRows
+        case .table, .unsupported:
+            return []
+        }
+    }
+
+    private static func row(
+        series: String?, label: String, units: Double,
+        numberFormat: ActualNumberFormat, currencyCode: String,
+        narrowSymbol: Bool, locale: Locale
+    ) -> CustomReportChartAccessibilityRow {
+        .init(series: series, label: label, value: amount(
+            units: units, numberFormat: numberFormat, currencyCode: currencyCode,
+            narrowSymbol: narrowSymbol, locale: locale))
+    }
+
+    static func amount(
+        units: Double,
+        numberFormat: ActualNumberFormat,
+        currencyCode: String,
+        narrowSymbol: Bool,
+        locale: Locale
+    ) -> String {
+        CurrencyAmountFormat.string(
+            cents: Int((units * 100).rounded()), currencyCode: currencyCode,
+            narrowSymbol: narrowSymbol, numberFormat: numberFormat, locale: locale)
+    }
+}
+
+enum ReportCurrencyAxisFormatting {
+    static func label(
+        units: Double,
+        numberFormat: ActualNumberFormat,
+        currencyCode: String,
+        narrowSymbol: Bool,
+        locale: Locale
+    ) -> String {
+        CustomReportChartAccessibility.amount(
+            units: units,
+            numberFormat: numberFormat,
+            currencyCode: currencyCode,
+            narrowSymbol: narrowSymbol,
+            locale: locale)
+    }
+
+    static func hidesAxis(for hiddenBalances: Bool) -> Bool {
+        hiddenBalances
+    }
+}
+
+struct ReportCurrencyYAxis: ViewModifier {
+    let numberFormat: ActualNumberFormat
+    let currencyCode: String
+    let narrowSymbol: Bool
+    let locale: Locale
+    let hidden: Bool
+
+    func body(content: Content) -> some View {
+        if ReportCurrencyAxisFormatting.hidesAxis(for: hidden) {
+            content.chartYAxis(.hidden)
+        } else {
+            content.chartYAxis {
+                AxisMarks { value in
+                    AxisGridLine()
+                    AxisTick()
+                    AxisValueLabel {
+                        if let units = value.as(Double.self) {
+                            Text(ReportCurrencyAxisFormatting.label(
+                                units: units, numberFormat: numberFormat,
+                                currencyCode: currencyCode, narrowSymbol: narrowSymbol,
+                                locale: locale))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 struct CustomReportWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let data: CustomReportData
 
     /// Fixed cycle standing in for upstream's qualitative colour scale. Only
@@ -45,14 +172,22 @@ struct CustomReportWidgetView: View {
             } else {
                 Chart(points(stacked)) { point in
                     BarMark(
-                        x: .value("Interval", point.interval),
-                        y: .value("Amount", point.value)
+                        x: .value(ReportStrings.text("Interval", locale: locale), point.interval),
+                        y: .value(ReportStrings.text("Amount", locale: locale), point.value)
                     )
-                    .foregroundStyle(by: .value("Group", point.series))
+                    .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                 }
                 .chartLegend(.visible)
                 .frame(height: 200)
-                .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
+                .modifier(ChartAccessibility(
+                    rows: chartAccessibilityRows(for: .stacked(stacked)),
+                    hidden: budgetStore.hideBalances))
             }
 
         case .lines(let stacked, let trends):
@@ -62,16 +197,16 @@ struct CustomReportWidgetView: View {
                 Chart {
                     ForEach(points(stacked)) { point in
                         LineMark(
-                            x: .value("Interval", point.interval),
-                            y: .value("Amount", point.value),
-                            series: .value("Series", point.series)
+                            x: .value(ReportStrings.text("Interval", locale: locale), point.interval),
+                            y: .value(ReportStrings.text("Amount", locale: locale), point.value),
+                            series: .value(ReportStrings.text("Series", locale: locale), point.series)
                         )
-                        .foregroundStyle(by: .value("Group", point.series))
+                        .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                         PointMark(
-                            x: .value("Interval", point.interval),
-                            y: .value("Amount", point.value)
+                            x: .value(ReportStrings.text("Interval", locale: locale), point.interval),
+                            y: .value(ReportStrings.text("Amount", locale: locale), point.value)
                         )
-                        .foregroundStyle(by: .value("Group", point.series))
+                        .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                         .symbolSize(16)
                     }
                     // Upstream draws each series' least-squares trend as a
@@ -79,17 +214,25 @@ struct CustomReportWidgetView: View {
                     // last interval.
                     ForEach(trendPoints(stacked, trends: trends)) { point in
                         LineMark(
-                            x: .value("Interval", point.interval),
-                            y: .value("Amount", point.value),
-                            series: .value("Series", "trend:" + point.series)
+                            x: .value(ReportStrings.text("Interval", locale: locale), point.interval),
+                            y: .value(ReportStrings.text("Amount", locale: locale), point.value),
+                            series: .value(ReportStrings.text("Series", locale: locale), "trend:" + point.series)
                         )
-                        .foregroundStyle(by: .value("Group", point.series))
+                        .foregroundStyle(by: .value(ReportStrings.text("Group", locale: locale), point.series))
                         .lineStyle(StrokeStyle(lineWidth: 1, dash: [4, 4]))
                     }
                 }
                 .chartLegend(.visible)
                 .frame(height: 200)
-                .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
+                .modifier(ChartAccessibility(
+                    rows: chartAccessibilityRows(for: .lines(stacked, trends: trends)),
+                    hidden: budgetStore.hideBalances))
             }
 
         case .area(let bars):
@@ -101,8 +244,8 @@ struct CustomReportWidgetView: View {
             } else {
                 Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
                     AreaMark(
-                        x: .value("Interval", bar.label),
-                        y: .value("Amount", bar.valueUnits)
+                        x: .value(ReportStrings.text("Interval", locale: locale), bar.label),
+                        y: .value(ReportStrings.text("Amount", locale: locale), bar.valueUnits)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(.linearGradient(
@@ -111,14 +254,22 @@ struct CustomReportWidgetView: View {
                         endPoint: .bottom
                     ))
                     LineMark(
-                        x: .value("Interval", bar.label),
-                        y: .value("Amount", bar.valueUnits)
+                        x: .value(ReportStrings.text("Interval", locale: locale), bar.label),
+                        y: .value(ReportStrings.text("Amount", locale: locale), bar.valueUnits)
                     )
                     .interpolationMethod(.monotone)
                     .foregroundStyle(Color.accentColor)
                 }
                 .frame(height: 180)
-                .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
+                .modifier(ChartAccessibility(
+                    rows: chartAccessibilityRows(for: .area(bars)),
+                    hidden: budgetStore.hideBalances))
             }
 
         case .donut(let slices, let groups):
@@ -137,7 +288,7 @@ struct CustomReportWidgetView: View {
                         HStack {
                             Text(row.name).font(.subheadline)
                             Spacer()
-                            Text(budgetStore.displayBalance(cents(row.totalUnits)))
+                            Text(budgetStore.displayBalance(cents(row.totalUnits), locale: locale))
                                 .font(.subheadline)
                                 .monospacedDigit()
                         }
@@ -165,7 +316,7 @@ struct CustomReportWidgetView: View {
                 if !groups.isEmpty {
                     Chart(Array(groups.enumerated()), id: \.offset) { i, group in
                         SectorMark(
-                            angle: .value("Amount", group.valueUnits),
+                            angle: .value(ReportStrings.text("Amount", locale: locale), group.valueUnits),
                             innerRadius: .ratio(0.45),
                             outerRadius: .ratio(0.65),
                             angularInset: 1
@@ -175,7 +326,7 @@ struct CustomReportWidgetView: View {
                 }
                 Chart(Array(slices.enumerated()), id: \.offset) { i, slice in
                     SectorMark(
-                        angle: .value("Amount", slice.valueUnits),
+                        angle: .value(ReportStrings.text("Amount", locale: locale), slice.valueUnits),
                         innerRadius: .ratio(groups.isEmpty ? 0.6 : 0.68),
                         angularInset: 1
                     )
@@ -183,9 +334,9 @@ struct CustomReportWidgetView: View {
                 }
             }
             .frame(height: 180)
-            // Wedge sizes alone don't give the totals away, but the legend
-            // below does, so it goes through displayBalance like everything else.
-            .accessibilityHidden(budgetStore.hideBalances)
+            .modifier(ChartAccessibility(
+                rows: chartAccessibilityRows(for: .donut(slices: slices, groups: groups)),
+                hidden: budgetStore.hideBalances))
 
             VStack(alignment: .leading, spacing: 4) {
                 if groups.isEmpty {
@@ -230,7 +381,7 @@ struct CustomReportWidgetView: View {
             Circle().fill(color).frame(width: 8, height: 8)
             Text(label).font(.caption).lineLimit(1)
             Spacer()
-            Text(budgetStore.displayBalance(cents(units)))
+            Text(budgetStore.displayBalance(cents(units), locale: locale))
                 .font(.caption)
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
@@ -243,19 +394,27 @@ struct CustomReportWidgetView: View {
     private func barChart(_ bars: [CustomReportData.Bar], signed: Bool) -> some View {
         Chart(Array(bars.enumerated()), id: \.offset) { _, bar in
             BarMark(
-                x: .value("Label", bar.label),
-                y: .value("Amount", bar.valueUnits)
+                x: .value(ReportStrings.text("Label", locale: locale), bar.label),
+                y: .value(ReportStrings.text("Amount", locale: locale), bar.valueUnits)
             )
             .foregroundStyle(signed
                 ? (bar.valueUnits < 0 ? Color.red : Color.green)
                 : Color.accentColor)
         }
         .frame(height: 180)
-        .modifier(BalanceHiding(hidden: budgetStore.hideBalances))
+        .modifier(ReportCurrencyYAxis(
+            numberFormat: budgetStore.numberFormat,
+            currencyCode: budgetStore.currencyCode,
+            narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+            locale: locale,
+            hidden: budgetStore.hideBalances))
+        .modifier(ChartAccessibility(
+            rows: chartAccessibilityRows(for: .bars(bars, signed: signed)),
+            hidden: budgetStore.hideBalances))
     }
 
     private var emptyText: some View {
-        Text("No data in range")
+        Text(ReportStrings.text("No data in range", locale: locale))
             .font(.subheadline)
             .foregroundStyle(.secondary)
             .frame(maxWidth: .infinity, minHeight: 60, alignment: .center)
@@ -263,6 +422,15 @@ struct CustomReportWidgetView: View {
 
     private func cents(_ units: Double) -> Int {
         Int((units * 100).rounded())
+    }
+
+    private func chartAccessibilityRows(for kind: CustomReportData.Kind) -> [CustomReportChartAccessibilityRow] {
+        CustomReportChartAccessibility.rows(
+            for: kind,
+            numberFormat: budgetStore.numberFormat,
+            currencyCode: budgetStore.currencyCode,
+            narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+            locale: locale)
     }
 
     /// Flatten to (interval, series, value) points for Charts.
@@ -289,13 +457,29 @@ struct CustomReportWidgetView: View {
         var id: String { interval + "|" + series }
     }
 
-    /// Financial chart axes otherwise reveal the underlying totals.
-    private struct BalanceHiding: ViewModifier {
+    private struct ChartAccessibility: ViewModifier {
+        let rows: [CustomReportChartAccessibilityRow]
         let hidden: Bool
+
         func body(content: Content) -> some View {
             content
-                .chartYAxis(hidden ? .hidden : .automatic)
                 .accessibilityHidden(hidden)
+                .accessibilityRepresentation {
+                    if !hidden {
+                        VStack(alignment: .leading) {
+                            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                                HStack {
+                                    if let series = row.series {
+                                        Text(series)
+                                    }
+                                    Text(row.label)
+                                    Text(row.value)
+                                }
+                                .accessibilityElement(children: .combine)
+                            }
+                        }
+                    }
+                }
         }
     }
 }

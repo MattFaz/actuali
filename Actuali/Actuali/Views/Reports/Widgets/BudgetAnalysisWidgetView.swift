@@ -3,6 +3,7 @@ import Charts
 
 struct BudgetAnalysisWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: BudgetAnalysisData
 
@@ -25,29 +26,40 @@ struct BudgetAnalysisWidgetView: View {
     private var valueMarks: [Mark] {
         data.intervalData.flatMap { p in
             [
-                Mark(month: Self.monthDate(p.month), series: "Budgeted", amount: Double(p.budgetedCents) / 100),
-                Mark(month: Self.monthDate(p.month), series: "Spent", amount: Double(p.spentCents) / 100),
-                Mark(month: Self.monthDate(p.month), series: "Overspending", amount: Double(p.overspendingAdjustmentCents) / 100)
+                Mark(month: Self.monthDate(p.month), series: ReportStrings.text("Budgeted", locale: locale), amount: Double(p.budgetedCents) / 100),
+                Mark(month: Self.monthDate(p.month), series: ReportStrings.text("Spent", locale: locale), amount: Double(p.spentCents) / 100),
+                Mark(month: Self.monthDate(p.month), series: ReportStrings.text("Overspending", locale: locale), amount: Double(p.overspendingAdjustmentCents) / 100)
             ]
         }
     }
 
     private var balanceMarks: [Mark] {
         data.intervalData.map { p in
-            Mark(month: Self.monthDate(p.month), series: "Balance", amount: Double(p.balanceCents) / 100)
+            Mark(month: Self.monthDate(p.month), series: ReportStrings.text("Balance", locale: locale), amount: Double(p.balanceCents) / 100)
         }
     }
 
     private var seriesDomain: [String] {
         var domain: [String] = []
-        if !data.balanceOnly { domain += ["Budgeted", "Spent", "Overspending"] }
-        if data.showBalance || data.balanceOnly { domain.append("Balance") }
+        if !data.balanceOnly {
+            domain += [
+                ReportStrings.text("Budgeted", locale: locale),
+                ReportStrings.text("Spent", locale: locale),
+                ReportStrings.text("Overspending", locale: locale)
+            ]
+        }
+        if data.showBalance || data.balanceOnly {
+            domain.append(ReportStrings.text("Balance", locale: locale))
+        }
         return domain
     }
 
     private var seriesRange: [Color] {
         let colors: [String: Color] = [
-            "Budgeted": .green, "Spent": .red, "Overspending": .orange, "Balance": .gray
+            ReportStrings.text("Budgeted", locale: locale): .green,
+            ReportStrings.text("Spent", locale: locale): .red,
+            ReportStrings.text("Overspending", locale: locale): .orange,
+            ReportStrings.text("Balance", locale: locale): .gray
         ]
         return seriesDomain.compactMap { colors[$0] }
     }
@@ -59,19 +71,19 @@ struct BudgetAnalysisWidgetView: View {
         if data.graphType == .bar {
             AnyChartContent(
                 BarMark(
-                    x: .value("Month", mark.month, unit: .month),
-                    y: .value("Amount", mark.amount)
+                    x: .value(ReportStrings.text("Month", locale: locale), mark.month, unit: .month),
+                    y: .value(ReportStrings.text("Amount", locale: locale), mark.amount)
                 )
-                .foregroundStyle(by: .value("Series", mark.series))
-                .position(by: .value("Series", mark.series))
+                .foregroundStyle(by: .value(ReportStrings.text("Series", locale: locale), mark.series))
+                .position(by: .value(ReportStrings.text("Series", locale: locale), mark.series))
             )
         } else {
             AnyChartContent(
                 LineMark(
-                    x: .value("Month", mark.month, unit: .month),
-                    y: .value("Amount", mark.amount)
+                    x: .value(ReportStrings.text("Month", locale: locale), mark.month, unit: .month),
+                    y: .value(ReportStrings.text("Amount", locale: locale), mark.amount)
                 )
-                .foregroundStyle(by: .value("Series", mark.series))
+                .foregroundStyle(by: .value(ReportStrings.text("Series", locale: locale), mark.series))
             )
         }
     }
@@ -84,7 +96,7 @@ struct BudgetAnalysisWidgetView: View {
                 // Upstream's card headline: the latest interval's balance,
                 // green when non-negative, red otherwise.
                 if let last = data.intervalData.last {
-                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents))
+                    Text(budgetStore.displayBalanceWholeUnits(last.balanceCents, locale: locale))
                         .font(.subheadline)
                         .monospacedDigit()
                         .foregroundStyle(last.balanceCents >= 0 ? Color.green : Color.red)
@@ -92,7 +104,7 @@ struct BudgetAnalysisWidgetView: View {
             }
 
             if data.intervalData.isEmpty {
-                Text("No data")
+                Text(ReportStrings.text("No data", locale: locale))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 180, alignment: .center)
@@ -106,17 +118,22 @@ struct BudgetAnalysisWidgetView: View {
                     if data.showBalance || data.balanceOnly {
                         ForEach(balanceMarks) { mark in
                             LineMark(
-                                x: .value("Month", mark.month, unit: .month),
-                                y: .value("Amount", mark.amount)
+                                x: .value(ReportStrings.text("Month", locale: locale), mark.month, unit: .month),
+                                y: .value(ReportStrings.text("Amount", locale: locale), mark.amount)
                             )
-                            .foregroundStyle(by: .value("Series", mark.series))
+                            .foregroundStyle(by: .value(ReportStrings.text("Series", locale: locale), mark.series))
                         }
                     }
                 }
                 .chartForegroundStyleScale(domain: seriesDomain, range: seriesRange)
                 .frame(height: 200)
                 // Keep the trend visible without exposing chart-axis amounts.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

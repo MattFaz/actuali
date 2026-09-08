@@ -280,8 +280,8 @@ struct SankeyEngineTests {
         #expect(graph["budgeted"] != nil)
         #expect(graph["available_income"] != nil)
         #expect(graph["to_budget"] != nil)
-        #expect(graph["from_previous_month"]?.name == "From 2023-12")
-        #expect(graph["for_next_month"]?.name == "For 2024-02")
+        #expect(graph["from_previous_month"]?.name == "From Dec 2023")
+        #expect(graph["for_next_month"]?.name == "For Feb 2024")
     }
 
     @Test func createBudgetGraphMarksOverbudgeted() {
@@ -460,7 +460,7 @@ struct SankeyEngineTests {
         #expect(node(data, key: "budgeted")?.name == "Budgeted")
         #expect(node(data, key: "available_income")?.name == "Available funds")
         #expect(node(data, key: "to_budget")?.name == "To budget")
-        #expect(node(data, key: "from_previous_month")?.name == "From 2023-12")
+        #expect(node(data, key: "from_previous_month")?.name == "From Dec 2023")
 
         #expect(linkValue(data, from: "c_salary", to: "available_income") == 500000)
         #expect(linkValue(data, from: "available_income", to: "budgeted") == 50000)

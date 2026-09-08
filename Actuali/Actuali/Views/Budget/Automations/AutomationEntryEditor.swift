@@ -143,7 +143,7 @@ struct AutomationEntryEditor: View {
 
     private var fixedForm: some View {
         Section("Configuration") {
-            AutomationAmountField(title: "Amount", amount: $entry.template.amount)
+            AutomationAmountField(title: String(localized: "Amount"), amount: $entry.template.amount)
             Stepper(value: periodAmountBinding, in: 1...999) {
                 LabeledContent("Every", value: "\(entry.template.period?.amount ?? 1)")
             }
@@ -189,8 +189,8 @@ struct AutomationEntryEditor: View {
 
     private var byForm: some View {
         Section {
-            AutomationAmountField(title: "Total amount", amount: $entry.template.amount)
-            YearMonthPicker(title: "Target month", month: Binding(
+            AutomationAmountField(title: String(localized: "Total amount"), amount: $entry.template.amount)
+            YearMonthPicker(title: String(localized: "Target month"), month: Binding(
                 get: { entry.template.month ?? BudgetMonthMath.currentMonth() },
                 set: { entry.template.month = $0 }))
             Toggle("Repeats", isOn: Binding(
@@ -219,7 +219,7 @@ struct AutomationEntryEditor: View {
                 get: { entry.template.type == .spend },
                 set: { entry.template = BudgetAutomations.setEarlySpending(entry.template, enabled: $0) }))
             if entry.template.type == .spend {
-                YearMonthPicker(title: "Start spending in", month: Binding(
+                YearMonthPicker(title: String(localized: "Start spending in"), month: Binding(
                     get: { entry.template.from ?? entry.template.month ?? BudgetMonthMath.currentMonth() },
                     set: { entry.template.from = $0 }))
             }
@@ -295,7 +295,7 @@ struct AutomationEntryEditor: View {
 
     private var limitForm: some View {
         Section {
-            AutomationAmountField(title: "Amount", amount: Binding(
+            AutomationAmountField(title: String(localized: "Amount"), amount: Binding(
                 get: { limitBinding.wrappedValue.amount },
                 set: { limitBinding.wrappedValue.amount = $0 ?? 0 }))
             Picker("Every", selection: Binding(
@@ -353,7 +353,7 @@ struct AutomationEntryEditor: View {
 
     private var goalForm: some View {
         Section("Configuration") {
-            AutomationAmountField(title: "Target amount", amount: $entry.template.amount)
+            AutomationAmountField(title: String(localized: "Target amount"), amount: $entry.template.amount)
         }
     }
 

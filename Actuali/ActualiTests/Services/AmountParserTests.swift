@@ -104,6 +104,7 @@ struct AmountParserTests {
     }
 
     @Test func rejectsTextWithMultipleNumbers() {
+        #expect(AmountParser.parse("7-Eleven") == nil)
         #expect(AmountParser.parse("7-Eleven $4.50") == nil)
         #expect(AmountParser.parse("Jan 5 2026 $4.00") == nil)
     }

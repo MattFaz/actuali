@@ -15,65 +15,73 @@ enum AutomationError: Equatable, Sendable {
     case spendFromAfterTarget
     case adjustmentOutOfRange
 
-    var title: String {
+    var title: String { title(locale: .autoupdatingCurrent, bundle: .main) }
+
+    func title(locale: Locale, bundle: Bundle) -> String {
         switch self {
-        case .scheduleNotFound: "Schedule not found"
-        case .refillNoCap: "Refill needs a balance cap"
-        case .limitNoContributor: "Balance cap needs a contributing automation"
-        case .percentageOutOfRange: "Percentage out of range"
-        case .percentageNoSource: "Source category missing"
-        case .percentageSourceNotFound: "Source category not recognised"
-        case .byNoMonth: "Target month missing"
-        case .byTargetPast: "Target is in the past"
-        case .spendNoFrom: "Early-spending month missing"
-        case .spendFromAfterTarget: "Early spending starts after target"
-        case .adjustmentOutOfRange: "Adjustment out of range"
+        case .scheduleNotFound: String(localized: "Schedule not found", bundle: bundle, locale: locale)
+        case .refillNoCap: String(localized: "Refill needs a balance cap", bundle: bundle, locale: locale)
+        case .limitNoContributor: String(localized: "Balance cap needs a contributing automation", bundle: bundle, locale: locale)
+        case .percentageOutOfRange: String(localized: "Percentage out of range", bundle: bundle, locale: locale)
+        case .percentageNoSource: String(localized: "Source category missing", bundle: bundle, locale: locale)
+        case .percentageSourceNotFound: String(localized: "Source category not recognised", bundle: bundle, locale: locale)
+        case .byNoMonth: String(localized: "Target month missing", bundle: bundle, locale: locale)
+        case .byTargetPast: String(localized: "Target is in the past", bundle: bundle, locale: locale)
+        case .spendNoFrom: String(localized: "Early-spending month missing", bundle: bundle, locale: locale)
+        case .spendFromAfterTarget: String(localized: "Early spending starts after target", bundle: bundle, locale: locale)
+        case .adjustmentOutOfRange: String(localized: "Adjustment out of range", bundle: bundle, locale: locale)
         }
     }
 
-    var shortMessage: String {
+    var shortMessage: String { shortMessage(locale: .autoupdatingCurrent, bundle: .main) }
+
+    func shortMessage(locale: Locale, bundle: Bundle) -> String {
         switch self {
         case .scheduleNotFound(let name):
-            name.isEmpty ? "Pick a schedule" : "No schedule named “\(name)”"
-        case .refillNoCap: "Add a balance cap"
-        case .limitNoContributor: "Add an automation that contributes funds"
+            name.isEmpty
+                ? String(localized: "Pick a schedule", bundle: bundle, locale: locale)
+                : String(format: String(localized: "No schedule named “%@”", bundle: bundle, locale: locale), name)
+            case .refillNoCap: String(localized: "Add a balance cap", bundle: bundle, locale: locale)
+            case .limitNoContributor: String(localized: "Add an automation that contributes funds", bundle: bundle, locale: locale)
         case .percentageOutOfRange(let percent):
-            "\(AutomationSentences.trimTrailingZeros(percent))% must be between 0 and 100"
-        case .percentageNoSource: "Pick a source category"
-        case .percentageSourceNotFound: "Pick a valid income category"
-        case .byNoMonth: "Pick a target month"
+            String(format: String(localized: "%@ must be between 0 and 100", bundle: bundle, locale: locale), "\(AutomationSentences.trimTrailingZeros(percent))%")
+        case .percentageNoSource: String(localized: "Pick a source category", bundle: bundle, locale: locale)
+        case .percentageSourceNotFound: String(localized: "Pick a valid income category", bundle: bundle, locale: locale)
+        case .byNoMonth: String(localized: "Pick a target month", bundle: bundle, locale: locale)
         case .byTargetPast(let month):
-            "\(AutomationSentences.monthLabel(month)) has already passed"
-        case .spendNoFrom: "Pick an early-spending start month"
-        case .spendFromAfterTarget: "Early spending must start before the target"
-        case .adjustmentOutOfRange: "Adjustment out of range"
+            String(format: String(localized: "%@ has already passed", bundle: bundle, locale: locale), AutomationSentences.monthLabel(month))
+        case .spendNoFrom: String(localized: "Pick an early-spending start month", bundle: bundle, locale: locale)
+        case .spendFromAfterTarget: String(localized: "Early spending must start before the target", bundle: bundle, locale: locale)
+        case .adjustmentOutOfRange: String(localized: "Adjustment out of range", bundle: bundle, locale: locale)
         }
     }
 
-    var detail: String {
+    var detail: String { detail(locale: .autoupdatingCurrent, bundle: .main) }
+
+    func detail(locale: Locale, bundle: Bundle) -> String {
         switch self {
         case .scheduleNotFound:
-            "Pick an existing schedule, or create one in Schedules. This automation can't run until it's linked to a schedule."
+            String(localized: "Pick an existing schedule, or create one in Schedules. This automation can't run until it's linked to a schedule.", bundle: bundle, locale: locale)
         case .refillNoCap:
-            "Refill automations must have a “Balance cap” automation added to use as the target."
+            String(localized: "Refill automations must have a “Balance cap” automation added to use as the target.", bundle: bundle, locale: locale)
         case .limitNoContributor:
-            "A balance cap on its own does nothing. Add a contributing automation (such as a fixed amount, save by date, or whatever is left) so the cap has something to clamp."
+            String(localized: "A balance cap on its own does nothing. Add a contributing automation (such as a fixed amount, save by date, or whatever is left) so the cap has something to clamp.", bundle: bundle, locale: locale)
         case .percentageOutOfRange:
-            "Set a value greater than 0% and at most 100%."
+            String(localized: "Set a value greater than 0% and at most 100%.", bundle: bundle, locale: locale)
         case .percentageNoSource:
-            "Pick which income the percentage is taken from."
+            String(localized: "Pick which income the percentage is taken from.", bundle: bundle, locale: locale)
         case .percentageSourceNotFound:
-            "The source must be an income category, total income, or available funds."
+            String(localized: "The source must be an income category, total income, or available funds.", bundle: bundle, locale: locale)
         case .byNoMonth:
-            "Pick the month the target amount should be saved by."
+            String(localized: "Pick the month the target amount should be saved by.", bundle: bundle, locale: locale)
         case .byTargetPast:
-            "One-shot targets must be in the future. Turn on Repeats to roll a past anchor forward."
+            String(localized: "One-shot targets must be in the future. Turn on Repeats to roll a past anchor forward.", bundle: bundle, locale: locale)
         case .spendNoFrom:
-            "Pick the month spending is expected to start."
+            String(localized: "Pick the month spending is expected to start.", bundle: bundle, locale: locale)
         case .spendFromAfterTarget:
-            "The early-spending month must be on or before the target month."
+            String(localized: "The early-spending month must be on or before the target month.", bundle: bundle, locale: locale)
         case .adjustmentOutOfRange:
-            "Percentage adjustments must be between -100% and 1000%."
+            String(localized: "Percentage adjustments must be between -100% and 1000%.", bundle: bundle, locale: locale)
         }
     }
 }
@@ -82,12 +90,14 @@ enum AutomationConflict: Equatable, Sendable {
     case percentOver100(total: Double)
     case schedulePriorityMismatch
 
-    var message: String {
+    var message: String { message(locale: .autoupdatingCurrent, bundle: .main) }
+
+    func message(locale: Locale, bundle: Bundle) -> String {
         switch self {
         case .percentOver100(let total):
-            "Percentage automations for one source add up to \(AutomationSentences.trimTrailingZeros(total))%. Together they must stay at or below 100%."
+            String(format: String(localized: "Percentage automations for one source add up to %@. Together they must stay at or below 100%.", bundle: bundle, locale: locale), "\(AutomationSentences.trimTrailingZeros(total))%")
         case .schedulePriorityMismatch:
-            "Schedule and save-by-date automations must all share one priority, or none of them will budget."
+            String(localized: "Schedule and save-by-date automations must all share one priority, or none of them will budget.", bundle: bundle, locale: locale)
         }
     }
 }

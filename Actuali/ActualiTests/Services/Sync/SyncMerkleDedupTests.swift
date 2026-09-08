@@ -36,6 +36,16 @@ struct SyncMerkleDedupTests {
         )
     }
 
+    private func preferenceMessage(millis: Int64, row: String, value: String) -> CRDTMessage {
+        CRDTMessage(
+            timestamp: HLCTimestamp(millis: millis, counter: 0, node: "89e0e8e90b203f9e"),
+            dataset: "preferences",
+            row: row,
+            column: "value",
+            value: value
+        )
+    }
+
     @Test func insertMessagesReturnsOnlyNewlyInsertedMessages() throws {
         let database = try makeDatabase()
         let first = message(millis: 1_700_000_000_000)
@@ -81,7 +91,104 @@ struct SyncMerkleDedupTests {
     }
 
     @Test func emptyBatchInsertsNothing() throws {
-        let database = try makeDatabase()
-        #expect(try database.insertMessages([]).isEmpty)
+        let database = try makeDatabaseWithPreferences()
+        let existing = preferenceMessage(millis: 1_700_000_000_000, row: "existing", value: "S:old")
+        #expect(try database.applyMessagesAndInsertMessages([existing]).count == 1)
+
+        let before = try database.dbQueueForTesting.read { db in
+            (
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(try database.applyMessagesAndInsertMessages([]).isEmpty)
+        let after = try database.dbQueueForTesting.read { db in
+            (
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(after.0 == before.0)
+        #expect(after.1 == before.1)
+    }
+
+    @Test func atomicReceiveAppliesOnlyNewMessagesAndRollsBackOnInsertFailure() throws {
+        let database = try makeDatabaseWithPreferences()
+        let existing = preferenceMessage(millis: 1_700_000_000_000, row: "existing", value: "S:old")
+        let incoming = preferenceMessage(millis: 1_700_000_000_001, row: "incoming", value: "S:new")
+
+        _ = try database.applyMessagesAndInsertMessages([existing])
+        let received = [existing, incoming]
+        let newMessages = try database.filterNewMessages(received)
+        #expect(newMessages.map(\.timestamp) == [incoming.timestamp])
+
+        try database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                CREATE TRIGGER fail_incoming_message_insert
+                BEFORE INSERT ON messages_crdt
+                WHEN NEW.timestamp = '\(incoming.timestamp.toString())'
+                BEGIN
+                    SELECT RAISE(ABORT, 'forced message insert failure');
+                END;
+                """)
+        }
+
+        #expect(throws: (any Error).self) {
+            try database.applyMessagesAndInsertMessages(received, applying: newMessages)
+        }
+
+        let rolledBack = try database.dbQueueForTesting.read { db in
+            (
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(rolledBack.0 == "old")
+        #expect(rolledBack.1 == nil)
+        #expect(rolledBack.2 == 1)
+
+        try database.dbQueueForTesting.write { db in
+            try db.execute(sql: "DROP TRIGGER fail_incoming_message_insert")
+        }
+        let inserted = try database.applyMessagesAndInsertMessages(received, applying: newMessages)
+        #expect(inserted.map(\.timestamp) == [incoming.timestamp])
+
+        let finalState = try database.dbQueueForTesting.read { db in
+            (
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
+                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            )
+        }
+        #expect(finalState.0 == "old")
+        #expect(finalState.1 == "new")
+        #expect(finalState.2 == 2)
+
+        let retry = try database.applyMessagesAndInsertMessages(received, applying: [])
+        #expect(retry.isEmpty)
+    }
+
+    private func makeDatabaseWithPreferences() throws -> BudgetDatabase {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (
+                    id TEXT PRIMARY KEY,
+                    value TEXT
+                );
+                CREATE TABLE messages_crdt (
+                    id INTEGER PRIMARY KEY,
+                    timestamp TEXT NOT NULL UNIQUE,
+                    dataset TEXT NOT NULL,
+                    row TEXT NOT NULL,
+                    column TEXT NOT NULL,
+                    value BLOB NOT NULL
+                );
+                """)
+        }
+        return try BudgetDatabase(path: tempURL)
     }
 }

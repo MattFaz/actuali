@@ -1,7 +1,14 @@
 import SwiftUI
 
+enum SummaryWidgetFormatting {
+    static func percentage(_ value: Double, locale: Locale) -> String {
+        (value / 100).formatted(.percent.locale(locale).precision(.fractionLength(0...2)))
+    }
+}
+
 struct SummaryWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: SummaryData
 
@@ -11,10 +18,9 @@ struct SummaryWidgetView: View {
             // Display absolute value; the color communicates direction. Matches
             // the webapp's Summary widget rendering (e.g., "$95,597.58" in red
             // for spending instead of "-$95,597.58").
-            return budgetStore.displayBalance(abs(data.totalCents))
+            return budgetStore.displayBalance(abs(data.totalCents), locale: locale)
         case .percentage:
-            let number = abs(data.value).formatted(.number.precision(.fractionLength(0...2)))
-            return "\(number)%"
+            return SummaryWidgetFormatting.percentage(abs(data.value), locale: locale)
         }
     }
 

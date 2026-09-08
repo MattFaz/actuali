@@ -6,72 +6,72 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Data") {
+                Section(String(localized: "Data")) {
                     NavigationLink {
                         ConnectionDataSettingsView()
                     } label: {
-                        Label("Connection & Data", systemImage: "server.rack")
+                        Label(String(localized: "Connection & Data"), systemImage: "server.rack")
                     }
                 }
 
-                Section("Preferences") {
+                Section(String(localized: "Preferences")) {
                     NavigationLink {
                         BudgetViewSettingsView()
                     } label: {
-                        Label("Budget View", systemImage: "wallet.bifold")
+                        Label(String(localized: "Budget View"), systemImage: "wallet.bifold")
                     }
 
                     NavigationLink {
                         TransactionAutomationSettingsView()
                     } label: {
-                        Label("Transactions & Automation", systemImage: "arrow.left.arrow.right")
+                        Label(String(localized: "Transactions & Automation"), systemImage: "arrow.left.arrow.right")
                     }
 
                     NavigationLink {
                         DisplaySettingsView()
                     } label: {
-                        Label("Display", systemImage: "iphone")
+                        Label(String(localized: "Display"), systemImage: "iphone")
                     }
 
                     NavigationLink {
                         PrivacySettingsView()
                     } label: {
-                        Label("Privacy", systemImage: "hand.raised")
+                        Label(String(localized: "Privacy"), systemImage: "hand.raised")
                     }
                 }
 
-                Section("Manage") {
+                Section(String(localized: "Manage")) {
                     NavigationLink {
                         SchedulesListView()
                     } label: {
-                        Label("Scheduled Transactions", systemImage: "calendar.badge.clock")
+                        Label(String(localized: "Scheduled Transactions"), systemImage: "calendar.badge.clock")
                     }
 
                     if budgetStore.currentBudgetId != nil {
                         NavigationLink {
                             RulesListView()
                         } label: {
-                            Label("Rules", systemImage: "list.bullet.rectangle")
+                            Label(String(localized: "Rules"), systemImage: "list.bullet.rectangle")
                         }
                     }
 
                     NavigationLink {
                         BankSyncSetupView()
                     } label: {
-                        Label("Bank Sync (SimpleFIN & Wallet)", systemImage: "building.columns")
+                        Label(String(localized: "Bank Sync (SimpleFIN & Wallet)"), systemImage: "building.columns")
                     }
                 }
 
-                Section("Information") {
+                Section(String(localized: "Information")) {
                     NavigationLink {
                         AboutSettingsView()
                     } label: {
-                        Label("About", systemImage: "info.circle")
+                        Label(String(localized: "About"), systemImage: "info.circle")
                     }
                 }
             }
             .readableWidth()
-            .navigationTitle("More")
+            .navigationTitle(String(localized: "navigation.settings"))
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
         // Keep the store-wide loading indicator above the navigation stack so

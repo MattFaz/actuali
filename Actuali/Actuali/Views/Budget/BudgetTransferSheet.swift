@@ -43,6 +43,29 @@ struct BudgetTransferContext: Identifiable {
     }
 }
 
+enum BudgetTransferLocalization {
+    nonisolated static func candidateLabel(
+        categoryName: String,
+        amount: String,
+        isRecommended: Bool,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        if isRecommended {
+            return String(localized: LocalizedStringResource(
+                "Recommended: \(categoryName) (\(amount))",
+                locale: locale,
+                bundle: bundle
+            ))
+        }
+        return String(localized: LocalizedStringResource(
+            "\(categoryName) (\(amount))",
+            locale: locale,
+            bundle: bundle
+        ))
+    }
+}
+
 /// Move budgeted funds between categories (GH #128). Adapts to the tapped
 /// balance: in the red it covers the overspending from "To Budget" or a
 /// category with available funds; in the green it sends the surplus to
@@ -53,6 +76,7 @@ struct BudgetTransferContext: Identifiable {
 struct BudgetTransferSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let context: BudgetTransferContext
 
     /// The other side of the move: the month's unallocated pool, or a
@@ -124,17 +148,17 @@ struct BudgetTransferSheet: View {
             Form {
                 if isCovering {
                     Section {
-                        LabeledContent("Amount to cover") {
+                        LabeledContent(String(localized: "Amount to cover")) {
                             Text(budgetStore.displayBalance(abs(context.category.available)))
                                 .foregroundStyle(.red)
                         }
                         if currentMonthShortfall > 0 {
-                            LabeledContent("This month") {
+                            LabeledContent(String(localized: "This month")) {
                                 Text(budgetStore.displayBalance(currentMonthShortfall))
                             }
                         }
                         if rolledOverAmount > 0 {
-                            LabeledContent("From earlier months") {
+                            LabeledContent(String(localized: "From earlier months")) {
                                 Text(budgetStore.displayBalance(rolledOverAmount))
                             }
                         }
@@ -147,11 +171,16 @@ struct BudgetTransferSheet: View {
                     if hasOptions {
                         Picker(isCovering ? "From" : "To", selection: $endpoint) {
                             if context.canUseToBudget, let toBudget = context.budget.toBudget {
-                                Text("To Budget (\(budgetStore.displayBalance(toBudget)))")
+                                Text(String(format: String(localized: "To Budget (%@)"), budgetStore.displayBalance(toBudget)))
                                     .tag(Endpoint.toBudget)
                             }
                             ForEach(Array(eligibleCategories.enumerated()), id: \.element.id) { index, candidate in
-                                Text("\(index == 0 && isCovering ? "Recommended: " : "")\(candidate.categoryName) (\(budgetStore.displayBalance(candidate.available)))")
+                                Text(BudgetTransferLocalization.candidateLabel(
+                                    categoryName: candidate.categoryName,
+                                    amount: budgetStore.displayBalance(candidate.available),
+                                    isRecommended: index == 0 && isCovering,
+                                    locale: locale
+                                ))
                                     .tag(Endpoint.category(candidate.categoryId))
                             }
                         }
@@ -162,7 +191,7 @@ struct BudgetTransferSheet: View {
                             .foregroundStyle(.secondary)
                     }
                 } header: {
-                    Text(isCovering ? "Cover from" : "Move to")
+                    Text(isCovering ? String(localized: "Cover from") : String(localized: "Move to"))
                 } footer: {
                     Text(isCovering
                          ? "\(context.category.categoryName) is overspent by \(budgetStore.displayBalance(abs(context.category.available))) in \(MonthPicker.title(for: context.category.month))."
@@ -183,7 +212,7 @@ struct BudgetTransferSheet: View {
                     }
                 }
             }
-            .navigationTitle(isCovering ? "Cover Overspending" : "Move Money")
+            .navigationTitle(isCovering ? String(localized: "Cover Overspending") : String(localized: "Move Money"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

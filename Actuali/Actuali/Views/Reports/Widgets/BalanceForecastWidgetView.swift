@@ -3,6 +3,7 @@ import Charts
 
 struct BalanceForecastWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let displayName: String
     let data: BalanceForecastData
 
@@ -29,13 +30,21 @@ struct BalanceForecastWidgetView: View {
                 Spacer()
                 if let ending = data.points.last {
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("Ending: \(budgetStore.displayBalanceWholeUnits(ending.balanceCents))")
+                        Text(ReportStrings.format(
+                            "Ending: %@",
+                            budgetStore.displayBalanceWholeUnits(ending.balanceCents, locale: locale),
+                            locale: locale
+                        ))
                             .font(.subheadline)
                             .monospacedDigit()
                             .foregroundStyle(ending.balanceCents < 0 ? Color.red : .secondary)
                         if let lowest = data.points.min(by: { $0.balanceCents < $1.balanceCents }),
                            lowest.date != ending.date {
-                            Text("Low: \(budgetStore.displayBalanceWholeUnits(lowest.balanceCents))")
+                            Text(ReportStrings.format(
+                                "Low: %@",
+                                budgetStore.displayBalanceWholeUnits(lowest.balanceCents, locale: locale),
+                                locale: locale
+                            ))
                                 .font(.caption)
                                 .monospacedDigit()
                                 .foregroundStyle(.secondary)
@@ -48,34 +57,39 @@ struct BalanceForecastWidgetView: View {
                 Chart {
                     ForEach(historyPoints, id: \.date) { point in
                         LineMark(
-                            x: .value("Date", point.date),
-                            y: .value("Balance", Double(point.balanceCents) / 100.0),
-                            series: .value("Segment", "History")
+                            x: .value(ReportStrings.text("Date", locale: locale), point.date),
+                            y: .value(ReportStrings.text("Balance", locale: locale), Double(point.balanceCents) / 100.0),
+                            series: .value(ReportStrings.text("Segment", locale: locale), ReportStrings.text("History", locale: locale))
                         )
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.blue)
                     }
                     ForEach(forecastPoints, id: \.date) { point in
                         LineMark(
-                            x: .value("Date", point.date),
-                            y: .value("Balance", Double(point.balanceCents) / 100.0),
-                            series: .value("Segment", "Forecast")
+                            x: .value(ReportStrings.text("Date", locale: locale), point.date),
+                            y: .value(ReportStrings.text("Balance", locale: locale), Double(point.balanceCents) / 100.0),
+                            series: .value(ReportStrings.text("Segment", locale: locale), ReportStrings.text("Forecast", locale: locale))
                         )
                         .interpolationMethod(.monotone)
                         .foregroundStyle(.blue.opacity(0.5))
                         .lineStyle(StrokeStyle(lineWidth: 2, dash: [4, 3]))
                     }
                     if hasNegativeBalance {
-                        RuleMark(y: .value("Zero", 0))
+                        RuleMark(y: .value(ReportStrings.text("Zero", locale: locale), 0))
                             .foregroundStyle(.secondary.opacity(0.5))
                     }
                 }
                 .frame(height: 180)
                 // Keep the trend visible without exposing chart-axis amounts.
-                .chartYAxis(budgetStore.hideBalances ? .hidden : .automatic)
+                .modifier(ReportCurrencyYAxis(
+                    numberFormat: budgetStore.numberFormat,
+                    currencyCode: budgetStore.currencyCode,
+                    narrowSymbol: budgetStore.useNarrowCurrencySymbol,
+                    locale: locale,
+                    hidden: budgetStore.hideBalances))
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
-                Text("Not enough data")
+                Text(ReportStrings.text("Not enough data", locale: locale))
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 80, alignment: .center)

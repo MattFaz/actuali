@@ -1,7 +1,33 @@
+import Foundation
 import Testing
 @testable import Actuali
 
 struct AutomationValidationTests {
+
+    @Test func everyAutomationErrorHasLocalizedMessages() {
+        let errors: [AutomationError] = [
+            .scheduleNotFound(name: "Rent"), .refillNoCap, .limitNoContributor,
+            .percentageOutOfRange(percent: 125), .percentageNoSource,
+            .percentageSourceNotFound(source: "Ghost"), .byNoMonth,
+            .byTargetPast(month: "2024-01"), .spendNoFrom,
+            .spendFromAfterTarget, .adjustmentOutOfRange,
+        ]
+        let locale = Locale(identifier: "fr_FR")
+        let bundle = Bundle.main
+
+        for error in errors {
+            #expect(!error.title(locale: locale, bundle: bundle).isEmpty)
+            #expect(!error.shortMessage(locale: locale, bundle: bundle).isEmpty)
+            #expect(!error.detail(locale: locale, bundle: bundle).isEmpty)
+        }
+
+        let conflicts: [AutomationConflict] = [
+            .percentOver100(total: 125), .schedulePriorityMismatch,
+        ]
+        for conflict in conflicts {
+            #expect(!conflict.message(locale: locale, bundle: bundle).isEmpty)
+        }
+    }
 
     private let currentMonth = "2024-01"
     private let sources: Set<String> = ["all income", "available funds", "cat-salary", "salary"]

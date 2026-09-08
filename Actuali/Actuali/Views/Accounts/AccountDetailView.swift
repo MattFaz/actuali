@@ -99,14 +99,14 @@ struct AccountDetailView: View {
     /// guidance — and on files with no `notes` table, where an edit could never
     /// save.
     private var noteSection: some View {
-        Section("Note") {
+        Section(String(localized: "common.note")) {
             if note.isEmpty {
                 Button {
                     editingNote = true
                 } label: {
                     // Tinted: an empty note row is an invitation to act, where
                     // an existing note is content to read.
-                    Label("Add Note", systemImage: "note.text.badge.plus")
+                    Label(String(localized: "common.addNote"), systemImage: "note.text.badge.plus")
                         .foregroundStyle(Color.accentColor)
                 }
                 // Plain: a tinted List button would tint the label twice over.
@@ -164,7 +164,7 @@ struct AccountDetailView: View {
                     withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
                 } label: {
                     HStack {
-                        Text("Current Balance")
+                        Text(String(localized: "Current Balance"))
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
@@ -179,22 +179,24 @@ struct AccountDetailView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Current Balance, \(budgetStore.displayBalance(currentBalance))")
-                .accessibilityHint(showingBreakdown ? "Hides the balance breakdown" : "Shows cleared, uncleared, and reconciled balances")
+                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+                .accessibilityHint(showingBreakdown
+                    ? String(localized: "Hides the balance breakdown")
+                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
 
                 // Headroom on a tracked card with a limit set — the figure a
                 // card's balance is actually judged against, so it stays visible
                 // rather than hiding behind the disclosure.
                 if let headroom = creditHeadroom {
-                    breakdownRow("Available Credit", amount: headroom.available)
+                    breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
                 }
 
                 if showingBreakdown, let breakdown {
-                    breakdownRow("Cleared", amount: breakdown.cleared)
-                    breakdownRow("Uncleared", amount: breakdown.uncleared)
-                    breakdownRow("Reconciled", amount: breakdown.reconciled)
+                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
+                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
+                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
                     if let headroom = creditHeadroom {
-                        breakdownRow("Credit Limit", amount: headroom.limit)
+                        breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
                     }
                 }
             }
@@ -213,7 +215,7 @@ struct AccountDetailView: View {
                         withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
                     } label: {
                         HStack {
-                            Text("Billing Cycle")
+                            Text(String(localized: "Billing Cycle"))
                             Spacer()
                             Text(dueSummary)
                                 .fontWeight(.semibold)
@@ -225,12 +227,14 @@ struct AccountDetailView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Billing Cycle, \(dueSummary)")
-                    .accessibilityHint(showingBillingCycle ? "Hides the billing cycle details" : "Shows the current cycle dates and spend")
+                    .accessibilityLabel(String(format: String(localized: "Billing Cycle, %@"), dueSummary))
+                    .accessibilityHint(showingBillingCycle
+                        ? String(localized: "Hides the billing cycle details")
+                        : String(localized: "Shows the current cycle dates and spend"))
 
                     if showingBillingCycle {
-                        breakdownRow("Current Cycle", value: "\(startStr) – \(endStr)")
-                        breakdownRow("Cycle Spend", value: budgetStore.displayBalance(cycleSpend))
+                        breakdownRow(String(localized: "Current Cycle"), value: "\(startStr) – \(endStr)")
+                        breakdownRow(String(localized: "Cycle Spend"), value: budgetStore.displayBalance(cycleSpend))
                     }
                 }
             }

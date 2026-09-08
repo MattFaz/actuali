@@ -225,19 +225,8 @@ enum SpendingEngine {
     }
 
     private static func parseMonthStart(from string: String?, calendar: Calendar) -> Date? {
-        // Accept "YYYY-MM" or "YYYY-MM-DD"
-        guard let string else { return nil }
-        let isoMonth = DateFormatter()
-        isoMonth.dateFormat = "yyyy-MM"
-        isoMonth.timeZone = TimeZone(identifier: "UTC")
-        if let d = isoMonth.date(from: string) { return d }
-        let isoDay = DateFormatter()
-        isoDay.dateFormat = "yyyy-MM-dd"
-        isoDay.timeZone = TimeZone(identifier: "UTC")
-        if let d = isoDay.date(from: string) {
-            return calendar.date(from: calendar.dateComponents([.year, .month], from: d))
-        }
-        return nil
+        guard let string, let date = CanonicalDateParser.parseMonthOrDay(string) else { return nil }
+        return calendar.date(from: calendar.dateComponents([.year, .month], from: date))
     }
 
     private static func ymdInt(from date: Date, calendar: Calendar) -> Int {

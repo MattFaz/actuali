@@ -54,7 +54,7 @@ struct ReconcileView: View {
             Form {
                 Section {
                     HStack {
-                        Text("Cleared Balance")
+                        Text(String(localized: "reconcile.clearedBalance"))
                         Spacer()
                         if let clearedBalance {
                             // Deliberately bypasses the hide-balances mask:
@@ -69,7 +69,7 @@ struct ReconcileView: View {
                         }
                     }
                     HStack {
-                        Text("Bank Balance")
+                        Text(String(localized: "reconcile.bankBalance"))
                         Spacer()
                         // Credit-card and overdrawn accounts reconcile against
                         // a negative bank balance, so the sign toggle is needed.
@@ -82,7 +82,7 @@ struct ReconcileView: View {
                         )
                     }
                 } footer: {
-                    Text("Enter the current balance of the bank account you want to reconcile with.")
+                    Text(String(localized: "reconcile.balancePrompt"))
                 }
 
                 if let difference {
@@ -123,7 +123,7 @@ struct ReconcileView: View {
                             }
                             .disabled(isWorking)
                         } footer: {
-                            Text("Your cleared balance needs \(budgetStore.formatCurrency(difference)) to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards.")
+                            Text(String(format: String(localized: "Your cleared balance needs %@ to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards."), budgetStore.formatCurrency(difference)))
                         }
                     }
                 } else if clearedBalance != nil && !balanceText.isEmpty {

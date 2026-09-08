@@ -21,10 +21,10 @@ enum StartTab: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .accounts: return "Accounts"
-        case .budget: return "Budget"
-        case .addTransaction: return "Add Transaction"
-        case .reports: return "Reports"
+        case .accounts: return String(localized: "Accounts")
+        case .budget: return String(localized: "Budget")
+        case .addTransaction: return String(localized: "Add Transaction")
+        case .reports: return String(localized: "Reports")
         }
     }
 

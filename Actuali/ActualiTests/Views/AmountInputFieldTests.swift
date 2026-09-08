@@ -161,26 +161,26 @@ struct AmountInputFieldTests {
     @Test func pastingConflictingCommaDotFormatFallsBackToWholeAmount() {
         let (coordinator, textField, box) = makeField()
         coordinator.numberFormat = .dotComma
-    
+
         _ = coordinator.textField(
             textField,
             shouldChangeCharactersIn: NSRange(location: 0, length: 0),
             replacementString: "1,234.56"
         )
-    
+
         #expect(textField.text == "1.234,56")
         #expect(box.value == "1234.56")
     }
-    
+
     @Test func pastingAnOversizedNumberIsRejectedInsteadOfCrashing() {
         let (coordinator, textField, box) = makeField()
-    
+
         let accepted = coordinator.textField(
             textField,
             shouldChangeCharactersIn: NSRange(location: 0, length: 0),
             replacementString: "1,000,000,000,000,000,000,000"
         )
-    
+
         #expect(accepted == false)
         #expect(box.value == "")
         #expect(textField.text == "")

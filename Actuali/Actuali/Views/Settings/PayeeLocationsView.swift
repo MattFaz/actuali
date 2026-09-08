@@ -93,7 +93,7 @@ struct PayeeLocationDetailView: View {
                         delete(offsets.map { locations[$0] })
                     }
                 } footer: {
-                    Text("Swipe a location to remove it. Removing every location stops \(payee.name) being suggested when you're nearby.")
+                    Text(String(format: String(localized: "Swipe a location to remove it. Removing every location stops %@ being suggested when you're nearby."), payee.name))
                 }
 
                 Section {
@@ -134,7 +134,7 @@ struct PayeeLocationDetailView: View {
                 ? await budgetStore.deletePayeeLocation(doomed[0])
                 : await budgetStore.deletePayeeLocations(doomed)
             guard cleared else {
-                failureMessage = "The location couldn't be removed. Check your connection and try again."
+                failureMessage = String(localized: "The location couldn't be removed. Check your connection and try again.")
                 return
             }
             locations = await budgetStore.fetchPayeeLocations(payeeId: payee.id)
