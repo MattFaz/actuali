@@ -724,11 +724,11 @@ final class BudgetStore: ObservableObject {
         cardAccountMappings = updated
         guard let syncClient else {
             cardAccountMappings = previous
-            error = "Card mappings need sync configured for this budget."
+            error = String(localized: "Card mappings need sync configured for this budget.")
             return
         }
         do {
-            try await syncClient.setCardAccountMappings(updated)
+            try await syncClient.setCardAccountMappings(updated, replacing: previous)
         } catch {
             if cardAccountMappings == updated {
                 cardAccountMappings = previous
@@ -2232,7 +2232,7 @@ final class BudgetStore: ObservableObject {
 
                     if !legacyCardMappings.isEmpty {
                         do {
-                            try await syncClient.setCardAccountMappings(cardAccountMappings)
+                            try await syncClient.setCardAccountMappings(cardAccountMappings, replacing: fetchedCardMappings)
                             UserDefaults.standard.removeObject(forKey: "cardAccountMappings_\(budgetId)")
                         } catch {
                             logger.error("Card mappings migration failed: \(error.localizedDescription, privacy: .public)")

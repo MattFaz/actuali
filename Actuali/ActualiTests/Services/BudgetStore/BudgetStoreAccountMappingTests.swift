@@ -149,12 +149,10 @@ struct BudgetStoreAccountMappingTests {
         try await seedBudget(id: budgetB, in: manager)
 
         let dbQueueA = try DatabaseQueue(path: manager.databasePath(for: budgetA).path)
-        let dataA = try JSONEncoder().encode(["1234": "acct_chase"])
-        let jsonA = String(decoding: dataA, as: UTF8.self)
         try await dbQueueA.write { db in
             try db.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: [BudgetDatabase.cardMappingsPreferenceKey, jsonA]
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234"), "acct_chase"]
             )
         }
 
@@ -242,8 +240,6 @@ struct BudgetStoreAccountMappingTests {
         try await seedBudget(id: budgetId, in: manager)
 
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
-        let data = try JSONEncoder().encode(["1234": "acct_hsbc"])
-        let json = String(decoding: data, as: UTF8.self)
         try await dbQueue.write { db in
             try db.execute(
                 sql: "INSERT INTO accounts (id, name, type, offbudget, closed, tombstone) VALUES (?, ?, ?, 0, 0, 0)",
@@ -251,7 +247,7 @@ struct BudgetStoreAccountMappingTests {
             )
             try db.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: [BudgetDatabase.cardMappingsPreferenceKey, json]
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234"), "acct_hsbc"]
             )
         }
 

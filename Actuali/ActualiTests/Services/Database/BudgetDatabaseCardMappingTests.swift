@@ -4,7 +4,6 @@ import GRDB
 @testable import Actuali
 
 /// Pins `fetchCardAccountMappings()` against the SQLite `preferences` table.
-/// Stored under `actuali:card_mappings` as a JSON dictionary `[keyword: accountId]`.
 @MainActor
 struct BudgetDatabaseCardMappingTests {
 
@@ -27,14 +26,14 @@ struct BudgetDatabaseCardMappingTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        let mappings = ["1234": "acct_chase", "HSBC": "acct_hsbc"]
-        let data = try JSONEncoder().encode(mappings)
-        let json = String(decoding: data, as: UTF8.self)
-
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
-                arguments: [BudgetDatabase.cardMappingsPreferenceKey, json]
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234"), "acct_chase"]
+            )
+            try conn.execute(
+                sql: "INSERT INTO preferences (id, value) VALUES (?, ?)",
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "HSBC"), "acct_hsbc"]
             )
             // Unrelated preference
             try conn.execute(
@@ -49,7 +48,7 @@ struct BudgetDatabaseCardMappingTests {
         #expect(fetched["HSBC"] == "acct_hsbc")
     }
 
-    @Test func fetchCardAccountMappingsReturnsEmptyWhenMissingOrInvalid() async throws {
+    @Test func fetchCardAccountMappingsReturnsEmptyWhenMissingOrCleared() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -61,20 +60,11 @@ struct BudgetDatabaseCardMappingTests {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(
                 sql: "INSERT INTO preferences (id, value) VALUES (?, NULL)",
-                arguments: [BudgetDatabase.cardMappingsPreferenceKey]
+                arguments: [BudgetDatabase.cardMappingPreferenceKey(for: "1234")]
             )
         }
         let nullValue = try await db.fetchCardAccountMappings()
         #expect(nullValue.isEmpty)
 
-        // Invalid JSON
-        try await db.dbQueueForTesting.write { conn in
-            try conn.execute(
-                sql: "UPDATE preferences SET value = ? WHERE id = ?",
-                arguments: ["{invalid_json}", BudgetDatabase.cardMappingsPreferenceKey]
-            )
-        }
-        let corruptValue = try await db.fetchCardAccountMappings()
-        #expect(corruptValue.isEmpty)
     }
 }

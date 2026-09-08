@@ -4566,25 +4566,32 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Preference key for synced card-to-account mappings.
-    static let cardMappingsPreferenceKey = "actuali:card_mappings"
+    /// Preference key prefix for synced card-to-account mappings.
+    static let cardMappingPreferenceKeyPrefix = "actuali:card_mapping:"
 
-    /// Fetches synced card-to-account mappings stored in the `preferences` table.
+    /// Preference key for one card-to-account mapping.
+    static func cardMappingPreferenceKey(for keyword: String) -> String {
+        "\(cardMappingPreferenceKeyPrefix)\(keyword)"
+    }
+
+    /// Fetches synced card-to-account mappings stored one per `preferences` row.
     /// Returns a dictionary mapping `keyword -> accountId`.
     func fetchCardAccountMappings() async throws -> [String: String] {
         try await dbQueue.read { db in
             guard try db.tableExists("preferences") else { return [:] }
-            let row = try Row.fetchOne(
+            let prefix = Self.cardMappingPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
                 db,
-                sql: "SELECT value FROM preferences WHERE id = ?",
-                arguments: [Self.cardMappingsPreferenceKey]
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
             )
-            guard let json: String = row?["value"],
-                  let data = json.data(using: .utf8),
-                  let mappings = try? JSONDecoder().decode([String: String].self, from: data) else {
-                return [:]
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let accountId: String = row["value"] else { return }
+                let keyword = String(id.dropFirst(prefix.count))
+                guard !keyword.isEmpty else { return }
+                result[keyword] = accountId
             }
-            return mappings
         }
     }
 
