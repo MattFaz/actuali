@@ -2,7 +2,7 @@ import Foundation
 
 enum BillItemKind: Equatable, Sendable {
     case schedule(ScheduleSummary)
-    case creditCard(accountId: String, cycle: CreditCardCycle)
+    case creditCard
 }
 
 /// A unified item projected onto the Bills Calendar.
@@ -30,6 +30,11 @@ struct BillCalendarItem: Identifiable, Equatable, Sendable {
     var scheduleSummary: ScheduleSummary? {
         if case .schedule(let summary) = kind { return summary }
         return nil
+    }
+
+    /// Only the current occurrence can be posted or skipped by the schedule APIs.
+    var isCurrentScheduleOccurrence: Bool {
+        scheduleSummary?.nextDate == date
     }
 
     /// Two-digit day representation for the calendar date badge, e.g. "07".

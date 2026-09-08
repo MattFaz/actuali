@@ -42,6 +42,7 @@ struct BillsCalendarView: View {
             return BillsCalendarEngine.itemsForSchedules(
                 schedules: budgetStore.schedules,
                 statuses: budgetStore.scheduleStatuses,
+                paymentDates: budgetStore.schedulePaymentDates,
                 accounts: budgetStore.accounts,
                 payees: budgetStore.payees,
                 categoryGroups: budgetStore.categoryGroups,
@@ -91,7 +92,7 @@ struct BillsCalendarView: View {
                 // Mode switcher (Recurring vs Card Bills)
                 Picker("Mode", selection: $tabMode) {
                     ForEach(BillsTabMode.allCases) { mode in
-                        Text(mode.rawValue).tag(mode)
+                        Text(mode.label).tag(mode)
                     }
                 }
                 .pickerStyle(.segmented)
@@ -128,7 +129,7 @@ struct BillsCalendarView: View {
                     Spacer()
 
                     if summary.totalCount > 0 {
-                        Text("Cleared \(summary.clearedCount) / \(summary.totalCount)")
+                        Text(String(format: String(localized: "Cleared %lld / %lld"), Int64(summary.clearedCount), Int64(summary.totalCount)))
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -276,11 +277,11 @@ struct BillsCalendarView: View {
 
     private func summaryStripSection(summary: BillsMonthSummary) -> some View {
         HStack(spacing: 12) {
-            summaryMetric(title: "Upcoming", amount: summary.upcomingTotal, color: .primary)
+            summaryMetric(title: String(localized: "Upcoming"), amount: summary.upcomingTotal, color: .primary)
             Divider().frame(height: 24)
-            summaryMetric(title: "Overdue", amount: summary.overdueTotal, color: .red)
+            summaryMetric(title: String(localized: "Overdue"), amount: summary.overdueTotal, color: .red)
             Divider().frame(height: 24)
-            summaryMetric(title: "Paid", amount: summary.paidTotal, color: .green)
+            summaryMetric(title: String(localized: "Paid"), amount: summary.paidTotal, color: .green)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 10)
@@ -314,7 +315,7 @@ struct BillsCalendarView: View {
                 Button {
                     activeFilter = filter
                 } label: {
-                    Text(filter.rawValue)
+                    Text(filter.label)
                         .font(.caption.weight(.medium))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 7)
@@ -334,7 +335,7 @@ struct BillsCalendarView: View {
                 } label: {
                     HStack(spacing: 4) {
                         Image(systemName: "xmark.circle.fill")
-                        Text("Day \(selectedDate!.day)")
+                        Text(String(format: String(localized: "Day %lld"), Int64(selectedDate!.day)))
                     }
                     .font(.caption.weight(.medium))
                     .foregroundStyle(.secondary)
@@ -353,7 +354,7 @@ struct BillsCalendarView: View {
                     .font(.largeTitle)
                     .foregroundStyle(.secondary)
                     .padding(.top, 24)
-                Text(tabMode == .recurring ? "No Schedules Due" : "No Card Bills Due")
+                Text(tabMode == .recurring ? String(localized: "No Schedules Due") : String(localized: "No Card Bills Due"))
                     .font(.headline)
                 Text(selectedDate != nil ? "No items scheduled for this date." : "No transactions match the selected filter.")
                     .font(.subheadline)
@@ -528,23 +529,25 @@ private struct BillCardView: View {
         .buttonStyle(.plain)
         .contextMenu {
             if let schedule = item.scheduleSummary, !schedule.completed {
-                Button {
-                    onPost(false)
-                } label: {
-                    Label("Post Transaction", systemImage: "plus.circle")
-                }
-
-                Button {
-                    onPost(true)
-                } label: {
-                    Label("Post Transaction Today", systemImage: "calendar.badge.plus")
-                }
-
-                if schedule.isRecurring {
+                if item.isCurrentScheduleOccurrence {
                     Button {
-                        onSkip()
+                        onPost(false)
                     } label: {
-                        Label("Skip Occurrence", systemImage: "forward.end")
+                        Label("Post Transaction", systemImage: "plus.circle")
+                    }
+
+                    Button {
+                        onPost(true)
+                    } label: {
+                        Label("Post Transaction Today", systemImage: "calendar.badge.plus")
+                    }
+
+                    if schedule.isRecurring {
+                        Button {
+                            onSkip()
+                        } label: {
+                            Label("Skip Occurrence", systemImage: "forward.end")
+                        }
                     }
                 }
 

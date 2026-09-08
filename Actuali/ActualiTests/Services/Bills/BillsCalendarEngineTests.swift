@@ -169,7 +169,7 @@ struct BillsCalendarEngineTests {
             balance: -45000 // owes $450.00
         )
         // Statement day 15, due offset 15 days -> statement Aug 15 -> due Aug 30 (before today) -> next statement Sept 15 -> due Sept 30
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 15)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
 
         let items = BillsCalendarEngine.itemsForCreditCards(
             accounts: [account],
@@ -290,6 +290,113 @@ struct BillsCalendarEngineTests {
         #expect(items[0].status == .missed)
     }
 
+    @Test func paidHistoricalOccurrenceKeepsItsPaidStatus() {
+        let config = RecurConfig(
+            frequency: .monthly,
+            start: DayDate(year: 2026, month: 8, day: 15)
+        )
+        let schedule = ScheduleSummary(
+            id: "sch-paid-history",
+            name: "Cloud Storage",
+            nextDate: DayDate(year: 2026, month: 9, day: 15),
+            amount: .fixed(-999),
+            amountOp: .isExactly,
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: [:],
+            paymentDates: ["sch-paid-history": [DayDate(year: 2026, month: 8, day: 15)]],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 8,
+            today: DayDate(year: 2026, month: 9, day: 4)
+        )
+
+        #expect(items.map(\.status) == [.paid])
+    }
+
+    @Test func approximateHistoricalOccurrenceAcceptsAnEarlyPayment() {
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 8, day: 15))
+        let schedule = ScheduleSummary(
+            id: "sch-early-payment",
+            nextDate: DayDate(year: 2026, month: 9, day: 15),
+            amountOp: .isExactly,
+            dateOp: "isapprox",
+            dateCondition: .recurring(config),
+            postsTransaction: false,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [:],
+            paymentDates: ["sch-early-payment": [DayDate(year: 2026, month: 8, day: 13)]],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 8,
+            today: DayDate(year: 2026, month: 9, day: 4)
+        )
+
+        #expect(items.map(\.status) == [.paid])
+    }
+
+    @Test func historicalOccurrenceAcceptsALatePaymentBeforeTheNextOccurrence() {
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 8, day: 15))
+        let schedule = ScheduleSummary(
+            id: "sch-late-payment",
+            nextDate: DayDate(year: 2026, month: 9, day: 15),
+            amountOp: .isExactly,
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [:],
+            paymentDates: ["sch-late-payment": [DayDate(year: 2026, month: 8, day: 20)]],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 8,
+            today: DayDate(year: 2026, month: 9, day: 4)
+        )
+
+        #expect(items.map(\.status) == [.paid])
+    }
+
+    @Test func onlyTheCurrentOccurrenceAllowsScheduleActions() {
+        let config = RecurConfig(
+            frequency: .monthly,
+            start: DayDate(year: 2026, month: 9, day: 15)
+        )
+        let schedule = ScheduleSummary(
+            id: "sch-current",
+            nextDate: DayDate(year: 2026, month: 9, day: 15),
+            amountOp: .isExactly,
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let current = BillCalendarItem(
+            id: "current", date: DayDate(year: 2026, month: 9, day: 15), title: "",
+            amount: 0, categoryName: nil, accountName: nil, status: .upcoming,
+            kind: .schedule(schedule), relativeDueText: ""
+        )
+        let future = BillCalendarItem(
+            id: "future", date: DayDate(year: 2026, month: 10, day: 15), title: "",
+            amount: 0, categoryName: nil, accountName: nil, status: .upcoming,
+            kind: .schedule(schedule), relativeDueText: ""
+        )
+
+        #expect(current.isCurrentScheduleOccurrence)
+        #expect(!future.isCurrentScheduleOccurrence)
+    }
+
     @Test func creditCardCyclesProjectPerNavigatedMonth() {
         let today = DayDate(year: 2026, month: 9, day: 4)
         let account = Account(
@@ -301,7 +408,7 @@ struct BillsCalendarEngineTests {
             sortOrder: 0,
             balance: -25000
         )
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 15)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
 
         let augustItems = BillsCalendarEngine.itemsForCreditCards(
             accounts: [account],
@@ -326,4 +433,3 @@ struct BillsCalendarEngineTests {
         #expect(octoberItems[0].status == .upcoming)
     }
 }
-

@@ -294,6 +294,24 @@ struct ScheduleListFetchTests {
         #expect(try await database.fetchPaidScheduleIds(for: schedules).isEmpty)
     }
 
+    @Test func paymentDatesIncludeOnlyLiveLinkedTransactions() async throws {
+        let (database, url) = try makeDatabase()
+        defer { try? FileManager.default.removeItem(at: url) }
+        try insertSchedule(database, id: "sched-1")
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+                VALUES ('live', 'acct-1', 20260813, -500, 'sched-1', 0),
+                       ('deleted', 'acct-1', 20260713, -500, 'sched-1', 1)
+                """)
+        }
+
+        let schedules = try await database.fetchSchedules()
+        #expect(try await database.fetchSchedulePaymentDates(for: schedules) == [
+            "sched-1": [DayDate(yyyymmdd: 20260813)!]
+        ])
+    }
+
     @Test func noSchedulesMeansNoQuery() async throws {
         let (database, url) = try makeDatabase()
         defer { try? FileManager.default.removeItem(at: url) }

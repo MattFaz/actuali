@@ -8,6 +8,7 @@ enum BillFilter: String, CaseIterable, Identifiable, Sendable {
     case paid = "Paid"
 
     var id: String { rawValue }
+    var label: String { String(localized: String.LocalizationValue(rawValue)) }
 }
 
 /// Tab switcher between Recurring Schedules and Credit Card Bills.
@@ -16,6 +17,7 @@ enum BillsTabMode: String, CaseIterable, Identifiable, Sendable {
     case cardBills = "Card Bills"
 
     var id: String { rawValue }
+    var label: String { String(localized: String.LocalizationValue(rawValue)) }
 }
 
 /// Month cashflow summary for the bills calendar header.
@@ -47,18 +49,20 @@ enum BillsCalendarEngine: Sendable {
     /// Formats relative due text, e.g. "Due in 3 days", "Due today", "Overdue by 2 days", "Paid".
     static func relativeDueText(for date: DayDate, today: DayDate = .today(), status: ScheduleStatus) -> String {
         if status == .paid || status == .completed {
-            return "Paid"
+            return String(localized: "Paid")
         }
         let diff = today.days(until: date)
         if diff < 0 {
             let daysAgo = abs(diff)
-            return daysAgo == 1 ? "Overdue by 1 day" : "Overdue by \(daysAgo) days"
+            return daysAgo == 1
+                ? String(localized: "Overdue by 1 day")
+                : String(format: String(localized: "Overdue by %lld days"), Int64(daysAgo))
         } else if diff == 0 {
-            return "Due today"
+            return String(localized: "Due today")
         } else if diff == 1 {
-            return "Due tomorrow"
+            return String(localized: "Due tomorrow")
         } else {
-            return "Due in \(diff) days"
+            return String(format: String(localized: "Due in %lld days"), Int64(diff))
         }
     }
 
@@ -66,6 +70,7 @@ enum BillsCalendarEngine: Sendable {
     static func itemsForSchedules(
         schedules: [ScheduleSummary],
         statuses: [String: ScheduleStatus],
+        paymentDates: [String: Set<DayDate>] = [:],
         accounts: [Account],
         payees: [Payee],
         categoryGroups: [CategoryGroup],
@@ -85,7 +90,7 @@ enum BillsCalendarEngine: Sendable {
         for schedule in schedules {
             let title = schedule.name
                 ?? schedule.payeeId.flatMap { payeeMap[$0] }
-                ?? "Scheduled Transaction"
+                ?? String(localized: "Scheduled Transaction")
             let accountName = schedule.accountId.flatMap { accountMap[$0] }
             let categoryName = schedule.categoryId.flatMap { categoryMap[$0] }
             let baseStatus = statuses[schedule.id] ?? (schedule.completed ? .completed : .scheduled)
@@ -103,7 +108,7 @@ enum BillsCalendarEngine: Sendable {
                             accountName: accountName,
                             status: .completed,
                             kind: .schedule(schedule),
-                            relativeDueText: "Completed"
+                            relativeDueText: String(localized: "Completed")
                         )
                     )
                 }
@@ -124,10 +129,29 @@ enum BillsCalendarEngine: Sendable {
                         .filter { $0 >= monthStart && $0 <= monthEnd }
                 )
 
-                for date in occurrenceDates.sorted() {
+                let sortedDates = occurrenceDates.sorted()
+                for (index, date) in sortedDates.enumerated() {
                     let itemStatus: ScheduleStatus
                     if date == schedule.nextDate {
                         itemStatus = baseStatus
+                    } else if paymentDates[schedule.id]?.contains(where: { paymentDate in
+                        let matchStart = ScheduleStatusCalculator.occurrenceMatchStartDate(
+                            nextDate: date,
+                            dateOp: schedule.dateOp,
+                            postsTransaction: schedule.postsTransaction
+                        )
+                        let nextDate = sortedDates.dropFirst(index + 1).first
+                            ?? ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: date.adding(days: 1))
+                        let nextMatchStart = nextDate.flatMap { next in
+                            next > date ? ScheduleStatusCalculator.occurrenceMatchStartDate(
+                                nextDate: next,
+                                dateOp: schedule.dateOp,
+                                postsTransaction: schedule.postsTransaction
+                            ) : nil
+                        }
+                        return paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
+                    }) == true {
+                        itemStatus = .paid
                     } else if date < today {
                         itemStatus = .missed
                     } else if date == today {
@@ -226,11 +250,11 @@ enum BillsCalendarEngine: Sendable {
                         date: dueDate,
                         title: account.name,
                         amount: -balanceOwed, // Represented as negative outflow/bill
-                        categoryName: "Credit Card Payment",
+                        categoryName: String(localized: "Credit Card Payment"),
                         accountName: account.name,
                         status: status,
-                        kind: .creditCard(accountId: account.id, cycle: cycle),
-                        relativeDueText: balanceOwed == 0 ? "Paid / Zero Balance" : relativeDueText(for: dueDate, today: today, status: status)
+                        kind: .creditCard,
+                        relativeDueText: balanceOwed == 0 ? String(localized: "Paid / Zero Balance") : relativeDueText(for: dueDate, today: today, status: status)
                     )
                 )
             }
