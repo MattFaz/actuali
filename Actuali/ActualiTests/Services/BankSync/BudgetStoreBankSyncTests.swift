@@ -630,7 +630,7 @@ struct BudgetStoreBankSyncTests {
             """)
         let store = try await makeStore(database: database, responseBody: body)
         store.setBankSyncImportStartDay(Self.expectedDay(30))
-        let queue = try DatabaseQueue(path: url.path)
+        let queue = database.dbQueueForTesting
         try await queue.write { db in
             try db.execute(sql: """
                 CREATE TRIGGER reject_bank_opening_insert
@@ -702,7 +702,7 @@ struct BudgetStoreBankSyncTests {
                 {"id": "sf-atomic-base", "posted": \(Self.daysAgo(5)), "amount": "-10.00", "payee": "Base Merchant"}
                 """)))
         )
-        let queue = try DatabaseQueue(path: url.path)
+        let queue = database.dbQueueForTesting
         try await queue.write { db in
             try db.execute(sql: """
                 CREATE TRIGGER reject_bank_opening_update
