@@ -1,0 +1,116 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Category" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Category" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Catégorie" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Categoría" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Categoria" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategorie" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Categoria" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorie" } }
+      }
+    },
+    "Categories" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Categories" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Catégories" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Categorías" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Categorias" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategorien" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Categorie" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorieën" } }
+      }
+    },
+    "Choose which category balances the widget shows." : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Choose which category balances the widget shows." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Choisissez les soldes de catégories à afficher dans le widget." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Elige los saldos de categorías que muestra el widget." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Escolha os saldos de categorias exibidos no widget." } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Wähle die Kategorie-Salden für das Widget aus." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Scegli i saldi delle categorie mostrati nel widget." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Kies welke categoriesaldi in de widget worden getoond." } }
+      }
+    },
+    "Select Categories" : {
+      "localizations" : {
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Select Categories" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Sélectionner des catégories" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Seleccionar categorías" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Selecionar categorias" } },
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategorien auswählen" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Seleziona categorie" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorieën selecteren" } }
+      }
+    },
+    "Category Balances" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Kategoriesalden" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Category Balances" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Saldos de categorías" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Soldes des catégories" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Saldi delle categorie" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Categorieënsaldi" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Saldos das categorias" } }
+      }
+    },
+    "No categories to show" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine Kategorien anzuzeigen" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "No categories to show" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "No hay categorías que mostrar" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucune catégorie à afficher" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessuna categoria da mostrare" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geen categorieën om te tonen" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Nenhuma categoria para exibir" } }
+      }
+    },
+    "Open Actuali to load your budget" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Öffnen Sie Actuali, um Ihr Budget zu laden" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Open Actuali to load your budget" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Abre Actuali para cargar tu presupuesto" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Ouvrez Actuali pour charger votre budget" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Apri Actuali per caricare il tuo budget" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Open Actuali om je budget te laden" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Abra o Actuali para carregar seu orçamento" } }
+      }
+    },
+    "Remaining available amount for your chosen categories." : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Verbleibender verfügbarer Betrag für die ausgewählten Kategorien." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remaining available amount for your chosen categories." } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Importe disponible restante para las categorías seleccionadas." } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Montant disponible restant pour les catégories choisies." } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Importo disponibile residuo per le categorie selezionate." } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Resterend beschikbaar bedrag voor je gekozen categorieën." } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Valor disponível restante para as categorias escolhidas." } }
+      }
+    },
+    "Updated %@" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "Aktualisiert %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Updated %@" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "Actualizado %@" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mis à jour %@" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "Aggiornato %@" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "Bijgewerkt %@" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Atualizado %@" } }
+      }
+    },
+    "available" : {
+      "localizations" : {
+        "de" : { "stringUnit" : { "state" : "translated", "value" : "verfügbar" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "available" } },
+        "es" : { "stringUnit" : { "state" : "translated", "value" : "disponible" } },
+        "fr" : { "stringUnit" : { "state" : "translated", "value" : "disponible" } },
+        "it" : { "stringUnit" : { "state" : "translated", "value" : "disponibile" } },
+        "nl" : { "stringUnit" : { "state" : "translated", "value" : "beschikbaar" } },
+        "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "disponível" } }
+      }
+    }
+  },
+  "version" : "1.0"
+}

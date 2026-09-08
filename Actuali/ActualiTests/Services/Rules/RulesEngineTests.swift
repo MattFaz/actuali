@@ -467,6 +467,22 @@ struct RulesEngineTests {
         #expect(updated.categoryId == nil)
     }
 
+    @Test func dateRulesRequireCanonicalRealDates() {
+        let malformed = parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026--05-03"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#)
+        let impossible = parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026-02-31"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-bad"}]"#)
+
+        #expect(applied(makeTransaction(), rules: [malformed]).0.categoryId == nil)
+        #expect(applied(makeTransaction(), rules: [impossible]).0.categoryId == nil)
+        #expect(applied(makeTransaction(), rules: [parseRule(
+            conditions: #"[{"op":"is","field":"date","value":"2026-05"}]"#,
+            actions: #"[{"op":"set","field":"category","value":"cat-month"}]"#
+        )]).0.categoryId == "cat-month")
+    }
+
     // MARK: - Actions
 
     @Test func appendNotesAppends() {

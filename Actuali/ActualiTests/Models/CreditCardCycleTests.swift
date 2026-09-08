@@ -106,7 +106,7 @@ struct CreditCardCycleTests {
     }
 
     @Test func upcomingDueDateHonoursALongerPerCardOffset() {
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 25)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(25))
         // Today is Feb 20, 2026: Feb 15 statement + 25 days = Mar 12.
         let today = DayDate(year: 2026, month: 2, day: 20)
 
@@ -118,7 +118,7 @@ struct CreditCardCycleTests {
     /// next payment belongs to the *older* one. Returning the most recent
     /// statement's due date would skip a payment the user still owes.
     @Test func upcomingDueDatePicksTheEarliestStatementStillAwaitingPayment() {
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 45)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
         let today = DayDate(year: 2026, month: 2, day: 20)
 
         // Jan 15 statement -> due Mar 1; Feb 15 statement -> due Apr 1.
@@ -127,7 +127,7 @@ struct CreditCardCycleTests {
     }
 
     @Test func upcomingDueDateAdvancesOnceTheEarliestPendingDuePasses() {
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: 45)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
         // Mar 2 is one day past the Jan 15 statement's Mar 1 due date, so the
         // Feb 15 statement's Apr 1 due date is now the next one.
         let today = DayDate(year: 2026, month: 3, day: 2)
@@ -136,7 +136,7 @@ struct CreditCardCycleTests {
     }
 
     @Test func upcomingDueDateTerminatesAtTheWidestOffset() {
-        let cycle = CreditCardCycle(statementDay: 15, dueOffsetDays: CreditCardCycle.maxDueOffsetDays)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(CreditCardCycle.maxDueOffsetDays))
         let today = DayDate(year: 2026, month: 2, day: 20)
         // Dec 15 statement + 60 days = Feb 13 (passed), so Jan 15 + 60 is next.
         #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 3, day: 16))
@@ -159,6 +159,74 @@ struct CreditCardCycleTests {
         #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 3, day: 2)) == "Due today")
         #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 3, day: 1)) == "Due tomorrow")
         #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due in 10d")
+    }
+
+    @Test func dueDayEqualToStatementDayFallsInTheNextMonth() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(15))
+        // Jan 15 statement closes, payment is due Feb 15.
+        #expect(cycle.dueDate(forStatement: DayDate(year: 2026, month: 1, day: 15))
+            == DayDate(year: 2026, month: 2, day: 15))
+        #expect(cycle.upcomingDueDate(for: DayDate(year: 2026, month: 1, day: 20))
+            == DayDate(year: 2026, month: 2, day: 15))
+    }
+
+    @Test func dueOffsetDaysForDayOfMonthFallsBackToDefault() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        #expect(cycle.dueOffsetDays == CreditCardCycle.defaultDueOffsetDays)
+    }
+
+    @Test func upcomingDueDateWhenDueDayIsNextMonth() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Feb 20, 2026: Feb 15 statement closed, due on Mar 1, 2026
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 3, day: 1))
+        #expect(cycle.daysUntilDue(for: today) == 9)
+    }
+
+    @Test func upcomingDueDateWhenDueDayIsSameMonth() {
+        let cycle = CreditCardCycle(statementDay: 5, paymentDue: .dayOfMonth(25))
+        // Today is Jan 10, 2026: Jan 5 statement closed, due on Jan 25, 2026
+        let today = DayDate(year: 2026, month: 1, day: 10)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 1, day: 25))
+        #expect(cycle.daysUntilDue(for: today) == 15)
+    }
+
+    @Test func upcomingDueDateRollsToCurrentCycleWhenPastPreviousDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Mar 2, 2026: Feb 15 statement was due Mar 1 (passed),
+        // so next due is Mar 15 statement due Apr 1
+        let today = DayDate(year: 2026, month: 3, day: 2)
+        let due = cycle.upcomingDueDate(for: today)
+
+        #expect(due == DayDate(year: 2026, month: 4, day: 1))
+        #expect(cycle.daysUntilDue(for: today) == 30)
+    }
+
+    @Test func upcomingDueDateClampsForShorterMonthsWithDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(31))
+        // Feb 15, 2026 statement -> due on Feb 28 (clamped to month end)
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2026, month: 2, day: 28))
+    }
+
+    @Test func upcomingDueDateRollsOverYearEndWithDueDay() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Today is Dec 20, 2026: Dec 15 statement closed, due on Jan 1, 2027
+        let today = DayDate(year: 2026, month: 12, day: 20)
+        #expect(cycle.upcomingDueDate(for: today) == DayDate(year: 2027, month: 1, day: 1))
+    }
+
+    @Test func dueSummaryWithDueDayReadsAccurately() {
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 3, day: 1)) == "Due today")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 28)) == "Due tomorrow")
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasPrefix("Due "))
+        #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasSuffix("(9d)"))
+        #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due in 9d")
     }
 
     // MARK: - Store Persistence
@@ -205,7 +273,7 @@ struct CreditCardCycleTests {
 
     @Test func dueOffsetPersistsAndClearsWithTheCard() async throws {
         try await withStore { store in
-            await store.setCreditCard(accountId: "acct_anz", statementDay: 20, dueOffsetDays: 45, limit: nil)
+            await store.setCreditCard(accountId: "acct_anz", statementDay: 20, paymentDue: .daysAfter(45), limit: nil)
 
             #expect(store.creditCardDueOffsets["acct_anz"] == 45)
             #expect(store.creditCardCycle(for: "acct_anz")?.dueOffsetDays == 45)
@@ -214,6 +282,17 @@ struct CreditCardCycleTests {
             // by a later card on the same account.
             await store.setCreditCard(accountId: "acct_anz", statementDay: nil, limit: nil)
             #expect(store.creditCardDueOffsets["acct_anz"] == nil)
+        }
+    }
+
+    @Test func dueDayPersistsAndClearsWithTheCard() async throws {
+        try await withStore { store in
+            await store.setCreditCard(accountId: "acct_alipay", statementDay: 15, paymentDue: .dayOfMonth(1), limit: nil)
+
+            #expect(store.creditCardCycle(for: "acct_alipay")?.paymentDue == .dayOfMonth(1))
+
+            await store.setCreditCard(accountId: "acct_alipay", statementDay: nil, limit: nil)
+            #expect(store.creditCardCycle(for: "acct_alipay") == nil)
         }
     }
 
@@ -231,7 +310,7 @@ struct CreditCardCycleTests {
 
     @Test func cardConfigIsScopedToTheBudgetThatSetIt() async throws {
         try await withStore(budgetIds: ["budget-a", "budget-b"]) { store in
-            await store.setCreditCard(accountId: "acct_chase", statementDay: 18, dueOffsetDays: 25, limit: nil)
+            await store.setCreditCard(accountId: "acct_chase", statementDay: 18, paymentDue: .daysAfter(25), limit: nil)
 
             store.currentBudgetId = "budget-b"
             #expect(store.creditCardStatementDays.isEmpty)
@@ -290,7 +369,7 @@ struct CreditCardCycleTests {
                 account(id: "acct_closed", name: "Closed Card", closed: true),
                 account(id: "acct_untracked", name: "Everyday Checking", type: .checking),
             ]
-            await store.setCreditCard(accountId: "acct_open", statementDay: 15, dueOffsetDays: 25, limit: nil)
+            await store.setCreditCard(accountId: "acct_open", statementDay: 15, paymentDue: .daysAfter(25), limit: nil)
             await store.setCreditCard(accountId: "acct_closed", statementDay: 20, limit: nil)
             await store.setCreditCard(accountId: "acct_deleted", statementDay: 25, limit: nil)
 

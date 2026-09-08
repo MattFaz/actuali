@@ -31,6 +31,20 @@ struct CreditCardsSettingsViewTests {
         #expect(sorted.map(\.account.name) == ["Zeta", "Alpha"])
     }
 
+    @Test func sortsWithMixOfOffsetAndDayOfMonth() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        // Statement day 15, due 1st of month: Feb 15 statement is due Mar 1 (9 days out)
+        let dayOfMonthCard = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
+        // Statement day 15, default 15-day offset: Feb 15 statement is due Mar 2 (10 days out)
+        let offsetCard = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+
+        let sorted = CreditCardsSettingsView.sortedCards(
+            [(account: account("Offset"), cycle: offsetCard), (account: account("DayOfMonth"), cycle: dayOfMonthCard)],
+            today: today
+        )
+        #expect(sorted.map(\.account.name) == ["DayOfMonth", "Offset"])
+    }
+
     /// `daysUntilDue` clamps at 0, so past-due cards all tie there. Without the
     /// name tie-break the surviving order comes from a Dictionary, which Swift
     /// reseeds every launch.
@@ -51,6 +65,32 @@ struct CreditCardsSettingsViewTests {
 
     @Test func sortingAnEmptyListIsEmpty() {
         #expect(CreditCardsSettingsView.sortedCards([]).isEmpty)
+    }
+
+    @Test func statementDayOrdinalUsesRequestedLocale() {
+        #expect(ScheduleDescription.ordinal(1, locale: Locale(identifier: "fr_FR")) == "1er")
+        #expect(ScheduleDescription.ordinal(1, locale: Locale(identifier: "en_US")) == "1st")
+    }
+
+    @Test func cardsWithZeroBalanceSortAtTheEnd() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let soon = CreditCardCycle(statementDay: 15) // due in 10d
+        let later = CreditCardCycle(statementDay: 25) // due in 20d
+
+        let paidSoon = Account(id: "1", name: "Paid Soon", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+        let unpaidLater = Account(id: "2", name: "Unpaid Later", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: -5000)
+        let unpaidSoon = Account(id: "3", name: "Unpaid Soon", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: -10000)
+        let paidLater = Account(id: "4", name: "Paid Later", type: .credit, offBudget: false, closed: false, sortOrder: 0, balance: 0)
+
+        let cards = [
+            (account: paidSoon, cycle: soon),
+            (account: unpaidLater, cycle: later),
+            (account: unpaidSoon, cycle: soon),
+            (account: paidLater, cycle: later),
+        ]
+
+        let sorted = CreditCardsSettingsView.sortedCards(cards, today: today)
+        #expect(sorted.map(\.account.name) == ["Unpaid Soon", "Unpaid Later", "Paid Soon", "Paid Later"])
     }
 
     // MARK: - Urgency color

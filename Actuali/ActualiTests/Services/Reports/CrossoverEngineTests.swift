@@ -126,6 +126,34 @@ struct CrossoverEngineTests {
         #expect(historical.first?.month == utcDate(2026, 3, 1))
     }
 
+    @Test func malformedStaticTimeFrameBoundsFallBackLikeMissingBounds() {
+        let transactions = [
+            tx(date: 20260110, amount: -100, category: "food"),
+            tx(date: 20260210, amount: -200, category: "food"),
+            tx(date: 20260310, amount: -300, category: "food"),
+            tx(date: 20260410, amount: -400, category: "food"),
+            tx(date: 20260510, amount: -500, category: "food"),
+            tx(date: 20260115, amount: 100_000, account: "inv")
+        ]
+        let missing = CrossoverEngine.compute(
+            meta: meta(incomeAccountIds: ["inv"], timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .static)),
+            transactions: transactions, categories: categories,
+            accountIds: ["inv"], today: utcDate(2026, 6, 15)
+        )
+
+        for malformedStart in ["2026/02", "2026-02-suffix", "2026-02-31"] {
+            let result = CrossoverEngine.compute(
+                meta: meta(incomeAccountIds: ["inv"], timeFrame: WidgetTimeFrame(
+                    start: malformedStart, end: "2026-05", mode: .static
+                )),
+                transactions: transactions, categories: categories,
+                accountIds: ["inv"], today: utcDate(2026, 6, 15)
+            )
+            #expect(result.points.map(\.month) == missing.points.map(\.month))
+            #expect(result.points.map(\.expensesCents) == missing.points.map(\.expensesCents))
+        }
+    }
+
     // Expenses [100, 100, 110, 90, 1000, 1200]:
     //   median = 105; MAD = median(|v - 105|) = median([15,5,5,5,895,1095]) = 10;
     //   Hampel bounds = 105 ± 1.4826 * 10 * 3 = [60.522, 149.478] → drops 1000

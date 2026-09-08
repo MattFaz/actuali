@@ -322,10 +322,9 @@ enum CrossoverEngine {
 
     /// Parses "YYYY-MM" or "YYYY-MM-DD" to a month index.
     private static func parseMonthIndex(_ s: String?) -> Int? {
-        guard let s, s.count >= 7,
-              let year = Int(s.prefix(4)),
-              let month = Int(s.dropFirst(5).prefix(2)),
-              (1...12).contains(month) else { return nil }
+        guard let s, let date = CanonicalDateParser.parseMonthOrDay(s) else { return nil }
+        let components = calendar.dateComponents([.year, .month], from: date)
+        guard let year = components.year, let month = components.month else { return nil }
         return year * 12 + month - 1
     }
 

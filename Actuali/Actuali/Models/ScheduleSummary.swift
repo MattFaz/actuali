@@ -9,9 +9,9 @@ enum ScheduleAmountOp: String, Hashable, CaseIterable {
 
     var label: String {
         switch self {
-        case .isExactly: "is exactly"
-        case .isApprox: "is approximately"
-        case .isBetween: "is between"
+        case .isExactly: String(localized: "is exactly")
+        case .isApprox: String(localized: "is approximately")
+        case .isBetween: String(localized: "is between")
         }
     }
 }

@@ -7,26 +7,70 @@ import Foundation
 struct ParseAndQueueTransactionIntent: AppIntent {
     static let title: LocalizedStringResource = "Import Transaction from Text"
     static let description = IntentDescription(
-        "Parse a bank message and queue it for review in Actuali.",
-        categoryName: "Transactions"
+        LocalizedStringResource("Parse a bank message and queue it for review in Actuali."),
+        categoryName: LocalizedStringResource("Transactions")
     )
     static let openAppWhenRun = false
 
-    @Parameter(title: "Message Text")
+    @Parameter(title: LocalizedStringResource("Message Text"))
     var text: String
 
     static var parameterSummary: some ParameterSummary {
         Summary("Import transaction from \(\.$text)")
     }
 
+    static func dialogText(
+        amount: Double?, payee: String?, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        let amountText: String
+        if let amount {
+            let formatter = NumberFormatter()
+            formatter.locale = locale
+            formatter.numberStyle = .decimal
+            formatter.minimumFractionDigits = 2
+            formatter.maximumFractionDigits = 2
+            amountText = formatter.string(from: NSNumber(value: amount)) ?? "?"
+        } else {
+            amountText = "?"
+        }
+        let payeeText = payee ?? String(localized: LocalizedStringResource(
+            "Unknown", locale: locale, bundle: bundle))
+        return String(localized: LocalizedStringResource(
+            "Queued \(amountText) at \(payeeText) for review",
+            locale: locale, bundle: bundle))
+    }
+
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let parsed = await TransactionTextParser.parse(text)
-        let pending = parsed.toPendingImport()
-        PendingImportStore.shared.add(pending)
+        let pending = try await Self.queue(
+            text: text,
+            store: BudgetStore.shared,
+            pendingImportStore: PendingImportStore.shared
+        )
 
-        let payeeText = parsed.payee ?? "unknown"
-        let amountText = parsed.amount.map { String(format: "%.2f", $0) } ?? "?"
-        return .result(dialog: "Queued \(amountText) at \(payeeText) for review")
+        let dialogText = Self.dialogText(
+            amount: pending.amount,
+            payee: pending.payee,
+            locale: .autoupdatingCurrent
+        )
+        return .result(dialog: IntentDialog(stringLiteral: dialogText))
+    }
+
+    @MainActor
+    static func queue(
+        text: String,
+        store: BudgetStore,
+        pendingImportStore: PendingImportStore
+    ) async throws -> PendingImport {
+        await store.ensureBudgetReady()
+
+        guard store.currentBudgetId != nil, store.databaseForLogger != nil else {
+            throw LogTransactionError.noBudgetLoaded
+        }
+
+        let parsed = await TransactionTextParser.parse(text)
+        let pending = parsed.toPendingImport(originBudgetId: store.currentBudgetId)
+        try pendingImportStore.add(pending)
+        return pending
     }
 }

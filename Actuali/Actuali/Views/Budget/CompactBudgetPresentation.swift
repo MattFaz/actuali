@@ -5,6 +5,95 @@ enum CompactBudgetColumn: String, Equatable {
     case spent = "Spent"
     case balance = "Balance"
     case received = "Received"
+
+    var label: String {
+        label(locale: .autoupdatingCurrent)
+    }
+
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text(rawValue, locale: locale, bundle: bundle)
+    }
+}
+
+enum CompactBudgetAccessibility {
+    static func balanceStatus(_ tone: CompactBalanceTone, locale: Locale, bundle: Bundle = .main) -> String {
+        let key: String
+        switch tone {
+        case .negative: key = "budget.balanceStatus.negative"
+        case .zero: key = "budget.balanceStatus.zero"
+        case .positive: key = "budget.balanceStatus.positive"
+        case .masked: key = "budget.balanceStatus.hidden"
+        }
+        return ReportStrings.text(key, locale: locale, bundle: bundle)
+    }
+
+    static func groupHeader(
+        name: String,
+        state: String,
+        budgeted: String,
+        spent: String?,
+        balance: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        let key = spent == nil
+            ? "%@, %@, budgeted %@, balance %@"
+            : "%@, %@, budgeted %@, spent %@, balance %@"
+        let arguments: [any CVarArg] = spent == nil
+            ? [name, state, budgeted, balance]
+            : [name, state, budgeted, spent!, balance]
+        return ReportStrings.format(key, arguments: arguments, locale: locale, bundle: bundle)
+    }
+
+    static func incomeHeader(
+        name: String,
+        state: String,
+        budgeted: String?,
+        received: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        let key = budgeted == nil
+            ? "%@, %@, received %@"
+            : "%@, %@, budgeted %@, received %@"
+        let arguments: [any CVarArg] = budgeted == nil
+            ? [name, state, received]
+            : [name, state, budgeted!, received]
+        return ReportStrings.format(key, arguments: arguments, locale: locale, bundle: bundle)
+    }
+
+    static func monthTransactions(
+        category: String,
+        month: String,
+        amountLabel: String,
+        amount: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.format("Transactions for %@ in %@, %@ %@", category, month, amountLabel, amount, locale: locale, bundle: bundle)
+    }
+
+    static func editBudget(category: String, amount: String, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format("Edit budgeted amount for %@, budgeted %@", category, amount, locale: locale, bundle: bundle)
+    }
+
+    static func details(category: String, status: String?, locale: Locale, bundle: Bundle = .main) -> String {
+        if let status {
+            return ReportStrings.format("Details for %@, %@", category, status, locale: locale, bundle: bundle)
+        }
+        return ReportStrings.format("Details for %@", category, locale: locale, bundle: bundle)
+    }
+
+    static func balanceAction(category: String, isOverspent: Bool, balance: String, tone: String, locale: Locale, bundle: Bundle = .main) -> String {
+        let key = isOverspent
+            ? "Cover overspending for %@, balance %@, %@"
+            : "Move money from %@, balance %@, %@"
+        return ReportStrings.format(key, category, balance, tone, locale: locale, bundle: bundle)
+    }
+
+    static func incomeBudgeted(category: String, amount: String, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format("Budgeted for %@, %@", category, amount, locale: locale, bundle: bundle)
+    }
 }
 
 enum CompactBalanceTone: Equatable {
@@ -87,8 +176,34 @@ struct CompactBudgetGroupHeaderPresentation: Equatable {
 
 struct CompactBudgetOverview: Equatable {
     struct Stat: Equatable {
-        let label: String
+        enum Kind: String, Equatable {
+            case toBudget
+            case income
+            case budgeted
+            case spent
+            case saved
+            case projected
+            case balance
+        }
+
+        let kind: Kind
         let amount: Int
+
+        var label: String {
+            label(locale: .autoupdatingCurrent)
+        }
+
+        func label(locale: Locale, bundle: Bundle = .main) -> String {
+            switch kind {
+            case .toBudget: ReportStrings.text("To Budget", locale: locale, bundle: bundle)
+            case .income: ReportStrings.text("Income", locale: locale, bundle: bundle)
+            case .budgeted: ReportStrings.text("Budgeted", locale: locale, bundle: bundle)
+            case .spent: ReportStrings.text("Spent", locale: locale, bundle: bundle)
+            case .saved: ReportStrings.text("Saved", locale: locale, bundle: bundle)
+            case .projected: ReportStrings.text("Projected", locale: locale, bundle: bundle)
+            case .balance: ReportStrings.text("Balance", locale: locale, bundle: bundle)
+            }
+        }
     }
 
     let leading: Stat
@@ -96,23 +211,23 @@ struct CompactBudgetOverview: Equatable {
 
     init(budget: BudgetMonth, showsSpent: Bool, currentMonth: String) {
         if let toBudget = budget.toBudget {
-            leading = Stat(label: "To Budget", amount: toBudget)
+            leading = Stat(kind: .toBudget, amount: toBudget)
         } else {
-            leading = Stat(label: "Income", amount: budget.totalIncome)
+            leading = Stat(kind: .income, amount: budget.totalIncome)
         }
 
-        var columns = [Stat(label: "Budgeted", amount: budget.totalBudgeted)]
+        var columns = [Stat(kind: .budgeted, amount: budget.totalBudgeted)]
         if showsSpent {
-            columns.append(Stat(label: "Spent", amount: budget.totalSpent))
+            columns.append(Stat(kind: .spent, amount: budget.totalSpent))
         }
         if budget.isTrackingBudget {
             columns.append(
                 budget.month < currentMonth
-                    ? Stat(label: "Saved", amount: budget.savedActual)
-                    : Stat(label: "Projected", amount: budget.projectedSavings)
+                    ? Stat(kind: .saved, amount: budget.savedActual)
+                    : Stat(kind: .projected, amount: budget.projectedSavings)
             )
         } else {
-            columns.append(Stat(label: "Balance", amount: budget.totalAvailable))
+            columns.append(Stat(kind: .balance, amount: budget.totalAvailable))
         }
         self.columns = columns
     }

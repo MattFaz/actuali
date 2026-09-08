@@ -6,11 +6,14 @@ struct AddTransactionView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.isPresented) private var isPresented
+    @Environment(\.locale) private var locale
 
     private let editing: Transaction?
     /// Called after a successful save (not on cancel). The optional id is the
     /// exact row written by the save path, or nil when nothing was created.
-    private let onSaved: ((String?) -> Void)?
+    private let onSaved: ((String?) throws -> Void)?
+    private let saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)?
+    private let reviewRequirements: [PendingImportReviewRequirement]
 
     @State private var selectedAccountId: String
     @State private var amount: String
@@ -34,6 +37,7 @@ struct AddTransactionView: View {
     /// multiple categories" undoes the toggle instantly) but the form shows
     /// the category picker and saves as a single transaction.
     @State private var unsplitRequested = false
+    @State private var confirmedReviewRequirements: Set<PendingImportReviewRequirement> = []
 
     /// Initializer for the "Add" flow. The optional prefill parameters carry
     /// whatever an automation passed along — a failed Wallet log or the Add
@@ -47,10 +51,14 @@ struct AddTransactionView: View {
         categoryId: String? = nil,
         isIncome: Bool = false,
         cleared: Bool = false,
-        onSaved: ((String?) -> Void)? = nil
+        saveOverride: ((BudgetStore.TransactionForm) async throws -> PendingImportApprover.SaveResult)? = nil,
+        onSaved: ((String?) throws -> Void)? = nil,
+        reviewRequirements: [PendingImportReviewRequirement] = []
     ) {
         self.editing = nil
         self.onSaved = onSaved
+        self.saveOverride = saveOverride
+        self.reviewRequirements = reviewRequirements
         _selectedAccountId = State(initialValue: accountId)
         _amount = State(initialValue: amountCents.map { String(format: "%.2f", Double(abs($0)) / 100.0) } ?? "")
         _txType = State(initialValue: isIncome ? .income : .expense)
@@ -71,6 +79,8 @@ struct AddTransactionView: View {
     init(editing: Transaction) {
         self.editing = editing
         self.onSaved = nil
+        self.saveOverride = nil
+        self.reviewRequirements = []
 
         let cents = abs(editing.amount)
         let dollars = Double(cents) / 100.0
@@ -100,6 +110,7 @@ struct AddTransactionView: View {
     }
 
     private var isEditing: Bool { editing != nil }
+    private var isPendingImportReview: Bool { !reviewRequirements.isEmpty }
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
@@ -174,7 +185,7 @@ struct AddTransactionView: View {
     }
 
     private var showsStandardCategoryFields: Bool {
-        isEditing || budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
+        budgetStore.accounts.first { $0.id == selectedAccountId }?.offBudget != true
     }
 
     /// Converting keeps the edited row on its own side of the transfer, so
@@ -183,12 +194,18 @@ struct AddTransactionView: View {
     /// its usual label: moving a transaction between accounts is an ordinary
     /// edit, and converting doesn't take that away.
     private var accountPickerLabel: String {
-        isTransfer && !isConvertingToTransfer ? "From" : "Account"
+        isTransfer && !isConvertingToTransfer
+            ? String(localized: AddTransactionLocalization.from, locale: locale)
+            : String(localized: AddTransactionLocalization.account, locale: locale)
     }
 
     private var transferPartnerLabel: String {
-        guard isConvertingToTransfer else { return "To" }
-        return (editing?.amount ?? 0) < 0 ? "Transfer to" : "Transfer from"
+        guard isConvertingToTransfer else {
+            return String(localized: AddTransactionLocalization.to, locale: locale)
+        }
+        return (editing?.amount ?? 0) < 0
+            ? String(localized: AddTransactionLocalization.transferTo, locale: locale)
+            : String(localized: AddTransactionLocalization.transferFrom, locale: locale)
     }
 
     private var transferEligibleAccounts: [Account] {
@@ -250,13 +267,15 @@ struct AddTransactionView: View {
     }
 
     private var selectedCategoryName: String {
-        guard let id = selectedCategoryId else { return "None" }
+        guard let id = selectedCategoryId else {
+            return String(localized: AddTransactionLocalization.none, locale: locale)
+        }
         for group in budgetStore.categoryGroups {
             if let match = group.categories.first(where: { $0.id == id }) {
                 return match.name
             }
         }
-        return "None"
+        return String(localized: AddTransactionLocalization.none, locale: locale)
     }
 
     var body: some View {
@@ -267,7 +286,7 @@ struct AddTransactionView: View {
                         Picker("Type", selection: $txType) {
                             Text("Expense").tag(TransactionType.expense)
                             Text("Income").tag(TransactionType.income)
-                            if !isEditing || isEditingTransfer || canConvertToTransfer {
+                            if !isPendingImportReview && (!isEditing || isEditingTransfer || canConvertToTransfer) {
                                 Text("Transfer").tag(TransactionType.transfer)
                             }
                         }
@@ -393,7 +412,7 @@ struct AddTransactionView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                        if canSplitIntoCategories {
+                            if canSplitIntoCategories && !isPendingImportReview {
                             Button {
                                 startSplit()
                             } label: {
@@ -437,6 +456,26 @@ struct AddTransactionView: View {
                     Section {
                         Text(error)
                             .foregroundStyle(.red)
+                    }
+                }
+
+                if !reviewRequirements.isEmpty {
+                    Section {
+                        ForEach(reviewRequirements, id: \.self) { requirement in
+                            Toggle(
+                                requirement.prompt,
+                                isOn: Binding(
+                                    get: { confirmedReviewRequirements.contains(requirement) },
+                                    set: { isConfirmed in
+                                        if isConfirmed {
+                                            confirmedReviewRequirements.insert(requirement)
+                                        } else {
+                                            confirmedReviewRequirements.remove(requirement)
+                                        }
+                                    }
+                                )
+                            )
+                        }
                     }
                 }
 
@@ -654,12 +693,18 @@ struct AddTransactionView: View {
     }
 
     private var saveButtonTitle: String {
-        if isEditing { return "Save Changes" }
-        return isTransfer ? "Add Transfer" : "Add Transaction"
+        if isEditing {
+            return String(localized: AddTransactionLocalization.saveChanges, locale: locale)
+        }
+        return isTransfer
+            ? String(localized: AddTransactionLocalization.addTransfer, locale: locale)
+            : String(localized: AddTransactionLocalization.addTransaction, locale: locale)
     }
 
     private var saveDisabled: Bool {
         if isLoading || amount.isEmpty { return true }
+        if !reviewRequirements.isEmpty
+            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) { return true }
         if isTransfer && transferToAccountId == nil { return true }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
@@ -685,12 +730,21 @@ struct AddTransactionView: View {
             cleared: cleared,
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
-            recordLocation: saveLocation
+            recordLocation: saveLocation,
+            reviewConfirmations: confirmedReviewRequirements
         )
 
         do {
-            let savedTransactionId = try await budgetStore.saveTransaction(form, editing: editing)
-            onSaved?(savedTransactionId)
+            let savedTransactionId: String? = if let saveOverride {
+                switch try await saveOverride(form) {
+                case .inserted(let id): id
+                case .duplicate: nil
+                case .suppressedByRule: throw PendingImportApprover.ApproveError.suppressedByRule
+                }
+            } else {
+                try await budgetStore.saveTransaction(form, editing: editing)
+            }
+            try onSaved?(savedTransactionId)
             if canDismiss {
                 // Presented flows (edit, account-detail "+", notification
                 // prefill) close; the account-detail host is already the
@@ -764,6 +818,7 @@ enum SplitEntryMath {
 /// One editable split line with category, amount, payee, and notes controls.
 private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Binding var line: BudgetStore.SplitLineForm
     /// The transaction's direction, so the line's sign glyph can show its
     /// effective direction relative to it.
@@ -778,13 +833,15 @@ private struct SplitLineRow: View {
     @State private var showPayeePicker = false
 
     private var categoryName: String {
-        guard let id = line.categoryId else { return "Category" }
+        guard let id = line.categoryId else {
+            return String(localized: AddTransactionLocalization.category, locale: locale)
+        }
         for group in budgetStore.categoryGroups {
             if let match = group.categories.first(where: { $0.id == id }) {
                 return match.name
             }
         }
-        return "Category"
+        return String(localized: AddTransactionLocalization.category, locale: locale)
     }
 
     /// Whether the line runs as an outflow once the transaction's direction
@@ -817,8 +874,12 @@ private struct SplitLineRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(isOutflow ? "Outflow" : "Inflow")
-                .accessibilityHint("Flips this line's direction")
+                .accessibilityLabel(
+                    isOutflow
+                        ? String(localized: AddTransactionLocalization.outflow, locale: locale)
+                        : String(localized: AddTransactionLocalization.inflow, locale: locale)
+                )
+                .accessibilityHint(String(localized: AddTransactionLocalization.flipsDirection, locale: locale))
                 AmountInputField(
                     text: $line.amount,
                     conventionalAmountEntry: budgetStore.conventionalAmountEntry,
@@ -846,7 +907,9 @@ private struct SplitLineRow: View {
                 onOpenPayeePicker()
                 showPayeePicker = true
             } label: {
-                Text(line.payeeName.isEmpty ? "Payee (optional)" : line.payeeName)
+                Text(line.payeeName.isEmpty
+                     ? String(localized: AddTransactionLocalization.optionalPayee, locale: locale)
+                     : line.payeeName)
                     .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -869,7 +932,7 @@ private struct SplitLineRow: View {
                 )
                 .environmentObject(budgetStore)
             }
-            TextField("Notes (optional)", text: $line.notes)
+            TextField(String(localized: AddTransactionLocalization.optionalNotes, locale: locale), text: $line.notes)
                 .font(.subheadline)
             NoteLinkRows(text: line.notes)
                 .font(.subheadline)
@@ -909,6 +972,7 @@ private struct SplitLineRow: View {
 /// mid-expression (the Save button is an ordinary row and doesn't end
 /// editing) still commits a parseable amount.
 struct AmountInputField: UIViewRepresentable {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Binding var text: String
     /// When true, digits are entered as a conventional decimal amount instead
     /// of shifting into cents.
@@ -942,7 +1006,9 @@ struct AmountInputField: UIViewRepresentable {
         let field = AutofocusTextField()
         field.wantsAutofocus = autofocus
         field.keyboardType = .decimalPad
-        field.placeholder = conventionalAmountEntry ? "0" : "0.00"
+        field.placeholder = budgetStore.numberFormat.format(
+            number: NSNumber(value: 0), wholeUnits: conventionalAmountEntry, currencyCode: nil
+        )
         field.textAlignment = alignment
         field.delegate = context.coordinator
         field.text = text
@@ -1002,12 +1068,24 @@ struct AmountInputField: UIViewRepresentable {
         container.addSubview(toolbar)
         field.inputAccessoryView = container
         context.coordinator.textField = field
+        context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.sync(fromDisplay: text)
+        context.coordinator.renderDisplay(to: field)
         return field
     }
 
     func updateUIView(_ uiView: UITextField, context: Context) {
+        let formatChanged = context.coordinator.numberFormat != budgetStore.numberFormat
+        context.coordinator.numberFormat = budgetStore.numberFormat
         context.coordinator.parent = self
+
+        if formatChanged {
+            uiView.placeholder = budgetStore.numberFormat.format(
+                number: NSNumber(value: 0),
+                wholeUnits: conventionalAmountEntry,
+                currencyCode: nil
+            )
+        }
         // Compare against what the coordinator last wrote out rather than the
         // field's own text: mid-expression the field reads "12.50 + 6.00"
         // while the binding holds "18.50", and that mismatch is expected.
@@ -1015,6 +1093,9 @@ struct AmountInputField: UIViewRepresentable {
         if text != context.coordinator.lastPublishedText {
             uiView.text = text
             context.coordinator.sync(fromDisplay: text)
+            context.coordinator.renderDisplay(to: uiView)
+        } else if formatChanged {
+            context.coordinator.renderDisplay(to: uiView)
         }
     }
 
@@ -1038,10 +1119,10 @@ struct AmountInputField: UIViewRepresentable {
 
             var accessibilityLabel: String {
                 switch self {
-                case .add: return "Add"
-                case .subtract: return "Subtract"
-                case .multiply: return "Multiply"
-                case .divide: return "Divide"
+                case .add: return String(localized: "Add")
+                case .subtract: return String(localized: "Subtract")
+                case .multiply: return String(localized: "Multiply")
+                case .divide: return String(localized: "Divide")
                 }
             }
 
@@ -1078,6 +1159,7 @@ struct AmountInputField: UIViewRepresentable {
         /// Everything to the left of the pending operator, already evaluated.
         private var accumulatedValue: Double?
         private var pendingOperator: Operator?
+        var numberFormat: ActualNumberFormat = .commaDot
 
         init(_ parent: AmountInputField) {
             self.parent = parent
@@ -1135,9 +1217,18 @@ struct AmountInputField: UIViewRepresentable {
             // that complete value before feeding characters through the
             // calculator-mode digit shifter; otherwise a grouping comma is
             // mistaken for the decimal point ("450,046.23" became "450.04").
-            if string.count > 1,
-               let pastedValue = AmountParser.parse(string),
-               Transaction.cents(fromDollars: pastedValue) != nil {
+            // A multi-character replacement is a paste, never keystrokes. Parse it
+            // as a whole value or refuse it: the digit shifter reads a grouping
+            // separator as a decimal point ("1.234,56" became 1.23).
+            if string.count > 1 {
+                guard let pastedValue = AmountParser.parse(
+                    string,
+                    numberFormat: numberFormat
+                ) ?? AmountParser.parse(string),
+                Transaction.cents(fromDollars: pastedValue) != nil else {
+                    return false
+                }
+
                 setOperand(to: pastedValue)
             } else if string.isEmpty {
                 handleBackspace()
@@ -1222,7 +1313,16 @@ struct AmountInputField: UIViewRepresentable {
         }
 
         private func currentOperandValue() -> Double {
-            Double(computeOperandDisplay()) ?? 0
+            let unsigned: Double
+            if hasDecimalPoint {
+                let whole = integerDigits.isEmpty ? "0" : integerDigits
+                unsigned = Double("\(whole).\(fractionDigits)") ?? 0
+            } else if parent.conventionalAmountEntry {
+                unsigned = Double(integerDigits.isEmpty ? "0" : integerDigits) ?? 0
+            } else {
+                unsigned = Double(Int(integerDigits) ?? 0) / 100.0
+            }
+            return isNegative ? -unsigned : unsigned
         }
 
         /// Rounds to cents and drops the sign where the field can't show one
@@ -1305,22 +1405,47 @@ struct AmountInputField: UIViewRepresentable {
             }
             if hasDecimalPoint {
                 let whole = integerDigits.isEmpty ? "0" : integerDigits
-                return sign + whole + "." + fractionDigits
+                if fractionDigits.isEmpty {
+                    let wholeValue = Double("\(sign)\(whole)") ?? 0
+                    return numberFormat.format(
+                        number: NSNumber(value: wholeValue),
+                        wholeUnits: true,
+                        currencyCode: nil
+                    ) + numberFormat.decimalSeparator
+                }
+                let value = Double("\(sign)\(whole).\(fractionDigits)") ?? 0
+                return numberFormat.format(
+                    number: NSNumber(value: value),
+                    wholeUnits: false,
+                    currencyCode: nil
+                )
             }
             if parent.conventionalAmountEntry {
-                return sign + integerDigits
+                let value = Double("\(sign)\(integerDigits)") ?? 0
+                return numberFormat.format(
+                    number: NSNumber(value: value),
+                    wholeUnits: true,
+                    currencyCode: nil
+                )
             }
             let cents = Int(integerDigits) ?? 0
-            let dollars = cents / 100
-            let pennies = cents % 100
-            return "\(sign)\(dollars).\(String(format: "%02d", pennies))"
+            let dollars = Double(cents) / 100.0
+            return numberFormat.format(
+                number: NSNumber(value: isNegative ? -dollars : dollars),
+                wholeUnits: false,
+                currencyCode: nil
+            )
         }
 
         /// An evaluated value as the field shows it: two decimals, except in
         /// conventional entry where a whole result stays whole.
         private func displayValue(_ value: Double) -> String {
             let whole = parent.conventionalAmountEntry && value == value.rounded()
-            return String(format: whole ? "%.0f" : "%.2f", value)
+            return numberFormat.format(
+                number: NSNumber(value: value),
+                wholeUnits: whole,
+                currencyCode: nil
+            )
         }
 
         /// What the field shows: the running total and armed operator, if any,
@@ -1339,13 +1464,19 @@ struct AmountInputField: UIViewRepresentable {
         /// What the binding carries: always a plain decimal, so callers can
         /// parse it at any moment — including mid-expression.
         private func computeBoundText() -> String {
-            guard pendingOperator != nil, accumulatedValue != nil else {
-                return computeOperandDisplay()
-            }
-            return displayValue(normalized(resolvedValue()))
+            guard hasTypedOperand || pendingOperator != nil else { return "" }
+            let value = normalized(resolvedValue())
+            let whole = parent.conventionalAmountEntry && value == value.rounded()
+            return String(format: whole ? "%.0f" : "%.2f", value)
         }
 
-        private func applyDisplay(to textField: UITextField) {
+        /// Display-only sibling of applyDisplay: makeUIView and external binding updates
+        /// must not publish state while SwiftUI is updating the view hierarchy.
+        fileprivate func renderDisplay(to textField: UITextField) {
+            textField.text = computeFieldText()
+        }
+
+        fileprivate func applyDisplay(to textField: UITextField) {
             textField.text = computeFieldText()
             let bound = computeBoundText()
             lastPublishedText = bound
@@ -1356,6 +1487,24 @@ struct AmountInputField: UIViewRepresentable {
             textField.selectedTextRange = textField.textRange(from: end, to: end)
         }
     }
+}
+
+private enum AddTransactionLocalization {
+    static let account: String.LocalizationValue = "Account"
+    static let addTransaction: String.LocalizationValue = "Add Transaction"
+    static let addTransfer: String.LocalizationValue = "Add Transfer"
+    static let category: String.LocalizationValue = "Category"
+    static let flipsDirection: String.LocalizationValue = "Flips this line's direction"
+    static let from: String.LocalizationValue = "From"
+    static let inflow: String.LocalizationValue = "Inflow"
+    static let none: String.LocalizationValue = "None"
+    static let optionalNotes: String.LocalizationValue = "Notes (optional)"
+    static let optionalPayee: String.LocalizationValue = "Payee (optional)"
+    static let outflow: String.LocalizationValue = "Outflow"
+    static let saveChanges: String.LocalizationValue = "Save Changes"
+    static let to: String.LocalizationValue = "To"
+    static let transferFrom: String.LocalizationValue = "Transfer from"
+    static let transferTo: String.LocalizationValue = "Transfer to"
 }
 
 /// Searchable category list, shared by the transaction form and the

@@ -9,7 +9,9 @@ final class BudgetSummaryPinUITests: XCTestCase {
     @MainActor
     func testBudgetNavigationBarDoesNotResizeWithScrolling() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        // Pin the style: "Details for Groceries" is the Clean row's exact
+        // label; Compact appends the category's status to it.
+        app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean"]
         app.launch()
 
         app.tabBars.buttons["Budget"].tap()

@@ -63,6 +63,8 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -testLanguage en \
+            -testRegion US \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet
 
@@ -111,5 +113,7 @@ jobs:
             -project Actuali/Actuali.xcodeproj \
             -scheme Actuali \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.id }}" \
+            -testLanguage en \
+            -testRegion US \
             -skip-testing:ActualiUITests \
             | xcbeautify --quiet

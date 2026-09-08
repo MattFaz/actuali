@@ -1,5 +1,10 @@
 import SwiftUI
 
+struct DisplaySettingsLoadRequest: Equatable {
+    let budgetID: String?
+    let databaseID: ObjectIdentifier?
+}
+
 private struct CurrencyOption: Identifiable, Sendable {
     let symbol: String
     let code: String
@@ -84,6 +89,22 @@ struct DisplaySettingsView: View {
         )
     }
 
+    private var numberFormatSelection: Binding<ActualNumberFormat> {
+        Binding(
+            get: { budgetStore.numberFormat },
+            set: { newValue in
+                Task { await budgetStore.setNumberFormat(newValue) }
+            }
+        )
+    }
+
+    private var currentLoadRequest: DisplaySettingsLoadRequest {
+        DisplaySettingsLoadRequest(
+            budgetID: budgetStore.currentBudgetId,
+            databaseID: budgetStore.databaseForLogger.map(ObjectIdentifier.init)
+        )
+    }
+
     var body: some View {
         Form {
             Section {
@@ -94,6 +115,12 @@ struct DisplaySettingsView: View {
                     Text("None").tag("")
                     ForEach(currencyOptions) { option in
                         Text("\(option.symbol) \(option.code)").tag(option.code)
+                    }
+                }
+
+                Picker("Number Formatting", selection: numberFormatSelection) {
+                    ForEach(ActualNumberFormat.allCases) { format in
+                        Text(format.example).tag(format)
                     }
                 }
 
@@ -145,13 +172,26 @@ struct DisplaySettingsView: View {
         .navigationTitle("Display")
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
-        .task {
-            await reloadDashboardPages()
+        .task(id: currentLoadRequest) { [request = currentLoadRequest] in
+            await reloadDashboardPages(request: request)
         }
     }
 
-    private func reloadDashboardPages() async {
+    nonisolated static func shouldPublish(
+        request: DisplaySettingsLoadRequest,
+        currentRequest: DisplaySettingsLoadRequest,
+        taskIsCancelled: Bool
+    ) -> Bool {
+        !taskIsCancelled && request == currentRequest
+    }
+
+    private func reloadDashboardPages(request: DisplaySettingsLoadRequest) async {
         guard let database = budgetStore.databaseForLogger else {
+            guard Self.shouldPublish(
+                request: request,
+                currentRequest: currentLoadRequest,
+                taskIsCancelled: Task.isCancelled
+            ) else { return }
             dashboardPages = []
             return
         }
@@ -160,6 +200,11 @@ struct DisplaySettingsView: View {
         // after currentBudgetId has already flipped, so clearing the default
         // here would wipe the *incoming* budget's preference.
         guard let pages = try? await database.fetchDashboardPages() else { return }
+        guard Self.shouldPublish(
+            request: request,
+            currentRequest: currentLoadRequest,
+            taskIsCancelled: Task.isCancelled
+        ) else { return }
         dashboardPages = pages
         // A default naming a page that's since been deleted has no tag to
         // match in the picker, and the Reports tab already falls back to the

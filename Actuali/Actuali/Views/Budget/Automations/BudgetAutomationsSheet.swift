@@ -212,7 +212,7 @@ struct BudgetAutomationsSheet: View {
                 Text("Contributions")
             } footer: {
                 if !contributionEntries.isEmpty {
-                    Text("Estimated monthly total: \(budgetStore.displayBalance(totalMonthly))")
+                        Text(String(format: String(localized: "Estimated monthly total: %@"), budgetStore.displayBalance(totalMonthly)))
                 }
             }
 
@@ -272,8 +272,8 @@ struct BudgetAutomationsSheet: View {
     private var cleanupSummary: String {
         let global = cleanup.global.send || cleanup.global.take
         let scopes = (global ? 1 : 0) + cleanup.groups.count(where: { $0.send || $0.take })
-        if scopes > 1 { return "Active in \(scopes) scopes" }
-        return global ? "Active globally" : "Active in a pool"
+        if scopes > 1 { return String(localized: "Active in \(scopes) scopes") }
+        return global ? String(localized: "Active globally") : String(localized: "Active in a pool")
     }
 
     @ViewBuilder

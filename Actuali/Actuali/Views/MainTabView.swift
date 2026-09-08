@@ -25,11 +25,16 @@ struct MainTabView: View {
     /// The numeric tab badge isn't surfaced to accessibility on its own, so
     /// mirror it as a spoken value on the tab label.
     private var overspentBadgeValue: String {
-        switch overspentCount {
-        case 0: ""
-        case 1: "1 overspent category"
-        default: "\(overspentCount) overspent categories"
-        }
+        Self.overspentBadgeValue(count: overspentCount)
+    }
+
+    nonisolated static func overspentBadgeValue(
+        count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+        guard count > 0 else { return "" }
+        return ReportStrings.localized("\(count) overspent categories", locale: locale, bundle: bundle)
     }
 
     var body: some View {
@@ -133,10 +138,10 @@ struct AddTransactionTabView: View {
                         showingDefaultAccountAlert = true
                     }
                 }
-                .alert("Default Account Unavailable", isPresented: $showingDefaultAccountAlert) {
-                    Button("OK") {}
+                .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
+                    Button(String(localized: "OK")) {}
                 } message: {
-                    Text("Your default account is no longer available. Please configure a new default in More → Transactions & Automation.")
+                    Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
                 }
         } else {
             ContentUnavailableView(

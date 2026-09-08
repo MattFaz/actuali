@@ -1,5 +1,15 @@
 import SwiftUI
 
+enum SchedulesListLocalization {
+    nonisolated static func completedFooter(
+        count: Int, locale: Locale, bundle: Bundle = .main
+    ) -> String {
+        String(localized: LocalizedStringResource(
+            String.LocalizationValue("\(count) completed schedules hidden."),
+            locale: locale, bundle: bundle))
+    }
+}
+
 /// The scheduled-transactions screen (GH #221). Read-only in M2; the toolbar
 /// add button, row navigation and swipe actions arrive with M4 and M5.
 ///
@@ -7,6 +17,7 @@ import SwiftUI
 /// finished schedule is history, not something to scroll past every time.
 struct SchedulesListView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
 
     @State private var searchText = ""
     @State private var showCompleted = false
@@ -45,7 +56,7 @@ struct SchedulesListView: View {
                                 Button(role: .destructive) {
                                     pendingDelete = schedule
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Label(ReportStrings.text("Delete", locale: locale), systemImage: "trash")
                                 }
 
                                 // Only a recurrence has a next occurrence to
@@ -55,7 +66,7 @@ struct SchedulesListView: View {
                                     Button {
                                         run { try await budgetStore.skipScheduleNextDate(schedule) }
                                     } label: {
-                                        Label("Skip", systemImage: "forward.end")
+                                        Label(ReportStrings.text("Skip", locale: locale), systemImage: "forward.end")
                                     }
                                     .tint(.orange)
                                 }
@@ -65,18 +76,18 @@ struct SchedulesListView: View {
                                     Button {
                                         run { try await budgetStore.postScheduleTransaction(schedule, today: false) }
                                     } label: {
-                                        Label("Post Transaction", systemImage: "plus.circle")
+                                        Label(ReportStrings.text("Post Transaction", locale: locale), systemImage: "plus.circle")
                                     }
                                     Button {
                                         run { try await budgetStore.postScheduleTransaction(schedule, today: true) }
                                     } label: {
-                                        Label("Post Transaction Today", systemImage: "calendar.badge.plus")
+                                        Label(ReportStrings.text("Post Transaction Today", locale: locale), systemImage: "calendar.badge.plus")
                                     }
                                     if schedule.isRecurring {
                                         Button {
                                             run { try await budgetStore.skipScheduleNextDate(schedule) }
                                         } label: {
-                                            Label("Skip Next Date", systemImage: "forward.end")
+                                            Label(ReportStrings.text("Skip Next Date", locale: locale), systemImage: "forward.end")
                                         }
                                     }
                                 }
@@ -88,47 +99,55 @@ struct SchedulesListView: View {
                                         schedule, completed: !schedule.completed) }
                                 } label: {
                                     schedule.completed
-                                        ? Label("Restart", systemImage: "arrow.clockwise")
-                                        : Label("Mark Completed", systemImage: "checkmark.seal")
+                                        ? Label(ReportStrings.text("Restart", locale: locale), systemImage: "arrow.clockwise")
+                                        : Label(ReportStrings.text("Mark Completed", locale: locale), systemImage: "checkmark.seal")
                                 }
 
                                 Button(role: .destructive) {
                                     pendingDelete = schedule
                                 } label: {
-                                    Label("Delete", systemImage: "trash")
+                                    Label(ReportStrings.text("Delete", locale: locale), systemImage: "trash")
                                 }
                             }
                         }
                     } footer: {
                         if completedCount > 0 && !showCompleted {
-                            Text("\(completedCount) completed schedule\(completedCount == 1 ? "" : "s") hidden.")
+                            Text(SchedulesListLocalization.completedFooter(
+                                count: completedCount, locale: locale))
                         }
                     }
                 }
             }
         }
-        .navigationTitle("Scheduled Transactions")
+        .navigationTitle(ReportStrings.text("Scheduled Transactions", locale: locale))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: "Search schedules")
+        .searchable(text: $searchText, prompt: ReportStrings.text("Search schedules", locale: locale))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
+                NavigationLink {
+                    BillsCalendarView()
+                } label: {
+                    Label("Calendar", systemImage: "calendar")
+                }
+            }
+            ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Toggle("Show Completed", isOn: $showCompleted)
+                    Toggle(ReportStrings.text("Show Completed", locale: locale), isOn: $showCompleted)
 
                     NavigationLink {
                         DiscoverSchedulesView()
                     } label: {
-                        Label("Find Schedules", systemImage: "sparkle.magnifyingglass")
+                        Label(ReportStrings.text("Find Schedules", locale: locale), systemImage: "sparkle.magnifyingglass")
                     }
                 } label: {
-                    Label("Options", systemImage: "ellipsis.circle")
+                    Label(ReportStrings.text("Options", locale: locale), systemImage: "ellipsis.circle")
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
                     isAddingSchedule = true
                 } label: {
-                    Label("Add Schedule", systemImage: "plus")
+                    Label(ReportStrings.text("Add Schedule", locale: locale), systemImage: "plus")
                 }
                 .disabled(budgetStore.accounts.allSatisfy(\.closed))
             }
@@ -140,30 +159,30 @@ struct SchedulesListView: View {
                 ScheduleEditView(budgetStore: budgetStore)
                     .toolbar {
                         ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { isAddingSchedule = false }
+                            Button(ReportStrings.text("Cancel", locale: locale)) { isAddingSchedule = false }
                         }
                     }
             }
         }
         .confirmationDialog(
-            pendingDelete.map { _ in "Delete this schedule?" } ?? "",
+            pendingDelete.map { _ in ReportStrings.text("Delete this schedule?", locale: locale) } ?? "",
             isPresented: Binding(
                 get: { pendingDelete != nil },
                 set: { if !$0 { pendingDelete = nil } }),
             titleVisibility: .visible
         ) {
-            Button("Delete Schedule", role: .destructive) {
+            Button(ReportStrings.text("Delete Schedule", locale: locale), role: .destructive) {
                 guard let schedule = pendingDelete else { return }
                 run { try await budgetStore.deleteSchedule(schedule) }
             }
         } message: {
-            Text("Transactions this schedule already created are kept.")
+            Text(ReportStrings.text("Transactions this schedule already created are kept.", locale: locale))
         }
-        .alert("Action Failed", isPresented: Binding(
+        .alert(ReportStrings.text("Action Failed", locale: locale), isPresented: Binding(
             get: { actionError != nil },
             set: { if !$0 { actionError = nil } })
         ) {
-            Button("OK") {}
+            Button(ReportStrings.text("OK", locale: locale)) {}
         } message: {
             Text(actionError ?? "")
         }
@@ -175,11 +194,11 @@ struct SchedulesListView: View {
             ContentUnavailableView.search(text: searchText)
         } else {
             ContentUnavailableView {
-                Label("No Scheduled Transactions", systemImage: "calendar.badge.clock")
+                Label(ReportStrings.text("No Scheduled Transactions", locale: locale), systemImage: "calendar.badge.clock")
             } description: {
-                Text("Create a schedule to track a recurring bill or paycheck.")
+                Text(ReportStrings.text("Create a schedule to track a recurring bill or paycheck.", locale: locale))
             } actions: {
-                Button("New Schedule") { isAddingSchedule = true }
+                Button(ReportStrings.text("New Schedule", locale: locale)) { isAddingSchedule = true }
             }
         }
     }
@@ -204,7 +223,7 @@ struct SchedulesListView: View {
             schedule.name,
             payeeName(schedule),
             accountName(schedule),
-            ScheduleDescription.dateSummary(schedule.dateCondition),
+            ScheduleDescription.dateSummary(schedule.dateCondition, locale: locale, bundle: .main),
         ]
         .compactMap { $0 }
         .joined(separator: " ")
@@ -227,6 +246,7 @@ struct SchedulesListView: View {
 /// One schedule in the list.
 struct ScheduleRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
 
     let schedule: ScheduleSummary
     let status: ScheduleStatus
@@ -258,7 +278,7 @@ struct ScheduleRow: View {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                        .accessibilityLabel("Recurring")
+                        .accessibilityLabel(ReportStrings.text("Recurring", locale: locale))
                 }
                 Text(nextDateText)
                     .font(.caption)
@@ -275,12 +295,14 @@ struct ScheduleRow: View {
     private var title: String {
         if let name = schedule.name, !name.isEmpty { return name }
         if let payeeName, !payeeName.isEmpty { return payeeName }
-        return accountName ?? "Schedule"
+        return accountName ?? ReportStrings.text("Schedule", locale: locale)
     }
 
     private var nextDateText: String {
-        guard let nextDate = schedule.nextDate else { return "No next date" }
-        return ScheduleDescription.mediumDate(nextDate)
+        guard let nextDate = schedule.nextDate else {
+            return ReportStrings.text("No next date", locale: locale)
+        }
+        return ScheduleDescription.mediumDate(nextDate, locale: locale)
     }
 
     /// `~` for an approximate amount and a range for `isbetween`, matching the

@@ -1,42 +1,44 @@
 import SwiftUI
 
-/// Cached formatters for the "yyyy-MM" month keys used by the budget tables
-/// and the month title shown in the toolbar. DateFormatter construction is
-/// expensive, so these are built once rather than per render.
 private let yearMonthFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.dateFormat = "yyyy-MM"
     return formatter
 }()
 
-private let monthTitleFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "MMMM yyyy"
-    return formatter
-}()
+enum BudgetCategoryAccessibility {
+    static func details(category: String, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format("Details for %@", category, locale: locale, bundle: bundle)
+    }
 
-/// Abbreviated variant for the navigation bar's month stepper only. A
-/// centered `.principal` toolbar item is centered in the whole bar, but only
-/// while it clears the trailing buttons — one point wider and UIKit stops
-/// centering and jams it against the leading edge. "September 2026" between
-/// two chevrons is well past that limit, so the bar would centre some months
-/// and left-align others. Every abbreviated month fits, so the stepper holds
-/// still all year (GH #305 review).
-private let monthShortTitleFormatter: DateFormatter = {
-    let formatter = DateFormatter()
-    formatter.dateFormat = "MMM yyyy"
-    return formatter
-}()
+    static func editBudget(category: String, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format("Edit budgeted amount for %@", category, locale: locale, bundle: bundle)
+    }
 
-/// Shared metrics for the budget table's three numeric columns, so the
-/// summary captions, group totals and category pills line up vertically
-/// like the PWA's table.
-enum BudgetColumn {
-    static let width: CGFloat = 70
-    // Tight: every point between the columns comes out of the category
-    // name, which wraps early on a phone ("Caravan Parks 🏕" drops its
-    // emoji to a second line).
-    static let spacing: CGFloat = 4
+    static func monthTransactions(category: String, month: String, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format("Transactions for %@ in %@", category, month, locale: locale, bundle: bundle)
+    }
+
+    static func balanceAction(category: String, isOverspent: Bool, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.format(
+            isOverspent ? "Cover overspending for %@" : "Move money from %@",
+            category,
+            locale: locale,
+            bundle: bundle
+        )
+    }
+
+    static func visibility(isHidden: Bool, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text(isHidden ? "Show" : "Hide", locale: locale, bundle: bundle)
+    }
+
+    static func contextMoveAction(isOverspent: Bool, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text(isOverspent ? "Cover Overspending" : "Move Money", locale: locale, bundle: bundle)
+    }
+
+    static func contextVisibility(isHidden: Bool, locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text(isHidden ? "Show Category" : "Hide Category", locale: locale, bundle: bundle)
+    }
 }
 
 /// Style-specific list metrics live behind one exhaustive switch so adding a
@@ -53,11 +55,6 @@ private struct BudgetListMetrics {
             sectionSpacing = .default
             horizontalContentMargin = 4
             topContentMargin = 20
-            showsTopFade = true
-        case .detailed:
-            sectionSpacing = .custom(14)
-            horizontalContentMargin = 4
-            topContentMargin = 16
             showsTopFade = true
         case .compact:
             sectionSpacing = .custom(0)
@@ -78,7 +75,8 @@ extension BudgetStore {
             : CurrencyAmountFormat.symbolLessString(
                 cents: cents,
                 currencyCode: currencyCode,
-                wholeUnits: hideDecimalPlaces
+                wholeUnits: hideDecimalPlaces,
+                numberFormat: numberFormat
             )
     }
 }
@@ -98,6 +96,7 @@ struct BudgetView: View {
     }
 
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
     @State private var selectedCategory: CategoryBudget?
@@ -166,6 +165,16 @@ struct BudgetView: View {
         budgetStore.budgetDisplayStyle == .compact
     }
 
+    /// Shape for the "N uncategorized" link's background, matching the shape
+    /// used elsewhere for each display style. The compact style keeps sharp
+    /// corners since its rows sit edge-to-edge with no rounding.
+    private var uncategorizedShape: AnyShape {
+        switch budgetStore.budgetDisplayStyle {
+        case .clean: AnyShape(RoundedRectangle(cornerRadius: 24))
+        case .compact: AnyShape(Rectangle())
+        }
+    }
+
     var body: some View {
         NavigationStack {
             Group {
@@ -176,13 +185,13 @@ struct BudgetView: View {
                         ContentUnavailableView(
                             "Select a Budget",
                             systemImage: "chart.pie",
-                            description: Text("You're connected. Choose a budget in More → Connection & Data to load it here.")
+                            description: Text(ReportStrings.text("You're connected. Choose a budget in More → Connection & Data to load it here.", locale: locale, bundle: .main))
                         )
                     } else {
                         ContentUnavailableView(
                             "No Budget Loaded",
                             systemImage: "chart.pie",
-                            description: Text("Go to More → Connection & Data to connect to your Actual Budget server")
+                            description: Text(ReportStrings.text("Go to More → Connection & Data to connect to your Actual Budget server", locale: locale, bundle: .main))
                         )
                     }
                 }
@@ -322,45 +331,6 @@ struct BudgetView: View {
                 )
                 .textCase(nil)
             }
-        case .detailed:
-            // The group row lives inside the card (first row, tinted) like
-            // the PWA's table, so its totals share the exact column grid of
-            // the rows below.
-            Section {
-                BudgetGroupHeader(
-                    name: group.name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group.isHidden,
-                    onSetHidden: {
-                        setCategoryGroupHidden(group.id, hidden: $0)
-                    },
-                    totals: budgetStore.showGroupTotals ? group.totals : nil,
-                    onToggleCollapse: { toggleCollapsed(group.id) },
-                    reservesTwoLines: true
-                )
-                .listRowBackground(Color(.tertiarySystemFill))
-                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
-                if !isCollapsed {
-                    ForEach(group.categories) { category in
-                        CategoryBudgetRow(
-                            category: category,
-                            isHidden: category.hidden,
-                            isDimmed: category.isEffectivelyHidden,
-                            onSetHidden: {
-                                setCategoryHidden(category.categoryId, hidden: $0)
-                            },
-                            addsGroupBottomPadding:
-                                category.id == group.categories.last?.id,
-                            onShowDetails: { selectedCategory = $0 },
-                            onEditBudget: { editingCategory = $0 },
-                            // Name shows all time, Spent shows
-                            // the displayed month (GH #56).
-                            onShowTransactions: showTransactions,
-                            onMoveMoney: moveMoney
-                        )
-                    }
-                }
-            }
         case .compact:
             Section {
                 if !isCollapsed {
@@ -405,7 +375,10 @@ struct BudgetView: View {
         let isCollapsed = collapsedGroups.contains(Self.incomeGroupCollapseID)
         let group = budgetStore.categoryGroups.first(where: \.isIncome)
         let categories = displayedIncomeCategories(in: budget)
-        let name = group?.name ?? categories.first?.groupName ?? "Income"
+        let rawName = group?.name ?? categories.first?.groupName ?? "Income"
+        let name = rawName == "Income"
+            ? ReportStrings.text("Income", locale: locale, bundle: .main)
+            : rawName
         let onSetHidden = group.flatMap { group -> ((Bool) -> Void)? in
             group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
         }
@@ -422,7 +395,6 @@ struct BudgetView: View {
                                 setCategoryHidden(income.categoryId, hidden: $0)
                             },
                             showsBudgeted: budget.toBudget == nil,
-                            isDetailed: false,
                             onShowTransactions: showTransactions
                         )
                     }
@@ -445,38 +417,6 @@ struct BudgetView: View {
                     }
                 )
                 .textCase(nil)
-            }
-        case .detailed:
-            Section {
-                BudgetGroupHeader(
-                    name: name,
-                    isCollapsed: isCollapsed,
-                    isHidden: group?.hidden == true,
-                    onSetHidden: onSetHidden,
-                    receivedTotal: budget.totalIncome,
-                    onToggleCollapse: {
-                        toggleCollapsed(Self.incomeGroupCollapseID)
-                    },
-                    usesTableNumberFormat: true,
-                    reservesTwoLines: true
-                )
-                .listRowBackground(Color(.tertiarySystemFill))
-                .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 16))
-                if !isCollapsed {
-                    ForEach(categories) { income in
-                        IncomeCategoryRow(
-                            income: income,
-                            isHidden: income.hidden,
-                            isDimmed: income.isEffectivelyHidden,
-                            onSetHidden: {
-                                setCategoryHidden(income.categoryId, hidden: $0)
-                            },
-                            showsBudgeted: budget.toBudget == nil,
-                            isDetailed: true,
-                            onShowTransactions: showTransactions
-                        )
-                    }
-                }
             }
         case .compact:
             Section {
@@ -615,22 +555,24 @@ struct BudgetView: View {
             switch outcome {
             case .applied(let count):
                 templateResult = .init(
-                    title: "Templates Applied",
-                    message: "Successfully applied templates to \(count) categor\(count == 1 ? "y" : "ies").")
+                    title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
+                    message: String(localized: "Successfully applied templates to \(count) categories.", bundle: .main, locale: locale))
             case .upToDate:
                 templateResult = .init(
-                    title: "Templates Applied",
-                    message: "All templates are up to date.")
+                    title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
+                    message: ReportStrings.text("All templates are up to date.", locale: locale, bundle: .main))
             case .checkPassed:
                 templateResult = .init(
-                    title: "Check Passed",
-                    message: "All templates passed the check.")
+                    title: ReportStrings.text("Check Passed", locale: locale, bundle: .main),
+                    message: ReportStrings.text("All templates passed the check.", locale: locale, bundle: .main))
             case .errors(let errors):
                 templateResult = .init(
-                    title: "Template Errors",
+                    title: ReportStrings.text("Template Errors", locale: locale, bundle: .main),
                     message: errors.joined(separator: "\n\n"))
             case .failed(let message):
-                templateResult = .init(title: "Template Error", message: message)
+                templateResult = .init(
+                    title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
+                    message: message)
             }
         }
     }
@@ -649,10 +591,8 @@ struct BudgetView: View {
                 .padding(.bottom, 8)
             }
 
-            // Summary card: the clean style reads as a 2x2 grid of currency
-            // amounts; the detailed style's captioned columns double as the
-            // column headers for the table below. It sits above the List (not
-            // inside it) so it stays pinned while the table scrolls (GH #155).
+            // Keep the summary above the List so it stays pinned while the
+            // table scrolls (GH #155).
             if !isCompact
                 || budgetStore.showCompactBudgetOverview {
                 Group {
@@ -663,18 +603,6 @@ struct BudgetView: View {
                             .padding(.vertical, 8)
                             .background(
                                 RoundedRectangle(cornerRadius: 24)
-                                    .fill(Color(.secondarySystemGroupedBackground))
-                            )
-                    case .detailed:
-                        TableBudgetSummary(budget: budget)
-                            // Fine-tune the fixed-width columns against the
-                            // amount pills in the rows below.
-                            .padding(.leading, 4)
-                            .padding(.trailing, 4)
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                            .background(
-                                Capsule()
                                     .fill(Color(.secondarySystemGroupedBackground))
                             )
                     case .compact:
@@ -714,12 +642,12 @@ struct BudgetView: View {
                     .padding(.vertical, 12)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(Color(.secondarySystemGroupedBackground))
+                        Color(isCompact ? .systemBackground : .secondarySystemGroupedBackground),
+                        in: uncategorizedShape
                     )
                 }
                 .accessibilityIdentifier("budgetUncategorized")
-                .padding(.horizontal, 4)
+                .padding(.horizontal, isCompact ? 0 : 4)
                 .padding(.bottom, 8)
             }
 
@@ -1020,6 +948,7 @@ private struct TwoLineName: View {
 struct BudgetCheckInStrip: View {
     let budget: BudgetMonth
     @Binding var selection: BudgetCategoryFilter
+    @Environment(\.locale) private var locale
 
     var body: some View {
         ScrollView(.horizontal) {
@@ -1028,7 +957,11 @@ struct BudgetCheckInStrip: View {
                     Button {
                         selection = filter
                     } label: {
-                        Text(title(for: filter))
+                        Text(filter.title(
+                            count: count(for: filter),
+                            isTrackingBudget: budget.isTrackingBudget,
+                            locale: locale
+                        ))
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(selection == filter ? Color.white : Color.primary)
                             .padding(.horizontal, 14)
@@ -1047,7 +980,11 @@ struct BudgetCheckInStrip: View {
                             }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("Show \(title(for: filter)) categories")
+                    .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(
+                        count: count(for: filter),
+                        isTrackingBudget: budget.isTrackingBudget,
+                        locale: locale
+                    ), locale: locale, bundle: .main))
                     .accessibilityIdentifier("budgetFilter-\(filter.rawValue)")
                     .accessibilityAddTraits(selection == filter ? .isSelected : [])
                 }
@@ -1057,149 +994,40 @@ struct BudgetCheckInStrip: View {
         .contentMargins(.horizontal, 4, for: .scrollContent)
     }
 
-    private func title(for filter: BudgetCategoryFilter) -> String {
-        switch filter {
-        case .all:
-            "All"
-        case .needsAttention:
-            "Needs Attention \(count(for: filter))"
-        case .overspent:
-            "\(budget.isTrackingBudget ? "Over Budget" : "Overspent") \(count(for: filter))"
-        case .unassigned:
-            "\(budget.isTrackingBudget ? "No Budget" : "Not Funded") \(count(for: filter))"
-        case .approachingLimit:
-            "\(budget.isTrackingBudget ? "Near Budget" : "Almost Spent") \(count(for: filter))"
-        case .onTrack:
-            "\(budget.isTrackingBudget ? "Within Budget" : "On Track") \(count(for: filter))"
-        }
-    }
-
     private func count(for filter: BudgetCategoryFilter) -> Int {
         budget.categoryBudgets.count(where: filter.includes)
     }
 }
 
-struct CategoryBudgetRow: View {
-    @EnvironmentObject var budgetStore: BudgetStore
-    let category: CategoryBudget
-    var isHidden = false
-    var isDimmed = false
-    var onSetHidden: ((Bool) -> Void)?
-    var addsGroupBottomPadding = false
-    var onShowDetails: (CategoryBudget) -> Void = { _ in }
-    var onEditBudget: (CategoryBudget) -> Void = { _ in }
-    /// Push the category's transactions: month narrows to one "yyyy-MM",
-    /// nil means all time (GH #56).
-    var onShowTransactions: (CategoryBudget, String?) -> Void = { _, _ in }
-    /// Open the move-money sheet for this category's balance (GH #128).
-    var onMoveMoney: (CategoryBudget) -> Void = { _ in }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
-            // One PWA-style table line: name, then the Budgeted/Spent/Balance
-            // pills in their fixed columns. Each element keeps its own tap
-            // action (our enhancement over the PWA's read-only cells).
-            HStack(spacing: BudgetColumn.spacing) {
-                Button {
-                    onShowDetails(category)
-                } label: {
-                    HStack(spacing: 5) {
-                        if budgetStore.showCategoryStatusDots {
-                            CompactCategoryStatusDot(state: category.progressState)
-                        }
-                        TwoLineName(
-                            text: category.categoryName,
-                            font: .subheadline,
-                            minimumScaleFactor: 0.85
-                        )
-                    }
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Details for \(category.categoryName)")
-                Spacer(minLength: 4)
-                Button {
-                    onEditBudget(category)
-                } label: {
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(category.budgeted),
-                        dimmed: category.budgeted == 0
-                    )
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
-                Button {
-                    onShowTransactions(category, category.month)
-                } label: {
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(category.spent),
-                        dimmed: category.spent == 0
-                    )
-                }
-                .buttonStyle(.borderless)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
-                // A zero balance has nothing to move and nothing to cover, so
-                // it stays a plain cell.
-                Button {
-                    onMoveMoney(category)
-                } label: {
-                    BudgetAmountPill(
-                        text: budgetStore.displayBudgetCell(category.available),
-                        color: balanceTint
-                    )
-                }
-                .buttonStyle(.borderless)
-                .disabled(category.available == 0)
-                .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
-                .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
-            }
-            if budgetStore.showBudgetProgressBars, category.showsProgressBar {
-                CategoryProgressBar(
-                    fraction: category.progressFraction,
-                    state: category.progressState
-                )
-            }
+extension BudgetCategoryFilter {
+    func title(
+        count: Int,
+        isTrackingBudget: Bool,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
+        let key: String.LocalizationValue
+        switch self {
+        case .all: key = String.LocalizationValue("budget.filter.all \(count)")
+        case .needsAttention: key = String.LocalizationValue("budget.filter.needsAttention \(count)")
+        case .overspent where isTrackingBudget: key = String.LocalizationValue("budget.filter.overBudget \(count)")
+        case .overspent: key = String.LocalizationValue("budget.filter.overspent \(count)")
+        case .unassigned where isTrackingBudget: key = String.LocalizationValue("budget.filter.noBudget \(count)")
+        case .unassigned: key = String.LocalizationValue("budget.filter.notFunded \(count)")
+        case .approachingLimit where isTrackingBudget: key = String.LocalizationValue("budget.filter.nearBudget \(count)")
+        case .approachingLimit: key = String.LocalizationValue("budget.filter.almostSpent \(count)")
+        case .onTrack where isTrackingBudget: key = String.LocalizationValue("budget.filter.withinBudget \(count)")
+        case .onTrack: key = String.LocalizationValue("budget.filter.onTrack \(count)")
         }
-        .listRowInsets(EdgeInsets(
-            top: 4,
-            leading: 12,
-            bottom: addsGroupBottomPadding && budgetStore.showBudgetProgressBars
-                && category.showsProgressBar ? 10 : 4,
-            trailing: 16
-        ))
-        .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
-        .modifier(CategoryRowContextMenu(
-            category: category,
-            isHidden: isHidden,
-            onSetHidden: onSetHidden,
-            onShowDetails: onShowDetails,
-            onEditBudget: onEditBudget,
-            onShowTransactions: onShowTransactions,
-            onMoveMoney: onMoveMoney
-        ))
-    }
-
-    private var balanceTint: Color {
-        balanceColor(category, goalsEnabled: budgetStore.goalTemplatesEnabled, zero: .secondary)
+        return String(localized: LocalizedStringResource(key, locale: locale, bundle: bundle))
     }
 }
-
 /// Clean-style category row, matching the App Store screenshots: name and a
 /// large Available amount up top, the progress bar beneath, then tappable
-/// Budgeted/Spent captions. Same tap actions as the detailed table's cells.
+/// Budgeted/Spent captions.
 struct CleanCategoryBudgetRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let category: CategoryBudget
     var isHidden = false
     var isDimmed = false
@@ -1227,7 +1055,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Details for \(category.categoryName)")
+                .accessibilityLabel(BudgetCategoryAccessibility.details(category: category.categoryName, locale: locale))
                 Spacer()
                 // A zero balance has nothing to move and nothing to cover, so
                 // it stays a plain label.
@@ -1239,9 +1067,11 @@ struct CleanCategoryBudgetRow: View {
                 }
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
-                .accessibilityLabel(category.isOverspent
-                    ? "Cover overspending for \(category.categoryName)"
-                    : "Move money from \(category.categoryName)")
+                .accessibilityLabel(BudgetCategoryAccessibility.balanceAction(
+                    category: category.categoryName,
+                    isOverspent: category.isOverspent,
+                    locale: locale
+                ))
                 .rolloverIndicator(category.carryoverEnabled, color: balanceTint)
             }
             if budgetStore.showBudgetProgressBars, category.showsProgressBar {
@@ -1264,7 +1094,7 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Edit budgeted amount for \(category.categoryName)")
+                .accessibilityLabel(BudgetCategoryAccessibility.editBudget(category: category.categoryName, locale: locale))
                 Spacer()
                 Button {
                     onShowTransactions(category, category.month)
@@ -1283,7 +1113,11 @@ struct CleanCategoryBudgetRow: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("Transactions for \(category.categoryName) in \(MonthPicker.title(for: category.month))")
+                .accessibilityLabel(BudgetCategoryAccessibility.monthTransactions(
+                    category: category.categoryName,
+                    month: MonthPicker.title(for: category.month, locale: locale),
+                    locale: locale
+                ))
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
@@ -1292,7 +1126,7 @@ struct CleanCategoryBudgetRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1317,6 +1151,7 @@ struct CleanCategoryBudgetRow: View {
 /// Shared long-press/right-click menu for all category row styles — the same
 /// actions as the row's tappable cells plus the hide/show swipe action.
 struct CategoryRowContextMenu: ViewModifier {
+    @Environment(\.locale) private var locale
     let category: CategoryBudget
     let isHidden: Bool
     let onSetHidden: ((Bool) -> Void)?
@@ -1343,13 +1178,13 @@ struct CategoryRowContextMenu: ViewModifier {
             // the balance pill.
             if category.available != 0 {
                 Button { onMoveMoney(category) } label: {
-                    Label(category.isOverspent ? "Cover Overspending" : "Move Money",
+                      Label(BudgetCategoryAccessibility.contextMoveAction(isOverspent: category.isOverspent, locale: locale),
                           systemImage: "arrow.left.arrow.right")
                 }
             }
             if let onSetHidden {
                 Button { onSetHidden(!isHidden) } label: {
-                    Label(isHidden ? "Show Category" : "Hide Category",
+                    Label(BudgetCategoryAccessibility.contextVisibility(isHidden: isHidden, locale: locale),
                           systemImage: isHidden ? "eye" : "eye.slash")
                 }
             }
@@ -1458,59 +1293,6 @@ struct CleanBudgetSummary: View {
     }
 }
 
-/// PWA-style summary bar: unallocated funds lead, and the three captioned
-/// columns double as the column headers for the table below.
-struct TableBudgetSummary: View {
-    @EnvironmentObject var budgetStore: BudgetStore
-    let budget: BudgetMonth
-
-    var body: some View {
-        HStack(alignment: .top, spacing: BudgetColumn.spacing) {
-            // Envelope budgets lead with unallocated funds; tracking
-            // budgets have no to-budget concept, so lead with income
-            // received instead.
-            if let toBudget = budget.toBudget {
-                SummaryStat(
-                    label: "To Budget",
-                    value: budgetStore.displayBudgetCell(toBudget),
-                    valueColor: toBudget >= 0 ? .green : .red
-                )
-            } else {
-                SummaryStat(
-                    label: "Income",
-                    value: budgetStore.displayBudgetCell(budget.totalIncome)
-                )
-            }
-            Spacer(minLength: 4)
-            SummaryColumn(
-                label: "Budgeted",
-                value: budgetStore.displayBudgetCell(budget.totalBudgeted)
-            )
-            SummaryColumn(
-                label: "Spent",
-                value: budgetStore.displayBudgetCell(budget.totalSpent)
-            )
-            // Envelope budgets total the category balances; tracking budgets
-            // report savings instead — actual for a finished month, projected
-            // for the current/future month.
-            if budget.toBudget != nil {
-                SummaryColumn(
-                    label: "Balance",
-                    value: budgetStore.displayBudgetCell(budget.totalAvailable),
-                    valueColor: budget.totalAvailable >= 0 ? .green : .red
-                )
-            } else {
-                let value = trackingSavings(budget)
-                SummaryColumn(
-                    label: trackingSavingsLabel(budget),
-                    value: budgetStore.displayBudgetCell(value),
-                    valueColor: value >= 0 ? .green : .red
-                )
-            }
-        }
-    }
-}
-
 /// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
     let label: String
@@ -1533,154 +1315,37 @@ struct SummaryStat: View {
     }
 }
 
-/// One captioned column in the summary bar, sized to line up with the
-/// category pills below it.
-struct SummaryColumn: View {
-    let label: String
-    let value: String
-    var valueColor: Color = .primary
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.footnote.weight(.semibold))
-                .monospacedDigit()
-                .foregroundColor(valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.6)
-                .animatedAmount(value)
-        }
-        .frame(width: BudgetColumn.width, alignment: .trailing)
-    }
-}
-
-/// One amount cell in the budget table, in the PWA's pill style.
-struct BudgetAmountPill: View {
-    let text: String
-    var color: Color = .primary
-    var dimmed = false
-
-    var body: some View {
-        Text(text)
-            .font(.footnote)
-            .monospacedDigit()
-            .lineLimit(1)
-            .minimumScaleFactor(0.6)
-            .foregroundStyle(dimmed ? Color.secondary : color)
-            .animatedAmount(text)
-            .padding(.vertical, 3)
-            .frame(width: BudgetColumn.width, alignment: .trailing)
-            .contentShape(.rect)
-    }
-}
-
-/// A `BudgetAmountPill` with a small caption above it, naming the column
-/// ("Budgeted" / "Spent" / "Balance") the same way the pinned summary bar's
-/// columns are captioned. Used by the detailed group header's totals so a
-/// group row reads the same as the summary above it, rather than leaving the
-/// person to cross-reference bare numbers against the summary's labels.
-private struct CaptionedAmountPill: View {
-    let label: String
-    let text: String
-    var color: Color = .primary
-    var dimmed = false
-
-    var body: some View {
-        VStack(alignment: .trailing, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            BudgetAmountPill(text: text, color: color, dimmed: dimmed)
-        }
-        .frame(width: BudgetColumn.width, alignment: .trailing)
-    }
-}
-
-/// Group header row: collapse control and group name, plus the group's
-/// Budgeted, Spent and Balance totals in the table's three rightmost
-/// columns, each captioned the same way the pinned summary bar is.
-///
-/// The way to hide/show the group depends on the display style:
-/// - **Clean style** uses a three‑dot ellipsis menu (because section headers
-///   don't support swipe actions reliably).
-/// - **Detailed style** uses a swipe‑to‑hide gesture, matching category rows.
+/// Clean section header with collapse and visibility controls.
 struct BudgetGroupHeader: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let name: String
     let isCollapsed: Bool
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
-    /// The detailed style totals its columns here; the clean style's header
-    /// is a plain section title above the card, so it leaves this nil.
-    var totals: CategoryGroupTotals?
-    /// Income groups use the same header shell but have one meaningful total:
-    /// money received. It occupies the trailing column where expense groups
-    /// show their balance.
+    /// Income groups show the money received beside their name.
     var receivedTotal: Int? = nil
     let onToggleCollapse: () -> Void
-    /// Detailed tables omit currency symbols from their numeric columns;
-    /// clean headers retain the app-wide currency presentation.
-    var usesTableNumberFormat = false
-    /// The detailed style reserves two lines so group rows stay equal-height
-    /// whether names wrap or not (GH #252); the clean style's plain section
-    /// titles keep their natural height.
-    var reservesTwoLines = false
     var body: some View {
         HStack(spacing: 8) {
             Button(action: onToggleCollapse) {
-                HStack(alignment: .top, spacing: BudgetColumn.spacing) {
-                    // Nested so the chevron centers against the name (which can
-                    // run one or two lines) rather than pinning to the top of
-                    // the row alongside the totals' captions.
-                    HStack(spacing: BudgetColumn.spacing) {
+                HStack(alignment: .top, spacing: 4) {
+                    // Keep the chevron centered against a name that can wrap.
+                    HStack(spacing: 4) {
                         DisclosureChevron(
                             isExpanded: !isCollapsed,
                             font: .caption2.weight(.semibold)
                         )
                         .foregroundStyle(.secondary)
-                        if reservesTwoLines {
-                            TwoLineName(
-                                text: name,
-                                font: .subheadline.weight(.semibold),
-                                minimumScaleFactor: 0.85
-                            )
+                        Text(name)
+                            .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
-                        } else {
-                            Text(name)
-                                .font(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(2)
-                                .minimumScaleFactor(0.85)
-                        }
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.85)
                     }
                     Spacer(minLength: 4)
-                    if let totals {
-                        CaptionedAmountPill(
-                            label: "Budgeted",
-                            text: budgetStore.displayBudgetCell(totals.budgeted),
-                            dimmed: totals.budgeted == 0
-                        )
-                        CaptionedAmountPill(
-                            label: "Spent",
-                            text: budgetStore.displayBudgetCell(totals.spent),
-                            dimmed: totals.spent == 0
-                        )
-                        CaptionedAmountPill(
-                            label: "Balance",
-                            text: budgetStore.displayBudgetCell(totals.balance),
-                            // Same three-way treatment as the category rows, so a
-                            // group that lands on zero doesn't read as healthy.
-                            color: totals.balance < 0
-                                ? .red
-                                : (totals.balance == 0 ? .secondary : .green)
-                        )
-                    } else if let receivedTotal {
-                        Text("Received \(receivedText(receivedTotal))")
+                    if let receivedTotal {
+                        Text("Received \(budgetStore.displayBalance(receivedTotal))")
                             .font(.subheadline.weight(.semibold))
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -1692,15 +1357,15 @@ struct BudgetGroupHeader: View {
             }
             .buttonStyle(.plain)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint("Toggles the group's categories")
+            .accessibilityHint(ReportStrings.text("Toggles the group's categories", locale: locale, bundle: .main))
 
-            if budgetStore.budgetDisplayStyle == .clean, let onSetHidden {
+            if let onSetHidden {
                 Menu {
                     Button {
                         onSetHidden(!isHidden)
                     } label: {
                         Label(
-                            isHidden ? "Show Group" : "Hide Group",
+                            ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
                             systemImage: isHidden ? "eye" : "eye.slash"
                         )
                     }
@@ -1708,54 +1373,20 @@ struct BudgetGroupHeader: View {
                     Image(systemName: "ellipsis")
                         .frame(minWidth: 32, minHeight: 44)
                 }
-                .accessibilityLabel("Options for \(name)")
+                .accessibilityLabel(ReportStrings.format("Options for %@", name, locale: locale, bundle: .main))
             }
         }
         .opacity(isHidden ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if budgetStore.budgetDisplayStyle == .detailed, let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
     }
 
-    /// The pills are decoration to VoiceOver once the button carries its own
-    /// label, so the totals have to be spoken here or they're lost. Currency
-    /// formatting, not the table's symbol-less cells, reads better aloud.
     private var accessibilityLabel: String {
-        let state = isCollapsed ? "collapsed" : "expanded"
+        let state = isCollapsed
+            ? ReportStrings.text("collapsed", locale: locale, bundle: .main)
+            : ReportStrings.text("expanded", locale: locale, bundle: .main)
         if let receivedTotal {
-            return "\(name), \(state), received \(budgetStore.displayBalance(receivedTotal))"
+            return ReportStrings.format("%@, %@, received %@", name, state, budgetStore.displayBalance(receivedTotal), locale: locale, bundle: .main)
         }
-        guard let totals else { return "\(name), \(state)" }
-        return Self.totalsAccessibilityLabel(
-            name: name,
-            isCollapsed: isCollapsed,
-            budgeted: budgetStore.displayBalance(totals.budgeted),
-            spent: budgetStore.displayBalance(totals.spent),
-            balance: budgetStore.displayBalance(totals.balance)
-        )
-    }
-
-    nonisolated static func totalsAccessibilityLabel(
-        name: String,
-        isCollapsed: Bool,
-        budgeted: String,
-        spent: String,
-        balance: String
-    ) -> String {
-        "\(name), \(isCollapsed ? "collapsed" : "expanded"), budgeted \(budgeted), spent \(spent), balance \(balance)"
-    }
-
-    private func receivedText(_ amount: Int) -> String {
-        usesTableNumberFormat
-            ? budgetStore.displayBudgetCell(amount)
-            : budgetStore.displayBalance(amount)
+        return ReportStrings.format("%@, %@", name, state, locale: locale, bundle: .main)
     }
 }
 
@@ -1763,44 +1394,41 @@ struct BudgetGroupHeader: View {
 /// budgets can budget income, so they also get a "Budgeted" caption.
 struct IncomeCategoryRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let income: IncomeCategory
     var isHidden = false
     var isDimmed = false
     var onSetHidden: ((Bool) -> Void)?
     var showsBudgeted = false
-    var isDetailed = false
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            HStack(spacing: isDetailed ? BudgetColumn.spacing : 8) {
+            HStack(spacing: 8) {
                 Button {
                     onShowTransactions(income, nil)
                 } label: {
                     TwoLineName(
                         text: income.categoryName,
-                        font: isDetailed ? .subheadline : .body,
+                        font: .body,
                         minimumScaleFactor: 0.85
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel("All transactions for \(income.categoryName)")
+                .accessibilityLabel(ReportStrings.format("All transactions for %@", income.categoryName, locale: locale, bundle: .main))
 
                 Spacer()
 
                 Button { onShowTransactions(income, income.month) } label: {
-                    if isDetailed {
-                        BudgetAmountPill(
-                            text: budgetStore.displayBudgetCell(income.received),
-                            color: income.received > 0 ? .green : .secondary
-                        )
-                    } else {
-                        Text(budgetStore.displayBalance(income.received))
-                            .foregroundColor(income.received > 0 ? .green : .secondary)
-                    }
+                    Text(budgetStore.displayBalance(income.received))
+                        .foregroundColor(income.received > 0 ? .green : .secondary)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel("Transactions for \(income.categoryName) in \(MonthPicker.title(for: income.month))")
+                .accessibilityLabel(BudgetCategoryAccessibility.monthTransactions(
+                    category: income.categoryName,
+                    month: MonthPicker.title(for: income.month, locale: locale),
+                    locale: locale
+                ))
             }
             if showsBudgeted {
                 Text("Budgeted: \(budgetStore.displayBalance(income.budgeted))")
@@ -1810,7 +1438,7 @@ struct IncomeCategoryRow: View {
         }
         .listRowInsets(EdgeInsets(
             top: 4,
-            leading: isDetailed ? 12 : 16,
+            leading: 16,
             bottom: 4,
             trailing: 16
         ))
@@ -1820,7 +1448,7 @@ struct IncomeCategoryRow: View {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
-                    Label(isHidden ? "Show" : "Hide", systemImage: isHidden ? "eye" : "eye.slash")
+                    Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
                 .tint(isHidden ? .accentColor : .secondary)
             }
@@ -1834,6 +1462,7 @@ struct IncomeCategoryRow: View {
 struct CategoryBudgetDetailSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let category: CategoryBudget
 
     @State private var name: String
@@ -1915,8 +1544,8 @@ struct CategoryBudgetDetailSheet: View {
                     .accessibilityIdentifier("categoryEditor.rollover")
                 } footer: {
                     Text(isTracking
-                        ? "Carry this category's balance into next month. Applies from \(MonthPicker.title(for: category.month)) onward."
-                        : "Carry overspending into next month instead of taking it from To Budget. Applies from \(MonthPicker.title(for: category.month)) onward.")
+                        ? ReportStrings.format("Carry this category's balance into next month. Applies from %@ onward.", MonthPicker.title(for: category.month, locale: locale), locale: locale, bundle: .main)
+                        : ReportStrings.format("Carry overspending into next month instead of taking it from To Budget. Applies from %@ onward.", MonthPicker.title(for: category.month, locale: locale), locale: locale, bundle: .main))
                 }
 
                 Section(
@@ -1924,7 +1553,7 @@ struct CategoryBudgetDetailSheet: View {
                     // A suggestion overwrites this month's amount, so name the
                     // month and show what's there now — otherwise the user
                     // confirms a budget write blind.
-                    LabeledContent(MonthPicker.title(for: category.month)) {
+                    LabeledContent(MonthPicker.title(for: category.month, locale: locale)) {
                         Text(budgetStore.displayBalance(category.budgeted))
                             .monospacedDigit()
                     }
@@ -1939,7 +1568,13 @@ struct CategoryBudgetDetailSheet: View {
                                 Task { await apply(suggestion) }
                             } label: {
                                 HStack {
-                                    Text(quickAssignTitle(for: suggestion.kind))
+                                        Text(Self.quickAssignTitle(
+                                            for: suggestion.kind,
+                                            isTracking: isTracking,
+                                            historyCount: history.count,
+                                            locale: locale,
+                                            bundle: .main
+                                        ))
                                         .foregroundStyle(.tint)
                                     Spacer(minLength: 12)
                                     Text(budgetStore.displayBalance(suggestion.amount))
@@ -1955,7 +1590,7 @@ struct CategoryBudgetDetailSheet: View {
                     }
                     },
                     header: {
-                        Text(isTracking ? "Quick Budget" : "Quick Assign")
+                        Text(ReportStrings.text(isTracking ? "Quick Budget" : "Quick Assign", locale: locale, bundle: .main))
                             .accessibilityIdentifier("categoryEditor.quickAssignHeader")
                     },
                     footer: {
@@ -2009,22 +1644,22 @@ struct CategoryBudgetDetailSheet: View {
         Section(
             content: {
                 if let goal = category.goal, let difference = category.differenceToGoal {
-                    LabeledContent("Status") {
+                    LabeledContent(ReportStrings.text("Status", locale: locale, bundle: .main)) {
                         if difference == 0 {
                             Text("Fully Funded").foregroundStyle(.green)
                         } else if difference > 0 {
-                            Text("Overfunded (\(budgetStore.displayBalance(difference)))")
+                            Text(ReportStrings.format("Overfunded (%@)", budgetStore.displayBalance(difference), locale: locale, bundle: .main))
                                 .foregroundStyle(.green)
                         } else {
-                            Text("Underfunded (\(budgetStore.displayBalance(difference)))")
+                            Text(ReportStrings.format("Underfunded (%@)", budgetStore.displayBalance(difference), locale: locale, bundle: .main))
                                 .foregroundStyle(.orange)
                         }
                     }
-                    LabeledContent("Goal Type", value: category.longGoal ? "Goal" : "Automation")
-                    LabeledContent("Goal") {
+                    LabeledContent(ReportStrings.text("Goal Type", locale: locale, bundle: .main), value: ReportStrings.text(category.longGoal ? "Goal" : "Automation", locale: locale, bundle: .main))
+                    LabeledContent(ReportStrings.text("Goal", locale: locale, bundle: .main)) {
                         Text(budgetStore.displayBalance(goal)).monospacedDigit()
                     }
-                    LabeledContent(category.longGoal ? "Balance" : "Budgeted") {
+                    LabeledContent(ReportStrings.text(category.longGoal ? "Balance" : "Budgeted", locale: locale, bundle: .main)) {
                         Text(budgetStore.displayBalance(category.goalTrackedAmount))
                             .monospacedDigit()
                     }
@@ -2063,7 +1698,7 @@ struct CategoryBudgetDetailSheet: View {
         case .applied:
             dismiss()
         case .upToDate:
-            errorMessage = "No templates to apply for this category."
+            errorMessage = ReportStrings.text("No templates to apply for this category.", locale: locale, bundle: .main)
             isApplyingTemplate = false
         case .errors(let errors):
             errorMessage = errors.joined(separator: "\n")
@@ -2083,13 +1718,28 @@ struct CategoryBudgetDetailSheet: View {
         history = await fetchedHistory
     }
 
-    private func quickAssignTitle(for kind: QuickAssignSuggestion.Kind) -> String {
+    nonisolated static func quickAssignTitle(
+        for kind: QuickAssignSuggestion.Kind,
+        isTracking: Bool,
+        historyCount: Int,
+        locale: Locale,
+        bundle: Bundle
+    ) -> String {
         switch kind {
-        case .spentLastMonth: "Spent Last Month"
-        case .averageSpent: "Average Spent (\(history.count) Months)"
-        case .assignedLastMonth: isTracking ? "Budgeted Last Month" : "Assigned Last Month"
-        case .resetAvailable: isTracking ? "Reset Balance to Zero" : "Reset Available to Zero"
-        case .setToZero: isTracking ? "Set Budget to Zero" : "Set Assigned to Zero"
+        case .spentLastMonth: ReportStrings.text("Spent Last Month", locale: locale, bundle: bundle)
+        case .averageSpent: ReportStrings.localized("Average Spent (\(historyCount) Months)", locale: locale, bundle: bundle)
+        case .assignedLastMonth:
+            isTracking
+                ? ReportStrings.text("Budgeted Last Month", locale: locale, bundle: bundle)
+                : ReportStrings.text("Assigned Last Month", locale: locale, bundle: bundle)
+        case .resetAvailable:
+            isTracking
+                ? ReportStrings.text("Reset Balance to Zero", locale: locale, bundle: bundle)
+                : ReportStrings.text("Reset Available to Zero", locale: locale, bundle: bundle)
+        case .setToZero:
+            isTracking
+                ? ReportStrings.text("Set Budget to Zero", locale: locale, bundle: bundle)
+                : ReportStrings.text("Set Assigned to Zero", locale: locale, bundle: bundle)
         }
     }
 
@@ -2163,12 +1813,16 @@ extension CategoryProgressState {
     }
 
     var statusText: String {
+        statusText(locale: .autoupdatingCurrent)
+    }
+
+    func statusText(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .overspent: "Overspent"
-        case .spent: "Fully spent"
-        case .spending: "Partially spent"
-        case .funded: "Funded"
-        case .unassigned: "No money assigned"
+        case .overspent: ReportStrings.text("budget.status.overspent", locale: locale, bundle: bundle)
+        case .spent: ReportStrings.text("budget.status.fullySpent", locale: locale, bundle: bundle)
+        case .spending: ReportStrings.text("budget.status.partiallySpent", locale: locale, bundle: bundle)
+        case .funded: ReportStrings.text("budget.status.funded", locale: locale, bundle: bundle)
+        case .unassigned: ReportStrings.text("budget.status.noMoneyAssigned", locale: locale, bundle: bundle)
         }
     }
 }
@@ -2176,6 +1830,7 @@ extension CategoryProgressState {
 /// Spent-vs-available bar for a budget row. Fill and color mirror the row's
 /// Available amount: green while money remains, red once overspent.
 struct CategoryProgressBar: View {
+    @Environment(\.locale) private var locale
     let fraction: Double
     let state: CategoryProgressState
 
@@ -2198,20 +1853,27 @@ struct CategoryProgressBar: View {
         // edit is visible in the row itself and not only in the pill.
         .animation(AppAnimation.amount, value: fraction)
         .accessibilityElement()
-        .accessibilityLabel("\(state.statusText), spent \(Int((fraction * 100).rounded())) percent")
+        .accessibilityLabel(ReportStrings.format(
+            "%@, spent %lld percent of available",
+            state.statusText(locale: locale, bundle: .main),
+            Int64((fraction * 100).rounded()),
+            locale: locale,
+            bundle: .main
+        ))
     }
 }
 
 /// A deliberately quiet status cue for budget rows. The category detail sheet
 /// carries the full plain-language status so the main budget remains scannable.
 struct CompactCategoryStatusDot: View {
+    @Environment(\.locale) private var locale
     let state: CategoryProgressState
 
     var body: some View {
         Circle()
             .fill(state.tint)
             .frame(width: 7, height: 7)
-            .accessibilityLabel(state.statusText)
+            .accessibilityLabel(state.statusText(locale: locale, bundle: .main))
             .accessibilityIdentifier("categoryStatusDot")
     }
 }
@@ -2221,6 +1883,7 @@ struct CompactCategoryStatusDot: View {
 struct EditBudgetAmountSheet: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let category: CategoryBudget
 
     @State private var amountText: String
@@ -2246,7 +1909,7 @@ struct EditBudgetAmountSheet: View {
                         autofocus: true
                     )
                 } header: {
-                    Text("Budgeted in \(MonthPicker.title(for: category.month))")
+                    Text(ReportStrings.format("Budgeted in %@", MonthPicker.title(for: category.month, locale: locale), locale: locale, bundle: .main))
                 } footer: {
                     if let errorMessage {
                         Text(errorMessage)
@@ -2296,22 +1959,23 @@ struct EditBudgetAmountSheet: View {
 
 struct MonthPicker: View {
     @Binding var selectedMonth: String
+    @Environment(\.locale) private var locale
 
     var body: some View {
         Menu {
             Picker("Month", selection: $selectedMonth) {
                 ForEach(monthOptions, id: \.self) { month in
-                    Text(Self.title(for: month)).tag(month)
+                    Text(Self.title(for: month, locale: locale)).tag(month)
                 }
             }
         } label: {
-            Text(Self.shortTitle(for: selectedMonth))
+            Text(Self.shortTitle(for: selectedMonth, locale: locale))
                 .font(.headline)
                 .lineLimit(1)
         }
         // The abbreviation is a layout constraint, not what the month is
         // called — VoiceOver still reads it in full.
-        .accessibilityLabel(Self.title(for: selectedMonth))
+        .accessibilityLabel(Self.title(for: selectedMonth, locale: locale))
     }
 
     /// Next month back through the prior year, newest first, padded with the
@@ -2326,33 +1990,51 @@ struct MonthPicker: View {
         return months.reversed()
     }
 
-    nonisolated static func title(for month: String) -> String {
+    nonisolated static func title(for month: String, locale: Locale = .autoupdatingCurrent) -> String {
         guard let date = date(fromMonth: month) else {
             return month
         }
-        return monthTitleFormatter.string(from: date)
+        return Self.formatter(template: "yMMMM", locale: locale).string(from: date)
     }
 
     /// `title(for:)` abbreviated to a fixed-ish width for the toolbar stepper.
-    nonisolated static func shortTitle(for month: String) -> String {
+    nonisolated static func shortTitle(for month: String, locale: Locale = .autoupdatingCurrent) -> String {
         guard let date = date(fromMonth: month) else {
             return month
         }
-        return monthShortTitleFormatter.string(from: date)
+        return Self.formatter(template: "yMMM", locale: locale).string(from: date)
+    }
+
+    private nonisolated static func formatter(template: String, locale: Locale) -> DateFormatter {
+        let formatter = DateFormatter()
+        formatter.locale = locale
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = DateFormatter.dateFormat(fromTemplate: template, options: 0, locale: locale) ?? template
+        return formatter
     }
 
     nonisolated static func date(fromMonth month: String) -> Date? {
-        let parts = month.split(separator: "-")
+          let parts = month.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2,
+              parts[0].count == 4,
+              parts[1].count == 2,
+              parts[0].allSatisfy(\.isNumber),
+              parts[1].allSatisfy(\.isNumber),
               let year = Int(parts[0]),
-              let monthNumber = Int(parts[1]) else {
+              year > 0,
+              let monthNumber = Int(parts[1]),
+              (1...12).contains(monthNumber) else {
             return nil
         }
         var components = DateComponents()
         components.year = year
         components.month = monthNumber
         components.day = 1
-        return Calendar.current.date(from: components)
+        var calendar = Calendar(identifier: .gregorian)
+        guard let utc = TimeZone(secondsFromGMT: 0) else { return nil }
+        calendar.timeZone = utc
+        return calendar.date(from: components)
     }
 }
 

@@ -559,8 +559,8 @@ struct SyncConvergenceFixtureTests {
     }
 
     /// Mirrors SyncClient.receiveMessages: per-field LWW filter via
-    /// filterNewMessages, apply the winners, then dedup-insert into
-    /// messages_crdt and fold only newly inserted timestamps into the merkle
+    /// filterNewMessages, atomically apply the winners and dedup-insert into
+    /// messages_crdt, then fold only newly inserted timestamps into the merkle
     /// trie. Intentionally omits the `clock.receive` step and the post-insert
     /// `merkle.pruned()` step from receiveMessages — if those acquire
     /// state-affecting behavior this helper must be revisited.
@@ -570,8 +570,7 @@ struct SyncConvergenceFixtureTests {
         merkle: inout MerkleTree
     ) throws {
         let newMessages = try database.filterNewMessages(batch)
-        try database.applyMessages(newMessages)
-        let inserted = try database.insertMessages(batch)
+        let inserted = try database.applyMessagesAndInsertMessages(batch, applying: newMessages)
         for message in inserted {
             merkle = merkle.inserting(message.timestamp)
         }

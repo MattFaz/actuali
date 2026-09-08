@@ -184,6 +184,7 @@ struct RuleActionEditor: View {
 /// The value half of a condition or action, shaped by the field's type.
 struct RuleValueEditor: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Binding var value: RuleValue
     let field: String
     let op: String
@@ -229,8 +230,12 @@ struct RuleValueEditor: View {
     }
 
     private var placeholder: String {
-        if op == "matches" { return "Regular expression" }
-        return isMultiValue ? "Comma-separated values" : "Value"
+        if op == "matches" {
+            return String(localized: RuleValueEditorLocalization.regularExpression, locale: locale)
+        }
+        return isMultiValue
+            ? String(localized: RuleValueEditorLocalization.commaSeparatedValues, locale: locale)
+            : String(localized: RuleValueEditorLocalization.value, locale: locale)
     }
 
     // MARK: - Text
@@ -288,7 +293,13 @@ struct RuleValueEditor: View {
             NavigationLink {
                 RuleIdMultiPicker(field: field, value: $value)
             } label: {
-                LabeledContent("Values", value: "\(value.listValue?.count ?? 0) selected")
+                LabeledContent(
+                    String(localized: RuleValueEditorLocalization.values, locale: locale),
+                    value: RuleValueEditorLocalization.selectedCount(
+                        value.listValue?.count ?? 0,
+                        locale: locale
+                    )
+                )
             }
         } else {
             Picker("Value", selection: Binding(
@@ -311,8 +322,14 @@ struct RuleValueEditor: View {
             // A between value is a `{num1, num2}` object; feeding it to the
             // single-amount field would clobber it with a scalar the engine
             // can't evaluate and the web client refuses to load.
-            RuleAmountField(label: "From", value: betweenBinding("num1"))
-            RuleAmountField(label: "To", value: betweenBinding("num2"))
+            RuleAmountField(
+                label: String(localized: RuleValueEditorLocalization.from, locale: locale),
+                value: betweenBinding("num1")
+            )
+            RuleAmountField(
+                label: String(localized: RuleValueEditorLocalization.to, locale: locale),
+                value: betweenBinding("num2")
+            )
         } else {
             RuleAmountField(value: $value)
         }
@@ -381,6 +398,25 @@ struct RuleValueEditor: View {
                 value = .string(String(format: "%04d-%02d-%02d", ymd / 10000, (ymd % 10000) / 100, ymd % 100))
             }
         ), displayedComponents: .date)
+    }
+}
+
+enum RuleValueEditorLocalization {
+    static let commaSeparatedValues: String.LocalizationValue = "Comma-separated values"
+    static let from: String.LocalizationValue = "From"
+    static let regularExpression: String.LocalizationValue = "Regular expression"
+    static let to: String.LocalizationValue = "To"
+    static let value: String.LocalizationValue = "Value"
+    static let values: String.LocalizationValue = "Values"
+
+    static func selectedCount(
+        _ count: Int,
+        locale: Locale = .current,
+        bundle: Bundle = .main
+    ) -> String {
+         String(localized: "\(count) selected",
+             bundle: ReportStrings.localizedBundle(for: locale, in: bundle),
+             locale: locale)
     }
 }
 

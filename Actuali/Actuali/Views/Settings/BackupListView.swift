@@ -1,8 +1,14 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct BackupListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @State private var pendingRestore: Backup?
+    @State private var showingFolderPicker = false
+    @State private var destinationName: String?
+    @State private var lastMirroredDate: Date?
+    @State private var lastMirrorError: String?
+    @State private var destinationErrorMessage: String?
 
     private static let dateFormatter: DateFormatter = {
         let formatter = DateFormatter()
@@ -18,46 +24,124 @@ struct BackupListView: View {
         List {
             if hasLatest {
                 Section {
-                    Button("Revert to Original Version") {
+                    Button(String(localized: "Revert to Original Version")) {
                         Task { await budgetStore.revertToLatest() }
                     }
                 } header: {
-                    Text("You're Working From a Backup")
+                    Text(String(localized: "You're Working From a Backup"))
                 } footer: {
-                    Text("Reverting restores the budget exactly as it was before the backup was loaded.")
+                    Text(String(localized: "Reverting restores the budget exactly as it was before the backup was loaded."))
+                }
+            }
+
+            Section {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "Backup Location"))
+                            .foregroundStyle(.primary)
+                        if let name = destinationName {
+                            HStack(spacing: 4) {
+                                Image(systemName: "folder")
+                                Text(name)
+                            }
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                            if let error = lastMirrorError {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "exclamationmark.triangle")
+                                    Text(String(localized: "Mirror failed: \(error)"))
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.red)
+                            } else if let date = lastMirroredDate {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle")
+                                    Text(String(localized: "Mirrored \(Self.dateFormatter.string(from: date))"))
+                                }
+                                .font(.caption2)
+                                .foregroundStyle(.secondary)
+                            }
+                        } else {
+                            Text(String(localized: "Default (App Storage)"))
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    Spacer()
+                    Button(destinationName == nil ? String(localized: "Choose Folder") : String(localized: "Change")) {
+                        showingFolderPicker = true
+                    }
+                    .buttonStyle(.bordered)
+                }
+
+                if destinationName != nil {
+                    Button(String(localized: "Reset to Default"), role: .destructive) {
+                        Task {
+                            await BackupDestinationManager.shared.clearDestination()
+                            await refreshDestinationState()
+                        }
+                    }
+                }
+            } header: {
+                Text(String(localized: "Destination"))
+            } footer: {
+                if destinationName != nil {
+                    Text(String(localized: "Backups are saved locally on this device and automatically mirrored to your chosen folder under Actuali/<budgetId>/."))
+                } else {
+                    Text(String(localized: "Backups are stored safely in Actuali's private app storage. You can choose a custom folder (such as an iCloud Drive folder) to automatically mirror every backup there."))
                 }
             }
 
             Section {
                 if archives.isEmpty {
-                    Text("No backups yet")
+                    Text(String(localized: "No backups yet"))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(archives) { backup in
                         if case .archive(let id, let date) = backup {
-                            Button {
-                                pendingRestore = backup
-                            } label: {
-                                Text(Self.dateFormatter.string(from: date))
-                            }
-                            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+                            HStack {
+                                Button {
+                                    pendingRestore = backup
+                                } label: {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(Self.dateFormatter.string(from: date))
+                                            .foregroundStyle(.primary)
+                                        Text(String(localized: "Tap to restore"))
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+
                                 if let url = budgetStore.backupFileURL(id) {
                                     ShareLink(item: url) {
                                         Label("Export", systemImage: "square.and.arrow.up")
+                                            .font(.subheadline)
                                     }
+                                    .buttonStyle(.bordered)
                                 }
                             }
                         }
                     }
                 }
+            } header: {
+                if !archives.isEmpty {
+                    Text(String(localized: "Available Backups"))
+                }
             } footer: {
                 if !hasLatest && !archives.isEmpty {
-                    Text("Restoring a backup replaces the current budget. Your current data is saved first so you can revert. Swipe a backup to export it for import into Actual on the web or desktop.")
+                    Text(String(localized: "Backups are stored in Actuali's private app storage on this device. Tap Export to save to Files, iCloud Drive, or AirDrop. Tapping a backup restores it (your current data is saved first so you can revert)."))
                 }
             }
         }
-        .navigationTitle("Backups")
-        .task { await budgetStore.refreshBackups() }
+        .navigationTitle(String(localized: "Backups"))
+        .task {
+            await refreshDestinationState()
+            await budgetStore.refreshBackups()
+        }
         .confirmationDialog(
             "Restore this backup?",
             isPresented: Binding(
@@ -80,6 +164,66 @@ struct BackupListView: View {
                 Text("Your current data is saved first so you can revert.")
             }
         }
+        .fileImporter(
+            isPresented: $showingFolderPicker,
+            allowedContentTypes: [.folder]
+        ) { result in
+            switch result {
+            case .success(let url):
+                guard url.startAccessingSecurityScopedResource() else {
+                    destinationErrorMessage = BackupDestinationError.accessDenied.localizedDescription
+                    return
+                }
+                defer { url.stopAccessingSecurityScopedResource() }
+                do {
+                    let bookmarkData = try url.bookmarkData(
+                        options: [],
+                        includingResourceValuesForKeys: nil,
+                        relativeTo: nil
+                    )
+                    let folderName = url.lastPathComponent
+                    Task {
+                        await BackupDestinationManager.shared.saveDestination(
+                            bookmarkData: bookmarkData,
+                            folderName: folderName
+                        )
+                        await refreshDestinationState()
+                        guard let budgetId = budgetStore.currentBudgetId else { return }
+                        let urls = archives.compactMap { backup -> URL? in
+                            if case .archive(let id, _) = backup {
+                                return budgetStore.backupFileURL(id)
+                            }
+                            return nil
+                        }
+                        await BackupDestinationManager.shared.mirrorExistingBackups(budgetId: budgetId, urls: urls)
+                        await refreshDestinationState()
+                    }
+                } catch {
+                    destinationErrorMessage = error.localizedDescription
+                }
+            case .failure(let error):
+                destinationErrorMessage = error.localizedDescription
+            }
+        }
+        .alert(
+            String(localized: "Couldn't Set Backup Folder"),
+            isPresented: Binding(
+                get: { destinationErrorMessage != nil },
+                set: { if !$0 { destinationErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) { destinationErrorMessage = nil }
+        } message: {
+            if let message = destinationErrorMessage {
+                Text(message)
+            }
+        }
+    }
+
+    private func refreshDestinationState() async {
+        destinationName = await BackupDestinationManager.shared.destinationName
+        lastMirroredDate = await BackupDestinationManager.shared.lastMirroredDate
+        lastMirrorError = await BackupDestinationManager.shared.lastMirrorError
     }
 }
 

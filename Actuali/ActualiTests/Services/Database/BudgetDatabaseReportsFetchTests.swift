@@ -111,6 +111,37 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(transfer?.transferAcct == "acct-savings")
     }
 
+    /// Merging payees leaves the old id on the transaction row; Actual's
+    /// transaction view resolves it through payee_mapping, so reports must
+    /// see the surviving payee or a Payee-grouped report drops the history.
+    @Test func resolvesMergedPayeeThroughMapping() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: """
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-kept', 'Coffee Shop', NULL);
+
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-kept',   'payee-kept'),
+                    ('payee-merged', 'payee-kept');
+
+                INSERT INTO transactions (id, acct, description, amount, date) VALUES
+                    ('t-old',  'acct-checking', 'payee-merged', -550, 20260601),
+                    ('t-new',  'acct-checking', 'payee-kept',   -450, 20260602),
+                    ('t-none', 'acct-checking', NULL,           -100, 20260603);
+            """)
+        }
+
+        let txns = try await db.fetchTransactionsForReports()
+        let old = txns.first { $0.id == "t-old" }
+        #expect(old?.payeeId == "payee-kept")
+        #expect(old?.payeeName == "Coffee Shop")
+        #expect(txns.first { $0.id == "t-new" }?.payeeId == "payee-kept")
+        #expect(txns.first { $0.id == "t-none" }?.payeeId == nil)
+    }
+
     @Test func excludesSplitParentsAndOrphanedChildren() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
@@ -147,26 +178,29 @@ struct BudgetDatabaseReportsFetchTests {
 
         try await db.dbQueueForTesting.write { conn in
             // A synced budget file carries upstream columns the app's own
-            // migration doesn't create; add them so the fetch reads real values.
+            // migrations don't create; add them so the fetch reads real values.
+            // (show_trend_lines is already added by migration 1780099200000.)
             try conn.execute(sql: """
                 ALTER TABLE custom_reports ADD COLUMN date_static INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN include_current INTEGER DEFAULT 0;
                 ALTER TABLE custom_reports ADD COLUMN sort_by TEXT DEFAULT 'desc';
+                ALTER TABLE custom_reports ADD COLUMN trim_intervals INTEGER DEFAULT 0;
 
                 INSERT INTO custom_reports
                     (id, name, mode, group_by, balance_type, interval, graph_type,
                      date_range, date_static, start_date, end_date, include_current,
                      show_empty, show_offbudget, show_hidden, show_uncategorized,
-                     sort_by, conditions, conditions_op, tombstone)
+                     sort_by, show_trend_lines, trim_intervals,
+                     conditions, conditions_op, tombstone)
                 VALUES
                     ('r1', 'Category Spending', 'total', 'Category', 'Payment', 'Monthly',
                      'BarGraph', 'All time', 0, '2025-08-30', '2026-04-26', 1,
-                     0, 0, 0, 0, 'name',
+                     0, 0, 0, 0, 'name', 1, 1,
                      '[{"field":"transfer","op":"is","value":false,"type":"boolean"}]',
                      'and', 0),
                     ('r2', 'Deleted', 'total', 'Category', 'Payment', 'Monthly',
                      'BarGraph', 'All time', 0, NULL, NULL, 1,
-                     0, 0, 0, 0, 'desc', NULL, 'and', 1);
+                     0, 0, 0, 0, 'desc', 0, 0, NULL, 'and', 1);
             """)
         }
 
@@ -182,6 +216,8 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(r1.dateStatic == false)
         #expect(r1.includeCurrent == true)
         #expect(r1.sortBy == "name")
+        #expect(r1.showTrendLines == true)
+        #expect(r1.trimIntervals == true)
         #expect(r1.startDate == "2025-08-30")
         #expect(r1.endDate == "2026-04-26")
         #expect(r1.conditions?.first?.field == "transfer")
@@ -216,6 +252,8 @@ struct BudgetDatabaseReportsFetchTests {
         #expect(r1.dateStatic == false)
         #expect(r1.includeCurrent == false)
         #expect(r1.sortBy == "desc")
+        #expect(r1.showTrendLines == false)
+        #expect(r1.trimIntervals == false)
         #expect(r1.conditions == nil)
         #expect(r1.conditionsOp == "or")
     }

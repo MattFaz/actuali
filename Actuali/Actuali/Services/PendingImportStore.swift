@@ -9,11 +9,26 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "PendingIm
 @MainActor
 final class PendingImportStore: ObservableObject {
 
+    enum StoreError: LocalizedError, Equatable {
+        case saveFailed(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .saveFailed(let message):
+                return String(localized: "Failed to save pending imports: \(message)")
+            }
+        }
+    }
+
     static let shared = PendingImportStore()
 
     @Published private(set) var imports: [PendingImport] = []
 
     var count: Int { imports.count }
+
+    func visibleImports() -> [PendingImport] {
+        imports
+    }
 
     private let fileURL: URL
 
@@ -31,20 +46,23 @@ final class PendingImportStore: ObservableObject {
     }
     #endif
 
-    func add(_ item: PendingImport) {
-        imports.insert(item, at: 0)
-        save()
+    func add(_ item: PendingImport) throws {
+        var updated = imports
+        updated.insert(item, at: 0)
+        try save(updated)
+        imports = updated
         logger.info("Queued pending import \(item.id, privacy: .public)")
     }
 
-    func remove(id: UUID) {
-        imports.removeAll { $0.id == id }
-        save()
+    func remove(id: UUID) throws {
+        let updated = imports.filter { $0.id != id }
+        try save(updated)
+        imports = updated
     }
 
-    func removeAll() {
-        imports.removeAll()
-        save()
+    func removeAll() throws {
+        try save([])
+        imports = []
     }
 
     // MARK: - Persistence
@@ -56,15 +74,33 @@ final class PendingImportStore: ObservableObject {
             imports = try JSONDecoder().decode([PendingImport].self, from: data)
         } catch {
             logger.error("Failed to load pending imports: \(error.localizedDescription, privacy: .public)")
+            do {
+                let backupURL = try preserveCorruptFile()
+                imports = []
+                try? save([])
+                logger.error("Recovered pending imports as an empty queue; corrupt data preserved at \(backupURL.path, privacy: .public)")
+            } catch {
+                logger.error("Could not preserve corrupt pending imports; original file was left untouched: \(error.localizedDescription, privacy: .public)")
+            }
         }
     }
 
-    private func save() {
+    private func preserveCorruptFile() throws -> URL {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyyMMdd-HHmmssSSS"
+        let backupURL = fileURL.deletingPathExtension()
+            .appendingPathExtension("corrupt-\(formatter.string(from: Date()))-\(UUID().uuidString).json")
+        try FileManager.default.copyItem(at: fileURL, to: backupURL)
+        return backupURL
+    }
+
+    private func save(_ imports: [PendingImport]) throws {
         do {
             let data = try JSONEncoder().encode(imports)
             try data.write(to: fileURL, options: .atomic)
         } catch {
             logger.error("Failed to save pending imports: \(error.localizedDescription, privacy: .public)")
+            throw StoreError.saveFailed(error.localizedDescription)
         }
     }
 }

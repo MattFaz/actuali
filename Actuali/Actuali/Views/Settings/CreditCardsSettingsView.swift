@@ -3,15 +3,27 @@ import SwiftUI
 /// View for managing credit card accounts and their monthly billing cycles.
 struct CreditCardsSettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
+    enum DueDateMode: CaseIterable, Hashable {
+        case daysAfter, dayOfMonth
+
+        var title: String {
+            switch self {
+            case .daysAfter: String(localized: "Days After")
+            case .dayOfMonth: String(localized: "Day of Month")
+            }
+        }
+    }
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
     @State private var selectedStatementDay = 15
+    @State private var selectedDueMode: DueDateMode = .daysAfter
     @State private var selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+    @State private var selectedDueDay = 1
     /// Dot-decimal amount as typed, the format `AmountInputField` binds to.
     /// Empty means "no limit set".
     @State private var selectedLimitText = ""
-
     private var configuredCards: [(account: Account, cycle: CreditCardCycle)] {
         let accountsById = Dictionary(uniqueKeysWithValues: budgetStore.accounts.map { ($0.id, $0) })
         return Self.sortedCards(budgetStore.activeCreditCardStatementDays.compactMap { accountId, _ in
@@ -21,18 +33,21 @@ struct CreditCardsSettingsView: View {
         })
     }
 
-    /// Soonest payment first. The name tie-break is what makes this a total
-    /// order: `daysUntilDue` clamps at 0, so every past-due card ties there, and
-    /// the input arrives from a `Dictionary` whose order is reseeded per launch.
-    /// `today` is sampled once rather than per comparison so the ordering can't
-    /// change underneath `sorted` at midnight.
+    /// Soonest payment first for cards with an unpaid balance; accounts with
+    /// zero (or positive/overpaid) balance sort at the very end. The name
+    /// tie-break makes this a total order: `daysUntilDue` clamps at 0, so every
+    /// past-due card ties there, and the input arrives from a `Dictionary` whose
+    /// order is reseeded per launch. `today` is sampled once rather than per
+    /// comparison so the ordering can't change underneath `sorted` at midnight.
     nonisolated static func sortedCards(
         _ cards: [(account: Account, cycle: CreditCardCycle)],
         today: DayDate = .today()
     ) -> [(account: Account, cycle: CreditCardCycle)] {
         cards.sorted {
-            ($0.cycle.daysUntilDue(for: today), $0.account.name)
-                < ($1.cycle.daysUntilDue(for: today), $1.account.name)
+            let zero0 = $0.account.balance >= 0 ? 1 : 0
+            let zero1 = $1.account.balance >= 0 ? 1 : 0
+            return (zero0, $0.cycle.daysUntilDue(for: today), $0.account.name)
+                < (zero1, $1.cycle.daysUntilDue(for: today), $1.account.name)
         }
     }
 
@@ -45,9 +60,9 @@ struct CreditCardsSettingsView: View {
 
     var body: some View {
         List {
-            Section("Configured Credit Cards") {
+            Section(String(localized: "Configured Credit Cards")) {
                 if configuredCards.isEmpty {
-                    Text("Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates.")
+                    Text(String(localized: "Mark accounts as credit cards and track their monthly billing cycles, cycle spend, and upcoming payment due dates."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 } else {
@@ -61,7 +76,16 @@ struct CreditCardsSettingsView: View {
                         Button {
                             selectedAccountId = item.account.id
                             selectedStatementDay = item.cycle.statementDay
-                            selectedDueOffset = item.cycle.dueOffsetDays
+                            switch item.cycle.paymentDue {
+                            case .daysAfter(let days):
+                                selectedDueMode = .daysAfter
+                                selectedDueOffset = days
+                                selectedDueDay = 1
+                            case .dayOfMonth(let day):
+                                selectedDueMode = .dayOfMonth
+                                selectedDueDay = day
+                                selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+                            }
                             selectedLimitText = limitText(for: item.account.id)
                             editingAccountId = item.account.id
                         } label: {
@@ -94,7 +118,7 @@ struct CreditCardsSettingsView: View {
 
             if budgetStore.syncDetachedByRestore {
                 Section {
-                    Text("Credit card settings sync with your budget. Re-download this budget to change them.")
+                    Text(String(localized: "Credit card settings sync with your budget. Re-download this budget to change them."))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -105,16 +129,19 @@ struct CreditCardsSettingsView: View {
                             selectedAccountId = first.id
                         }
                         selectedStatementDay = 15
+                        selectedDueMode = .daysAfter
                         selectedDueOffset = CreditCardCycle.defaultDueOffsetDays
+                        selectedDueDay = 1
                         selectedLimitText = ""
                         showingAddSheet = true
                     } label: {
-                        Label("Add Credit Card", systemImage: "plus")
+                        Label(String(localized: "Add Credit Card"), systemImage: "plus")
                     }
                 }
             }
+
         }
-        .navigationTitle("Credit Cards")
+        .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $showingAddSheet) {
             cardSheet(isEditing: false)
@@ -134,30 +161,45 @@ struct CreditCardsSettingsView: View {
                 Section {
                     if isEditing {
                         if let account = budgetStore.accounts.first(where: { $0.id == selectedAccountId }) {
-                            LabeledContent("Account", value: account.name)
+                            LabeledContent(String(localized: "Account"), value: account.name)
                         }
                     } else {
-                        Picker("Account", selection: $selectedAccountId) {
+                        Picker(String(localized: "Account"), selection: $selectedAccountId) {
                             ForEach(unconfiguredAccounts) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
                     }
 
-                    Picker("Statement Closing Day", selection: $selectedStatementDay) {
+                    Picker(String(localized: "Statement Closing Day"), selection: $selectedStatementDay) {
                         ForEach(1...31, id: \.self) { day in
-                            Text(dayOrdinal(day)).tag(day)
+                            Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                         }
                     }
 
-                    Picker("Payment Due After", selection: $selectedDueOffset) {
-                        ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
-                            Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                    Picker(String(localized: "Payment Due"), selection: $selectedDueMode) {
+                        ForEach(DueDateMode.allCases, id: \.self) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+
+                    if selectedDueMode == .daysAfter {
+                        Picker(String(localized: "Payment Due After"), selection: $selectedDueOffset) {
+                            ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
+                                Text(days == 1 ? String(localized: "1 Day") : String(format: String(localized: "%lld days"), Int64(days))).tag(days)
+                            }
+                        }
+                    } else {
+                        Picker(String(localized: "Payment Due Day"), selection: $selectedDueDay) {
+                            ForEach(1...31, id: \.self) { day in
+                                Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
+                            }
                         }
                     }
 
                     HStack {
-                        Text("Credit Limit")
+                        Text(String(localized: "Credit Limit"))
                         Spacer()
                         AmountInputField(
                             text: $selectedLimitText,
@@ -166,14 +208,14 @@ struct CreditCardsSettingsView: View {
                         )
                     }
                 } header: {
-                    Text("Card Details")
+                    Text(String(localized: "Card Details"))
                 } footer: {
-                    Text("The payment due date is the statement closing date plus this many days. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
+                    Text(String(localized: "The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip."))
                 }
 
                 if isEditing {
                     Section {
-                        Button("Remove Credit Card Tracking", role: .destructive) {
+                        Button(String(localized: "Remove Credit Card Tracking"), role: .destructive) {
                             Task {
                                 await budgetStore.setCreditCard(
                                     accountId: selectedAccountId,
@@ -186,22 +228,25 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
-            .navigationTitle(isEditing ? "Edit Card" : "Add Credit Card")
+            .navigationTitle(isEditing ? String(localized: "Edit Card") : String(localized: "Add Credit Card"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
+                    Button(String(localized: "Cancel")) {
                         showingAddSheet = false
                         editingAccountId = nil
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
+                    Button(String(localized: "Save")) {
                         Task {
+                            let paymentDue: CreditCardCycle.PaymentDue = (selectedDueMode == .dayOfMonth)
+                                ? .dayOfMonth(selectedDueDay)
+                                : .daysAfter(selectedDueOffset)
                             await budgetStore.setCreditCard(
                                 accountId: selectedAccountId,
                                 statementDay: selectedStatementDay,
-                                dueOffsetDays: selectedDueOffset,
+                                paymentDue: paymentDue,
                                 limit: enteredLimitCents
                             )
                         }
@@ -228,15 +273,6 @@ struct CreditCardsSettingsView: View {
         return String(format: "%.2f", Double(cents) / 100.0)
     }
 
-    private static let ordinalFormatter: NumberFormatter = {
-        let formatter = NumberFormatter()
-        formatter.numberStyle = .ordinal
-        return formatter
-    }()
-
-    private func dayOrdinal(_ n: Int) -> String {
-        Self.ordinalFormatter.string(from: NSNumber(value: n)) ?? "\(n)th"
-    }
 }
 
 /// Compact card row: name + balance on top, spend + due pill on bottom.
@@ -296,7 +332,7 @@ struct CreditCardCycleRow: View {
 
             // Row 2: cycle spend + days left + due pill
             HStack {
-                Text("Spend \(budgetStore.displayBalance(cycleSpend)) · \(cycle.daysRemainingInCycle())d left")
+                        Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
@@ -316,8 +352,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            "\(account.name), balance \(budgetStore.displayBalance(account.balance)), "
-                + "cycle spend \(budgetStore.displayBalance(cycleSpend)), \(cycle.dueSummary())"
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), cycle.dueSummary())
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

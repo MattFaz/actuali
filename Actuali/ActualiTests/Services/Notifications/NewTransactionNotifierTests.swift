@@ -25,7 +25,7 @@ struct NewTransactionNotifierTests {
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
             currencyCode: "USD")
 
-        #expect(content?.title == "New transaction")
+        #expect(content?.title == "1 new transaction")
         #expect(content?.body.contains("12.50") == true)
         #expect(content?.body.contains("Starbucks") == true)
         #expect(content?.body.localizedCaseInsensitiveContains("category") == false)
@@ -205,7 +205,7 @@ struct NewTransactionNotifierTests {
     }
 }
 
-private final class NotificationCenterSpy: NotificationPosting {
+private final class NotificationCenterSpy: NotificationPosting, @unchecked Sendable {
     var authorizationRequested = false
     var added: [UNNotificationRequest] = []
 
@@ -217,4 +217,6 @@ private final class NotificationCenterSpy: NotificationPosting {
     func add(_ request: UNNotificationRequest) async throws {
         added.append(request)
     }
+
+    func removePendingNotificationRequests(withIdentifiers identifiers: [String]) {}
 }

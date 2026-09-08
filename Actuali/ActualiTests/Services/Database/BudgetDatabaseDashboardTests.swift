@@ -229,3 +229,165 @@ struct ReportsPageSelectionTests {
         ) == nil)
     }
 }
+
+struct ReportsLoadRequestTests {
+
+    @Test func cancelledRequestCannotPublish() {
+        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1)
+
+        #expect(!ReportsTabView.shouldPublish(
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: true
+        ))
+    }
+
+    @Test func staleGenerationCannotPublish() {
+        #expect(!ReportsTabView.shouldPublish(
+            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
+            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 2),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func dataVersionChangeInvalidatesRequest() {
+        #expect(!ReportsTabView.shouldPublish(
+            request: ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1),
+            currentRequest: ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func previousDatabaseCannotPublish() {
+        let previousDatabase = NSObject()
+        let currentDatabase = NSObject()
+
+        #expect(!ReportsTabView.shouldPublish(
+            request: ReportsLoadRequest(
+                databaseID: ObjectIdentifier(previousDatabase),
+                dataVersion: 1,
+                generation: 1
+            ),
+            currentRequest: ReportsLoadRequest(
+                databaseID: ObjectIdentifier(currentDatabase),
+                dataVersion: 1,
+                generation: 1
+            ),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func currentRequestCanPublish() {
+        let request = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 2)
+
+        #expect(ReportsTabView.shouldPublish(
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func sameDataVersionKeepsRequestIdentityStable() {
+        let first = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
+        let second = ReportsLoadRequest(databaseID: nil, dataVersion: 2, generation: 1)
+
+        #expect(first == second)
+    }
+}
+
+struct DashboardLoadRequestTests {
+
+    @Test func localeChangeInvalidatesWidgetComputation() {
+        let english = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 1)
+        let french = WidgetComputationRequest(transactions: [], localeIdentifier: "fr_FR", dataVersion: 1)
+
+        #expect(english != french)
+    }
+
+    @Test func dataVersionChangeInvalidatesEqualTransactionsAndLocale() {
+        let previous = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 1)
+        let current = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 2)
+
+        #expect(previous != current)
+    }
+
+    private struct TestError: LocalizedError {
+        var errorDescription: String? { "report fetch failed" }
+    }
+
+    @Test func cancelledRequestCannotPublish() {
+        let request = DashboardLoadRequest(databaseID: nil, dataVersion: 1)
+
+        #expect(!DashboardView.shouldPublish(
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: true
+        ))
+    }
+
+    @Test func changedDataVersionCannotPublish() {
+        #expect(!DashboardView.shouldPublish(
+            request: DashboardLoadRequest(databaseID: nil, dataVersion: 1),
+            currentRequest: DashboardLoadRequest(databaseID: nil, dataVersion: 2),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func changedDatabaseCannotPublish() {
+        let previousDatabase = NSObject()
+        let currentDatabase = NSObject()
+
+        #expect(!DashboardView.shouldPublish(
+            request: DashboardLoadRequest(
+                databaseID: ObjectIdentifier(previousDatabase),
+                dataVersion: 1
+            ),
+            currentRequest: DashboardLoadRequest(
+                databaseID: ObjectIdentifier(currentDatabase),
+                dataVersion: 1
+            ),
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func currentRequestCanPublish() {
+        let request = DashboardLoadRequest(databaseID: nil, dataVersion: 2)
+
+        #expect(DashboardView.shouldPublish(
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: false
+        ))
+    }
+
+    @Test func currentFetchErrorIsPublished() {
+        let request = DashboardLoadRequest(databaseID: nil, dataVersion: 2)
+
+        #expect(DashboardView.errorMessageToPublish(
+            error: TestError(),
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: false
+        ) == "report fetch failed")
+    }
+
+    @Test func staleFetchErrorIsIgnored() {
+        #expect(DashboardView.errorMessageToPublish(
+            error: TestError(),
+            request: DashboardLoadRequest(databaseID: nil, dataVersion: 1),
+            currentRequest: DashboardLoadRequest(databaseID: nil, dataVersion: 2),
+            taskIsCancelled: false
+        ) == nil)
+    }
+
+    @Test func cancelledFetchErrorIsIgnored() {
+        let request = DashboardLoadRequest(databaseID: nil, dataVersion: 2)
+
+        #expect(DashboardView.errorMessageToPublish(
+            error: TestError(),
+            request: request,
+            currentRequest: request,
+            taskIsCancelled: true
+        ) == nil)
+    }
+}

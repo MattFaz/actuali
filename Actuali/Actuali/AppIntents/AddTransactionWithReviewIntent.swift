@@ -8,38 +8,38 @@ import Foundation
 struct AddTransactionWithReviewIntent: AppIntent {
     static let title: LocalizedStringResource = "Add Transaction with Review"
     static let description = IntentDescription(
-        "Open the add-transaction screen with fields pre-filled so you can review and save.",
-        categoryName: "Transactions"
+        LocalizedStringResource("Open the add-transaction screen with fields pre-filled so you can review and save."),
+        categoryName: LocalizedStringResource("Transactions")
     )
     static let openAppWhenRun = true
 
-    @Parameter(title: "Account")
+    @Parameter(title: LocalizedStringResource("Account"))
     var account: AccountEntity?
 
-    @Parameter(title: "Card or Account Hint", default: "")
+    @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
     // String, not Double, for the same reason as LogTransactionIntent:
     // Wallet's amount coerces to 0 as a Number for some cards (issue #41).
-    @Parameter(title: "Amount", default: "")
+    @Parameter(title: LocalizedStringResource("Amount"), default: "")
     var amount: String
 
-    @Parameter(title: "Payee", default: "")
+    @Parameter(title: LocalizedStringResource("Payee"), default: "")
     var payee: String
 
-    @Parameter(title: "Notes", default: "")
+    @Parameter(title: LocalizedStringResource("Notes"), default: "")
     var notes: String
 
-    @Parameter(title: "Category")
+    @Parameter(title: LocalizedStringResource("Category"))
     var category: CategoryEntity?
 
-    @Parameter(title: "Date")
+    @Parameter(title: LocalizedStringResource("Date"))
     var date: Date?
 
-    @Parameter(title: "Is Income", default: false)
+    @Parameter(title: LocalizedStringResource("Is Income"), default: false)
     var isIncome: Bool
 
-    @Parameter(title: "Cleared", default: false)
+    @Parameter(title: LocalizedStringResource("Cleared"), default: false)
     var cleared: Bool
 
     static var parameterSummary: some ParameterSummary {

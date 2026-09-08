@@ -10,20 +10,6 @@ enum TimeFrame {
         return cal
     }
 
-    private static let isoFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
-
-    private static let isoMonthFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM"
-        f.timeZone = TimeZone(identifier: "UTC")
-        return f
-    }()
-
     /// Returns `(start, end)` for a widget's time frame. `today` is the reference
     /// "now" — production passes `Date()`, tests pass a fixed date.
     static func resolve(_ tf: WidgetTimeFrame?, asOf today: Date) -> (Date, Date) {
@@ -79,11 +65,7 @@ enum TimeFrame {
     /// Parses "YYYY-MM" or "YYYY-MM-DD" to the first-of-month Date.
     private static func parseMonth(_ s: String?) -> Date? {
         guard let s else { return nil }
-        if let d = isoMonthFormatter.date(from: s) { return d }
-        if let d = isoFormatter.date(from: s) {
-            return monthStart(of: d)
-        }
-        return nil
+        return CanonicalDateParser.parseMonthStart(s)
     }
 
     private static func monthStart(of date: Date) -> Date {
@@ -153,18 +135,15 @@ enum TimeFrame {
     /// Parse a range start. YYYY-MM snaps to first-of-month, YYYY-MM-DD is used as-is.
     private static func parseRangeStart(_ s: String?) -> Date? {
         guard let s else { return nil }
-        if let d = isoFormatter.date(from: s) { return d }
-        if let d = isoMonthFormatter.date(from: s) { return d }  // already first-of-month
-        return nil
+        return CanonicalDateParser.parseMonthOrDay(s)
     }
 
     /// Parse a range end. YYYY-MM expands to end-of-month so the range is
     /// inclusive of the entire month, matching upstream behavior. YYYY-MM-DD
     /// is used as-is.
     private static func parseRangeEnd(_ s: String?) -> Date? {
-        guard let s else { return nil }
-        if let d = isoFormatter.date(from: s) { return d }
-        if let d = isoMonthFormatter.date(from: s) { return endOfMonth(d) }
-        return nil
+        guard let s, let d = CanonicalDateParser.parseMonthOrDay(s) else { return nil }
+        if s.count == 7 { return endOfMonth(d) }
+        return d
     }
 }

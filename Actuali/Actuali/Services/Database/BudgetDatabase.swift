@@ -4,6 +4,57 @@ import os
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetDatabase")
 
+enum BankSyncDatabaseError: Error, Equatable {
+    case bankSyncLinkChanged
+    case bankSyncRulesChanged
+    case bankSyncMaterializationStale
+    case bankSyncPendingPayeeConflict
+}
+
+struct BankSyncLocalLinkMigrationResult: Sendable, Equatable {
+    let staleAccountIds: Set<String>
+    let adoptedAccountIds: Set<String>
+}
+
+struct BankSyncRulesFingerprint: Sendable, Equatable {
+    let data: Data
+
+    static let empty = BankSyncRulesFingerprint(data: Data())
+}
+
+struct BankSyncRulesSnapshot {
+    let rules: [Rule]
+    let context: RuleContext
+    let fingerprint: BankSyncRulesFingerprint
+}
+
+struct BankSyncLinkProposal: Sendable {
+    let bank: Bank
+    let created: Bool
+    let revived: Bool
+}
+
+struct PreparedBankSyncInsert {
+    let transaction: Transaction
+    let messages: [CRDTMessage]
+    let pendingPayees: [Payee]
+    let maxLiveFinancialIdOccurrences: Int
+}
+
+struct BankSyncOpeningInsert {
+    let transaction: Transaction
+    let payee: Payee
+    let messages: [CRDTMessage]
+    let expectedInsertedIds: Set<String>
+}
+
+struct BankSyncOpeningUpdate {
+    let expectedAmount: Int
+    let transaction: Transaction
+    let messages: [CRDTMessage]
+    let expectedInsertedIds: Set<String>
+}
+
 // MARK: - Database Records (matching Actual's schema)
 
 struct AccountRecord: Codable, FetchableRecord, TableRecord {
@@ -162,6 +213,19 @@ struct PayeeMappingRecord: Codable, FetchableRecord, TableRecord {
 // Safe to share across actors: the only stored property is an immutable
 // GRDB `DatabaseQueue`, which serializes all access and is itself Sendable.
 final class BudgetDatabase: Sendable {
+    func messageTimestamps(dataset: String, row: String) throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT timestamp FROM messages_crdt
+                WHERE dataset = ? AND row = ?
+                ORDER BY timestamp
+                """, arguments: [dataset, row])
+        }
+    }
+    enum TransactionWriteError: Error, Equatable {
+        case incompleteFinancialIdMessages
+    }
+
     private let dbQueue: DatabaseQueue
 
     init(path: URL) throws {
@@ -252,6 +316,13 @@ final class BudgetDatabase: Sendable {
     // Tables added upstream after the original budget file was created. These run
     // unconditionally so CRDT messages targeting these tables have somewhere to land.
     private static let createTableMigrations: [(id: Int64, sql: String)] = [
+        (1780606215005, """
+            CREATE TABLE IF NOT EXISTS bank_sync_local_links (
+                account_id TEXT PRIMARY KEY,
+                external_account_id TEXT NOT NULL,
+                source TEXT NOT NULL
+            )
+        """),
         // Upstream 1765518577215 (multiple dashboards): pages table. Only the
         // schema half of upstream's migration — upstream also mints a default
         // "Main" page and moves widgets onto it, but that half generates no
@@ -360,6 +431,7 @@ final class BudgetDatabase: Sendable {
         1780606215003, // locally minted accounts.account_sync_source backfill
         1780606215004, // locally minted accounts.last_sync backfill
         1770000000003, // defensive CREATE banks
+        1780606215005, // device-local FinanceKit link identities
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -765,7 +837,29 @@ final class BudgetDatabase: Sendable {
                         "c.name LIKE ? ESCAPE '\\'",
                         "t.notes LIKE ? ESCAPE '\\'"
                     ]
+
                     arguments.append(contentsOf: [pattern, pattern, pattern])
+                        // ponytail: Keep split-child matching in SQL so pagination still
+                        // spans full history; the correlated EXISTS only probes children
+                        // belonging to the current parent row.
+                    clauses.append("""
+                        EXISTS (
+                            SELECT 1
+                            FROM transactions child
+                            LEFT JOIN payee_mapping cpm ON cpm.id = child.description
+                            LEFT JOIN payees cpay ON cpay.id = cpm.targetId
+                            LEFT JOIN accounts child_account ON child_account.id = cpay.transfer_acct
+                                AND (child_account.tombstone = 0 OR child_account.tombstone IS NULL)
+                            WHERE child.parent_id = t.id
+                              AND (child.tombstone = 0 OR child.tombstone IS NULL)
+                              AND (
+                                  COALESCE(child_account.name, cpay.name) LIKE ? ESCAPE '\\'
+                                  OR child.notes LIKE ? ESCAPE '\\'
+                              )
+                        )
+                    """)
+
+                    arguments.append(contentsOf: [pattern, pattern])
                     if let range = matcher.amountCentsRange {
                         clauses.append("ABS(t.amount) BETWEEN ? AND ?")
                         arguments.append(range.lowerBound)
@@ -1223,13 +1317,13 @@ final class BudgetDatabase: Sendable {
         var errorDescription: String? {
             switch self {
             case .duplicateGroupName(let name):
-                return "A category group named \"\(name)\" already exists"
+                return String(localized: "A category group named \"\(name)\" already exists")
             case .duplicateCategoryName(let name, let groupName):
-                return "\(groupName) already has a category named \"\(name)\""
+                return String(localized: "\(groupName) already has a category named \"\(name)\"")
             case .groupNotFound:
-                return "That category group no longer exists"
+                return String(localized: "That category group no longer exists")
             case .categoryNotFound:
-                return "That category no longer exists"
+                return String(localized: "That category no longer exists")
             }
         }
     }
@@ -2179,10 +2273,14 @@ final class BudgetDatabase: Sendable {
             let rows = try Row.fetchAll(db, sql: """
                 SELECT
                     t.id, t.isParent, t.isChild, t.acct, t.category, t.amount,
-                    t.description, t.notes, t.date, t.imported_description,
+                    t.notes, t.date, t.imported_description,
                     t.schedule,
                     t.transferred_id, t.cleared, t.reconciled, t.sort_order,
                     t.tombstone, t.parent_id,
+                    -- Merged payees keep their old id on the row; Actual's
+                    -- transaction view resolves it through payee_mapping, so
+                    -- reports group and filter by the surviving payee.
+                    COALESCE(pm.targetId, t.description) AS payee_id,
                     COALESCE(pa.name, p.name) as payee_name,
                     p.transfer_acct as transfer_acct,
                     c.name as category_name
@@ -2212,7 +2310,7 @@ final class BudgetDatabase: Sendable {
                     accountId: row["acct"] ?? "",
                     date: row["date"] ?? 0,
                     amount: row["amount"] ?? 0,
-                    payeeId: row["description"],
+                    payeeId: row["payee_id"],
                     payeeName: row["payee_name"],
                     categoryId: row["category"],
                     categoryName: row["category_name"],
@@ -2327,7 +2425,7 @@ final class BudgetDatabase: Sendable {
                 "graph_type", "date_range", "date_static", "start_date",
                 "end_date", "include_current", "show_empty", "show_offbudget",
                 "show_hidden", "show_uncategorized", "sort_by", "conditions",
-                "conditions_op"
+                "conditions_op", "show_trend_lines", "trim_intervals"
             ]
             let select = wanted
                 .map { existing.contains($0) ? $0 : "NULL AS \($0)" }
@@ -2361,6 +2459,8 @@ final class BudgetDatabase: Sendable {
                     showHidden: (row["show_hidden"] as Int? ?? 0) != 0,
                     showUncategorized: (row["show_uncategorized"] as Int? ?? 0) != 0,
                     sortBy: row["sort_by"] ?? "desc",
+                    showTrendLines: (row["show_trend_lines"] as Int? ?? 0) != 0,
+                    trimIntervals: (row["trim_intervals"] as Int? ?? 0) != 0,
                     conditions: conditions,
                     conditionsOp: row["conditions_op"] ?? "and"
                 )
@@ -2566,28 +2666,46 @@ final class BudgetDatabase: Sendable {
     /// order so the outcome doesn't depend on the order the server sent them.
     func applyMessages(_ messages: [CRDTMessage]) throws {
         try dbQueue.write { db in
-            let schema = try Self.syncableSchema(db)
+            try Self.applyMessageRows(db, messages)
+        }
+    }
 
-            for msg in messages.sorted(by: { $0.timestamp < $1.timestamp }) {
-                // Unknown identifiers are either upstream schema we don't have
-                // yet or a hostile server. Skip the message but let sync
-                // continue: insertMessages still records it in messages_crdt so
-                // a later schema migration can replay it.
-                guard let columns = schema[msg.dataset], columns.contains(msg.column) else {
-                    logger.warning(
-                        "Skipping CRDT message for unknown schema \(msg.dataset, privacy: .public).\(msg.column, privacy: .public)"
-                    )
-                    continue
-                }
+    /// Applies messages and persists their original input ordering in one
+    /// SQLite transaction. `applying` is used by receive paths that must apply
+    /// only messages not already materialized while still persisting every
+    /// received message for deduplication and replay.
+    func applyMessagesAndInsertMessages(
+        _ messages: [CRDTMessage],
+        applying messagesToApply: [CRDTMessage]? = nil
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.applyMessageRows(db, messagesToApply ?? messages)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
 
-                try Self.upsertValue(
-                    db,
-                    table: Self.quotedIdentifier(msg.dataset),
-                    column: Self.quotedIdentifier(msg.column),
-                    rowId: msg.row,
-                    value: CRDTValue.deserialize(msg.value)
+    private static func applyMessageRows(_ db: Database, _ messages: [CRDTMessage]) throws {
+        let schema = try syncableSchema(db)
+
+        for msg in messages.sorted(by: { $0.timestamp < $1.timestamp }) {
+            // Unknown identifiers are either upstream schema we don't have
+            // yet or a hostile server. Skip the message but let sync
+            // continue: insertMessages still records it in messages_crdt so
+            // a later schema migration can replay it.
+            guard let columns = schema[msg.dataset], columns.contains(msg.column) else {
+                logger.warning(
+                    "Skipping CRDT message for unknown schema \(msg.dataset, privacy: .public).\(msg.column, privacy: .public)"
                 )
+                continue
             }
+
+            try upsertValue(
+                db,
+                table: quotedIdentifier(msg.dataset),
+                column: quotedIdentifier(msg.column),
+                rowId: msg.row,
+                value: CRDTValue.deserialize(msg.value)
+            )
         }
     }
 
@@ -2623,7 +2741,7 @@ final class BudgetDatabase: Sendable {
     /// bookkeeping tables are never valid sync targets, and a table must have
     /// an `id` column for the row-based apply to make sense.
     private static func syncableSchema(_ db: Database) throws -> [String: Set<String>] {
-        let internalTables: Set<String> = ["messages_crdt", "messages_clock", "migrations", "__migrations__"]
+        let internalTables: Set<String> = ["messages_crdt", "messages_clock", "migrations", "__migrations__", "bank_sync_local_links"]
         var schema: [String: Set<String>] = [:]
         let tables = try String.fetchAll(db, sql: "SELECT name FROM sqlite_master WHERE type = 'table'")
         for table in tables where !internalTables.contains(table) && !table.hasPrefix("sqlite_") {
@@ -2645,6 +2763,136 @@ final class BudgetDatabase: Sendable {
         try dbQueue.write { db in
             try Self.insertTransactionRow(db, transaction)
         }
+    }
+
+    func insertTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        pendingPayees: [Payee] = []
+    ) throws -> [CRDTMessage] {
+        try insertTransactionWithMessages(
+            transaction,
+            messages: messages,
+            pendingPayees: pendingPayees,
+            financialIdPolicy: .unique
+        )
+    }
+
+    func insertBankSyncTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        maxLiveFinancialIdOccurrences: Int,
+        expectedLink: ExpectedBankSyncLink,
+        pendingPayees: [Payee] = []
+    ) throws -> [CRDTMessage] {
+        precondition(maxLiveFinancialIdOccurrences > 0)
+        return try insertTransactionWithMessages(
+            transaction,
+            messages: messages,
+            pendingPayees: pendingPayees,
+            financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
+            expectedLink: expectedLink
+        )
+    }
+
+    private enum FinancialIdPolicy {
+        case unique
+        case occurrences(Int)
+    }
+
+    private func insertTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage],
+        pendingPayees: [Payee],
+        financialIdPolicy: FinancialIdPolicy,
+        expectedLink: ExpectedBankSyncLink? = nil
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            var insertedPendingPayees: [String: Payee] = [:]
+            return try Self.insertBankSyncTransactionWithMessages(
+                db,
+                transaction: transaction,
+                messages: messages,
+                pendingPayees: pendingPayees,
+                financialIdPolicy: financialIdPolicy,
+                insertedPendingPayees: &insertedPendingPayees,
+                expectedLink: expectedLink
+            ).messages
+        }
+    }
+
+    private static func insertBankSyncTransactionWithMessages(
+        _ db: Database,
+        transaction: Transaction,
+        messages: [CRDTMessage],
+        pendingPayees: [Payee],
+        financialIdPolicy: FinancialIdPolicy,
+        insertedPendingPayees: inout [String: Payee],
+        expectedLink: ExpectedBankSyncLink? = nil
+    ) throws -> (inserted: Bool, messages: [CRDTMessage]) {
+        if let expectedLink {
+            try Self.requireBankSyncLink(db, expectedLink)
+        }
+        guard let financialId = transaction.financialId else {
+            try Self.insertTransactionRow(db, transaction)
+            return (true, try Self.insertMessageRows(db, messages))
+        }
+
+        if let existing = try Row.fetchOne(db, sql: """
+                SELECT acct, tombstone FROM transactions
+                WHERE id = ? AND financial_id = ?
+                """, arguments: [transaction.id, financialId]) {
+            // A retry must not resurrect a deleted import or undo an account move.
+            guard existing["acct"] as String? == transaction.accountId,
+                  (existing["tombstone"] as Int? ?? 0) == 0 else { return (false, []) }
+                let columns = Set(try String.fetchAll(db, sql: """
+                    SELECT column FROM messages_crdt
+                    WHERE dataset = 'transactions' AND row = ?
+                    """, arguments: [transaction.id]))
+            if columns.isEmpty {
+                try Self.applyMessageRows(db, messages)
+                return (false, try Self.insertMessageRows(db, messages))
+            }
+            if columns == Set(transaction.syncableFields.keys) { return (false, []) }
+            throw TransactionWriteError.incompleteFinancialIdMessages
+        }
+
+            let liveCount = try Int.fetchOne(db, sql: """
+                SELECT COUNT(*) FROM transactions
+                WHERE acct IS ? AND financial_id = ?
+                    AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [transaction.accountId, financialId]) ?? 0
+            switch financialIdPolicy {
+            case .unique where liveCount > 0:
+                return (false, [])
+            case .occurrences(let limit) where liveCount >= limit:
+                return (false, [])
+            default:
+                break
+            }
+
+            for payee in pendingPayees {
+                if let inserted = insertedPendingPayees[payee.id] {
+                    guard inserted == payee else {
+                        throw BankSyncDatabaseError.bankSyncPendingPayeeConflict
+                    }
+                    continue
+                }
+                try db.execute(sql: """
+                    INSERT INTO payees (id, name, transfer_acct, tombstone)
+                    VALUES (?, ?, ?, ?)
+                    """, arguments: [
+                        payee.id, payee.name, payee.transferAccountId,
+                        payee.tombstone ? 1 : 0
+                    ])
+                try db.execute(sql: """
+                    INSERT INTO payee_mapping (id, targetId)
+                    VALUES (?, ?)
+                    """, arguments: [payee.id, payee.id])
+                insertedPendingPayees[payee.id] = payee
+            }
+            try Self.insertTransactionRow(db, transaction)
+        return (true, try Self.insertMessageRows(db, messages))
     }
 
     /// Inserts a newly-created account, its transfer payee (plus the payee's
@@ -2788,6 +3036,203 @@ final class BudgetDatabase: Sendable {
 
     // MARK: - Bank Sync
 
+    private static func bankSyncLinkMatches(
+        _ db: Database, _ expected: ExpectedBankSyncLink?, accountId: String? = nil
+    ) throws -> Bool {
+        guard let expected else {
+            return try Bool.fetchOne(db, sql: """
+                SELECT NOT EXISTS(
+                    SELECT 1 FROM accounts
+                    WHERE id IS ? AND account_id IS NOT NULL AND account_id <> ''
+                      AND account_sync_source IS NOT NULL AND account_sync_source <> ''
+                ) AND NOT EXISTS(
+                    SELECT 1 FROM bank_sync_local_links WHERE account_id IS ?
+                )
+                """, arguments: [accountId, accountId]) ?? false
+        }
+        if expected.source == BankSyncSource.financeKit.rawValue {
+            return try Bool.fetchOne(db, sql: """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM bank_sync_local_links AS local
+                    JOIN accounts ON accounts.id = local.account_id
+                    WHERE local.account_id IS ?
+                      AND local.external_account_id IS ?
+                      AND local.source IS ?
+                      AND (accounts.tombstone = 0 OR accounts.tombstone IS NULL)
+                ) AND NOT EXISTS(
+                    SELECT 1 FROM accounts
+                    WHERE id IS ? AND account_id IS NOT NULL AND account_id <> ''
+                      AND account_sync_source IS NOT NULL AND account_sync_source <> ''
+                )
+                """, arguments: [
+                    expected.accountId, expected.externalAccountId, expected.source,
+                    expected.accountId
+                ]) ?? false
+        }
+        return try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(
+                SELECT 1 FROM accounts
+                WHERE id IS ? AND account_id IS ? AND account_sync_source IS ?
+                                    AND (tombstone = 0 OR tombstone IS NULL)
+            )
+            """, arguments: [expected.accountId, expected.externalAccountId, expected.source]) ?? false
+    }
+
+    private static func requireBankSyncLink(
+        _ db: Database, _ expected: ExpectedBankSyncLink?, accountId: String? = nil
+    ) throws {
+        guard try bankSyncLinkMatches(db, expected, accountId: accountId) else {
+            throw BankSyncDatabaseError.bankSyncMaterializationStale
+        }
+    }
+
+    private static func requireLiveBankSyncAccount(
+        _ db: Database, accountId: String
+    ) throws {
+        let liveAccountCount = try Int.fetchOne(db, sql: """
+            SELECT COUNT(*) FROM accounts
+            WHERE id IS ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [accountId]) ?? 0
+        guard liveAccountCount == 1 else {
+            throw BankSyncDatabaseError.bankSyncMaterializationStale
+        }
+    }
+
+    private static func bankSyncColumnsMatch(
+        _ db: Database, _ expected: ExpectedBankSyncLink
+    ) throws -> Bool {
+        try Bool.fetchOne(db, sql: """
+            SELECT EXISTS(
+                SELECT 1 FROM accounts
+                WHERE id IS ? AND account_id IS ? AND account_sync_source IS ?
+                  AND (tombstone = 0 OR tombstone IS NULL)
+            )
+            """, arguments: [expected.accountId, expected.externalAccountId, expected.source]) ?? false
+    }
+
+    func setBankSyncLocalLink(_ link: ExpectedBankSyncLink) throws {
+        try dbQueue.write { db in
+            try Self.requireLiveBankSyncAccount(db, accountId: link.accountId)
+            try db.execute(sql: """
+                INSERT INTO bank_sync_local_links (account_id, external_account_id, source)
+                VALUES (?, ?, ?)
+                ON CONFLICT(account_id) DO UPDATE SET
+                    external_account_id = excluded.external_account_id,
+                    source = excluded.source
+                """, arguments: [link.accountId, link.externalAccountId, link.source])
+        }
+    }
+
+    /// Imports device-local link identities without replacing a link that was
+    /// already created locally. Account classification and all inserts share
+    /// one transaction so a failed write leaves the caller's old source intact.
+    func migrateBankSyncLocalLinks(
+        _ links: [ExpectedBankSyncLink]
+    ) throws -> BankSyncLocalLinkMigrationResult {
+        guard !links.isEmpty else {
+            return BankSyncLocalLinkMigrationResult(staleAccountIds: [], adoptedAccountIds: [])
+        }
+        return try dbQueue.write { db in
+            var staleAccountIds = Set<String>()
+            var adoptedAccountIds = Set<String>()
+            for link in links {
+                let isLive = try Bool.fetchOne(db, sql: """
+                    SELECT EXISTS(
+                        SELECT 1 FROM accounts
+                        WHERE id IS ? AND (tombstone = 0 OR tombstone IS NULL)
+                    )
+                    """, arguments: [link.accountId]) ?? false
+                guard isLive else {
+                    staleAccountIds.insert(link.accountId)
+                    continue
+                }
+                try db.execute(sql: """
+                    INSERT OR IGNORE INTO bank_sync_local_links
+                        (account_id, external_account_id, source)
+                    VALUES (?, ?, ?)
+                    """, arguments: [link.accountId, link.externalAccountId, link.source])
+                adoptedAccountIds.insert(link.accountId)
+            }
+            return BankSyncLocalLinkMigrationResult(
+                staleAccountIds: staleAccountIds,
+                adoptedAccountIds: adoptedAccountIds
+            )
+        }
+    }
+
+    func requireLiveBankSyncAccount(accountId: String) throws {
+        try dbQueue.read { db in
+            try Self.requireLiveBankSyncAccount(db, accountId: accountId)
+        }
+    }
+
+    func removeBankSyncLocalLink(_ expectedLink: ExpectedBankSyncLink) throws {
+        try dbQueue.write { db in
+            guard try Self.bankSyncLinkMatches(db, expectedLink) else {
+                throw BankSyncDatabaseError.bankSyncMaterializationStale
+            }
+            try db.execute(
+                sql: """
+                    DELETE FROM bank_sync_local_links
+                    WHERE account_id IS ? AND external_account_id IS ? AND source IS ?
+                    """,
+                arguments: [expectedLink.accountId, expectedLink.externalAccountId, expectedLink.source]
+            )
+        }
+    }
+
+    /// Removes a hidden local FinanceKit identity only when a synchronized
+    /// non-FinanceKit identity is currently authoritative for the same account.
+    /// The exact local identity check prevents a concurrent relink from being
+    /// deleted by a stale loader pass.
+    @discardableResult
+    func removeBankSyncLocalLinkIfSynchronizedProviderWins(
+        _ expectedLink: ExpectedBankSyncLink
+    ) throws -> Bool {
+        try dbQueue.write { db in
+            guard expectedLink.source == BankSyncSource.financeKit.rawValue else {
+                return false
+            }
+            try db.execute(
+                sql: """
+                    DELETE FROM bank_sync_local_links
+                    WHERE account_id IS ? AND external_account_id IS ? AND source IS ?
+                      AND EXISTS(
+                          SELECT 1 FROM accounts
+                          WHERE id IS bank_sync_local_links.account_id
+                            AND account_id IS NOT NULL AND account_id <> ''
+                            AND account_sync_source IS NOT NULL
+                            AND account_sync_source <> ''
+                            AND account_sync_source IS NOT 'financeKit'
+                            AND (tombstone = 0 OR tombstone IS NULL)
+                      )
+                    """,
+                arguments: [
+                    expectedLink.accountId,
+                    expectedLink.externalAccountId,
+                    expectedLink.source
+                ]
+            )
+            return db.changesCount > 0
+        }
+    }
+
+    func fetchBankSyncLocalLinks() async throws -> [ExpectedBankSyncLink] {
+        try await dbQueue.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT account_id, external_account_id, source
+                FROM bank_sync_local_links
+                """).map {
+                ExpectedBankSyncLink(
+                    accountId: $0["account_id"],
+                    externalAccountId: $0["external_account_id"],
+                    source: $0["source"]
+                )
+            }
+        }
+    }
+
     /// The day (`YYYYMMDD`) of the budget's earliest CRDT message — the day
     /// the budget file began, wherever it began: the messages travel with the
     /// file, so every device answers the same. Nil for a budget with no
@@ -2811,7 +3256,7 @@ final class BudgetDatabase: Sendable {
 
     /// The id of an account's opening-balance row, if it has one. A backfill
     /// needs it to hand back what the rows it imports were already counted
-    /// for (see `absorbIntoStartingBalance`).
+    /// for the rows imported by the atomic bank-sync materialization.
     func startingBalanceTransactionId(accountId: String) async throws -> String? {
         try await dbQueue.read { db in
             try String.fetchOne(db, sql: """
@@ -2876,6 +3321,7 @@ final class BudgetDatabase: Sendable {
                 WHERE acct = ?
                   AND ((date IS NOT NULL AND date >= ? AND date <= ?)
                        OR financial_id IN (\(placeholders)))
+                  AND (starting_balance_flag = 0 OR starting_balance_flag IS NULL)
                   AND (isChild = 0 OR isChild IS NULL)
                 """, arguments: StatementArguments(arguments)).map { row in
                 BankSyncExistingTransaction(
@@ -2910,52 +3356,289 @@ final class BudgetDatabase: Sendable {
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncUpdates(
         _ updates: [BankSyncUpdate],
+        expectedLink: ExpectedBankSyncLink,
         messages: [CRDTMessage]
-    ) throws -> [CRDTMessage] {
+    ) throws -> (updatedCount: Int, messages: [CRDTMessage]) {
         try dbQueue.write { db in
+            try Self.requireBankSyncLink(db, expectedLink)
+            var appliedIds = Set<String>()
             for update in updates {
                 try db.execute(sql: """
                     UPDATE transactions
                     SET financial_id = ?, description = ?, imported_description = ?,
                         notes = ?, cleared = ?
-                    WHERE id = ?
+                    WHERE id = ? AND (? IS NULL OR acct IS ?)
+                                            AND (tombstone = 0 OR tombstone IS NULL)
+                                            AND (reconciled = 0 OR reconciled IS NULL)
+                                            AND (starting_balance_flag = 0 OR starting_balance_flag IS NULL)
+                                            AND (isChild = 0 OR isChild IS NULL)
+                                            AND COALESCE(date, 0) = ?
+                                            AND COALESCE(amount, 0) = ?
+                                            AND description IS ?
+                                            AND financial_id IS ?
+                                            AND imported_description IS ?
+                                            AND notes IS ?
+                                            AND COALESCE(cleared, 0) = ?
                     """, arguments: [
                         update.importedId,
                         update.payeeId,
                         update.importedPayee,
                         update.notes,
                         update.cleared ? 1 : 0,
-                        update.existingId
+                        update.existingId,
+                        expectedLink.accountId,
+                        expectedLink.accountId,
+                        update.expected.date,
+                        update.expected.amount,
+                        update.expected.payeeId,
+                        update.expected.importedId,
+                        update.expected.importedPayee,
+                        update.expected.notes,
+                        update.expected.cleared ? 1 : 0
                     ])
+                if db.changesCount > 0 { appliedIds.insert(update.existingId) }
             }
-            return try Self.insertMessageRows(db, messages)
+            let appliedMessages = messages.filter { appliedIds.contains($0.row) }
+            return (
+                appliedIds.count,
+                try Self.insertMessageRows(db, appliedMessages)
+            )
+        }
+    }
+
+    func materializeBankSync(
+        updates: [BankSyncUpdate],
+        updateMessages: [CRDTMessage],
+        inserts: [PreparedBankSyncInsert],
+        openingInsert: BankSyncOpeningInsert?,
+        openingUpdate: BankSyncOpeningUpdate?,
+        expectedLink: ExpectedBankSyncLink,
+        rulesFingerprint: BankSyncRulesFingerprint
+    ) throws -> (updatedCount: Int, inserted: [Transaction], messages: [CRDTMessage]) {
+        try dbQueue.write { db in
+                if try Self.rulesFingerprint(db) != rulesFingerprint {
+                throw BankSyncDatabaseError.bankSyncRulesChanged
+            }
+            try Self.requireBankSyncLink(db, expectedLink)
+            var allMessages: [CRDTMessage] = []
+            var appliedIds = Set<String>()
+            for update in updates {
+                try db.execute(sql: """
+                    UPDATE transactions
+                    SET financial_id = ?, description = ?, imported_description = ?,
+                        notes = ?, cleared = ?
+                    WHERE id = ? AND acct IS ?
+                                            AND (tombstone = 0 OR tombstone IS NULL)
+                                            AND (reconciled = 0 OR reconciled IS NULL)
+                                            AND (starting_balance_flag = 0 OR starting_balance_flag IS NULL)
+                                            AND (isChild = 0 OR isChild IS NULL)
+                                            AND COALESCE(date, 0) = ?
+                                            AND COALESCE(amount, 0) = ?
+                                            AND description IS ?
+                                            AND financial_id IS ?
+                                            AND imported_description IS ?
+                                            AND notes IS ?
+                                            AND COALESCE(cleared, 0) = ?
+                    """, arguments: [
+                        update.importedId,
+                        update.payeeId,
+                        update.importedPayee,
+                        update.notes,
+                        update.cleared ? 1 : 0,
+                        update.existingId,
+                        expectedLink.accountId,
+                        update.expected.date,
+                        update.expected.amount,
+                        update.expected.payeeId,
+                        update.expected.importedId,
+                        update.expected.importedPayee,
+                        update.expected.notes,
+                        update.expected.cleared ? 1 : 0
+                    ])
+                if db.changesCount > 0 { appliedIds.insert(update.existingId) }
+            }
+            allMessages += try Self.insertMessageRows(
+                db, updateMessages.filter { appliedIds.contains($0.row) }
+            )
+
+            var inserted: [Transaction] = []
+            var insertedPendingPayees: [String: Payee] = [:]
+            for prepared in inserts {
+                let result = try Self.insertBankSyncTransactionWithMessages(
+                    db,
+                    transaction: prepared.transaction,
+                    messages: prepared.messages,
+                    pendingPayees: prepared.pendingPayees,
+                    financialIdPolicy: .occurrences(prepared.maxLiveFinancialIdOccurrences),
+                    insertedPendingPayees: &insertedPendingPayees,
+                    expectedLink: expectedLink
+                )
+                allMessages += result.messages
+                if result.inserted { inserted.append(prepared.transaction) }
+            }
+            let insertedIds = Set(inserted.map(\.id))
+            if let openingInsert {
+                guard insertedIds == openingInsert.expectedInsertedIds else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
+                let payeeExists = try Bool.fetchOne(db, sql: """
+                    SELECT EXISTS(SELECT 1 FROM payees WHERE id IS ?)
+                    """, arguments: [openingInsert.payee.id]) ?? false
+                if !payeeExists {
+                    try db.execute(sql: """
+                        INSERT INTO payees (id, name, transfer_acct, tombstone)
+                        VALUES (?, ?, ?, ?)
+                        """, arguments: [
+                            openingInsert.payee.id,
+                            openingInsert.payee.name,
+                            openingInsert.payee.transferAccountId,
+                            openingInsert.payee.tombstone ? 1 : 0
+                        ])
+                    try db.execute(sql: """
+                        INSERT INTO payee_mapping (id, targetId) VALUES (?, ?)
+                        """, arguments: [openingInsert.payee.id, openingInsert.payee.id])
+                }
+                try Self.insertTransactionRow(db, openingInsert.transaction)
+                allMessages += try Self.insertMessageRows(db, openingInsert.messages)
+            }
+            if let openingUpdate {
+                guard insertedIds == openingUpdate.expectedInsertedIds else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
+                let opening = openingUpdate.transaction
+                try db.execute(sql: """
+                    UPDATE transactions SET amount = ?
+                    WHERE id = ? AND acct IS ? AND amount = ? AND date = ?
+                        AND COALESCE(tombstone, 0) = 0
+                        AND COALESCE(reconciled, 0) = ?
+                        AND COALESCE(isParent, 0) = 0 AND COALESCE(isChild, 0) = 0
+                        AND starting_balance_flag = 1
+                    """, arguments: [opening.amount, opening.id, opening.accountId,
+                                      openingUpdate.expectedAmount, opening.date,
+                                      opening.reconciled ? 1 : 0])
+                guard db.changesCount == 1 else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
+                allMessages += try Self.insertMessageRows(db, openingUpdate.messages)
+            }
+            return (appliedIds.count, inserted, allMessages)
         }
     }
 
     /// Point an account at a provider's account, writing the institution row
     /// it points at alongside it, with all of their CRDT messages, in one
-    /// SQLite transaction. The institution row is rewritten whether or not it
-    /// already existed — the caller reads the existing one first, so a rewrite
-    /// restates what's already there.
+    /// SQLite transaction. Existing live institution rows are reused; tombstoned
+    /// rows are revived when the proposal wins.
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncLink(
         accountId: String,
         externalAccountId: String,
         syncSource: String,
-        bank: Bank,
+        proposal: BankSyncLinkProposal,
+        expectedOldLink: ExpectedBankSyncLink? = nil,
+        verifyExpectedOldLink: Bool = false,
         messages: [CRDTMessage]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
-            try db.execute(sql: """
-                INSERT OR REPLACE INTO banks (id, bank_id, name, tombstone)
-                VALUES (?, ?, ?, ?)
-                """, arguments: [bank.id, bank.bankId, bank.name, bank.tombstone ? 1 : 0])
+            try Self.requireLiveBankSyncAccount(db, accountId: accountId)
+            if verifyExpectedOldLink {
+                try Self.requireBankSyncLink(db, expectedOldLink, accountId: accountId)
+            }
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, bank_id, name, tombstone
+                FROM banks
+                WHERE bank_id = ?
+                ORDER BY CASE WHEN tombstone = 0 OR tombstone IS NULL THEN 0 ELSE 1 END, id
+                """, arguments: [proposal.bank.bankId])
+            let canonical = rows.first
+            let canonicalIsLive = canonical.map { ($0["tombstone"] as Int? ?? 0) == 0 } ?? false
+            let proposalStillWins: Bool
+            if proposal.created {
+                proposalStillWins = canonical == nil
+            } else if let canonical {
+                proposalStillWins = canonical["id"] == proposal.bank.id
+                    && canonicalIsLive == !proposal.revived
+            } else {
+                proposalStillWins = false
+            }
+            guard proposalStillWins else {
+                throw BankSyncDatabaseError.bankSyncLinkChanged
+            }
+            if proposal.created {
+                try db.execute(sql: """
+                    INSERT INTO banks (id, bank_id, name, tombstone)
+                    VALUES (?, ?, ?, 0)
+                    """, arguments: [proposal.bank.id, proposal.bank.bankId, proposal.bank.name])
+            } else if proposal.revived {
+                try db.execute(sql: """
+                    UPDATE banks SET bank_id = ?, name = ?, tombstone = 0 WHERE id = ?
+                    """, arguments: [proposal.bank.bankId, proposal.bank.name, proposal.bank.id])
+            }
             try db.execute(sql: """
                 UPDATE accounts
                 SET account_id = ?, account_sync_source = ?, bank = ?
                 WHERE id = ?
-                """, arguments: [externalAccountId, syncSource, bank.id, accountId])
+                """, arguments: [externalAccountId, syncSource, proposal.bank.id, accountId])
+            try db.execute(
+                sql: "DELETE FROM bank_sync_local_links WHERE account_id IS ?",
+                arguments: [accountId]
+            )
             return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    func applyBankSyncLocalLink(
+        _ localLink: ExpectedBankSyncLink,
+        expectedOldLink: ExpectedBankSyncLink?,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.requireLiveBankSyncAccount(db, accountId: localLink.accountId)
+            try Self.requireBankSyncLink(db, expectedOldLink, accountId: localLink.accountId)
+            try db.execute(sql: """
+                INSERT INTO bank_sync_local_links (account_id, external_account_id, source)
+                VALUES (?, ?, ?)
+                ON CONFLICT(account_id) DO UPDATE SET
+                    external_account_id = excluded.external_account_id,
+                    source = excluded.source
+                """, arguments: [localLink.accountId, localLink.externalAccountId, localLink.source])
+            try db.execute(sql: """
+                UPDATE accounts
+                SET account_id = NULL, account_sync_source = NULL, bank = NULL,
+                    balance_current = NULL, balance_available = NULL, balance_limit = NULL,
+                    bank_sync_status = NULL
+                WHERE id IS ?
+                """, arguments: [localLink.accountId])
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Select the canonical institution without changing any materialized row.
+    /// Live rows win over tombstones; otherwise the oldest tombstoned row is
+    /// proposed for revival before a new id is proposed.
+    func proposeBankSyncLink(proposedBank: Bank) throws -> BankSyncLinkProposal {
+        try dbQueue.read { db in
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT id, bank_id, name, tombstone
+                FROM banks
+                WHERE bank_id = ?
+                ORDER BY CASE WHEN tombstone = 0 OR tombstone IS NULL THEN 0 ELSE 1 END, id
+                """, arguments: [proposedBank.bankId])
+
+            if let row = rows.first, (row["tombstone"] as Int? ?? 0) == 0 {
+                return BankSyncLinkProposal(
+                    bank: Bank(id: row["id"], bankId: row["bank_id"], name: row["name"] ?? ""),
+                    created: false,
+                    revived: false
+                )
+            } else if let row = rows.first {
+                return BankSyncLinkProposal(
+                    bank: Bank(id: row["id"], bankId: proposedBank.bankId, name: proposedBank.name),
+                    created: false,
+                    revived: true
+                )
+            }
+            return BankSyncLinkProposal(bank: proposedBank, created: true, revived: false)
         }
     }
 
@@ -2964,8 +3647,22 @@ final class BudgetDatabase: Sendable {
     /// left-behind `bank_sync_status` would keep showing an error badge in the
     /// web UI for an account that no longer syncs at all.
     /// Returns the subset of messages that was actually new (see `insertMessages`).
-    func applyBankSyncUnlink(accountId: String, messages: [CRDTMessage]) throws -> [CRDTMessage] {
+    func applyBankSyncUnlink(
+        accountId: String,
+        expectedLink: ExpectedBankSyncLink,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
+            if expectedLink.source == BankSyncSource.financeKit.rawValue {
+                // This branch adopts old synced-column Wallet links. It may
+                // clear those columns even when a newer local Wallet link
+                // exists; it never deletes the local identity here.
+                guard try Self.bankSyncColumnsMatch(db, expectedLink) else {
+                    throw BankSyncDatabaseError.bankSyncMaterializationStale
+                }
+            } else {
+                try Self.requireBankSyncLink(db, expectedLink)
+            }
             try db.execute(sql: """
                 UPDATE accounts
                 SET account_id = NULL, account_sync_source = NULL, bank = NULL,
@@ -2973,6 +3670,12 @@ final class BudgetDatabase: Sendable {
                     bank_sync_status = NULL
                 WHERE id = ?
                 """, arguments: [accountId])
+            if expectedLink.source != BankSyncSource.financeKit.rawValue {
+                try db.execute(
+                    sql: "DELETE FROM bank_sync_local_links WHERE account_id IS ?",
+                    arguments: [accountId]
+                )
+            }
             return try Self.insertMessageRows(db, messages)
         }
     }
@@ -2982,10 +3685,13 @@ final class BudgetDatabase: Sendable {
     /// this device ran.
     /// Returns the subset of messages that was actually new (see `insertMessages`).
     func applyBankSyncStatus(
-        _ statuses: [(accountId: String, lastSync: String?, status: String)],
+        _ statuses: [(accountId: String, lastSync: String?, status: String, expectedLink: ExpectedBankSyncLink)],
         messages: [CRDTMessage]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
+            for entry in statuses {
+                try Self.requireBankSyncLink(db, entry.expectedLink)
+            }
             for entry in statuses {
                 // A failed sync leaves last_sync alone rather than nulling it:
                 // "we last had good data at X" stays true, and upstream does
@@ -3028,6 +3734,33 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Updates a transaction and stores its CRDT messages in one SQLite
+    /// transaction. A failed message insert must roll the row update back, or
+    /// another device can never learn about the local edit.
+    func updateTransactionWithMessages(
+        _ transaction: Transaction,
+        messages: [CRDTMessage]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            try Self.updateTransactionRow(db, transaction)
+            return try Self.insertMessageRows(db, messages)
+        }
+    }
+
+    /// Updates every row and persists every generated message in one SQLite
+    /// transaction. Message generation must happen before this method is
+    /// called so a failure cannot leave only part of a bulk edit applied.
+    func updateTransactionsWithMessages(
+        _ updates: [(transaction: Transaction, messages: [CRDTMessage])]
+    ) throws -> [CRDTMessage] {
+        try dbQueue.write { db in
+            for update in updates {
+                try Self.updateTransactionRow(db, update.transaction)
+            }
+            return try Self.insertMessageRows(db, updates.flatMap(\.messages))
+        }
+    }
+
     private static func updateTransactionRow(_ db: Database, _ transaction: Transaction) throws {
         try db.execute(sql: """
             UPDATE transactions
@@ -3053,6 +3786,156 @@ final class BudgetDatabase: Sendable {
     }
 
     // MARK: - Rules
+
+    /// Reads every effective rules input in one SQLite snapshot. Length-prefixing
+    /// keeps NULL and empty values distinct, while ORDER BY id makes the bytes
+    /// independent of SQLite's row-return order.
+    func prepareRulesSnapshot() throws -> BankSyncRulesSnapshot {
+        try dbQueue.read { db in
+            let rulesTableExists = try db.tableExists("rules")
+            let ruleRows: [Row] = rulesTableExists ? try Row.fetchAll(db, sql: """
+                SELECT id, stage, conditions_op, conditions, actions
+                FROM rules
+                WHERE tombstone = 0 OR tombstone IS NULL
+                ORDER BY id
+                """) : []
+            let rules: [Rule] = ruleRows.compactMap { row in
+                guard let id: String = row["id"] else { return nil }
+                return try? Rule.parse(
+                    id: id,
+                    stage: row["stage"],
+                    conditionsOp: row["conditions_op"],
+                    conditionsJSON: row["conditions"],
+                    actionsJSON: row["actions"]
+                )
+            }
+            let (offBudgetAccountIds, categoryRows, payeeRows) = try Self.rulesContextRows(
+                db, hasRules: !ruleRows.isEmpty
+            )
+
+            var categoryGroupIds: [String: String] = [:]
+            for row in categoryRows {
+                if let id: String = row["id"], let group: String = row["cat_group"] {
+                    categoryGroupIds[id] = group
+                }
+            }
+            var payeeNames: [String: String] = [:]
+            for row in payeeRows {
+                if let id: String = row["id"], let name: String = row["name"] {
+                    payeeNames[id] = name
+                }
+            }
+
+            return BankSyncRulesSnapshot(
+                rules: rules,
+                context: RuleContext(
+                    offBudgetAccountIds: Set(offBudgetAccountIds),
+                    categoryGroupIds: categoryGroupIds,
+                    payeeNames: payeeNames
+                ),
+                fingerprint: Self.makeRulesFingerprint(
+                    rulesTableExists: rulesTableExists,
+                    ruleRows: ruleRows,
+                    offBudgetAccountIds: offBudgetAccountIds,
+                    categoryRows: categoryRows,
+                    payeeRows: payeeRows
+                )
+            )
+        }
+    }
+
+    private static func rulesFingerprint(_ db: Database) throws -> BankSyncRulesFingerprint {
+        let rulesTableExists = try db.tableExists("rules")
+        let ruleRows: [Row] = rulesTableExists ? try Row.fetchAll(db, sql: """
+            SELECT id, stage, conditions_op, conditions, actions
+            FROM rules
+            WHERE tombstone = 0 OR tombstone IS NULL
+            ORDER BY id
+            """) : []
+        let (offBudgetAccountIds, categoryRows, payeeRows) = try rulesContextRows(
+            db, hasRules: !ruleRows.isEmpty
+        )
+
+        return makeRulesFingerprint(
+            rulesTableExists: rulesTableExists,
+            ruleRows: ruleRows,
+            offBudgetAccountIds: offBudgetAccountIds,
+            categoryRows: categoryRows,
+            payeeRows: payeeRows
+        )
+    }
+
+    private static func rulesContextRows(
+        _ db: Database,
+        hasRules: Bool
+    ) throws -> (offBudgetAccountIds: [String], categoryRows: [Row], payeeRows: [Row]) {
+        guard hasRules else { return ([], [], []) }
+        func hasColumns(_ required: Set<String>, in table: String) throws -> Bool {
+            guard try db.tableExists(table) else { return false }
+            return Set(try db.columns(in: table).map(\.name)).isSuperset(of: required)
+        }
+        let offBudgetAccountIds = try hasColumns(["id", "offbudget"], in: "accounts") ? String.fetchAll(
+            db, sql: "SELECT id FROM accounts WHERE offbudget = 1 ORDER BY id"
+        ) : []
+        let categoryRows = try hasColumns(["id", "cat_group", "tombstone"], in: "categories") ? Row.fetchAll(db, sql: """
+            SELECT id, cat_group FROM categories
+            WHERE tombstone = 0 OR tombstone IS NULL
+            ORDER BY id
+            """) : []
+        let payeeRows = try hasColumns(["id", "name", "tombstone"], in: "payees") ? Row.fetchAll(db, sql: """
+            SELECT id, name FROM payees
+            WHERE tombstone = 0 OR tombstone IS NULL
+            ORDER BY id
+            """) : []
+        return (offBudgetAccountIds, categoryRows, payeeRows)
+    }
+
+    private static func makeRulesFingerprint(
+        rulesTableExists: Bool,
+        ruleRows: [Row],
+        offBudgetAccountIds: [String],
+        categoryRows: [Row],
+        payeeRows: [Row]
+    ) -> BankSyncRulesFingerprint {
+        var data = Data([rulesTableExists ? 1 : 0])
+        func appendField(_ value: String?) {
+            guard let value else {
+                data.append(0)
+                return
+            }
+            data.append(1)
+            let bytes = Data(value.utf8)
+            var length = UInt64(bytes.count).bigEndian
+            withUnsafeBytes(of: &length) { data.append(contentsOf: $0) }
+            data.append(contentsOf: bytes)
+        }
+        func appendSection(_ marker: UInt8, count: Int) {
+            data.append(marker)
+            var count = UInt64(count).bigEndian
+            withUnsafeBytes(of: &count) { data.append(contentsOf: $0) }
+        }
+        appendSection(1, count: ruleRows.count)
+        for row in ruleRows {
+            appendField(row["id"])
+            appendField(row["stage"])
+            appendField(row["conditions_op"])
+            appendField(row["conditions"])
+            appendField(row["actions"])
+        }
+        appendSection(2, count: offBudgetAccountIds.count)
+        for id in offBudgetAccountIds { appendField(id) }
+        appendSection(3, count: categoryRows.count)
+        for row in categoryRows {
+            appendField(row["id"])
+            appendField(row["cat_group"])
+        }
+        appendSection(4, count: payeeRows.count)
+        for row in payeeRows {
+            appendField(row["id"])
+            appendField(row["name"])
+        }
+        return BankSyncRulesFingerprint(data: data)
+    }
 
     func rulesTableExists() throws -> Bool {
         try dbQueue.read { db in try db.tableExists("rules") }
@@ -3433,6 +4316,30 @@ final class BudgetDatabase: Sendable {
             return paid
         }
     }
+
+    /// Live transaction dates linked to each schedule, used to render past calendar occurrences.
+    func fetchSchedulePaymentDates(for schedules: [ScheduleSummary]) async throws -> [String: Set<DayDate>] {
+        let ids = schedules.map(\.id)
+        guard !ids.isEmpty else { return [:] }
+
+        return try await dbQueue.read { db in
+            let placeholders = Array(repeating: "?", count: ids.count).joined(separator: ", ")
+            let rows = try Row.fetchAll(db, sql: """
+                SELECT schedule, date
+                FROM transactions
+                WHERE schedule IN (\(placeholders))
+                  AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: StatementArguments(ids))
+
+            return rows.reduce(into: [String: Set<DayDate>]()) { dates, row in
+                guard let scheduleId: String = row["schedule"],
+                      let rawDate: Int = row["date"],
+                      let date = DayDate(yyyymmdd: rawDate)
+                else { return }
+                dates[scheduleId, default: []].insert(date)
+            }
+        }
+    }
     
     /// Is another live schedule already using this name? Mirrors loot-core
     /// `checkIfScheduleExists`, which enforces unique names so the "link to
@@ -3679,6 +4586,35 @@ final class BudgetDatabase: Sendable {
                       let value: String = row["value"],
                       let config = try? JSONDecoder().decode(CreditCardConfig.self, from: Data(value.utf8)) else { return }
                 result[String(id.dropFirst(prefix.count))] = config
+            }
+        }
+    }
+
+    /// Preference key prefix for synced card-to-account mappings.
+    static let cardMappingPreferenceKeyPrefix = "actuali:card_mapping:"
+
+    /// Preference key for one card-to-account mapping.
+    static func cardMappingPreferenceKey(for keyword: String) -> String {
+        "\(cardMappingPreferenceKeyPrefix)\(keyword)"
+    }
+
+    /// Fetches synced card-to-account mappings stored one per `preferences` row.
+    /// Returns a dictionary mapping `keyword -> accountId`.
+    func fetchCardAccountMappings() async throws -> [String: String] {
+        try await dbQueue.read { db in
+            guard try db.tableExists("preferences") else { return [:] }
+            let prefix = Self.cardMappingPreferenceKeyPrefix
+            let rows = try Row.fetchAll(
+                db,
+                sql: "SELECT id, value FROM preferences WHERE id LIKE ? AND value IS NOT NULL",
+                arguments: ["\(prefix)%"]
+            )
+            return rows.reduce(into: [:]) { result, row in
+                guard let id: String = row["id"], id.hasPrefix(prefix),
+                      let accountId: String = row["value"] else { return }
+                let keyword = String(id.dropFirst(prefix.count))
+                guard !keyword.isEmpty else { return }
+                result[keyword] = accountId
             }
         }
     }
