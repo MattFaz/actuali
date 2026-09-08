@@ -152,4 +152,48 @@ struct BackupServiceMakeTests {
         #expect(remaining.filter { $0.pathExtension == "zip" }.count == 1)
         #expect(remaining.filter { $0.lastPathComponent.hasSuffix(".tmp") }.isEmpty)
     }
+
+    @Test func backupMirrorsToInjectedDestinationManager() async throws {
+        let (manager, root) = makeManager()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try seedBudget(manager: manager, id: "b5")
+
+        let suiteName = "test.backup.service.dest.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let destManager = BackupDestinationManager(userDefaults: defaults)
+        let customFolder = FileManager.default.temporaryDirectory
+            .appendingPathComponent("custom-dest-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: customFolder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: customFolder) }
+
+        try await destManager.saveDestination(from: customFolder)
+
+        let service = BackupService(fileManager: manager, destinationManager: destManager)
+        let now = Date()
+        let t1 = now.addingTimeInterval(-300)
+        let t2 = now.addingTimeInterval(-200)
+        let t3 = now.addingTimeInterval(-100)
+        let t4 = now
+
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t1)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t2)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t3)
+
+        let f1 = BudgetFileManager.backupArchiveName(for: t1)
+        let f2 = BudgetFileManager.backupArchiveName(for: t2)
+        let f3 = BudgetFileManager.backupArchiveName(for: t3)
+        let f4 = BudgetFileManager.backupArchiveName(for: t4)
+
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f1)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f2)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f3)").path))
+
+        // 4th backup on the same day triggers prune of the oldest (keeps 3 today)
+        try await service.makeBackup(budgetId: "b5", database: nil, now: t4)
+
+        #expect(!FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f1)").path))
+        #expect(FileManager.default.fileExists(atPath: customFolder.appendingPathComponent("Actuali/b5/\(f4)").path))
+    }
 }
