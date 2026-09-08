@@ -252,18 +252,18 @@ struct AccountsListView: View {
                         AccountDetailView(account: account)
                     } else {
                         ContentUnavailableView(
-                            String(localized: "Account Unavailable"),
-                            systemImage: "banknote",
-                            description: Text(String(localized: "Pick another account from the list."))
+                            "Account Unavailable",
+                            systemImage: "building.columns",
+                            description: Text("Pick another account from the list.")
                         )
                     }
                 case .allAccounts:
                     TransactionsListView()
                 case nil:
                     ContentUnavailableView(
-                        String(localized: "No Account Selected"),
-                        systemImage: "banknote",
-                        description: Text(String(localized: "Pick an account from the list."))
+                        "No Account Selected",
+                        systemImage: "building.columns",
+                        description: Text("Pick an account from the list.")
                     )
                 }
             }

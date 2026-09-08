@@ -14,8 +14,8 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Add transaction to \(.applicationName)",
                 "Log a transaction in \(.applicationName)",
             ],
-            shortTitle: LocalizedStringResource("Log Transaction"),
-            systemImageName: "plus.circle.fill"
+            shortTitle: "Log Transaction",
+            systemImageName: "plus"
         )
 
         AppShortcut(
