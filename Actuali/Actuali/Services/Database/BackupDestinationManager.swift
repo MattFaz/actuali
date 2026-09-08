@@ -15,7 +15,7 @@ enum BackupDestinationError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .accessDenied:
-            return "Permission was denied to access the selected folder."
+            return String(localized: "Permission was denied to access the selected folder.")
         }
     }
 }
@@ -91,7 +91,7 @@ actor BackupDestinationManager {
     func mirrorArchive(from sourceURL: URL, budgetId: String, filename: String) async {
         guard let folderURL = resolveDestinationURL() else { return }
         guard folderURL.startAccessingSecurityScopedResource() else {
-            recordFailure("Could not access security-scoped destination")
+            recordFailure(String(localized: "Could not access security-scoped destination"))
             logger.warning("Could not access security-scoped resource for custom backup destination")
             return
         }
@@ -99,7 +99,7 @@ actor BackupDestinationManager {
 
         var isDirectory: ObjCBool = false
         guard FileManager.default.fileExists(atPath: folderURL.path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            recordFailure("Destination folder no longer exists")
+            recordFailure(String(localized: "Destination folder no longer exists"))
             logger.warning("Custom destination folder no longer exists on disk")
             return
         }

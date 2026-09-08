@@ -99,6 +99,7 @@ struct BackupDestinationManagerTests {
         defer { try? FileManager.default.removeItem(at: tempFolder) }
 
         try await manager.saveDestination(from: tempFolder)
+        let restoredManager = BackupDestinationManager(userDefaults: defaults)
 
         let sourceFile = FileManager.default.temporaryDirectory.appendingPathComponent("source-\(UUID().uuidString).zip")
         try Data("mock archive content".utf8).write(to: sourceFile)
@@ -106,17 +107,17 @@ struct BackupDestinationManagerTests {
 
         let budgetId = "test-budget-123"
         let filename = "2026-09-03_21-00-00.zip"
-        await manager.mirrorArchive(from: sourceFile, budgetId: budgetId, filename: filename)
+        await restoredManager.mirrorArchive(from: sourceFile, budgetId: budgetId, filename: filename)
 
         let mirroredFile = tempFolder.appendingPathComponent("Actuali/\(budgetId)/\(filename)")
         #expect(FileManager.default.fileExists(atPath: mirroredFile.path))
 
-        let lastDate = await manager.lastMirroredDate
-        let lastError = await manager.lastMirrorError
+        let lastDate = await restoredManager.lastMirroredDate
+        let lastError = await restoredManager.lastMirrorError
         #expect(lastDate != nil)
         #expect(lastError == nil)
 
-        await manager.removeMirroredArchive(budgetId: budgetId, filename: filename)
+        await restoredManager.removeMirroredArchive(budgetId: budgetId, filename: filename)
         #expect(!FileManager.default.fileExists(atPath: mirroredFile.path))
     }
 }

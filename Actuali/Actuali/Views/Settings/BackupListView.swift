@@ -37,7 +37,7 @@ struct BackupListView: View {
             Section {
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Backup Location")
+                        Text(String(localized: "Backup Location"))
                             .foregroundStyle(.primary)
                         if let name = destinationName {
                             HStack(spacing: 4) {
@@ -50,33 +50,33 @@ struct BackupListView: View {
                             if let error = lastMirrorError {
                                 HStack(spacing: 4) {
                                     Image(systemName: "exclamationmark.triangle")
-                                    Text("Mirror failed: \(error)")
+                                    Text(String(localized: "Mirror failed: \(error)"))
                                 }
                                 .font(.caption2)
                                 .foregroundStyle(.red)
                             } else if let date = lastMirroredDate {
                                 HStack(spacing: 4) {
                                     Image(systemName: "checkmark.circle")
-                                    Text("Mirrored \(Self.dateFormatter.string(from: date))")
+                                    Text(String(localized: "Mirrored \(Self.dateFormatter.string(from: date))"))
                                 }
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                             }
                         } else {
-                            Text("Default (App Storage)")
+                            Text(String(localized: "Default (App Storage)"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
                     Spacer()
-                    Button(destinationName == nil ? "Choose Folder" : "Change") {
+                    Button(destinationName == nil ? String(localized: "Choose Folder") : String(localized: "Change")) {
                         showingFolderPicker = true
                     }
                     .buttonStyle(.bordered)
                 }
 
                 if destinationName != nil {
-                    Button("Reset to Default", role: .destructive) {
+                    Button(String(localized: "Reset to Default"), role: .destructive) {
                         Task {
                             await BackupDestinationManager.shared.clearDestination()
                             await refreshDestinationState()
@@ -84,12 +84,12 @@ struct BackupListView: View {
                     }
                 }
             } header: {
-                Text("Destination")
+                Text(String(localized: "Destination"))
             } footer: {
                 if destinationName != nil {
-                    Text("Backups are saved locally on this device and automatically mirrored to your chosen folder under Actuali/<budgetId>/.")
+                    Text(String(localized: "Backups are saved locally on this device and automatically mirrored to your chosen folder under Actuali/<budgetId>/."))
                 } else {
-                    Text("Backups are stored safely in Actuali's private app storage. You can choose a custom folder (such as an iCloud Drive folder) to automatically mirror every backup there.")
+                    Text(String(localized: "Backups are stored safely in Actuali's private app storage. You can choose a custom folder (such as an iCloud Drive folder) to automatically mirror every backup there."))
                 }
             }
 
@@ -107,7 +107,7 @@ struct BackupListView: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(Self.dateFormatter.string(from: date))
                                             .foregroundStyle(.primary)
-                                        Text("Tap to restore")
+                                        Text(String(localized: "Tap to restore"))
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }
@@ -129,11 +129,11 @@ struct BackupListView: View {
                 }
             } header: {
                 if !archives.isEmpty {
-                    Text("Available Backups")
+                    Text(String(localized: "Available Backups"))
                 }
             } footer: {
                 if !hasLatest && !archives.isEmpty {
-                    Text("Backups are stored in Actuali's private app storage on this device. Tap Export to save to Files, iCloud Drive, or AirDrop. Tapping a backup restores it (your current data is saved first so you can revert).")
+                    Text(String(localized: "Backups are stored in Actuali's private app storage on this device. Tap Export to save to Files, iCloud Drive, or AirDrop. Tapping a backup restores it (your current data is saved first so you can revert)."))
                 }
             }
         }
@@ -206,7 +206,7 @@ struct BackupListView: View {
             }
         }
         .alert(
-            "Couldn't Set Backup Folder",
+            String(localized: "Couldn't Set Backup Folder"),
             isPresented: Binding(
                 get: { destinationErrorMessage != nil },
                 set: { if !$0 { destinationErrorMessage = nil } }

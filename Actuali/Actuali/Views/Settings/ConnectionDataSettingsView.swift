@@ -661,7 +661,7 @@ private struct BackupSettingsSection: View {
         } header: {
             Text("Backups")
         } footer: {
-            Text("Backups are stored in Actuali's private app storage on this device. One is taken automatically when you leave the app. Tap Backups to restore or export them anytime.")
+            Text(String(localized: "Backups are stored in Actuali's private app storage on this device. One is taken automatically when you leave the app. Tap Backups to restore or export them anytime."))
         }
         .task { await budgetStore.refreshBackups() }
         .confirmationDialog(
