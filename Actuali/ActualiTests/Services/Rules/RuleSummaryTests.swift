@@ -5,6 +5,8 @@ import Testing
 /// The IF/THEN text on the rules list, and the string its search box matches.
 struct RuleSummaryTests {
 
+    private let englishLocale = Locale(identifier: "en_US")
+
     private let summary = RuleSummary(
         names: .init(
             payees: ["payee-1": "Woolworths"],
@@ -12,31 +14,36 @@ struct RuleSummaryTests {
             categoryGroups: ["grp-1": "Daily"],
             accounts: ["acct-1": "Checking"]
         ),
-        formatAmount: { cents in "$\(Double(cents) / 100)" }
+        formatAmount: { cents, _ in "$\(Double(cents) / 100)" }
     )
+
+    private var appBundle: Bundle {
+        Bundle(identifier: "com.mfazz.ActualiOS")!
+    }
 
     @Test func namesIdsInsteadOfShowingUUIDs() {
         let condition = Rule.Condition(op: "is", field: "payee",
                                        value: .string("payee-1"), options: nil)
-        #expect(summary.condition(condition) == "payee is Woolworths")
+        #expect(summary.condition(condition, locale: englishLocale) == "payee is Woolworths")
     }
 
     @Test func labelsAmountDirectionFromOptions() {
         let condition = Rule.Condition(op: "gt", field: "amount", value: .number(5000),
                                        options: ["outflow": .bool(true)])
-        #expect(summary.condition(condition).hasPrefix("amount (outflow) is greater than"))
+        #expect(summary.condition(condition, locale: englishLocale)
+            .hasPrefix("amount (outflow) is greater than"))
     }
 
     @Test func rendersOpsWithoutAValue() {
         let condition = Rule.Condition(op: "offBudget", field: "account",
                                        value: .null, options: nil)
-        #expect(summary.condition(condition) == "account is off budget")
+        #expect(summary.condition(condition, locale: englishLocale) == "account is off budget")
     }
 
     @Test func describesActions() {
         let action = Rule.Action(op: "set", field: "category",
                                  value: .string("cat-1"), options: nil)
-        #expect(summary.action(action) == "set category to Groceries")
+        #expect(summary.action(action, locale: englishLocale) == "set category to Groceries")
     }
 
     @Test func searchTextCoversConditionsAndActions() {
@@ -49,6 +56,21 @@ struct RuleSummaryTests {
         let text = summary.searchText(rule)
         #expect(text.contains("woolies"))
         #expect(text.contains("groceries"))
+    }
+
+    @Test func summaryUsesRequestedLocaleForConditionsAndActions() {
+        let locale = Locale(identifier: "fr_FR")
+        let condition = Rule.Condition(
+            op: "gt", field: "date", value: .string("2026-01-01"), options: nil)
+        let action = Rule.Action(
+            op: "set", field: "category", value: .string("cat-1"), options: nil)
+
+        #expect(summary.condition(
+            condition, locale: locale, bundle: appBundle
+        ) == "date est après 2026-01-01")
+        #expect(summary.action(
+            action, locale: locale, bundle: appBundle
+        ) == "définir catégorie sur Groceries")
     }
 
     @Test func ruleRowFragmentsUseRequestedLocale() {

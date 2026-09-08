@@ -43,6 +43,23 @@ struct LogTransactionIntentTests {
         #expect(error.errorDescription == String(localized: error.localizedStringResource))
     }
 
+    @MainActor @Test func loggerErrorsRemainTypedUntilPresentation() {
+        let locale = Locale(identifier: "fr_FR")
+        let mapped = LogTransactionError.wrapping(
+            TransactionLogger.LoggerError.transactionSuppressedByRule)
+
+        guard case .transactionSuppressedByRule = mapped else {
+            Issue.record("Expected a typed suppressed-by-rule error")
+            return
+        }
+        #expect(LogTransactionError.localizedString(
+            for: mapped, locale: locale, bundle: appBundle
+        ) == "Une règle de transaction a ignoré cette transaction.")
+        #expect(TransactionLogger.LoggerError.transactionAlreadyExists.message(
+            locale: locale, bundle: appBundle
+        ) == "Cette transaction a déjà été enregistrée.")
+    }
+
     @Test func balanceErrorsUseRequestedLocale() {
         let expected: [(Locale, String)] = [
             (Locale(identifier: "en_US"), "Account was not found. Select a valid account in your shortcut."),

@@ -36,6 +36,7 @@ private func ruleChoices(for field: String, in store: BudgetStore) -> [(id: Stri
 /// type. Field/op lists come from `RuleSchema`, which is the same metadata the
 /// engine validates against.
 struct RuleConditionEditor: View {
+    @Environment(\.locale) private var locale
     @Binding var condition: Rule.Condition
 
     var body: some View {
@@ -43,14 +44,16 @@ struct RuleConditionEditor: View {
             HStack {
                 Picker("Field", selection: fieldBinding) {
                     ForEach(RuleSchema.conditionFields, id: \.self) { field in
-                        Text(RuleSchema.label(field: field).capitalized).tag(field)
+                        Text(RuleValueEditorLocalization.fieldLabel(
+                            field, locale: locale)).tag(field)
                     }
                 }
                 .labelsHidden()
 
                 Picker("Operator", selection: opBinding) {
                     ForEach(RuleSchema.validOps(for: condition.field), id: \.self) { op in
-                        Text(RuleSchema.label(op: op, type: RuleSchema.fieldType(condition.field))).tag(op)
+                        Text(RuleValueEditorLocalization.operatorLabel(
+                            op, field: condition.field, locale: locale)).tag(op)
                     }
                 }
                 .labelsHidden()
@@ -113,13 +116,15 @@ struct RuleConditionEditor: View {
 
 /// One action row: `set <field> to <value>`, plus the note ops.
 struct RuleActionEditor: View {
+    @Environment(\.locale) private var locale
     @Binding var action: Rule.Action
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Picker("Action", selection: opBinding) {
                 ForEach(["set", "prepend-notes", "append-notes", "delete-transaction"], id: \.self) { op in
-                    Text(RuleSchema.label(op: op).capitalized).tag(op)
+                    Text(RuleValueEditorLocalization.operatorLabel(
+                        op, locale: locale)).tag(op)
                 }
             }
             .labelsHidden()
@@ -127,7 +132,8 @@ struct RuleActionEditor: View {
             if action.op == "set" {
                 Picker("Field", selection: fieldBinding) {
                     ForEach(RuleSchema.actionFields, id: \.self) { field in
-                        Text(RuleSchema.label(field: field).capitalized).tag(field)
+                        Text(RuleValueEditorLocalization.fieldLabel(
+                            field, locale: locale)).tag(field)
                     }
                 }
                 .labelsHidden()
@@ -331,7 +337,9 @@ struct RuleValueEditor: View {
                 value: betweenBinding("num2")
             )
         } else {
-            RuleAmountField(value: $value)
+            RuleAmountField(
+                label: RuleValueEditorLocalization.amountLabel(locale: locale),
+                value: $value)
         }
 
         if showsDirection {
@@ -409,6 +417,32 @@ enum RuleValueEditorLocalization {
     static let value: String.LocalizationValue = "Value"
     static let values: String.LocalizationValue = "Values"
 
+    static func amountLabel(
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.text("Amount", locale: locale, bundle: bundle)
+    }
+
+    static func fieldLabel(
+        _ field: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        RuleSchema.label(field: field, locale: locale, bundle: bundle)
+    }
+
+    static func operatorLabel(
+        _ op: String,
+        field: String? = nil,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        RuleSchema.label(
+            op: op, type: field.flatMap(RuleSchema.fieldType),
+            locale: locale, bundle: bundle)
+    }
+
     static func selectedCount(
         _ count: Int,
         locale: Locale = .current,
@@ -425,7 +459,7 @@ enum RuleValueEditorLocalization {
 /// input ("10.", "1,50") isn't destroyed mid-keystroke — a binding that reparsed
 /// on every character would zero the value as the user typed.
 private struct RuleAmountField: View {
-    var label = "Amount"
+    let label: String
     @Binding var value: RuleValue
     @State private var text = ""
 
@@ -453,6 +487,7 @@ private struct RuleAmountField: View {
 /// Multi-select for `oneOf` / `notOneOf` id conditions.
 struct RuleIdMultiPicker: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     let field: String
     @Binding var value: RuleValue
 
@@ -479,7 +514,8 @@ struct RuleIdMultiPicker: View {
             }
             .buttonStyle(.plain)
         }
-        .navigationTitle(RuleSchema.label(field: field).capitalized)
+        .navigationTitle(RuleValueEditorLocalization.fieldLabel(
+            field, locale: locale))
         .navigationBarTitleDisplayMode(.inline)
     }
 

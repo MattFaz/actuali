@@ -7,6 +7,13 @@ import Testing
 /// computed with the upstream mulberry32/Box-Muller PRNG in node.
 struct MonteCarloEngineTests {
 
+    @Test func widgetPercentageUsesInjectedLocale() {
+        #expect(MonteCarloWidgetFormatting.percentage(
+            85.5, locale: Locale(identifier: "en_US")) == "85.5%")
+        #expect(MonteCarloWidgetFormatting.percentage(
+            85.5, locale: Locale(identifier: "fr_FR")) == "85,5\u{00A0}%")
+    }
+
     /// Upstream makePot: custom preset, mean 0.06, stdDev 0.1, balance 50M cents.
     private func pot(
         id: String = "pot-1",

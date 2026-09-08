@@ -5,6 +5,7 @@ import SwiftUI
 struct RuleEditorView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     /// Conditions and actions need stable identities for `ForEach` while the
     /// user edits them, and two identical rows are legitimate — so the editor
@@ -42,7 +43,7 @@ struct RuleEditorView: View {
             Section {
                 Picker("Stage", selection: $stage) {
                     ForEach(Rule.Stage.allCases, id: \.self) { stage in
-                        Text(stage.label).tag(stage)
+                        Text(stage.label(locale: locale)).tag(stage)
                     }
                 }
                 .pickerStyle(.segmented)

@@ -39,67 +39,93 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case bankSyncNotConfigured
 
     var errorDescription: String? {
+        message(locale: .autoupdatingCurrent)
+    }
+
+    func message(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .syncNotConfigured:
-            return String(localized: "error.syncNotConfigured")
+            return ReportStrings.text("error.syncNotConfigured", locale: locale, bundle: bundle)
         case .transferAccountsMatch:
-            return String(localized: "error.transferAccountsMatch")
+            return ReportStrings.text("error.transferAccountsMatch", locale: locale, bundle: bundle)
         case .transferAmountNotPositive:
-            return String(localized: "error.transferAmountNotPositive")
+            return ReportStrings.text("error.transferAmountNotPositive", locale: locale, bundle: bundle)
         case .transferPayeeMissing:
-            return String(localized: "error.transferPayeeMissing")
+            return ReportStrings.text("error.transferPayeeMissing", locale: locale, bundle: bundle)
         case .transferCategoriesMatch:
-            return String(localized: "error.transferCategoriesMatch")
+            return ReportStrings.text("error.transferCategoriesMatch", locale: locale, bundle: bundle)
         case .transferAmountExceedsSource:
-            return String(localized: "error.transferAmountExceedsSource")
+            return ReportStrings.text("error.transferAmountExceedsSource", locale: locale, bundle: bundle)
         case .invalidAmount:
-            return String(localized: "error.invalidAmount")
+            return ReportStrings.text("error.invalidAmount", locale: locale, bundle: bundle)
         case .missingTransferDestination:
-            return String(localized: "error.missingTransferDestination")
+            return ReportStrings.text("error.missingTransferDestination", locale: locale, bundle: bundle)
         case .payeeCreationFailed(let message):
-            return String(format: String(localized: "error.payeeCreationFailed %@"), message)
+            return ReportStrings.format(
+                "error.payeeCreationFailed %@", message, locale: locale, bundle: bundle)
         case .transferPartnerMissing:
-            return String(localized: "error.transferPartnerMissing")
+            return ReportStrings.text("error.transferPartnerMissing", locale: locale, bundle: bundle)
         case .cannotConvertToTransfer:
-            return String(localized: "error.cannotConvertToTransfer")
+            return ReportStrings.text("error.cannotConvertToTransfer", locale: locale, bundle: bundle)
         case .cannotConvertToSplit:
-            return String(localized: "error.cannotConvertToSplit")
+            return ReportStrings.text("error.cannotConvertToSplit", locale: locale, bundle: bundle)
         case .splitNeedsTwoLines:
-            return String(localized: "error.splitNeedsTwoLines")
+            return ReportStrings.text("error.splitNeedsTwoLines", locale: locale, bundle: bundle)
         case .splitAmountMismatch:
-            return String(localized: "error.splitAmountMismatch")
+            return ReportStrings.text("error.splitAmountMismatch", locale: locale, bundle: bundle)
         case .invalidAccountName:
-            return String(localized: "error.invalidAccountName")
+            return ReportStrings.text("error.invalidAccountName", locale: locale, bundle: bundle)
         case .accountCreationFailed(let message):
-            return String(format: String(localized: "error.accountCreationFailed %@"), message)
+            return ReportStrings.format(
+                "error.accountCreationFailed %@", message, locale: locale, bundle: bundle)
         case .invalidCategoryName:
-            return String(localized: "error.invalidCategoryName")
+            return ReportStrings.text("error.invalidCategoryName", locale: locale, bundle: bundle)
         case .invalidCategoryGroupName:
-            return String(localized: "error.invalidCategoryGroupName")
+            return ReportStrings.text("error.invalidCategoryGroupName", locale: locale, bundle: bundle)
         case .categoryCreationFailed(let message):
-            return String(format: String(localized: "error.categoryCreationFailed %@"), message)
+            return ReportStrings.format(
+                "error.categoryCreationFailed %@", message, locale: locale, bundle: bundle)
         case .categoryUpdateFailed(let message):
-            return String(format: String(localized: "error.categoryUpdateFailed %@"), message)
+            return ReportStrings.format(
+                "error.categoryUpdateFailed %@", message, locale: locale, bundle: bundle)
         case .categoryGroupCreationFailed(let message):
-            return String(format: String(localized: "error.categoryGroupCreationFailed %@"), message)
+            return ReportStrings.format(
+                "error.categoryGroupCreationFailed %@", message, locale: locale, bundle: bundle)
         case .ruleNeedsCondition:
-            return String(localized: "error.ruleNeedsCondition")
+            return ReportStrings.text("error.ruleNeedsCondition", locale: locale, bundle: bundle)
         case .ruleNeedsAction:
-            return String(localized: "error.ruleNeedsAction")
+            return ReportStrings.text("error.ruleNeedsAction", locale: locale, bundle: bundle)
         case .ruleInvalidCondition(let field, let op):
-            return String(format: String(localized: "error.ruleInvalidCondition %@ %@"), RuleSchema.label(op: op), RuleSchema.label(field: field))
+            return ReportStrings.format(
+                "error.ruleInvalidCondition %@ %@",
+                RuleSchema.label(
+                    op: op,
+                    type: RuleSchema.fieldType(field),
+                    locale: locale,
+                    bundle: bundle
+                ),
+                RuleSchema.label(field: field, locale: locale, bundle: bundle),
+                locale: locale,
+                bundle: bundle
+            )
         case .ruleInvalidAction:
-            return String(localized: "error.ruleInvalidAction")
+            return ReportStrings.text("error.ruleInvalidAction", locale: locale, bundle: bundle)
         case .ruleEmptyValue(let field):
-            return String(format: String(localized: "error.ruleEmptyValue %@"), RuleSchema.label(field: field).capitalized)
+            return ReportStrings.format(
+                "error.ruleEmptyValue %@",
+                RuleSchema.label(field: field, locale: locale, bundle: bundle),
+                locale: locale,
+                bundle: bundle
+            )
         case .ruleInvalidPattern(let pattern):
-            return String(format: String(localized: "error.ruleInvalidPattern %@"), pattern)
+            return ReportStrings.format(
+                "error.ruleInvalidPattern %@", pattern, locale: locale, bundle: bundle)
         case .ruleOwnedBySchedule:
-            return String(localized: "error.ruleOwnedBySchedule")
+            return ReportStrings.text("error.ruleOwnedBySchedule", locale: locale, bundle: bundle)
         case .ruleNotSerializable:
-            return String(localized: "error.ruleNotSerializable")
+            return ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
         case .bankSyncNotConfigured:
-            return String(localized: "error.bankSyncNotConfigured")
+            return ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
         }
     }
 }
@@ -6638,7 +6664,9 @@ final class BudgetStore: ObservableObject {
                 categoryGroups: Dictionary(categoryGroups.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first }),
                 accounts: Dictionary(accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
             ),
-            formatAmount: { [weak self] cents in self?.formatCurrency(cents) ?? "\(cents)" }
+            formatAmount: { [weak self] cents, locale in
+                self?.formatCurrency(cents, locale: locale) ?? "\(cents)"
+            }
         )
     }
 

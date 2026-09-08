@@ -10,6 +10,9 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     case accountUnavailable
     case invalidAmount(received: String)
     case noAmountReceived
+    case transactionAlreadyExists
+    case transactionSuppressedByRule
+    case transactionNeedsRecovery
     case writeFailed(underlying: String)
 
     var errorDescription: String? {
@@ -26,6 +29,19 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
         bundle: Bundle
     ) -> String {
         String(localized: resource(for: error, locale: locale, bundle: bundle))
+    }
+
+    static func wrapping(_ error: any Error) -> Self {
+        if let error = error as? Self { return error }
+        guard let loggerError = error as? TransactionLogger.LoggerError else {
+            return .writeFailed(underlying: error.localizedDescription)
+        }
+        switch loggerError {
+        case .noBudgetLoaded: return .noBudgetLoaded
+        case .transactionAlreadyExists: return .transactionAlreadyExists
+        case .transactionSuppressedByRule: return .transactionSuppressedByRule
+        case .transactionNeedsRecovery: return .transactionNeedsRecovery
+        }
     }
 
     private static func resource(
@@ -45,6 +61,15 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
             return LocalizedStringResource("intent.error.invalidAmount \(shown)", locale: locale, bundle: bundle)
         case .noAmountReceived:
             return LocalizedStringResource("intent.error.noAmountReceived", locale: locale, bundle: bundle)
+        case .transactionAlreadyExists:
+            return LocalizedStringResource(
+                "This transaction was already saved.", locale: locale, bundle: bundle)
+        case .transactionSuppressedByRule:
+            return LocalizedStringResource(
+                "A transaction rule suppressed this transaction.", locale: locale, bundle: bundle)
+        case .transactionNeedsRecovery:
+            return LocalizedStringResource(
+                "This import needs review before it can be approved.", locale: locale, bundle: bundle)
         case .writeFailed(let underlying):
             return LocalizedStringResource("intent.error.writeFailed \(String(describing: underlying))", locale: locale, bundle: bundle)
         }

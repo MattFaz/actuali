@@ -523,6 +523,7 @@ enum CustomReportEngine {
 
     private static func dayFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
+        f.calendar = cal
         f.dateFormat = "yy-MM-dd"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale
@@ -532,6 +533,7 @@ enum CustomReportEngine {
 
     private static func monthFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
+        f.calendar = cal
         f.dateFormat = "MMM ''yy"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale
@@ -541,6 +543,7 @@ enum CustomReportEngine {
 
     private static func yearFormatter(locale: Locale) -> DateFormatter {
         let f = DateFormatter()
+        f.calendar = cal
         f.dateFormat = "yyyy"
         f.timeZone = TimeZone(identifier: "UTC")
         f.locale = locale

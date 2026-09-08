@@ -595,7 +595,7 @@ enum SankeyEngine {
         groupOtherCategories(&graph, topN: topN, categorySort: categorySort,
                              locale: locale, bundle: bundle)
         sortGraph(&graph, categorySort: categorySort, categoryGroups: categoryGroups)
-        addPercentageLabels(&graph)
+        addPercentageLabels(&graph, locale: locale)
         cleanUpNodes(&graph)
         addHiddenNodes(&graph)
         filterGraphByLayers(&graph, from: layerFrom, to: layerTo)
@@ -829,7 +829,7 @@ enum SankeyEngine {
 
     // MARK: Labels / cleanup
 
-    static func addPercentageLabels(_ graph: inout SankeyGraph) {
+    static func addPercentageLabels(_ graph: inout SankeyGraph, locale: Locale = .current) {
         var layerSums: [SankeyLayer: Int] = [:]
         for key in graph.keys {
             guard let layer = graph[key]?.type else { continue }
@@ -838,8 +838,9 @@ enum SankeyEngine {
         for key in graph.keys {
             guard let node = graph[key] else { continue }
             let total = layerSums[node.type] ?? 1
-            let percentage = total != 0 ? Double(getNodeValue(graph, key)) / Double(total) * 100 : 0
-            graph.nodes[key]?.percentageLabel = String(format: "%.1f%%", percentage)
+            let percentage = total != 0 ? Double(getNodeValue(graph, key)) / Double(total) : 0
+            graph.nodes[key]?.percentageLabel = percentage.formatted(
+                .percent.locale(locale).precision(.fractionLength(1)))
         }
     }
 
@@ -996,6 +997,7 @@ enum SankeyEngine {
         let formatter = DateFormatter()
         formatter.dateFormat = "MMM yyyy"
         formatter.locale = locale
+        formatter.calendar = calendar
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter.string(from: date)
     }

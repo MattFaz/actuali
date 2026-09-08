@@ -371,7 +371,8 @@ struct DashboardView: View {
                         SankeyBudgetInput.Entry(month: $0.month, categoryId: $0.categoryId, amountCents: $0.amountCents)
                     }),
                     today: Date(),
-                    context: conditionsContext
+                    context: conditionsContext,
+                    locale: locale
                 )
             } content: { data in
                 SankeyWidgetView(displayName: widget.displayName, data: data)

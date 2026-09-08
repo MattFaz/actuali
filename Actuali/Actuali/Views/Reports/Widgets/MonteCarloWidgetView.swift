@@ -1,6 +1,13 @@
 import SwiftUI
 import Charts
 
+enum MonteCarloWidgetFormatting {
+    static func percentage(_ value: Double, locale: Locale) -> String {
+        (value / 100).formatted(
+            .percent.locale(locale).precision(.fractionLength(0...1)))
+    }
+}
+
 /// Dashboard card for the Monte Carlo retirement simulation. Mirrors
 /// upstream MonteCarloCard.tsx: headline success rate to the target age,
 /// plus the compact fan chart (p10-p90 band, p25-p75 band, p50 line) from
@@ -25,8 +32,7 @@ struct MonteCarloWidgetView: View {
                 Text(displayName).font(.headline)
                 Spacer()
                 VStack(alignment: .trailing, spacing: 2) {
-                    Text(successPercent.formatted(
-                        .number.locale(locale).precision(.fractionLength(0...1))) + "%")
+                    Text(MonteCarloWidgetFormatting.percentage(successPercent, locale: locale))
                         .font(.subheadline.weight(.semibold))
                         .monospacedDigit()
                     Text(ReportStrings.format(

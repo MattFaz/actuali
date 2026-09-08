@@ -16,10 +16,14 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     }
 
     var label: String {
+        label(locale: .autoupdatingCurrent)
+    }
+
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .system: return String(localized: "System")
-        case .light: return String(localized: "Light")
-        case .dark: return String(localized: "Dark")
+        case .system: return ReportStrings.text("System", locale: locale, bundle: bundle)
+        case .light: return ReportStrings.text("Light", locale: locale, bundle: bundle)
+        case .dark: return ReportStrings.text("Dark", locale: locale, bundle: bundle)
         }
     }
 }

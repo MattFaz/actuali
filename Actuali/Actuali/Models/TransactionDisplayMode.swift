@@ -7,9 +7,13 @@ enum TransactionDisplayMode: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var label: String {
+        label(locale: .autoupdatingCurrent)
+    }
+
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .flat: return String(localized: "Flat List")
-        case .groupedByDate: return String(localized: "Grouped by Date")
+        case .flat: return ReportStrings.text("Flat List", locale: locale, bundle: bundle)
+        case .groupedByDate: return ReportStrings.text("Grouped by Date", locale: locale, bundle: bundle)
         }
     }
 
