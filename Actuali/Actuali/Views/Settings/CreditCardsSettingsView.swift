@@ -4,9 +4,15 @@ import SwiftUI
 struct CreditCardsSettingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
-    enum DueDateMode: String, CaseIterable {
-        case daysAfter = "Days After"
-        case dayOfMonth = "Day of Month"
+    enum DueDateMode: CaseIterable, Hashable {
+        case daysAfter, dayOfMonth
+
+        var title: String {
+            switch self {
+            case .daysAfter: String(localized: "Days After")
+            case .dayOfMonth: String(localized: "Day of Month")
+            }
+        }
     }
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
@@ -168,22 +174,22 @@ struct CreditCardsSettingsView: View {
                         }
                     }
 
-                    Picker("Payment Due", selection: $selectedDueMode) {
+                    Picker(String(localized: "Payment Due"), selection: $selectedDueMode) {
                         ForEach(DueDateMode.allCases, id: \.self) { mode in
-                            Text(mode.rawValue).tag(mode)
+                            Text(mode.title).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
 
                     if selectedDueMode == .daysAfter {
-                        Picker("Payment Due After", selection: $selectedDueOffset) {
+                        Picker(String(localized: "Payment Due After"), selection: $selectedDueOffset) {
                             ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
-                                Text(days == 1 ? "1 day" : "\(days) days").tag(days)
+                                Text(days == 1 ? String(localized: "1 Day") : String(format: String(localized: "%lld days"), Int64(days))).tag(days)
                             }
                         }
                     } else {
-                            Picker("Payment Due Day", selection: $selectedDueDay) {
-                                ForEach(1...31, id: \.self) { day in
+                        Picker(String(localized: "Payment Due Day"), selection: $selectedDueDay) {
+                            ForEach(1...31, id: \.self) { day in
                                 Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                             }
                         }
@@ -201,7 +207,7 @@ struct CreditCardsSettingsView: View {
                 } header: {
                     Text(String(localized: "Card Details"))
                 } footer: {
-                    Text("The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.")
+                    Text(String(localized: "The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip."))
                 }
 
                 if isEditing {

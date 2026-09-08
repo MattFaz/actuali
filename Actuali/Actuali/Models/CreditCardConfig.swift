@@ -15,6 +15,9 @@ extension CreditCardConfig {
         statementDay = try container.decode(Int.self, forKey: .statementDay)
         dueOffsetDays = try container.decodeIfPresent(Int.self, forKey: .dueOffsetDays) ?? CreditCardCycle.defaultDueOffsetDays
         dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
+        if let dueDay, !(1...31).contains(dueDay) {
+            throw DecodingError.dataCorruptedError(forKey: .dueDay, in: container, debugDescription: "dueDay must be between 1 and 31")
+        }
         limit = try container.decodeIfPresent(Int.self, forKey: .limit)
     }
 

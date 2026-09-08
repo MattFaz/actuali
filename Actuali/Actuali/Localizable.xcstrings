@@ -45528,6 +45528,61 @@
         }
       }
     },
+    "Days After": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Days After" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jours après" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Días después" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Dias após" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Tage danach" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Giorni dopo" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Dagen na" } }
+      }
+    },
+    "Day of Month": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Day of Month" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jour du mois" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Día del mes" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Dia do mês" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Tag des Monats" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Giorno del mese" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Dag van de maand" } }
+      }
+    },
+    "Payment Due": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Payment Due" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Échéance de paiement" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Fecha de vencimiento" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Vencimento" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Fälligkeit" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Scadenza del pagamento" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Vervaldatum" } }
+      }
+    },
+    "Payment Due Day": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Payment Due Day" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Jour d’échéance" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Día de vencimiento" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Dia de vencimento" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Fälligkeitstag" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Giorno di scadenza" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Vervaldag" } }
+      }
+    },
+    "The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip.": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "The payment due date is either a set number of days after the statement closes, or a fixed day of the month. Your issuer sets it — check a recent statement, as it varies by card and country.\n\nA credit limit shows available credit on the account. Leave it empty to skip." } },
+        "fr": { "stringUnit": { "state": "translated", "value": "La date d’échéance du paiement correspond soit à un nombre défini de jours après la clôture du relevé, soit à un jour fixe du mois. Elle est définie par votre émetteur — consultez un relevé récent, car elle varie selon la carte et le pays.\n\nUne limite de crédit affiche le crédit disponible sur le compte. Laissez ce champ vide pour ne pas l’afficher." } },
+        "es": { "stringUnit": { "state": "translated", "value": "La fecha de vencimiento del pago es un número establecido de días después del cierre del extracto o un día fijo del mes. La establece su emisor; consulte un extracto reciente, ya que varía según la tarjeta y el país.\n\nUn límite de crédito muestra el crédito disponible en la cuenta. Déjelo vacío para omitirlo." } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "A data de vencimento é um número definido de dias após o fechamento da fatura ou um dia fixo do mês. A administradora a define — consulte uma fatura recente, pois ela varia conforme o cartão e o país.\n\nUm limite de crédito mostra o crédito disponível na conta. Deixe em branco para não exibi-lo." } },
+        "de": { "stringUnit": { "state": "translated", "value": "Der Zahlungstermin ist entweder eine feste Anzahl von Tagen nach dem Abschluss der Abrechnung oder ein fester Kalendertag im Monat. Er wird von Ihrem Kartenanbieter festgelegt – prüfen Sie eine aktuelle Abrechnung, da er je nach Karte und Land variiert.\n\nEin Kreditlimit zeigt den verfügbaren Kredit des Kontos an. Lassen Sie das Feld leer, um es nicht anzuzeigen." } },
+        "it": { "stringUnit": { "state": "translated", "value": "La data di scadenza del pagamento è un numero prestabilito di giorni dopo la chiusura dell’estratto conto oppure un giorno fisso del mese. È stabilita dall’emittente: consulta un estratto conto recente, perché varia in base alla carta e al Paese.\n\nUn limite di credito mostra il credito disponibile sul conto. Lascia vuoto per non mostrarlo." } },
+        "nl": { "stringUnit": { "state": "translated", "value": "De betaaldatum is een vast aantal dagen na het sluiten van het afschrift, of een vaste dag van de maand. Uw uitgever bepaalt deze datum — controleer een recent afschrift, want deze verschilt per kaart en land.\n\nEen kredietlimiet toont het beschikbare krediet op de rekening. Laat dit leeg om het niet weer te geven." } }
+      }
+    },
     "Payment Due After": {
       "localizations": {
         "en": {
