@@ -130,27 +130,37 @@ enum BillsCalendarEngine: Sendable {
                 )
 
                 let sortedDates = occurrenceDates.sorted()
+                let maxLookback: Int
+                switch config.frequency {
+                case .daily:
+                    maxLookback = 0
+                case .weekly:
+                    maxLookback = 2
+                case .monthly, .yearly:
+                    maxLookback = 4
+                }
+
                 for (index, date) in sortedDates.enumerated() {
+                    let prevDate = index > 0 ? sortedDates[index - 1] : nil
+                    let earlyBound = date.adding(days: -maxLookback)
+                    let matchStart = prevDate.map { max($0.adding(days: 1), earlyBound) } ?? earlyBound
+
+                    let nextDate = sortedDates.dropFirst(index + 1).first
+                        ?? ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: date.adding(days: 1))
+                    let nextMatchStart = nextDate.flatMap { next in
+                        next > date ? max(date.adding(days: 1), next.adding(days: -maxLookback)) : nil
+                    }
+
                     let itemStatus: ScheduleStatus
                     if date == schedule.nextDate {
                         itemStatus = baseStatus
                     } else if paymentDates[schedule.id]?.contains(where: { paymentDate in
-                        let matchStart = ScheduleStatusCalculator.occurrenceMatchStartDate(
-                            nextDate: date,
-                            dateOp: schedule.dateOp,
-                            postsTransaction: schedule.postsTransaction
-                        )
-                        let nextDate = sortedDates.dropFirst(index + 1).first
-                            ?? ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: date.adding(days: 1))
-                        let nextMatchStart = nextDate.flatMap { next in
-                            next > date ? ScheduleStatusCalculator.occurrenceMatchStartDate(
-                                nextDate: next,
-                                dateOp: schedule.dateOp,
-                                postsTransaction: schedule.postsTransaction
-                            ) : nil
-                        }
-                        return paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
+                        paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
                     }) == true {
+                        itemStatus = .paid
+                    } else if let next = schedule.nextDate, date < next, (date.year == today.year && date.month == today.month) {
+                        // In the current month, if the schedule's next active date has already advanced
+                        // into the future, this occurrence was already satisfied or skipped.
                         itemStatus = .paid
                     } else if date < today {
                         itemStatus = .missed

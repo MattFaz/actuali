@@ -432,4 +432,73 @@ struct BillsCalendarEngineTests {
         #expect(octoberItems[0].date == DayDate(year: 2026, month: 10, day: 30))
         #expect(octoberItems[0].status == .upcoming)
     }
+
+    @Test func autoPostingSalaryPaidOnLastDayOfPriorMonthIsPaid() {
+        // Recurring salary on 1st, auto-posting enabled,
+        // payment arrives on Aug 31 for Sep 1 occurrence.
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 1))
+        let schedule = ScheduleSummary(
+            id: "sch-salary",
+            name: "Monthly Salary",
+            nextDate: DayDate(year: 2026, month: 10, day: 1),
+            amount: .fixed(500000),
+            amountOp: .isApprox,
+            dateOp: "isapprox",
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: ["sch-salary": .scheduled],
+            paymentDates: ["sch-salary": [DayDate(year: 2026, month: 8, day: 31)]],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 1))
+        #expect(items[0].status == .paid)
+        #expect(items[0].relativeDueText == "Paid")
+    }
+
+    @Test func exactRentPaidEarlyInCurrentMonthIsPaid() {
+        // Rent: monthly on 4th, exact date match, paid on Sep 1 (3 days early).
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 4))
+        let schedule = ScheduleSummary(
+            id: "sch-rent",
+            name: "Rent",
+            nextDate: DayDate(year: 2026, month: 10, day: 4),
+            amount: .fixed(-4_000_000),
+            amountOp: .isExactly,
+            dateOp: "is",
+            dateCondition: .recurring(config),
+            postsTransaction: false,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: ["sch-rent": .scheduled],
+            paymentDates: ["sch-rent": [DayDate(year: 2026, month: 9, day: 1)]],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 4))
+        #expect(items[0].status == .paid)
+        #expect(items[0].relativeDueText == "Paid")
+    }
 }
