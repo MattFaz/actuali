@@ -8,6 +8,7 @@ import SwiftUI
 struct BudgetAutomationsSheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
     let categoryId: String
     let month: String
 
@@ -284,7 +285,7 @@ struct BudgetAutomationsSheet: View {
         } label: {
             row(
                 icon: entry.displayType.systemImage,
-                title: entry.displayType.label,
+                title: entry.displayType.label(locale: locale),
                 subtitle: entryError?.shortMessage ?? sentence(for: entry.template),
                 trailing: AutomationDisplayType.nonContribution.contains(entry.displayType)
                     ? nil : contributions[entry.id].map(budgetStore.displayBalance),

@@ -75,6 +75,7 @@ private let currencyOptions = [
 
 struct DisplaySettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var dashboardPages: [DashboardPage] = []
 
     /// Routes the picker's selection through `setCurrencyCode`, which
@@ -139,7 +140,7 @@ struct DisplaySettingsView: View {
             Section("Appearance") {
                 Picker("Appearance", selection: $budgetStore.appearanceMode) {
                     ForEach(AppearanceMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+                        Text(mode.label(locale: locale)).tag(mode)
                     }
                 }
             }
@@ -147,7 +148,7 @@ struct DisplaySettingsView: View {
             Section {
                 Picker("Start Page", selection: $budgetStore.startTab) {
                     ForEach(StartTab.allCases) { tab in
-                        Text(tab.label).tag(tab)
+                        Text(tab.label(locale: locale)).tag(tab)
                     }
                 }
 

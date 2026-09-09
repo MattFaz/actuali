@@ -501,7 +501,11 @@ actor SyncClient {
     /// local-first). Like transfers, all rows and their CRDT messages commit
     /// in one SQLite transaction and rules are skipped — the caller builds
     /// every row explicitly.
-    func createSplit(parent: Transaction, children: [Transaction]) async throws {
+    func createSplit(
+        parent: Transaction,
+        children: [Transaction],
+        transferPartners: [Transaction] = []
+    ) async throws {
         guard let database else { throw SyncError.notConfigured }
 
         logger.debug("createSplit() - parent: \(parent.id, privacy: .private), children: \(children.count, privacy: .public)")
@@ -511,10 +515,18 @@ actor SyncClient {
         for child in children {
             messages += try await messageGenerator.messagesForInsert(child)
         }
+        for partner in transferPartners {
+            messages += try await messageGenerator.messagesForInsert(partner)
+        }
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages for split")
 
         // 2. Persist rows + messages in one DB transaction, then update merkle
-        for msg in try database.insertSplit(parent: parent, children: children, messages: messages) {
+        for msg in try database.insertSplit(
+            parent: parent,
+            children: children,
+            transferPartners: transferPartners,
+            messages: messages
+        ) {
             merkle = merkle.inserting(msg.timestamp)
         }
         merkle = merkle.pruned()

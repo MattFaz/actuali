@@ -12,6 +12,7 @@ final class CategoryFundingAutomationUITests: XCTestCase {
         automationSettings.tap()
 
         let automation = app.buttons["Category Funding Settings"]
+        app.swipeUp()
         XCTAssertTrue(automation.waitForExistence(timeout: 5), "Category Funding Settings row not found")
         automation.tap()
 

@@ -19,12 +19,12 @@ enum StartTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var label: String {
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .accounts: return String(localized: "Accounts")
-        case .budget: return String(localized: "Budget")
-        case .addTransaction: return String(localized: "Add Transaction")
-        case .reports: return String(localized: "Reports")
+        case .accounts: return ReportStrings.text("Accounts", locale: locale, bundle: bundle)
+        case .budget: return ReportStrings.text("Budget", locale: locale, bundle: bundle)
+        case .addTransaction: return ReportStrings.text("Add Transaction", locale: locale, bundle: bundle)
+        case .reports: return ReportStrings.text("Reports", locale: locale, bundle: bundle)
         }
     }
 

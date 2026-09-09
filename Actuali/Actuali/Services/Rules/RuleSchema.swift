@@ -99,69 +99,94 @@ enum RuleSchema {
 
     // MARK: - Labels (util/rule.ts mapField / friendlyOp)
 
-    static func label(field: String, options: [String: RuleValue]? = nil) -> String {
+    static func label(
+        field: String,
+        options: [String: RuleValue]? = nil,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
         switch field {
-        case "imported_payee": return String(localized: "rule.field.importedPayee")
-        case "payee_name": return String(localized: "rule.field.payeeName")
+        case "imported_payee": return ReportStrings.text("rule.field.importedPayee", locale: locale, bundle: bundle)
+        case "payee_name": return ReportStrings.text("rule.field.payeeName", locale: locale, bundle: bundle)
         case "amount":
-            if options?["inflow"]?.boolValue == true { return String(localized: "rule.field.amountInflow") }
-            if options?["outflow"]?.boolValue == true { return String(localized: "rule.field.amountOutflow") }
-            return String(localized: "rule.field.amount")
-        case "category_group": return String(localized: "rule.field.categoryGroup")
-        case "payee": return String(localized: "rule.field.payee")
-        case "category": return String(localized: "rule.field.category")
-        case "account": return String(localized: "rule.field.account")
-        case "date": return String(localized: "rule.field.date")
-        case "notes": return String(localized: "rule.field.notes")
-        case "cleared": return String(localized: "rule.field.cleared")
-        case "reconciled": return String(localized: "rule.field.reconciled")
-        case "transfer": return String(localized: "rule.field.transfer")
-        case "parent": return String(localized: "rule.field.parent")
+            if options?["inflow"]?.boolValue == true {
+                return ReportStrings.text("rule.field.amountInflow", locale: locale, bundle: bundle)
+            }
+            if options?["outflow"]?.boolValue == true {
+                return ReportStrings.text("rule.field.amountOutflow", locale: locale, bundle: bundle)
+            }
+            return ReportStrings.text("rule.field.amount", locale: locale, bundle: bundle)
+        case "category_group": return ReportStrings.text("rule.field.categoryGroup", locale: locale, bundle: bundle)
+        case "payee": return ReportStrings.text("rule.field.payee", locale: locale, bundle: bundle)
+        case "category": return ReportStrings.text("rule.field.category", locale: locale, bundle: bundle)
+        case "account": return ReportStrings.text("rule.field.account", locale: locale, bundle: bundle)
+        case "date": return ReportStrings.text("rule.field.date", locale: locale, bundle: bundle)
+        case "notes": return ReportStrings.text("rule.field.notes", locale: locale, bundle: bundle)
+        case "cleared": return ReportStrings.text("rule.field.cleared", locale: locale, bundle: bundle)
+        case "reconciled": return ReportStrings.text("rule.field.reconciled", locale: locale, bundle: bundle)
+        case "transfer": return ReportStrings.text("rule.field.transfer", locale: locale, bundle: bundle)
+        case "parent": return ReportStrings.text("rule.field.parent", locale: locale, bundle: bundle)
         default: return field
         }
     }
 
-    static func summaryLabel(field: String, options: [String: RuleValue]? = nil) -> String {
+    static func summaryLabel(
+        field: String,
+        options: [String: RuleValue]? = nil,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
         switch field {
-        case "payee": return String(localized: "rule.summary.field.payee")
-        case "category": return String(localized: "rule.summary.field.category")
-        case "account": return String(localized: "rule.summary.field.account")
-        case "date": return String(localized: "rule.summary.field.date")
-        case "notes": return String(localized: "rule.summary.field.notes")
-        case "cleared": return String(localized: "rule.summary.field.cleared")
-        case "reconciled": return String(localized: "rule.summary.field.reconciled")
-        case "transfer": return String(localized: "rule.summary.field.transfer")
-        case "parent": return String(localized: "rule.summary.field.parent")
-        default: return label(field: field, options: options)
+        case "payee": return ReportStrings.text("rule.summary.field.payee", locale: locale, bundle: bundle)
+        case "category": return ReportStrings.text("rule.summary.field.category", locale: locale, bundle: bundle)
+        case "account": return ReportStrings.text("rule.summary.field.account", locale: locale, bundle: bundle)
+        case "date": return ReportStrings.text("rule.summary.field.date", locale: locale, bundle: bundle)
+        case "notes": return ReportStrings.text("rule.summary.field.notes", locale: locale, bundle: bundle)
+        case "cleared": return ReportStrings.text("rule.summary.field.cleared", locale: locale, bundle: bundle)
+        case "reconciled": return ReportStrings.text("rule.summary.field.reconciled", locale: locale, bundle: bundle)
+        case "transfer": return ReportStrings.text("rule.summary.field.transfer", locale: locale, bundle: bundle)
+        case "parent": return ReportStrings.text("rule.summary.field.parent", locale: locale, bundle: bundle)
+        default: return label(field: field, options: options, locale: locale, bundle: bundle)
         }
     }
 
-    static func label(op: String, type: RuleFieldType? = nil) -> String {
+    static func label(
+        op: String,
+        type: RuleFieldType? = nil,
+        locale: Locale = .autoupdatingCurrent,
+        bundle: Bundle = .main
+    ) -> String {
+        let key: String
         switch op {
-        case "is": return String(localized: "rule.op.is")
-        case "isNot": return String(localized: "rule.op.isNot")
-        case "oneOf": return String(localized: "rule.op.oneOf")
-        case "notOneOf": return String(localized: "rule.op.notOneOf")
-        case "isapprox": return String(localized: "rule.op.isApprox")
-        case "isbetween": return String(localized: "rule.op.isBetween")
-        case "contains": return String(localized: "rule.op.contains")
-        case "doesNotContain": return String(localized: "rule.op.doesNotContain")
-        case "matches": return String(localized: "rule.op.matches")
-        case "hasTags": return String(localized: "rule.op.hasAllTags")
-        case "hasAnyTag": return String(localized: "rule.op.hasAnyTag")
-        case "onBudget": return String(localized: "rule.op.isOnBudget")
-        case "offBudget": return String(localized: "rule.op.isOffBudget")
-        case "gt": return String(localized: type == .date ? "rule.op.isAfter" : "rule.op.isGreaterThan")
-        case "gte": return String(localized: type == .date ? "rule.op.isAfterOrEquals" : "rule.op.isGreaterThanOrEquals")
-        case "lt": return String(localized: type == .date ? "rule.op.isBefore" : "rule.op.isLessThan")
-        case "lte": return String(localized: type == .date ? "rule.op.isBeforeOrEquals" : "rule.op.isLessThanOrEquals")
-        case "set": return String(localized: "rule.op.set")
-        case "set-split-amount": return String(localized: "rule.op.allocate")
-        case "link-schedule": return String(localized: "rule.op.linkSchedule")
-        case "prepend-notes": return String(localized: "rule.op.prependNotes")
-        case "append-notes": return String(localized: "rule.op.appendNotes")
-        case "delete-transaction": return String(localized: "rule.op.deleteTransaction")
+        case "is": key = "rule.op.is"
+        case "isNot": key = "rule.op.isNot"
+        case "oneOf": key = "rule.op.oneOf"
+        case "notOneOf": key = "rule.op.notOneOf"
+        case "isapprox": key = "rule.op.isApprox"
+        case "isbetween": key = "rule.op.isBetween"
+        case "contains": key = "rule.op.contains"
+        case "doesNotContain": key = "rule.op.doesNotContain"
+        case "matches": key = "rule.op.matches"
+        case "hasTags": key = "rule.op.hasAllTags"
+        case "hasAnyTag": key = "rule.op.hasAnyTag"
+        case "onBudget": key = "rule.op.isOnBudget"
+        case "offBudget": key = "rule.op.isOffBudget"
+        case "gt": key = type == .date ? "rule.op.isAfter" : "rule.op.isGreaterThan"
+        case "gte": key = type == .date ? "rule.op.isAfterOrEquals" : "rule.op.isGreaterThanOrEquals"
+        case "lt": key = type == .date ? "rule.op.isBefore" : "rule.op.isLessThan"
+        case "lte": key = type == .date ? "rule.op.isBeforeOrEquals" : "rule.op.isLessThanOrEquals"
+        case "set": key = "rule.op.set"
+        case "set-split-amount": key = "rule.op.allocate"
+        case "link-schedule": key = "rule.op.linkSchedule"
+        case "prepend-notes": key = "rule.op.prependNotes"
+        case "append-notes": key = "rule.op.appendNotes"
+        case "delete-transaction": key = "rule.op.deleteTransaction"
         default: return op
         }
+        return ReportStrings.text(key, locale: locale, bundle: bundle)
+    }
+
+    static func sentenceCased(_ text: String, locale: Locale) -> String {
+        text.prefix(1).uppercased(with: locale) + text.dropFirst()
     }
 }

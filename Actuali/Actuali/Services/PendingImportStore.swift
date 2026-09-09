@@ -13,9 +13,18 @@ final class PendingImportStore: ObservableObject {
         case saveFailed(String)
 
         var errorDescription: String? {
+            message(locale: .autoupdatingCurrent)
+        }
+
+        nonisolated func message(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
             case .saveFailed(let message):
-                return String(localized: "Failed to save pending imports: \(message)")
+                return ReportStrings.format(
+                    "Failed to save pending imports: %@",
+                    message,
+                    locale: locale,
+                    bundle: bundle
+                )
             }
         }
     }

@@ -438,6 +438,26 @@ struct PendingImportApproverTests {
         #expect(try databaseRowCount(at: url) == 0)
     }
 
+    @Test func editedImportWithoutDatabaseKeepsStructuredError() async {
+        let store = makeStore()
+        store.accounts = [account("acct_checking", "Checking")]
+        let item = PendingImport(
+            originBudgetId: store.currentBudgetId,
+            amount: 12.50,
+            sourceCurrencyCode: store.currencyCode,
+            payee: "Coffee"
+        )
+        let form = BudgetStore.TransactionForm(
+            accountId: "acct_checking", type: .expense, amount: "12.50",
+            payeeName: "Coffee", transferToAccountId: nil, categoryId: nil,
+            notes: "edited", date: Date(), cleared: false
+        )
+
+        await #expect(throws: PendingImportApprover.ApproveError.noBudgetLoaded) {
+            try await PendingImportApprover(store: store).saveEdited(item, form: form)
+        }
+    }
+
     @Test func editedForeignBudgetImportRequiresServiceConfirmation() async throws {
         let (store, url) = try await makeWritableStore()
         defer { try? FileManager.default.removeItem(at: url) }

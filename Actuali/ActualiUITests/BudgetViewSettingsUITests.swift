@@ -53,7 +53,7 @@ final class BudgetViewSettingsUITests: XCTestCase {
     @MainActor
     private func firstBudgetProgressBar(in app: XCUIApplication) -> XCUIElement {
         app.descendants(matching: .any).matching(
-            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent'")
+            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent.*'")
         ).firstMatch
     }
 

@@ -38,6 +38,7 @@ final class AccountNotesUITests: XCTestCase {
         XCTAssertTrue(editor.waitForExistence(timeout: 10), "note editor not shown")
         attachScreenshot(app, name: "2-account-note-editor")
 
+        editor.tap()
         editor.typeText("checked")
 
         let save = app.buttons["saveNote"]

@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -5,6 +6,13 @@ import Testing
 /// names must come back out internal (`description`, `acct`) or the web app and
 /// the sync engine will read a rule we wrote as a different rule.
 struct RuleModelTests {
+
+    @Test func stageLabelUsesRequestedLocale() {
+        let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+        #expect(Rule.Stage.pre.label(
+            locale: Locale(identifier: "fr_FR"), bundle: bundle
+        ) == "Avant")
+    }
 
     @Test func parsesInternalFieldNamesToPublicOnes() throws {
         let rule = try Rule.parse(

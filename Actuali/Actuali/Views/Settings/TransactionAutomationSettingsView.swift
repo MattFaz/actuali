@@ -4,6 +4,7 @@ import UserNotifications
 
 struct TransactionAutomationSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var transactionNotificationsEnabled = TransactionNotificationSettings().isEnabled
     @State private var creditCardDueNotificationsEnabled = CreditCardNotificationSettings().isEnabled
     @State private var notificationPermissionDenied = false
@@ -71,13 +72,13 @@ struct TransactionAutomationSettingsView: View {
             Section(String(localized: "Transaction Behavior")) {
                 Picker(String(localized: "View Transactions As"), selection: $budgetStore.transactionDisplayMode) {
                     ForEach(TransactionDisplayMode.allCases) { mode in
-                        Text(mode.label).tag(mode)
+                        Text(mode.label(locale: locale)).tag(mode)
                     }
                 }
 
                 Picker(String(localized: "Uncategorized Action"), selection: $budgetStore.uncategorizedTapAction) {
                     ForEach(UncategorizedTapAction.allCases) { action in
-                        Text(action.label).tag(action)
+                        Text(action.label(locale: locale)).tag(action)
                     }
                 }
             }

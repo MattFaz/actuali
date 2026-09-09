@@ -6,6 +6,16 @@ struct BudgetAutomationsTests {
 
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
+    @Test func displayTypeTextUsesRequestedLocale() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(AutomationDisplayType.fixed.label(
+            locale: locale, bundle: appBundle
+        ) == "Montant fixe")
+        #expect(AutomationDisplayType.fixed.explanation(
+            locale: locale, bundle: appBundle
+        ) == "Ajouter un montant fixe chaque mois, semaine, jour ou année.")
+    }
+
     private func parse(_ line: String) throws -> GoalTemplate {
         try GoalTemplateParser.parse(line)
     }

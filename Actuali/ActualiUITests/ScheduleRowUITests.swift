@@ -4,7 +4,7 @@ final class ScheduleRowUITests: XCTestCase {
     @MainActor
     func testRedesignedRowContentsAndRecurrenceAccessibility() {
         let app = XCUIApplication()
-        app.launchArguments = ["-showScheduleRowFixture"]
+        app.launchArguments = ["-showScheduleRowFixture", "-hideDecimalPlaces", "NO"]
         app.launch()
 
         let row = app.descendants(matching: .any)["scheduleRow.fixture"]

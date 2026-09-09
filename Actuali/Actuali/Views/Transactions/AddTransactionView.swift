@@ -463,7 +463,7 @@ struct AddTransactionView: View {
                     Section {
                         ForEach(reviewRequirements, id: \.self) { requirement in
                             Toggle(
-                                requirement.prompt,
+                                requirement.prompt(locale: locale),
                                 isOn: Binding(
                                     get: { confirmedReviewRequirements.contains(requirement) },
                                     set: { isConfirmed in
@@ -565,7 +565,8 @@ struct AddTransactionView: View {
     private func loadSplitChildren() async {
         guard let editing, editing.isParent, splitLines.isEmpty else { return }
         splitLines = await budgetStore.fetchSplitChildren(parentId: editing.id).map { child in
-            BudgetStore.SplitLineForm(
+            let overridesParentPayee = child.payeeId != editing.payeeId
+            return BudgetStore.SplitLineForm(
                 childId: child.id,
                 categoryId: child.categoryId,
                 amount: SplitEntryMath.amountString(fromCents: abs(child.amount)),
@@ -573,7 +574,12 @@ struct AddTransactionView: View {
                 // inside a spend split — keeps its flip on reload (GH #216).
                 isOpposite: (child.amount < 0) != (editing.amount < 0),
                 notes: child.notes ?? "",
-                payeeName: (child.payeeName != editing.payeeName ? child.payeeName : nil) ?? ""
+                payeeName: overridesParentPayee
+                    ? budgetStore.payees.first(where: { $0.id == child.payeeId }).map {
+                        PayeePickerView.displayName(for: $0, accounts: budgetStore.accounts)
+                    } ?? child.payeeName ?? ""
+                    : "",
+                payeeId: overridesParentPayee ? child.payeeId : nil
             )
         }
     }
@@ -585,6 +591,7 @@ struct AddTransactionView: View {
             ForEach($splitLines) { $line in
                 SplitLineRow(
                     line: $line,
+                    accountId: selectedAccountId,
                     txType: txType,
                     remainingCents: splitRemainingCents,
                     nearbyPayees: $nearbyPayees,
@@ -758,7 +765,8 @@ struct AddTransactionView: View {
                 NotificationRouter.shared.pendingAccountNavigation = form.accountId
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PendingImportApprover.localizedErrorMessage(
+                for: error, locale: locale)
         }
     }
 
@@ -820,6 +828,7 @@ private struct SplitLineRow: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     @Binding var line: BudgetStore.SplitLineForm
+    var accountId: String
     /// The transaction's direction, so the line's sign glyph can show its
     /// effective direction relative to it.
     var txType: TransactionType
@@ -920,11 +929,19 @@ private struct SplitLineRow: View {
                 PayeePickerView(
                     payeeName: line.payeeName,
                     nearbyPayees: $nearbyPayees,
+                    transferFromAccountId: accountId,
                     onSelect: { payee in
-                        line.payeeName = payee.name
+                        line.payeeId = payee.id
+                        line.payeeName = PayeePickerView.displayName(
+                            for: payee, accounts: budgetStore.accounts)
                         showPayeePicker = false
                     },
                     onCommit: { name in
+                        line.payeeId = PayeePickerView.committedPayeeId(
+                            currentName: line.payeeName,
+                            currentId: line.payeeId,
+                            committedName: name
+                        )
                         line.payeeName = name
                         showPayeePicker = false
                     },

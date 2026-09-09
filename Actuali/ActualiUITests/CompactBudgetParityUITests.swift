@@ -74,7 +74,7 @@ final class CompactBudgetParityUITests: XCTestCase {
         ).firstMatch
         XCTAssertTrue(balance.waitForExistence(timeout: 5))
         XCTAssertTrue(balance.label.contains("$"))
-        XCTAssertTrue(balance.label.contains("positive"),
+        XCTAssertTrue(balance.label.localizedCaseInsensitiveContains("positive"),
                       "VoiceOver communicates balance status without relying on green")
         balance.tap()
         XCTAssertTrue(app.navigationBars["Move Money"].waitForExistence(timeout: 5),
