@@ -229,23 +229,6 @@ struct CreditCardCycleTests {
         #expect(cycle.dueShortSummary(for: DayDate(year: 2026, month: 2, day: 20)) == "Due in 9d")
     }
 
-    @Test func statementClosingDateMatchesDueDates() {
-        let offsetCycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
-        // Mar 2, 2026 due date corresponds to Feb 15 statement
-        let statement = offsetCycle.statementClosingDate(forDueDate: DayDate(year: 2026, month: 3, day: 2))
-        #expect(statement == DayDate(year: 2026, month: 2, day: 15))
-
-        let dayOfMonthCycle = CreditCardCycle(statementDay: 15, paymentDue: .dayOfMonth(1))
-        // Mar 1, 2026 due date corresponds to Feb 15 statement
-        let febStatement = dayOfMonthCycle.statementClosingDate(forDueDate: DayDate(year: 2026, month: 3, day: 1))
-        #expect(febStatement == DayDate(year: 2026, month: 2, day: 15))
-
-        let sameMonthCycle = CreditCardCycle(statementDay: 5, paymentDue: .dayOfMonth(25))
-        // Jan 25, 2026 due date corresponds to Jan 5 statement
-        let janStatement = sameMonthCycle.statementClosingDate(forDueDate: DayDate(year: 2026, month: 1, day: 25))
-        #expect(janStatement == DayDate(year: 2026, month: 1, day: 5))
-    }
-
     @Test func upcomingStatementDateTracksPendingCycle() {
         let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
         // On Feb 20, Feb 15 statement is awaiting payment on Mar 2

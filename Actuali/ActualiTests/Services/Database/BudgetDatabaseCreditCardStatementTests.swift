@@ -93,11 +93,10 @@ struct BudgetDatabaseCreditCardStatementTests {
         let statementDate = DayDate(year: 2026, month: 2, day: 15)
 
         // Case 1: Before payment, statement balance is $500, remaining due is $500, live balance is $700.
-        let dueBeforePayment = try await db.fetchCreditCardStatementDue(
-            accountId: "card1",
-            statementDate: statementDate,
-            liveBalance: -70000
-        )
+        let resultsBefore = try await db.fetchCreditCardStatementDues(for: [
+            (accountId: "card1", statementDate: statementDate, liveBalance: -70000)
+        ])
+        let dueBeforePayment = resultsBefore["card1"]!
         #expect(dueBeforePayment.statementBalance == 50000)
         #expect(dueBeforePayment.paymentsSince == 0)
         #expect(dueBeforePayment.remainingDue == 50000)
@@ -111,11 +110,10 @@ struct BudgetDatabaseCreditCardStatementTests {
             """)
         }
 
-        let dueAfterPayment = try await db.fetchCreditCardStatementDue(
-            accountId: "card1",
-            statementDate: statementDate,
-            liveBalance: -20000
-        )
+        let resultsAfter = try await db.fetchCreditCardStatementDues(for: [
+            (accountId: "card1", statementDate: statementDate, liveBalance: -20000)
+        ])
+        let dueAfterPayment = resultsAfter["card1"]!
         #expect(dueAfterPayment.statementBalance == 50000)
         #expect(dueAfterPayment.paymentsSince == 50000)
         #expect(dueAfterPayment.remainingDue == 0)

@@ -88,18 +88,6 @@ struct CreditCardCycle: Equatable, Hashable {
         }
     }
 
-    /// The statement closing date that produced a given payment due date.
-    func statementClosingDate(forDueDate dueDate: DayDate) -> DayDate {
-        switch paymentDue {
-        case .daysAfter(let days):
-            return dueDate.adding(days: -days)
-        case .dayOfMonth(let day):
-            let month = (day > statementDay) ? dueDate : dueDate.adding(months: -1)
-            let clamped = clampedDay(year: month.year, month: month.month)
-            return DayDate(year: month.year, month: month.month, day: clamped)
-        }
-    }
-
     /// The statement closing date whose payment is next due.
     /// Walks back through closed statements rather than assuming only the most
     /// recent one is pending, in case offset exceeds a monthly cycle.
