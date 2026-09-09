@@ -48,10 +48,6 @@ enum PendingImportReviewRequirement: Hashable {
     case adoptIntoActiveBudget
     case confirmActiveBudgetCurrency(source: String?, budget: String)
 
-    var prompt: String {
-        prompt(locale: .autoupdatingCurrent)
-    }
-
     func prompt(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .adoptIntoActiveBudget:

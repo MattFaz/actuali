@@ -15,10 +15,6 @@ enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
     /// plus goal which the editor also adds through a dedicated button).
     static let singleton: Set<AutomationDisplayType> = [.limit, .refill, .remainder, .goal]
 
-    var label: String {
-        label(locale: .autoupdatingCurrent)
-    }
-
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .fixed: ReportStrings.text("Fixed amount", locale: locale, bundle: bundle)
@@ -31,10 +27,6 @@ enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
         case .remainder: ReportStrings.text("Whatever is left", locale: locale, bundle: bundle)
         case .goal: ReportStrings.text("Long-term goal", locale: locale, bundle: bundle)
         }
-    }
-
-    var explanation: String {
-        explanation(locale: .autoupdatingCurrent)
     }
 
     func explanation(locale: Locale, bundle: Bundle = .main) -> String {

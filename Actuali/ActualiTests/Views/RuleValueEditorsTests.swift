@@ -66,9 +66,12 @@ struct RuleValueEditorsTests {
         ) == "Montant")
         #expect(RuleValueEditorLocalization.fieldLabel(
             "category_group", locale: locale, bundle: appBundle
-        ) == "groupe de catégories")
+        ) == "Groupe de catégories")
         #expect(RuleValueEditorLocalization.operatorLabel(
             "gt", field: "date", locale: locale, bundle: appBundle
         ) == "est après")
+        #expect(RuleValueEditorLocalization.operatorLabel(
+            "set", locale: locale, bundle: appBundle
+        ) == "Définir")
     }
 }

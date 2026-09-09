@@ -19,10 +19,6 @@ enum StartTab: String, CaseIterable, Identifiable {
         }
     }
 
-    var label: String {
-        label(locale: .autoupdatingCurrent)
-    }
-
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .accounts: return ReportStrings.text("Accounts", locale: locale, bundle: bundle)

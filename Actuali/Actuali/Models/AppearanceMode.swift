@@ -15,10 +15,6 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
         }
     }
 
-    var label: String {
-        label(locale: .autoupdatingCurrent)
-    }
-
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .system: return ReportStrings.text("System", locale: locale, bundle: bundle)

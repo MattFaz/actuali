@@ -185,4 +185,8 @@ enum RuleSchema {
         }
         return ReportStrings.text(key, locale: locale, bundle: bundle)
     }
+
+    static func sentenceCased(_ text: String, locale: Locale) -> String {
+        text.prefix(1).uppercased(with: locale) + text.dropFirst()
+    }
 }

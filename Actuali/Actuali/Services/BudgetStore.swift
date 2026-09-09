@@ -113,7 +113,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .ruleEmptyValue(let field):
             return ReportStrings.format(
                 "error.ruleEmptyValue %@",
-                RuleSchema.label(field: field, locale: locale, bundle: bundle),
+                RuleSchema.sentenceCased(
+                    RuleSchema.label(field: field, locale: locale, bundle: bundle),
+                    locale: locale),
                 locale: locale,
                 bundle: bundle
             )

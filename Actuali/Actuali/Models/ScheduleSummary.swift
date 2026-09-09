@@ -7,10 +7,6 @@ enum ScheduleAmountOp: String, Hashable, CaseIterable {
     case isApprox = "isapprox"
     case isBetween = "isbetween"
 
-    var label: String {
-        label(locale: .autoupdatingCurrent)
-    }
-
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .isExactly: ReportStrings.text("is exactly", locale: locale, bundle: bundle)

@@ -429,7 +429,9 @@ enum RuleValueEditorLocalization {
         locale: Locale,
         bundle: Bundle = .main
     ) -> String {
-        RuleSchema.label(field: field, locale: locale, bundle: bundle)
+        RuleSchema.sentenceCased(
+            RuleSchema.label(field: field, locale: locale, bundle: bundle),
+            locale: locale)
     }
 
     static func operatorLabel(
@@ -438,9 +440,10 @@ enum RuleValueEditorLocalization {
         locale: Locale,
         bundle: Bundle = .main
     ) -> String {
-        RuleSchema.label(
+        let label = RuleSchema.label(
             op: op, type: field.flatMap(RuleSchema.fieldType),
             locale: locale, bundle: bundle)
+        return field == nil ? RuleSchema.sentenceCased(label, locale: locale) : label
     }
 
     static func selectedCount(

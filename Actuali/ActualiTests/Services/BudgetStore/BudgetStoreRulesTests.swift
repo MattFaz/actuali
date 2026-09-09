@@ -58,6 +58,8 @@ struct BudgetStoreRulesTests {
         ).message(locale: locale, bundle: appBundle) == "\"est après\" ne peut pas être utilisé avec Date.")
         #expect(BudgetStoreError.ruleEmptyValue(field: "notes")
             .message(locale: locale, bundle: appBundle) == "Notes doit avoir une valeur.")
+        #expect(BudgetStoreError.ruleEmptyValue(field: "amount")
+            .message(locale: Locale(identifier: "en_US"), bundle: appBundle) == "Amount needs a value.")
     }
 
     @Test func rejectsIsBetweenWithoutARange() {

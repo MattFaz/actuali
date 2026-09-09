@@ -10,10 +10,6 @@ enum UncategorizedTapAction: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var label: String {
-        label(locale: .autoupdatingCurrent)
-    }
-
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .categoryPicker: return ReportStrings.text("Category Picker", locale: locale, bundle: bundle)

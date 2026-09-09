@@ -39,10 +39,6 @@ struct Rule: Identifiable, Equatable, Hashable {
             }
         }
 
-        var label: String {
-            label(locale: .autoupdatingCurrent)
-        }
-
         func label(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
             case .pre: return ReportStrings.text("Pre", locale: locale, bundle: bundle)
