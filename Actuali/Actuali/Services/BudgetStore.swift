@@ -4191,6 +4191,12 @@ final class BudgetStore: ObservableObject {
     /// Restore several transaction rows as one sync write. History uses this
     /// for multi-row Undo so a transfer or split does not intentionally issue
     /// one independent write per leg.
+    ///
+    /// Batches by distinct changed-field set rather than sending one union of
+    /// fields for every row: a row whose amount didn't change must not have
+    /// `amount` rewritten just because another row in the same batch changed
+    /// its amount — that would stamp a fresh HLC timestamp on an unchanged
+    /// value and could clobber a concurrent edit from another device.
     func restoreTransactions(
         _ transactions: [Transaction],
         from recordedAfter: [Transaction]
@@ -4198,20 +4204,18 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
-        guard transactions.count == recordedAfter.count else {
-            throw BudgetStoreError.syncNotConfigured
-        }
 
-        var changedFields = Set<String>()
+        var batches: [Set<String>: [Transaction]] = [:]
         for (updated, original) in zip(transactions, recordedAfter) {
-            changedFields.formUnion(Self.changedFields(original: original, updated: updated))
+            let fields = Self.changedFields(original: original, updated: updated)
+            guard !fields.isEmpty else { continue }
+            batches[fields, default: []].append(updated)
         }
-        guard !changedFields.isEmpty else { return }
+        guard !batches.isEmpty else { return }
 
-        try await syncClient.updateTransactions(
-            transactions,
-            changedFields: changedFields
-        )
+        for (fields, rows) in batches {
+            try await syncClient.updateTransactions(rows, changedFields: fields)
+        }
         await refreshDataOnly()
     }
 
@@ -4916,13 +4920,12 @@ final class BudgetStore: ObservableObject {
             guard let syncClient else {
                 throw BudgetStoreError.syncNotConfigured
             }
-            try await syncClient.createSplit(parent: parent, children: children)
-            await publishTransactionsImmediately([parent.id] + children.map(\.id))
             try await syncClient.createSplit(
                 parent: parent,
                 children: children,
                 transferPartners: transferPartners
             )
+            await publishTransactionsImmediately([parent.id])
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
