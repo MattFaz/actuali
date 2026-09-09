@@ -153,7 +153,8 @@ struct HistoryAction: Identifiable, Codable, Equatable {
             case .deleted: return String(localized: "Deleted split transaction")
             }
         }
-        let name = primarySnapshot?.payeeName.flatMap { $0.isEmpty ? nil : $0 } ?? "Transaction"
+        let name = primarySnapshot?.payeeName.flatMap { $0.isEmpty ? nil : $0 }
+            ?? String(localized: "Transaction")
         switch kind {
         case .created: return String(format: String(localized: "Added %@"), name)
         case .edited: return String(format: String(localized: "Edited %@"), name)
