@@ -246,7 +246,7 @@ final class BudgetDisplayStyleUITests: XCTestCase {
                       "the progress assertions require an expanded fixture group")
         XCTAssertEqual(groceries.label, "Details for Groceries")
         let progressBar = app.descendants(matching: .any).matching(
-            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent'")
+            NSPredicate(format: "label MATCHES[c] '.*spent [0-9]+ percent.*'")
         ).firstMatch
         XCTAssertFalse(progressBar.exists,
                        "disabled progress mode displays no progress bar")
