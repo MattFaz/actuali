@@ -338,6 +338,20 @@ final class HistoryStore: ObservableObject {
         }
 
         let afterByID = Dictionary(uniqueKeysWithValues: action.after.map { ($0.id, $0) })
+        for recordedAfter in action.after {
+            if recordedAfter.tombstone {
+                guard live[recordedAfter.id] == nil else {
+                    errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
+                    return
+                }
+            } else {
+                guard let actual = live[recordedAfter.id], recordedAfter.matchesLiveTransaction(actual) else {
+                    errorMessage = String(localized: "This action changed after it was recorded, so it cannot be safely undone.")
+                    return
+                }
+            }
+        }
+
         for expected in action.before {
             guard let recordedAfter = afterByID[expected.id] else {
                 guard live[expected.id] == nil else {
