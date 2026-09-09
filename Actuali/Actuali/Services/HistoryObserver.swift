@@ -98,7 +98,7 @@ final class HistoryObserver {
             return
         }
 
-        if HistoryStore.recordingSuppressed || store.isBankSyncing {
+        if HistoryStore.recordingSuppressed || store.isBankSyncing || store.syncState == .syncing {
             previous = current
             previousSplitChildren = currentSplitChildren
             return
