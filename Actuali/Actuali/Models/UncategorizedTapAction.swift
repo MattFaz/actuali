@@ -10,10 +10,10 @@ enum UncategorizedTapAction: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
 
-    var label: String {
+    func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .categoryPicker: return String(localized: "Category Picker")
-        case .transactionEditor: return String(localized: "Transaction Editor")
+        case .categoryPicker: return ReportStrings.text("Category Picker", locale: locale, bundle: bundle)
+        case .transactionEditor: return ReportStrings.text("Transaction Editor", locale: locale, bundle: bundle)
         }
     }
     

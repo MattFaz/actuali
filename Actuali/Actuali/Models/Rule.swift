@@ -39,11 +39,11 @@ struct Rule: Identifiable, Equatable, Hashable {
             }
         }
 
-        var label: String {
+        func label(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
-            case .pre: return String(localized: "Pre")
-            case .default: return String(localized: "Default")
-            case .post: return String(localized: "Post")
+            case .pre: return ReportStrings.text("Pre", locale: locale, bundle: bundle)
+            case .default: return ReportStrings.text("Default", locale: locale, bundle: bundle)
+            case .post: return ReportStrings.text("Post", locale: locale, bundle: bundle)
             }
         }
     }

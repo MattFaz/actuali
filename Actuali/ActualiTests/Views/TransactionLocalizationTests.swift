@@ -130,4 +130,20 @@ struct TransactionLocalizationTests {
             ) == expectedValue)
         }
     }
+
+    @Test func ruleFieldLabelsKeepTheCatalogCasing() {
+        let expected = [
+            ("fr_FR", "groupe de catégories"),
+            ("es_ES", "grupo de categorías"),
+            ("it_IT", "gruppo di categorie")
+        ]
+
+        for (localeIdentifier, expectedValue) in expected {
+            #expect(ReportStrings.text(
+                "rule.field.categoryGroup",
+                locale: Locale(identifier: localeIdentifier),
+                bundle: appBundle
+            ) == expectedValue)
+        }
+    }
 }

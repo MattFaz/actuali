@@ -228,7 +228,7 @@ struct ScheduleEditView: View {
 
             Picker(String(localized: "Matches"), selection: $amountOp) {
                 ForEach(ScheduleAmountOp.allCases, id: \.self) { op in
-                    Text(op.label).tag(op)
+                    Text(op.label(locale: locale)).tag(op)
                 }
             }
 

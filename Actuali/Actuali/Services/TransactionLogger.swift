@@ -17,15 +17,30 @@ final class TransactionLogger {
         case transactionNeedsRecovery
 
         var errorDescription: String? {
+            message()
+        }
+
+        func message(
+            locale: Locale = .autoupdatingCurrent,
+            bundle: Bundle = .main
+        ) -> String {
             switch self {
             case .noBudgetLoaded:
-                return String(localized: "Open Actuali and select a budget first.")
+                return ReportStrings.text(
+                    "Open Actuali and select a budget first.",
+                    locale: locale, bundle: bundle)
             case .transactionAlreadyExists:
-                return String(localized: "This transaction was already saved.")
+                return ReportStrings.text(
+                    "This transaction was already saved.",
+                    locale: locale, bundle: bundle)
             case .transactionSuppressedByRule:
-                return String(localized: "A transaction rule suppressed this transaction.")
+                return ReportStrings.text(
+                    "A transaction rule suppressed this transaction.",
+                    locale: locale, bundle: bundle)
             case .transactionNeedsRecovery:
-                return String(localized: "This import needs review before it can be approved.")
+                return ReportStrings.text(
+                    "This import needs review before it can be approved.",
+                    locale: locale, bundle: bundle)
             }
         }
     }

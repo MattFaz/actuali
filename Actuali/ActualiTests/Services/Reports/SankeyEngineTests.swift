@@ -6,6 +6,8 @@ import Testing
 /// engine-level compute coverage.
 struct SankeyEngineTests {
 
+    private let englishLocale = Locale(identifier: "en_US")
+
     // 2024-01-15 UTC, so the default (nil) time frame is 2024-01.
     private var asOf: Date {
         var c = DateComponents(); c.year = 2024; c.month = 1; c.day = 15
@@ -161,10 +163,14 @@ struct SankeyEngineTests {
         graph.addValueToLink(from: "node1", to: "target", value: 250)
         graph.addValueToLink(from: "node2", to: "target", value: 750)
 
-        SankeyEngine.addPercentageLabels(&graph)
+        SankeyEngine.addPercentageLabels(&graph, locale: Locale(identifier: "en_US"))
 
         #expect(graph["node1"]?.percentageLabel == "25.0%")
         #expect(graph["node2"]?.percentageLabel == "75.0%")
+
+        SankeyEngine.addPercentageLabels(&graph, locale: Locale(identifier: "fr_FR"))
+        #expect(graph["node1"]?.percentageLabel == "25,0\u{00A0}%")
+        #expect(graph["node2"]?.percentageLabel == "75,0\u{00A0}%")
     }
 
     @Test func addPercentageLabelsUsesGraphLayerNotDepth() {
@@ -178,7 +184,7 @@ struct SankeyEngineTests {
         graph.addValueToLink(from: "income-cat", to: "account-incoming", value: 300)
         graph.addValueToLink(from: "account-root", to: "group", value: 100)
 
-        SankeyEngine.addPercentageLabels(&graph)
+        SankeyEngine.addPercentageLabels(&graph, locale: Locale(identifier: "en_US"))
 
         #expect(graph["account-root"]?.percentageLabel == "25.0%")
         #expect(graph["account-incoming"]?.percentageLabel == "75.0%")
@@ -273,7 +279,10 @@ struct SankeyEngineTests {
                                       fromPreviousMonthCents: 200,
                                       lastMonthOverspentCents: 0, forNextMonthCents: 300)
 
-        let graph = SankeyEngine.createBudgetGraph(entries, budget: input, startMonth: "2024-01", endMonth: "2024-01")
+        let graph = SankeyEngine.createBudgetGraph(
+            entries, budget: input, startMonth: "2024-01", endMonth: "2024-01",
+            locale: englishLocale
+        )
 
         #expect(graph["c_salary"] != nil)
         #expect(graph["c_groceries"] != nil)
@@ -286,7 +295,10 @@ struct SankeyEngineTests {
 
     @Test func createBudgetGraphMarksOverbudgeted() {
         let input = SankeyBudgetInput(entries: [], toBudgetCents: -500)
-        let graph = SankeyEngine.createBudgetGraph([], budget: input, startMonth: "2024-01", endMonth: "2024-01")
+        let graph = SankeyEngine.createBudgetGraph(
+            [], budget: input, startMonth: "2024-01", endMonth: "2024-01",
+            locale: englishLocale
+        )
 
         #expect(graph["to_budget"]?.isNegative == true)
         #expect(graph["to_budget"]?.name == "Overbudgeted")
@@ -370,7 +382,7 @@ struct SankeyEngineTests {
 
         let data = SankeyEngine.compute(
             meta: meta(topN: 2), transactions: transactions, categoryGroups: groups,
-            today: asOf, context: context
+            today: asOf, context: context, locale: englishLocale
         )
 
         // per-group sort buckets into the category group's Other node
@@ -390,7 +402,7 @@ struct SankeyEngineTests {
 
         let grouped = SankeyEngine.compute(
             meta: meta(groupAccounts: true), transactions: transactions, categoryGroups: groups,
-            today: asOf, context: context
+            today: asOf, context: context, locale: englishLocale
         )
         #expect(node(grouped, key: "all_income")?.name == "Income")
         #expect(node(grouped, key: "a_checking") == nil)
@@ -454,7 +466,7 @@ struct SankeyEngineTests {
 
         let data = SankeyEngine.compute(
             meta: meta(mode: "budgeted"), transactions: transactions, categoryGroups: groups,
-            budget: budget, today: asOf, context: context
+            budget: budget, today: asOf, context: context, locale: englishLocale
         )
 
         #expect(node(data, key: "budgeted")?.name == "Budgeted")
@@ -476,5 +488,24 @@ struct SankeyEngineTests {
         // "To budget" sits in the group layer with no child, so it gets a
         // hidden child chain to pin its column.
         #expect(data.nodes.map(\.key).contains("to_budget_category__HIDDEN"))
+    }
+
+    @Test func budgetedMonthLabelsUseGregorianYear() {
+        let budget = SankeyBudgetInput(fromPreviousMonthCents: 1)
+        let data = SankeyEngine.compute(
+            meta: meta(mode: "budgeted"), transactions: [], categoryGroups: groups,
+            budget: budget, today: asOf, context: context,
+            locale: Locale(identifier: "th_TH@calendar=buddhist")
+        )
+
+        #expect(node(data, key: "from_previous_month")?.name.contains("2023") == true)
+        #expect(node(data, key: "from_previous_month")?.name.contains("2566") == false)
+
+        let french = SankeyEngine.compute(
+            meta: meta(mode: "budgeted"), transactions: [], categoryGroups: groups,
+            budget: budget, today: asOf, context: context,
+            locale: Locale(identifier: "fr_FR"), bundle: Bundle(identifier: "com.mfazz.ActualiOS")!
+        )
+        #expect(node(french, key: "from_previous_month")?.name == "De déc. 2023")
     }
 }

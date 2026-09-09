@@ -171,8 +171,7 @@ struct LogTransactionIntent: AppIntent {
             )
             return Self.result(dialogText: dialogText, showConfirmation: showConfirmation)
         } catch {
-            let mapped: LogTransactionError = (error as? LogTransactionError)
-                ?? .writeFailed(underlying: error.localizedDescription)
+            let mapped = LogTransactionError.wrapping(error)
             await reportFailure(mapped)
             throw mapped
         }
@@ -184,7 +183,8 @@ struct LogTransactionIntent: AppIntent {
         await store.ensureBudgetReady()
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
         await TransactionLogNotifier.notifyFailure(
-            message: error.errorDescription ?? "Unknown error",
+            message: LogTransactionError.localizedString(
+                for: error, locale: .autoupdatingCurrent, bundle: .main),
             payee: payee,
             amountCents: amountCents ?? 0,
             currencyCode: store.currencyCode,

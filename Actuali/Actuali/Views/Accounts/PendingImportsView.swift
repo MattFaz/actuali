@@ -19,6 +19,7 @@ struct PendingImportsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @ObservedObject private var store = PendingImportStore.shared
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.locale) private var locale
 
     @State private var editingItem: PendingImport?
     @State private var errorMessage: String?
@@ -46,7 +47,10 @@ struct PendingImportsView: View {
                             .buttonStyle(.plain)
                             .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                                 Button(role: .destructive) {
-                                    do { try store.remove(id: item.id) } catch { errorMessage = error.localizedDescription }
+                                    do { try store.remove(id: item.id) } catch {
+                                        errorMessage = PendingImportApprover.localizedErrorMessage(
+                                            for: error, locale: locale)
+                                    }
                                 } label: {
                                     Label("Dismiss", systemImage: "trash")
                                 }
@@ -121,7 +125,8 @@ struct PendingImportsView: View {
                     do { try store.remove(id: item.id) } catch {
                         editingItem = nil
                         deferredFailureCount = nil
-                        errorMessage = error.localizedDescription
+                        errorMessage = PendingImportApprover.localizedErrorMessage(
+                            for: error, locale: locale)
                     }
                 }
             } catch PendingImportApprover.ApproveError.noAccountAvailable {
@@ -163,7 +168,8 @@ struct PendingImportsView: View {
                     do { try store.remove(id: item.id) } catch {
                         editingItem = nil
                         deferredFailureCount = nil
-                        errorMessage = error.localizedDescription
+                        errorMessage = PendingImportApprover.localizedErrorMessage(
+                            for: error, locale: locale)
                     }
                 }
             } catch {
@@ -171,7 +177,8 @@ struct PendingImportsView: View {
                     isProcessing = false
                     editingItem = nil
                     deferredFailureCount = nil
-                    errorMessage = error.localizedDescription
+                    errorMessage = PendingImportApprover.localizedErrorMessage(
+                        for: error, locale: locale)
                 }
             }
         }
@@ -219,7 +226,7 @@ struct PendingImportsView: View {
                 case .failure(let count):
                     editingItem = nil
                     deferredFailureCount = nil
-                    errorMessage = Self.approvalFailureMessage(count: count)
+                    errorMessage = Self.approvalFailureMessage(count: count, locale: locale)
                 }
             }
         }
@@ -229,7 +236,7 @@ struct PendingImportsView: View {
         guard let count = deferredFailureCount else { return }
         deferredFailureCount = nil
         editingItem = nil
-        errorMessage = Self.approvalFailureMessage(count: count)
+        errorMessage = Self.approvalFailureMessage(count: count, locale: locale)
     }
 
     nonisolated static func bulkApprovalDisposition(
@@ -245,7 +252,8 @@ struct PendingImportsView: View {
              .budgetIdentityRequired, .sourceCurrencyRequired,
              .sourceCurrencyMismatch, .reviewConfirmationRequired:
             return .review
-        case .invalidAmount, .suppressedByRule, .writeFailed:
+        case .invalidAmount, .suppressedByRule, .noBudgetLoaded,
+             .transactionNeedsRecovery, .writeFailed:
             return .failure
         }
     }
@@ -279,7 +287,12 @@ struct PendingImportsView: View {
         if let accountId = targetAccountId {
             let approver = PendingImportApprover(store: budgetStore)
             VStack(spacing: 0) {
-                if let context = currencyContext(for: item) {
+                if let context = Self.currencyContext(
+                    for: item,
+                    activeBudgetId: budgetStore.currentBudgetId,
+                    budgetCurrency: budgetStore.currencyCode,
+                    locale: locale
+                ) {
                     Text(context)
                         .font(.callout)
                         .foregroundStyle(.orange)
@@ -318,21 +331,46 @@ struct PendingImportsView: View {
         }
     }
 
-    private func currencyContext(for item: PendingImport) -> String? {
+    nonisolated static func currencyContext(
+        for item: PendingImport,
+        activeBudgetId: String?,
+        budgetCurrency: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String? {
         if let originBudgetId = item.originBudgetId,
-           originBudgetId != budgetStore.currentBudgetId {
-            return String(localized: "This import belongs to a different budget. Review and confirm adoption into the active budget before saving.")
+           originBudgetId != activeBudgetId {
+            return ReportStrings.text(
+                "This import belongs to a different budget. Review and confirm adoption into the active budget before saving.",
+                locale: locale,
+                bundle: bundle
+            )
         }
         guard let sourceCurrencyCode = item.sourceCurrencyCode else {
             if item.originBudgetId == nil {
-                return String(localized: "This older import has no budget identity. Review and save it to adopt it into the active budget.")
+                return ReportStrings.text(
+                    "This older import has no budget identity. Review and save it to adopt it into the active budget.",
+                    locale: locale,
+                    bundle: bundle
+                )
             }
-            return String(localized: "Currency was not identified. Active budget: \(PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)). Review and confirm before saving.")
+            return ReportStrings.format(
+                "Currency was not identified. Active budget: %@. Review and confirm before saving.",
+                PendingImport.normalizedCurrencyCode(budgetCurrency),
+                locale: locale,
+                bundle: bundle
+            )
         }
         let source = PendingImport.normalizedCurrencyCode(sourceCurrencyCode)
-        let budget = PendingImport.normalizedCurrencyCode(budgetStore.currencyCode)
+        let budget = PendingImport.normalizedCurrencyCode(budgetCurrency)
         guard source != budget else { return nil }
-        return String(localized: "Source currency: \(source). Active budget: \(budget). Review and confirm before saving.")
+        return ReportStrings.format(
+            "Source currency: %@. Active budget: %@. Review and confirm before saving.",
+            source,
+            budget,
+            locale: locale,
+            bundle: bundle
+        )
     }
 
     private func resolveAccountId(for item: PendingImport) -> String? {
@@ -356,7 +394,7 @@ private struct PendingImportRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text(item.payee ?? String(localized: "Unknown Payee"))
+                Text(item.payee ?? PendingImportsView.unknownPayee(locale: locale))
                     .font(.headline)
                 Spacer()
                 if let amount = item.amount {
@@ -383,7 +421,7 @@ private struct PendingImportRow: View {
 
             HStack {
                 if let hint = item.cardHint {
-                    Text(String(format: String(localized: "Card ••%@"), hint))
+                    Text(PendingImportsView.cardLabel(hint, locale: locale))
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -406,6 +444,18 @@ private struct PendingImportRow: View {
 }
 
 extension PendingImportsView {
+    nonisolated static func unknownPayee(locale: Locale, bundle: Bundle = .main) -> String {
+        ReportStrings.text("Unknown Payee", locale: locale, bundle: bundle)
+    }
+
+    nonisolated static func cardLabel(
+        _ hint: String,
+        locale: Locale,
+        bundle: Bundle = .main
+    ) -> String {
+        ReportStrings.format("Card ••%@", hint, locale: locale, bundle: bundle)
+    }
+
     nonisolated static func amountString(
         _ amount: Double,
         isIncome: Bool,

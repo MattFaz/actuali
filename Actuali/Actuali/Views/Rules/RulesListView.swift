@@ -23,6 +23,7 @@ enum RuleRowLocalization {
 /// rule, search over that summary text, and swipe to delete.
 struct RulesListView: View {
     @EnvironmentObject var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var searchText = ""
     @State private var editingRule: Rule?
     @State private var isCreating = false
@@ -31,9 +32,12 @@ struct RulesListView: View {
     private var summary: RuleSummary { budgetStore.ruleSummary }
 
     private var filteredRules: [Rule] {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(with: locale)
         guard !query.isEmpty else { return budgetStore.rules }
-        return budgetStore.rules.filter { summary.searchText($0).contains(query) }
+        return budgetStore.rules.filter {
+            summary.searchText($0, locale: locale).contains(query)
+        }
     }
 
     var body: some View {
@@ -152,7 +156,7 @@ private struct RuleRow: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack(spacing: 6) {
-                Text(rule.stage.label.uppercased())
+                Text(rule.stage.label(locale: locale).uppercased(with: locale))
                     .font(.caption2.weight(.semibold))
                     .padding(.horizontal, 6)
                     .padding(.vertical, 2)
@@ -166,9 +170,12 @@ private struct RuleRow: View {
                 }
             }
 
-            labelled(RuleRowLocalization.fragment("IF", locale: locale), lines: rule.conditions.map(summary.condition),
+            labelled(RuleRowLocalization.fragment("IF", locale: locale),
+                     lines: rule.conditions.map { summary.condition($0, locale: locale) },
                      joiner: RuleRowLocalization.joiner(isAnd: rule.conditionsOp == .and, locale: locale))
-            labelled(RuleRowLocalization.fragment("THEN", locale: locale), lines: rule.actions.map(summary.action), joiner: nil)
+            labelled(RuleRowLocalization.fragment("THEN", locale: locale),
+                     lines: rule.actions.map { summary.action($0, locale: locale) },
+                     joiner: nil)
         }
         .padding(.vertical, 2)
     }

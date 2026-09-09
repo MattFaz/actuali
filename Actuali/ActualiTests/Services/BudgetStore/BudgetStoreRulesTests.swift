@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import Actuali
 
@@ -6,6 +7,8 @@ import Testing
 /// actually run.
 @MainActor
 struct BudgetStoreRulesTests {
+
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     private func rule(
         conditions: [Rule.Condition],
@@ -43,6 +46,20 @@ struct BudgetStoreRulesTests {
                 .init(op: "oneOf", field: "notes", value: .list([.string("a")]), options: nil)
             ]))
         }
+    }
+
+    @Test func validationErrorsLocalizeNestedRuleLabels() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(BudgetStoreError.ruleInvalidCondition(
+            field: "notes", op: "oneOf"
+        ).message(locale: locale, bundle: appBundle) == "\"est parmi\" ne peut pas être utilisé avec Notes.")
+        #expect(BudgetStoreError.ruleInvalidCondition(
+            field: "date", op: "gt"
+        ).message(locale: locale, bundle: appBundle) == "\"est après\" ne peut pas être utilisé avec Date.")
+        #expect(BudgetStoreError.ruleEmptyValue(field: "notes")
+            .message(locale: locale, bundle: appBundle) == "Notes doit avoir une valeur.")
+        #expect(BudgetStoreError.ruleEmptyValue(field: "amount")
+            .message(locale: Locale(identifier: "en_US"), bundle: appBundle) == "Amount needs a value.")
     }
 
     @Test func rejectsIsBetweenWithoutARange() {

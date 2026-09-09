@@ -3,6 +3,8 @@ import Testing
 @testable import Actuali
 
 struct CustomReportEngineTests {
+    private let englishLocale = Locale(identifier: "en_US")
+
     private let today = { // 2026-07-11 UTC
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
@@ -101,7 +103,7 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net",
                            interval: "Monthly", graph: "BarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today, locale: englishLocale)
         guard case .bars(let bars, let signed) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -115,7 +117,7 @@ struct CustomReportEngineTests {
             config: config(mode: "time", groupBy: "Group", balance: "Payment",
                            interval: "Monthly", graph: "StackedBarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today, locale: englishLocale)
         guard case .stacked(let s) = data.kind else {
             Issue.record("expected stacked, got \(data.kind)"); return
         }
@@ -135,6 +137,20 @@ struct CustomReportEngineTests {
             Issue.record("expected stacked, got \(data.kind)"); return
         }
         #expect(s.intervalLabels == ["26-06-28"])
+    }
+
+    @Test func intervalLabelsKeepGregorianCalendarForNonGregorianLocale() {
+        let data = CustomReportEngine.compute(
+            config: config(mode: "total", groupBy: "Interval", balance: "Payment",
+                           interval: "Yearly", graph: "BarGraph",
+                           staticRange: ("2026-01-01", "2026-12-31")),
+            transactions: [tx("1", date: 20260701, amount: -5_000, category: "c-fun")],
+            reportContext: reportContext, filterContext: .empty, today: today,
+            locale: Locale(identifier: "th_TH"))
+        guard case .bars(let bars, _) = data.kind else {
+            Issue.record("expected bars, got \(data.kind)"); return
+        }
+        #expect(bars.map(\.label) == ["2026"])
     }
 
     @Test func unsupportedOptionsAreNamed() {
@@ -186,7 +202,8 @@ struct CustomReportEngineTests {
                 config: config(mode: "total", groupBy: groupBy, balance: "Payment",
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                showOffBudget: true),
-                transactions: txs, reportContext: ctx, filterContext: .empty, today: today)
+                transactions: txs, reportContext: ctx, filterContext: .empty, today: today,
+                locale: englishLocale)
         }
         guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
               case .bars(let byGroup, _) = run(groupBy: "Group").kind,
@@ -217,7 +234,8 @@ struct CustomReportEngineTests {
                 config: config(mode: "total", groupBy: groupBy, balance: "Payment",
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                showUncategorized: true),
-                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+                transactions: txs, reportContext: reportContext, filterContext: .empty,
+                today: today, locale: englishLocale)
         }
         guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
               case .bars(let byGroup, _) = run(groupBy: "Group").kind else {
@@ -234,7 +252,7 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net",
                            interval: "Monthly", graph: "TableGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today, locale: englishLocale)
         guard case .table(let rows) = data.kind else {
             Issue.record("expected table, got \(data.kind)"); return
         }
@@ -384,7 +402,7 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Payment",
                            interval: "Monthly", graph: "DonutGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today, locale: englishLocale)
         guard case .donut(let slices, let groups) = data.kind else {
             Issue.record("expected donut, got \(data.kind)"); return
         }
@@ -478,7 +496,7 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Payment",
                            interval: "Monthly", graph: "AreaGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today, locale: englishLocale)
         guard case .area(let points) = data.kind else {
             Issue.record("expected area, got \(data.kind)"); return
         }
@@ -499,7 +517,8 @@ struct CustomReportEngineTests {
                 config: config(mode: "time", groupBy: groupBy, balance: "Payment",
                                interval: "Monthly", graph: groupBy == "Interval" ? "BarGraph" : "StackedBarGraph",
                                trimIntervals: trim, staticRange: ("2026-03-01", "2026-08-31")),
-                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+                transactions: txs, reportContext: reportContext, filterContext: .empty,
+                today: today, locale: englishLocale)
             switch data.kind {
             case .stacked(let s): return s.intervalLabels
             case .bars(let bars, _): return bars.map(\.label)

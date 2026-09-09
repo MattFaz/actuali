@@ -9,6 +9,13 @@ struct ScheduleConditionsTests {
 
     private let fixedDate = ScheduleDateCondition.fixed(DayDate(yyyymmdd: 20260813)!)
 
+    @Test func amountOperatorLabelUsesRequestedLocale() {
+        let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+        #expect(ScheduleAmountOp.isExactly.label(
+            locale: Locale(identifier: "fr_FR"), bundle: bundle
+        ) == "est exactement")
+    }
+
     private func fields(
         payee: String? = "payee-1",
         account: String? = "acct-1",

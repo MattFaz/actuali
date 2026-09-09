@@ -463,7 +463,7 @@ struct AddTransactionView: View {
                     Section {
                         ForEach(reviewRequirements, id: \.self) { requirement in
                             Toggle(
-                                requirement.prompt,
+                                requirement.prompt(locale: locale),
                                 isOn: Binding(
                                     get: { confirmedReviewRequirements.contains(requirement) },
                                     set: { isConfirmed in
@@ -765,7 +765,8 @@ struct AddTransactionView: View {
                 NotificationRouter.shared.pendingAccountNavigation = form.accountId
             }
         } catch {
-            errorMessage = error.localizedDescription
+            errorMessage = PendingImportApprover.localizedErrorMessage(
+                for: error, locale: locale)
         }
     }
 

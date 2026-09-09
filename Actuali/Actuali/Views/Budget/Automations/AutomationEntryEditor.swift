@@ -5,6 +5,7 @@ import SwiftUI
 /// and the editor/* form components.
 struct AutomationEntryEditor: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @Binding var entry: AutomationEntry
     let error: AutomationError?
     let data: BudgetStore.AutomationEditorData
@@ -49,7 +50,7 @@ struct AutomationEntryEditor: View {
                 }
             } else {
                 Section {
-                    Text(entry.displayType.explanation)
+                    Text(entry.displayType.explanation(locale: locale))
                         .font(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -81,7 +82,7 @@ struct AutomationEntryEditor: View {
                 Button("Delete Automation", role: .destructive, action: onDelete)
             }
         }
-        .navigationTitle(entry.displayType.label)
+        .navigationTitle(entry.displayType.label(locale: locale))
         .navigationBarTitleDisplayMode(.inline)
     }
 
@@ -98,10 +99,10 @@ struct AutomationEntryEditor: View {
                     entry = BudgetAutomations.convert(entry, to: type)
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
-                        Label(type.label, systemImage: type.systemImage)
+                        Label(type.label(locale: locale), systemImage: type.systemImage)
                             .font(.caption.weight(.semibold))
                             .lineLimit(1)
-                        Text(type.explanation)
+                        Text(type.explanation(locale: locale))
                             .font(.caption2)
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)

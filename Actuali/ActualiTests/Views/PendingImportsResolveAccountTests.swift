@@ -25,6 +25,58 @@ struct PendingImportsResolveAccountTests {
             == "2 transactions n’ont pas pu être approuvées. Vérifiez leurs détails.")
     }
 
+    @Test func reviewStringsUseInjectedLocale() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(PendingImportsView.currencyContext(
+            for: PendingImport(originBudgetId: "other-budget", sourceCurrencyCode: "EUR"),
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD",
+            locale: locale,
+            bundle: appBundle
+        ) == "Cette importation appartient à un autre budget. Vérifiez et confirmez son adoption dans le budget actif avant de l'enregistrer.")
+        #expect(PendingImportsView.currencyContext(
+            for: PendingImport(originBudgetId: "active-budget", sourceCurrencyCode: "EUR"),
+            activeBudgetId: "active-budget",
+            budgetCurrency: "USD",
+            locale: locale,
+            bundle: appBundle
+        ) == "Devise source : EUR. Budget actif : USD. Vérifiez et confirmez avant d’enregistrer.")
+        #expect(PendingImportsView.unknownPayee(locale: locale, bundle: appBundle)
+            == "Bénéficiaire inconnu")
+        #expect(PendingImportsView.cardLabel("1234", locale: locale, bundle: appBundle)
+            == "Carte ••1234")
+    }
+
+    @Test func errorsUseInjectedLocale() {
+        let locale = Locale(identifier: "fr_FR")
+        #expect(PendingImportApprover.localizedErrorMessage(
+            for: PendingImportApprover.ApproveError.sourceCurrencyMismatch(
+                source: "EUR", budget: "USD"),
+            locale: locale,
+            bundle: appBundle
+        ) == "Cette importation est en EUR, mais le budget actif utilise USD. Vérifiez et confirmez la transaction avant de l’enregistrer.")
+        #expect(PendingImportApprover.localizedErrorMessage(
+            for: PendingImportStore.StoreError.saveFailed("disk full"),
+            locale: locale,
+            bundle: appBundle
+        ) == "Impossible d'enregistrer les importations en attente : disk full")
+        #expect(PendingImportApprover.localizedErrorMessage(
+            for: BudgetStoreError.invalidAmount,
+            locale: locale,
+            bundle: appBundle
+        ) == "Montant invalide")
+        #expect(PendingImportApprover.localizedErrorMessage(
+            for: PendingImportApprover.ApproveError.noBudgetLoaded,
+            locale: locale,
+            bundle: appBundle
+        ) == "Ouvrez Actuali et sélectionnez d'abord un budget.")
+        #expect(PendingImportApprover.localizedErrorMessage(
+            for: PendingImportApprover.ApproveError.transactionNeedsRecovery,
+            locale: locale,
+            bundle: appBundle
+        ) == "Cette importation doit être examinée avant de pouvoir être approuvée.")
+    }
+
     @Test func bulkApprovalFailuresRecoverConsistently() {
         #expect(PendingImportsView.bulkApprovalDisposition(
             for: PendingImportApprover.ApproveError.alreadyApproved
@@ -171,7 +223,15 @@ struct PendingImportsResolveAccountTests {
             .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
         ])
         #expect(requirements.count == 2)
-        #expect(requirements[1].prompt.contains("no conversion"))
+        #expect(requirements[1].prompt(
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        ).contains("no conversion"))
+        #expect(requirements[0].prompt(
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "Je confirme que cette importation doit être adoptée dans le budget actif.")
+        #expect(requirements[1].prompt(
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == "Je confirme que le montant numérique est dans la devise du budget actif (USD) ; aucune conversion depuis EUR ne sera effectuée.")
     }
 
     @Test func unknownCurrencyRequiresIndependentAcknowledgement() {

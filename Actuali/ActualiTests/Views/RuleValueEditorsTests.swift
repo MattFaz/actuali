@@ -57,4 +57,21 @@ struct RuleValueEditorsTests {
             }
         }
     }
+
+    @Test func editorLabelsUseRequestedLocale() {
+        let locale = Locale(identifier: "fr_FR")
+
+        #expect(RuleValueEditorLocalization.amountLabel(
+            locale: locale, bundle: appBundle
+        ) == "Montant")
+        #expect(RuleValueEditorLocalization.fieldLabel(
+            "category_group", locale: locale, bundle: appBundle
+        ) == "Groupe de catégories")
+        #expect(RuleValueEditorLocalization.operatorLabel(
+            "gt", field: "date", locale: locale, bundle: appBundle
+        ) == "est après")
+        #expect(RuleValueEditorLocalization.operatorLabel(
+            "set", locale: locale, bundle: appBundle
+        ) == "Définir")
+    }
 }

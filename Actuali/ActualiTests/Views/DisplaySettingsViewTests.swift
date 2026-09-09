@@ -4,6 +4,17 @@ import Testing
 
 struct DisplaySettingsViewTests {
 
+    private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+
+    @Test func settingsLabelsUseRequestedLocale() {
+        let locale = Locale(identifier: "fr_FR")
+
+        #expect(AppearanceMode.system.label(locale: locale, bundle: appBundle) == "Système")
+        #expect(StartTab.accounts.label(locale: locale, bundle: appBundle) == "Comptes")
+        #expect(TransactionDisplayMode.flat.label(locale: locale, bundle: appBundle) == "Liste simple")
+        #expect(UncategorizedTapAction.categoryPicker.label(locale: locale, bundle: appBundle) == "Sélecteur de catégories")
+    }
+
     @Test func rejectsResultsFromStaleBudgetOrDatabase() {
         let oldDatabase = NSObject()
         let currentDatabase = NSObject()
