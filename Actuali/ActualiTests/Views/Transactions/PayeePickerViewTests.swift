@@ -74,6 +74,44 @@ struct PayeePickerViewTests {
         #expect(result.map(\.id) == ["1"])
     }
 
+    @Test func splitPickerIncludesOtherAccountsTransferPayees() {
+        let standard = payee(id: "1", name: "Store")
+        let ownAccount = payee(id: "2", name: "", transferAccountId: "checking")
+        let savings = payee(id: "3", name: "", transferAccountId: "savings")
+        let accounts = [
+            Account(id: "checking", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "savings", name: "Savings", type: .savings,
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+        ]
+
+        let result = PayeePickerView.filteredPayees(
+            from: [standard, ownAccount, savings],
+            accounts: accounts,
+            transferFromAccountId: "checking",
+            searchText: "Savings"
+        )
+
+        #expect(result.map(\.id) == ["3"])
+    }
+
+    @Test func splitPickerDoesNotDropTransfersBehindPayeeLimit() {
+        let standard = (0..<25).map { payee(id: "p\($0)", name: "Payee \($0)") }
+        let transfer = payee(id: "transfer", name: "", transferAccountId: "savings")
+        let accounts = [
+            Account(id: "checking", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "savings", name: "Savings", type: .savings,
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+        ]
+
+        let result = PayeePickerView.filteredPayees(
+            from: standard + [transfer], accounts: accounts,
+            transferFromAccountId: "checking", searchText: "")
+
+        #expect(result.contains { $0.id == "transfer" })
+    }
+
     @Test func customPayeeIsOnlyAllowedWhenNameDoesNotExistCaseInsensitively() {
         let existing = payee(id: "1", name: "Walmart")
 

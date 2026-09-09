@@ -217,6 +217,139 @@ struct BudgetStoreSplitSaveTests {
         #expect(all[2]["description"] == costco.id)   // inherits parent
     }
 
+    @Test func splitLineTransferCreatesPairedTransaction() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES
+                    ('acct-1', 'Checking', 0),
+                    ('acct-retirement', 'Retirement', 1);
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-checking', NULL, 'acct-1'),
+                    ('payee-retirement', NULL, 'acct-retirement');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-checking', 'payee-checking'),
+                    ('payee-retirement', 'payee-retirement');
+                """)
+        }
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-retirement", name: "Retirement", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-checking", name: "", transferAccountId: "acct-1"),
+            Payee(id: "payee-retirement", name: "", transferAccountId: "acct-retirement"),
+        ]
+
+        var transferLine = BudgetStore.SplitLineForm(
+            categoryId: "cat-retirement", amount: "5.00", isOpposite: true)
+        transferLine.payeeId = "payee-retirement"
+        transferLine.payeeName = "Transfer: Retirement"
+        try await store.saveTransaction(form(
+            type: .income, amount: "10.00", payeeName: "Employer",
+            splits: [
+                .init(categoryId: "cat-income", amount: "15.00"),
+                transferLine,
+            ]
+        ))
+
+        let all = try rows(path: path)
+        #expect(all.count == 4)
+        let transferChild = try #require(all.first { $0["description"] == "payee-retirement" })
+        let partnerId: String = try #require(transferChild["transferred_id"])
+        let partner = try #require(all.first { $0["id"] == partnerId })
+        #expect(transferChild["parent_id"] != nil)
+        #expect(transferChild["amount"] == -500)
+        #expect(transferChild["category"] == "cat-retirement")
+        #expect(partner["acct"] == "acct-retirement")
+        #expect(partner["amount"] == 500)
+        #expect(partner["description"] == "payee-checking")
+        #expect(partner["transferred_id"] == (transferChild["id"] as String))
+        #expect(partner["parent_id"] == nil)
+    }
+
+    @Test func editingSplitTransferUpdatesItsPartner() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO accounts (id, name, offbudget) VALUES
+                    ('acct-1', 'Checking', 0),
+                    ('acct-retirement', 'Retirement', 1);
+                INSERT INTO payees (id, name, transfer_acct) VALUES
+                    ('payee-checking', NULL, 'acct-1'),
+                    ('payee-retirement', NULL, 'acct-retirement');
+                INSERT INTO payee_mapping (id, targetId) VALUES
+                    ('payee-checking', 'payee-checking'),
+                    ('payee-retirement', 'payee-retirement');
+                INSERT INTO transactions
+                    (id, isParent, isChild, acct, category, description, amount,
+                     notes, date, transferred_id, parent_id, sort_order)
+                VALUES
+                    ('parent', 1, 0, 'acct-1', NULL, NULL, 1000,
+                     NULL, 20260901, NULL, NULL, 10),
+                    ('income', 0, 1, 'acct-1', 'cat-income', NULL, 1500,
+                     NULL, 20260901, NULL, 'parent', 9),
+                    ('retirement', 0, 1, 'acct-1', 'cat-retirement',
+                     'payee-retirement', -500, NULL, 20260901,
+                     'retirement-partner', 'parent', 8),
+                    ('retirement-partner', 0, 0, 'acct-retirement', NULL,
+                     'payee-checking', 500, NULL, 20260901,
+                     'retirement', NULL, 7);
+                """)
+        }
+        store.accounts = [
+            Account(id: "acct-1", name: "Checking", type: .checking,
+                    offBudget: false, closed: false, sortOrder: 0, balance: 0),
+            Account(id: "acct-retirement", name: "Retirement", type: .investment,
+                    offBudget: true, closed: false, sortOrder: 1, balance: 0),
+        ]
+        store.payees = [
+            Payee(id: "payee-checking", name: "", transferAccountId: "acct-1"),
+            Payee(id: "payee-retirement", name: "", transferAccountId: "acct-retirement"),
+        ]
+
+        let original = Transaction(
+            id: "parent", accountId: "acct-1", date: 20260901, amount: 1000,
+            payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
+            notes: nil, cleared: false, reconciled: false, transferId: nil,
+            isParent: true, parentId: nil, tombstone: false, sortOrder: 10,
+            importedPayee: nil)
+        var transferLine = BudgetStore.SplitLineForm(
+            childId: "retirement", categoryId: "cat-retirement",
+            amount: "6.00", isOpposite: true,
+            notes: "updated", payeeName: "Transfer: Retirement")
+        transferLine.payeeId = "payee-retirement"
+        var edit = form(type: .income, amount: "11.00", splits: [
+            .init(childId: "income", categoryId: "cat-income", amount: "17.00"),
+            transferLine,
+        ])
+        edit.date = Transaction.date(fromYYYYMMDD: 20260902)
+
+        try await store.saveTransaction(edit, editing: original)
+
+        let byId = Dictionary(uniqueKeysWithValues: try rows(path: path).map {
+            ($0["id"] as String, $0)
+        })
+        let child = try #require(byId["retirement"])
+        let partner = try #require(byId["retirement-partner"])
+        #expect(child["description"] == "payee-retirement")
+        #expect(child["amount"] == -600)
+        #expect(child["date"] == 20260902)
+        #expect(child["notes"] == "updated")
+        #expect(partner["description"] == "payee-checking")
+        #expect(partner["amount"] == 600)
+        #expect(partner["date"] == 20260902)
+        #expect(partner["notes"] == "updated")
+    }
+
     @Test func editingParentPayeeCascadesToChildrenThatMatchedIt() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

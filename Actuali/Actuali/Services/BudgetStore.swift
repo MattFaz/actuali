@@ -4203,6 +4203,11 @@ final class BudgetStore: ObservableObject {
                         var deletedChild = child
                         deletedChild.tombstone = true
                         deleted.append(deletedChild)
+                        if let partnerId = child.transferId,
+                           var partner = try await database.fetchTransaction(id: partnerId) {
+                            partner.tombstone = true
+                            deleted.append(partner)
+                        }
                     }
                 } catch {
                     // Skip the parent when its children couldn't be read —
@@ -4568,8 +4573,9 @@ final class BudgetStore: ObservableObject {
         var isOpposite: Bool
         var notes: String
         var payeeName: String
+        var payeeId: String?
 
-        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", isOpposite: Bool = false, notes: String = "", payeeName: String = "") {
+        init(id: UUID = UUID(), childId: String? = nil, categoryId: String? = nil, amount: String = "", isOpposite: Bool = false, notes: String = "", payeeName: String = "", payeeId: String? = nil) {
             self.id = id
             self.childId = childId
             self.categoryId = categoryId
@@ -4577,6 +4583,7 @@ final class BudgetStore: ObservableObject {
             self.isOpposite = isOpposite
             self.notes = notes
             self.payeeName = payeeName
+            self.payeeId = payeeId
         }
     }
 
@@ -4587,6 +4594,7 @@ final class BudgetStore: ObservableObject {
         var amountCents: Int
         var notes: String?
         var payeeName: String? = nil
+        var payeeId: String? = nil
         var childId: String? = nil
     }
 
@@ -4644,6 +4652,7 @@ final class BudgetStore: ObservableObject {
                 amountCents: sign * (line.isOpposite ? -cents : cents),
                 notes: line.notes.isEmpty ? nil : line.notes,
                 payeeName: payeeName.isEmpty ? nil : payeeName,
+                payeeId: line.payeeId,
                 childId: line.childId
             )
         }
@@ -4752,42 +4761,86 @@ final class BudgetStore: ObservableObject {
                 importedPayee: payeeName
             )
             var children: [Transaction] = []
+            var transferPartners: [Transaction] = []
             for (index, line) in lines.enumerated() {
                 // Children inherit the parent's payee unless the line names
                 // its own (Actual's makeChild semantics).
                 let childPayeeId: String?
                 let childPayeeName: String?
-                if let lineName = line.payeeName, lineName != payeeName {
+                if let selectedPayeeId = line.payeeId {
+                    childPayeeId = selectedPayeeId
+                    childPayeeName = line.payeeName
+                } else if let lineName = line.payeeName, lineName != payeeName {
                     childPayeeId = try await resolvePayeeId(name: lineName, editing: nil)
                     childPayeeName = lineName
                 } else {
                     childPayeeId = payeeId
                     childPayeeName = payeeName
                 }
+                let childId = UUID().uuidString
+                let transferAccountId = childPayeeId.flatMap { selectedId in
+                    payees.first { $0.id == selectedId }?.transferAccountId
+                }
+                let partnerId = transferAccountId.map { _ in UUID().uuidString }
+                let childCategoryId = transferAccountId.map { destinationId in
+                    !offBudgetAccountIds.contains(form.accountId)
+                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                } ?? line.categoryId
                 children.append(Transaction(
-                    id: UUID().uuidString,
+                    id: childId,
                     accountId: form.accountId,
                     date: date,
                     amount: line.amountCents,
                     payeeId: childPayeeId,
                     payeeName: childPayeeName,
-                    categoryId: line.categoryId,
+                    categoryId: childCategoryId,
                     categoryName: nil,
                     notes: line.notes,
                     cleared: form.cleared,
                     reconciled: false,
-                    transferId: nil,
+                    transferId: partnerId,
                     isParent: false,
                     parentId: parentId,
                     tombstone: false,
                     sortOrder: parentSort - Double(index + 1),
                     importedPayee: nil
                 ))
+                if let transferAccountId, let partnerId {
+                    guard transferAccountId != form.accountId else {
+                        throw BudgetStoreError.transferAccountsMatch
+                    }
+                    guard let sourcePayee = transferPayee(forAccountId: form.accountId) else {
+                        throw BudgetStoreError.transferPayeeMissing
+                    }
+                    transferPartners.append(Transaction(
+                        id: partnerId,
+                        accountId: transferAccountId,
+                        date: date,
+                        amount: -line.amountCents,
+                        payeeId: sourcePayee.id,
+                        payeeName: nil,
+                        categoryId: nil,
+                        categoryName: nil,
+                        notes: line.notes,
+                        cleared: false,
+                        reconciled: false,
+                        transferId: childId,
+                        isParent: false,
+                        parentId: nil,
+                        tombstone: false,
+                        sortOrder: nil,
+                        importedPayee: nil
+                    ))
+                }
             }
             guard let syncClient else {
                 throw BudgetStoreError.syncNotConfigured
             }
-            try await syncClient.createSplit(parent: parent, children: children)
+            try await syncClient.createSplit(
+                parent: parent,
+                children: children,
+                transferPartners: transferPartners
+            )
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
@@ -4865,6 +4918,55 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    private func resolveSplitPayee(
+        _ line: SplitPlanLine,
+        inheritedId: String?,
+        inheritedName: String?,
+        editing: Transaction?
+    ) async throws -> (id: String?, name: String?, transferAccountId: String?) {
+        if let id = line.payeeId {
+            let transferAccountId = payees.first { $0.id == id }?.transferAccountId
+                ?? (editing?.payeeId == id ? editing?.transferAcct : nil)
+            return (id, line.payeeName, transferAccountId)
+        }
+        if let name = line.payeeName, name != inheritedName {
+            return (try await resolvePayeeId(name: name, editing: editing), name, nil)
+        }
+        return (inheritedId, inheritedName, nil)
+    }
+
+    private func splitTransferPartner(
+        id: String,
+        child: Transaction,
+        destinationAccountId: String
+    ) throws -> Transaction {
+        guard destinationAccountId != child.accountId else {
+            throw BudgetStoreError.transferAccountsMatch
+        }
+        guard let sourcePayee = transferPayee(forAccountId: child.accountId) else {
+            throw BudgetStoreError.transferPayeeMissing
+        }
+        return Transaction(
+            id: id,
+            accountId: destinationAccountId,
+            date: child.date,
+            amount: -child.amount,
+            payeeId: sourcePayee.id,
+            payeeName: nil,
+            categoryId: nil,
+            categoryName: nil,
+            notes: child.notes,
+            cleared: false,
+            reconciled: false,
+            transferId: child.id,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: nil
+        )
+    }
+
     /// Apply an edited split form to an existing split parent: the parent
     /// takes the form's total/payee/notes/date/cleared, lines with a
     /// `childId` update their child row, lines without one become new
@@ -4922,62 +5024,91 @@ final class BudgetStore: ObservableObject {
             // own (Actual's makeChild semantics). A line whose payee matched
             // the parent's loads back as "inherit", so a parent payee edit
             // follows through here just like cascadeSharedFieldsToChildren.
-            let childPayeeId: String?
-            let childPayeeName: String?
-            if let lineName = line.payeeName, lineName != payeeName {
-                childPayeeId = try await resolvePayeeId(name: lineName, editing: existing)
-                childPayeeName = lineName
-            } else {
-                childPayeeId = payeeId
-                childPayeeName = payeeName
-            }
+            let resolvedPayee = try await resolveSplitPayee(
+                line, inheritedId: payeeId, inheritedName: payeeName, editing: existing)
+            if existing == nil { nextNewSort -= 1 }
+            var updated = Transaction(
+                id: existing?.id ?? UUID().uuidString,
+                accountId: form.accountId,
+                date: date,
+                amount: line.amountCents,
+                payeeId: resolvedPayee.id,
+                payeeName: resolvedPayee.name,
+                categoryId: resolvedPayee.transferAccountId.map { destinationId in
+                    !offBudgetAccountIds.contains(form.accountId)
+                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                } ?? line.categoryId,
+                categoryName: nil,
+                notes: line.notes,
+                cleared: form.cleared,
+                reconciled: existing?.reconciled ?? false,
+                transferId: existing?.transferId,
+                isParent: false,
+                parentId: original.id,
+                tombstone: false,
+                sortOrder: existing?.sortOrder ?? nextNewSort,
+                importedPayee: nil
+            )
 
-            if let existing {
-                let updated = Transaction(
-                    id: existing.id,
-                    accountId: form.accountId,
-                    date: date,
-                    amount: line.amountCents,
-                    payeeId: childPayeeId,
-                    payeeName: childPayeeName,
-                    categoryId: line.categoryId,
-                    categoryName: nil,
-                    notes: line.notes,
-                    cleared: form.cleared,
-                    reconciled: existing.reconciled,
-                    transferId: existing.transferId,
-                    isParent: false,
-                    parentId: original.id,
-                    tombstone: false,
-                    sortOrder: existing.sortOrder
-                )
+            if let destinationAccountId = resolvedPayee.transferAccountId {
+                guard destinationAccountId != form.accountId else {
+                    throw BudgetStoreError.transferAccountsMatch
+                }
+                guard let sourcePayee = transferPayee(forAccountId: form.accountId) else {
+                    throw BudgetStoreError.transferPayeeMissing
+                }
+                let partnerId = existing?.transferId ?? UUID().uuidString
+                updated.transferId = partnerId
+                if let existing, let existingPartnerId = existing.transferId {
+                    guard let originalPartner = try await database.fetchTransaction(id: existingPartnerId) else {
+                        throw BudgetStoreError.transferPartnerMissing
+                    }
+                    var partner = originalPartner
+                    partner.accountId = destinationAccountId
+                    partner.amount = -updated.amount
+                    partner.payeeId = sourcePayee.id
+                    partner.date = date
+                    partner.notes = line.notes
+                    let changes = Self.changedFields(original: existing, updated: updated)
+                    if !changes.isEmpty {
+                        try await syncClient.updateTransaction(updated, changedFields: changes)
+                    }
+                    let partnerChanges = Self.changedFields(
+                        original: originalPartner,
+                        updated: partner
+                    )
+                    if !partnerChanges.isEmpty {
+                        try await syncClient.updateTransaction(partner, changedFields: partnerChanges)
+                    }
+                } else {
+                    let partner = try splitTransferPartner(
+                        id: partnerId, child: updated,
+                        destinationAccountId: destinationAccountId)
+                    if let existing {
+                        try await syncClient.convertToTransfer(
+                            leg: updated,
+                            changedFields: Self.changedFields(original: existing, updated: updated),
+                            partner: partner
+                        )
+                    } else {
+                        try await syncClient.createTransfer(source: updated, target: partner)
+                    }
+                }
+            } else if let existing {
+                updated.transferId = nil
                 let changes = Self.changedFields(original: existing, updated: updated)
                 if !changes.isEmpty {
                     try await syncClient.updateTransaction(updated, changedFields: changes)
                 }
+                if let partnerId = existing.transferId,
+                   var partner = try await database.fetchTransaction(id: partnerId) {
+                    partner.tombstone = true
+                    try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+                }
             } else {
-                nextNewSort -= 1
                 // Rules are skipped, matching createSplit — the user just
                 // spelled out every field on this line explicitly.
-                try await syncClient.createTransaction(Transaction(
-                    id: UUID().uuidString,
-                    accountId: form.accountId,
-                    date: date,
-                    amount: line.amountCents,
-                    payeeId: childPayeeId,
-                    payeeName: childPayeeName,
-                    categoryId: line.categoryId,
-                    categoryName: nil,
-                    notes: line.notes,
-                    cleared: form.cleared,
-                    reconciled: false,
-                    transferId: nil,
-                    isParent: false,
-                    parentId: original.id,
-                    tombstone: false,
-                    sortOrder: nextNewSort,
-                    importedPayee: nil
-                ), applyRules: false)
+                try await syncClient.createTransaction(updated, applyRules: false)
             }
         }
 
@@ -4988,6 +5119,11 @@ final class BudgetStore: ObservableObject {
             var deleted = child
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+            if let partnerId = child.transferId,
+               var partner = try await database.fetchTransaction(id: partnerId) {
+                partner.tombstone = true
+                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+            }
         }
 
         await refreshDataOnly()
@@ -5143,34 +5279,42 @@ final class BudgetStore: ObservableObject {
         var nextSort = original.sortOrder ?? Date().timeIntervalSince1970 * 1000
         for line in lines {
             nextSort -= 1
-            let childPayeeId: String?
-            let childPayeeName: String?
-            if let lineName = line.payeeName, lineName != payeeName {
-                childPayeeId = try await resolvePayeeId(name: lineName, editing: nil)
-                childPayeeName = lineName
-            } else {
-                childPayeeId = payeeId
-                childPayeeName = payeeName
-            }
-            try await syncClient.createTransaction(Transaction(
+            let resolvedPayee = try await resolveSplitPayee(
+                line, inheritedId: payeeId, inheritedName: payeeName, editing: nil)
+            let partnerId = resolvedPayee.transferAccountId.map { _ in UUID().uuidString }
+            let child = Transaction(
                 id: UUID().uuidString,
                 accountId: form.accountId,
                 date: date,
                 amount: line.amountCents,
-                payeeId: childPayeeId,
-                payeeName: childPayeeName,
-                categoryId: line.categoryId,
+                payeeId: resolvedPayee.id,
+                payeeName: resolvedPayee.name,
+                categoryId: resolvedPayee.transferAccountId.map { destinationId in
+                    !offBudgetAccountIds.contains(form.accountId)
+                        && offBudgetAccountIds.contains(destinationId) ? line.categoryId : nil
+                } ?? line.categoryId,
                 categoryName: nil,
                 notes: line.notes,
                 cleared: form.cleared,
                 reconciled: false,
-                transferId: nil,
+                transferId: partnerId,
                 isParent: false,
                 parentId: original.id,
                 tombstone: false,
                 sortOrder: nextSort,
                 importedPayee: nil
-            ), applyRules: false)
+            )
+            if let destinationAccountId = resolvedPayee.transferAccountId,
+               let partnerId {
+                try await syncClient.createTransfer(
+                    source: child,
+                    target: splitTransferPartner(
+                        id: partnerId, child: child,
+                        destinationAccountId: destinationAccountId)
+                )
+            } else {
+                try await syncClient.createTransaction(child, applyRules: false)
+            }
         }
 
         await refreshDataOnly()
@@ -5229,6 +5373,11 @@ final class BudgetStore: ObservableObject {
             var deleted = child
             deleted.tombstone = true
             try await syncClient.updateTransaction(deleted, changedFields: ["tombstone"])
+            if let partnerId = child.transferId,
+               var partner = try await database.fetchTransaction(id: partnerId) {
+                partner.tombstone = true
+                try await syncClient.updateTransaction(partner, changedFields: ["tombstone"])
+            }
         }
 
         await refreshDataOnly()

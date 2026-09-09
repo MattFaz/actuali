@@ -5,6 +5,7 @@ struct PayeePickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     @Binding var nearbyPayees: [NearbyPayee]
+    let transferFromAccountId: String?
     let onSelect: (Payee) -> Void
     let onCommit: (String) -> Void
     let onDeleteNearby: (NearbyPayee) -> Void
@@ -16,11 +17,13 @@ struct PayeePickerView: View {
     init(
         payeeName: String,
         nearbyPayees: Binding<[NearbyPayee]>,
+        transferFromAccountId: String? = nil,
         onSelect: @escaping (Payee) -> Void,
         onCommit: @escaping (String) -> Void,
         onDeleteNearby: @escaping (NearbyPayee) -> Void
     ) {
         _nearbyPayees = nearbyPayees
+        self.transferFromAccountId = transferFromAccountId
         self.onSelect = onSelect
         self.onCommit = onCommit
         self.onDeleteNearby = onDeleteNearby
@@ -32,7 +35,12 @@ struct PayeePickerView: View {
     }
 
     private var filteredPayees: [Payee] {
-        Self.filteredPayees(from: budgetStore.payees, searchText: trimmedSearchText)
+        Self.filteredPayees(
+            from: budgetStore.payees,
+            accounts: budgetStore.accounts,
+            transferFromAccountId: transferFromAccountId,
+            searchText: trimmedSearchText
+        )
     }
 
     nonisolated static func allowedPayees(_ payees: [Payee]) -> [Payee] {
@@ -45,35 +53,81 @@ struct PayeePickerView: View {
         from payees: [Payee],
         searchText: String
     ) -> [Payee] {
-        let usablePayees = allowedPayees(payees)
+        filteredPayees(
+            from: payees, accounts: [], transferFromAccountId: nil,
+            searchText: searchText
+        )
+    }
+
+    nonisolated static func filteredPayees(
+        from payees: [Payee],
+        accounts: [Account],
+        transferFromAccountId: String?,
+        searchText: String
+    ) -> [Payee] {
+        let accountNames = Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.name) })
+        let openAccountIds = Set(accounts.filter { !$0.closed }.map(\.id))
+        let usablePayees = payees.filter { payee in
+            guard !payee.tombstone else { return false }
+            guard let transferAccountId = payee.transferAccountId else { return true }
+            return transferFromAccountId != nil
+                && transferAccountId != transferFromAccountId
+                && openAccountIds.contains(transferAccountId)
+        }
+        func name(_ payee: Payee) -> String {
+            displayName(for: payee, accountNames: accountNames)
+        }
 
         guard !searchText.isEmpty else {
-            return usablePayees
-                .sorted {
-                    $0.name.localizedCaseInsensitiveCompare($1.name)
+            let sorted = usablePayees.sorted {
+                    name($0).localizedCaseInsensitiveCompare(name($1))
                         == .orderedAscending
                 }
-                .prefix(20)
-                .map { $0 }
+            guard transferFromAccountId != nil else {
+                return Array(sorted.prefix(20))
+            }
+            return Array(sorted.filter { $0.transferAccountId == nil }.prefix(20))
+                + sorted.filter { $0.transferAccountId != nil }
         }
 
         let lower = searchText.lowercased()
 
         return usablePayees
-            .filter { $0.name.localizedCaseInsensitiveContains(searchText) }
+            .filter { name($0).localizedCaseInsensitiveContains(searchText) }
             .sorted { lhs, rhs in
-                let lhsPrefix = lhs.name.lowercased().hasPrefix(lower)
-                let rhsPrefix = rhs.name.lowercased().hasPrefix(lower)
+                let lhsName = name(lhs)
+                let rhsName = name(rhs)
+                let lhsPrefix = lhsName.lowercased().hasPrefix(lower)
+                let rhsPrefix = rhsName.lowercased().hasPrefix(lower)
 
                 if lhsPrefix != rhsPrefix {
                     return lhsPrefix
                 }
 
-                return lhs.name.localizedCaseInsensitiveCompare(rhs.name)
+                return lhsName.localizedCaseInsensitiveCompare(rhsName)
                     == .orderedAscending
             }
             .prefix(20)
             .map { $0 }
+    }
+
+    nonisolated static func displayName(
+        for payee: Payee,
+        accounts: [Account]
+    ) -> String {
+        displayName(
+            for: payee,
+            accountNames: Dictionary(uniqueKeysWithValues: accounts.map { ($0.id, $0.name) })
+        )
+    }
+
+    private nonisolated static func displayName(
+        for payee: Payee,
+        accountNames: [String: String]
+    ) -> String {
+        guard let accountId = payee.transferAccountId,
+              let accountName = accountNames[accountId] else { return payee.name }
+        return "\(String(localized: "Transfer")): \(accountName)"
     }
 
     private var nonSuggestedPayees: [Payee] {
@@ -111,7 +165,7 @@ struct PayeePickerView: View {
             onSelect(payee)
         } label: {
             Label {
-                Text(payee.name)
+                Text(Self.displayName(for: payee, accounts: budgetStore.accounts))
                     .foregroundStyle(.primary)
             } icon: {
                 Image(systemName: "clock.arrow.circlepath")
