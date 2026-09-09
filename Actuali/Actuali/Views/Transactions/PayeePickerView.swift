@@ -160,6 +160,14 @@ struct PayeePickerView: View {
         }
     }
 
+    nonisolated static func committedPayeeId(
+        currentName: String,
+        currentId: String?,
+        committedName: String
+    ) -> String? {
+        currentName == committedName ? currentId : nil
+    }
+
     private func payeeButton(_ payee: Payee) -> some View {
         Button {
             onSelect(payee)

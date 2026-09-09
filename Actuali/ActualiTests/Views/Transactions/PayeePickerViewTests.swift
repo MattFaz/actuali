@@ -112,6 +112,19 @@ struct PayeePickerViewTests {
         #expect(result.contains { $0.id == "transfer" })
     }
 
+    @Test func committingUnchangedTransferNamePreservesItsId() {
+        #expect(PayeePickerView.committedPayeeId(
+            currentName: "Transfer: Savings",
+            currentId: "transfer",
+            committedName: "Transfer: Savings"
+        ) == "transfer")
+        #expect(PayeePickerView.committedPayeeId(
+            currentName: "Transfer: Savings",
+            currentId: "transfer",
+            committedName: "Coffee Shop"
+        ) == nil)
+    }
+
     @Test func customPayeeIsOnlyAllowedWhenNameDoesNotExistCaseInsensitively() {
         let existing = payee(id: "1", name: "Walmart")
 

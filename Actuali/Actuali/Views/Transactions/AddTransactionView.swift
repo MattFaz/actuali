@@ -936,7 +936,11 @@ private struct SplitLineRow: View {
                         showPayeePicker = false
                     },
                     onCommit: { name in
-                        line.payeeId = nil
+                        line.payeeId = PayeePickerView.committedPayeeId(
+                            currentName: line.payeeName,
+                            currentId: line.payeeId,
+                            committedName: name
+                        )
                         line.payeeName = name
                         showPayeePicker = false
                     },
