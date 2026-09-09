@@ -7,7 +7,7 @@ enum TransactionType: Hashable {
     case transfer
 }
 
-struct Transaction: Identifiable, Hashable {
+struct Transaction: Identifiable, Hashable, Codable {
     let id: String
     var accountId: String
     var date: Int // YYYYMMDD format
@@ -45,7 +45,7 @@ struct Transaction: Identifiable, Hashable {
     // show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
 
-    struct SplitPortion: Hashable {
+    struct SplitPortion: Hashable, Codable {
         var categoryName: String?
         var amount: Int  // cents, signed like the parent
     }
@@ -91,7 +91,7 @@ struct Transaction: Identifiable, Hashable {
     /// Convert a dollar amount to integer cents, rounding half away from zero
     /// (e.g. 8.20 → 820, not 819 via truncation).
     /// - Returns: `nil` if the value is non-finite or outside the exactly
-    ///   representable integer range of `Double` (±2^53).
+    /// representable integer range of `Double` (±2^53).
     static func cents(fromDollars dollars: Double) -> Int? {
         let cents = (dollars * 100).rounded()
         guard cents.isFinite, abs(cents) <= 9_007_199_254_740_992 else { return nil }
