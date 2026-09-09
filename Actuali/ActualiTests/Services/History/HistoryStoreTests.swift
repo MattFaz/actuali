@@ -168,7 +168,8 @@ struct HistoryStoreTests {
             after: [
                 HistoryTransactionSnapshot(newParent),
                 HistoryTransactionSnapshot(newChild),
-                HistoryTransactionSnapshot(removedChild)
+                HistoryTransactionSnapshot(addedChild),
+                removedChild
             ]
         )
 
