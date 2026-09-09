@@ -434,17 +434,6 @@ final class HistoryStore: ObservableObject {
         pendingUndo = nil
     }
 
-    #if DEBUG
-    func appendForTesting(_ action: HistoryAction, budgetID: String) {
-        if loadedBudgetID != budgetID {
-            load(budgetID: budgetID)
-        }
-        actions.insert(action, at: 0)
-        actions = Array(actions.prefix(10))
-        save(budgetID)
-    }
-    #endif
-
     private func key(_ budgetID: String) -> String {
         "history.actions.\(budgetID)"
     }
