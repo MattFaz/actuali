@@ -321,23 +321,26 @@ final class HistoryStore: ObservableObject {
                 return
             }
         case .edited, .deleted:
-            let recordedAfterForRestore = action.before.map { previous in
-                afterByID[previous.id] ?? Self.tombstoned(previous)
+            let restorePairs = action.before.map { previous in
+                (previous, afterByID[previous.id] ?? Self.tombstoned(previous))
             }
+            // ponytail: restore one row per sync write so each update carries
+            // only its own changed fields. Grouping rows here would union their
+            // field sets and can overwrite concurrent CRDT edits on untouched rows.
+            var restoredPairs: [(Transaction, Transaction)] = []
             do {
-                try await budgetStore.restoreTransactions(
-                    action.before,
-                    from: recordedAfterForRestore
-                )
+                for (before, after) in restorePairs {
+                    try await budgetStore.restoreTransactions([before], from: [after])
+                    restoredPairs.append((before, after))
+                }
             } catch {
                 // The underlying batch API processes rows sequentially today.
                 // Compensate on failure so a multi-row Undo does not remain
                 // partially restored when one row fails.
                 do {
-                    try await budgetStore.restoreTransactions(
-                        recordedAfterForRestore,
-                        from: action.before
-                    )
+                    for (before, after) in restoredPairs.reversed() {
+                        try await budgetStore.restoreTransactions([after], from: [before])
+                    }
                 } catch {
                     errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
                     Self.finishUndoRecording()
