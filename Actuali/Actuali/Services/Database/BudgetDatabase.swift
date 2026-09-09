@@ -2979,12 +2979,16 @@ final class BudgetDatabase: Sendable {
     func insertSplit(
         parent: Transaction,
         children: [Transaction],
+        transferPartners: [Transaction] = [],
         messages: [CRDTMessage]
     ) throws -> [CRDTMessage] {
         try dbQueue.write { db in
             try Self.insertTransactionRow(db, parent)
             for child in children {
                 try Self.insertTransactionRow(db, child)
+            }
+            for partner in transferPartners {
+                try Self.insertTransactionRow(db, partner)
             }
             return try Self.insertMessageRows(db, messages)
         }
