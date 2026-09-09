@@ -253,7 +253,7 @@ struct HistoryStoreTests {
 
     @Test func liveSnapshotComparisonDetectsUndoRelevantChanges() {
         let base = HistoryTransactionSnapshot(transaction(id: "tx"))
-        let mutators: [(HistoryTransactionSnapshot) -> Void] = [
+        let mutators: [(inout HistoryTransactionSnapshot) -> Void] = [
             { $0.accountId = "other-account" },
             { $0.date += 1 },
             { $0.amount -= 1 },
