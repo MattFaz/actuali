@@ -1,100 +1,21 @@
 import Foundation
 import Combine
 
-struct HistorySplitPortionSnapshot: Codable, Equatable {
-    var categoryName: String?
-    var amount: Int
-
-    init(_ value: Transaction.SplitPortion) {
-        categoryName = value.categoryName
-        amount = value.amount
-    }
-
-    func value() -> Transaction.SplitPortion {
-        Transaction.SplitPortion(categoryName: categoryName, amount: amount)
-    }
+enum HistoryActionKind: String, Codable {
+    case created
+    case edited
+    case deleted
 }
 
-struct HistoryTransactionSnapshot: Codable, Equatable, Identifiable {
-    let id: String
-    var accountId: String
-    var date: Int
-    var amount: Int
-    var payeeId: String?
-    var payeeName: String?
-    var categoryId: String?
-    var categoryName: String?
-    var notes: String?
-    var cleared: Bool
-    var reconciled: Bool
-    var transferId: String?
-    var isParent: Bool
-    var parentId: String?
-    var tombstone: Bool
-    var sortOrder: Double?
-    var importedPayee: String?
-    var schedule: String?
-    var financialId: String?
-    var startingBalanceFlag: Bool
-    var transferAcct: String?
-    var splitPortions: [HistorySplitPortionSnapshot]?
+enum HistoryActionStatus: String, Codable {
+    case applied
+    case undone
+}
 
-    init(_ tx: Transaction) {
-        id = tx.id
-        accountId = tx.accountId
-        date = tx.date
-        amount = tx.amount
-        payeeId = tx.payeeId
-        payeeName = tx.payeeName
-        categoryId = tx.categoryId
-        categoryName = tx.categoryName
-        notes = tx.notes
-        cleared = tx.cleared
-        reconciled = tx.reconciled
-        transferId = tx.transferId
-        isParent = tx.isParent
-        parentId = tx.parentId
-        tombstone = tx.tombstone
-        sortOrder = tx.sortOrder
-        importedPayee = tx.importedPayee
-        schedule = tx.schedule
-        financialId = tx.financialId
-        startingBalanceFlag = tx.startingBalanceFlag
-        transferAcct = tx.transferAcct
-        splitPortions = tx.splitPortions?.map(HistorySplitPortionSnapshot.init)
-    }
-
-    func transaction() -> Transaction {
-        Transaction(
-            id: id,
-            accountId: accountId,
-            date: date,
-            amount: amount,
-            payeeId: payeeId,
-            payeeName: payeeName,
-            categoryId: categoryId,
-            categoryName: categoryName,
-            notes: notes,
-            cleared: cleared,
-            reconciled: reconciled,
-            transferId: transferId,
-            isParent: isParent,
-            parentId: parentId,
-            tombstone: tombstone,
-            sortOrder: sortOrder,
-            importedPayee: importedPayee,
-            schedule: schedule,
-            financialId: financialId,
-            startingBalanceFlag: startingBalanceFlag,
-            transferAcct: transferAcct,
-            splitPortions: splitPortions?.map { $0.value() }
-        )
-    }
-
-    /// Compares the stable transaction state available from the normal fetch
-    /// path. Display-only values, insert-only values that aren't read back,
-    /// and `sortOrder` normalization must not make a live row look different
-    /// from the snapshot that was recorded.
+extension Transaction {
+    /// Compares only stable transaction state returned by the normal fetch path.
+    /// Display-only values, insert-only values that aren't read back, and
+    /// `sortOrder` normalization must not make a live row differ from history.
     func matchesLiveTransaction(_ transaction: Transaction) -> Bool {
         id == transaction.id &&
         accountId == transaction.accountId &&
@@ -114,27 +35,16 @@ struct HistoryTransactionSnapshot: Codable, Equatable, Identifiable {
     }
 }
 
-enum HistoryActionKind: String, Codable {
-    case created
-    case edited
-    case deleted
-}
-
-enum HistoryActionStatus: String, Codable {
-    case applied
-    case undone
-}
-
 struct HistoryAction: Identifiable, Codable, Equatable {
     let id: String
     let createdAt: Date
     let budgetID: String
     let kind: HistoryActionKind
-    let before: [HistoryTransactionSnapshot]
-    let after: [HistoryTransactionSnapshot]
+    let before: [Transaction]
+    let after: [Transaction]
     var status: HistoryActionStatus
 
-    var primarySnapshot: HistoryTransactionSnapshot? {
+    var primarySnapshot: Transaction? {
         after.first(where: { $0.parentId == nil }) ?? after.first ?? before.first
     }
 
@@ -174,7 +84,7 @@ final class HistoryStore: ObservableObject {
 
     struct PendingUndo {
         let budgetID: String
-        let expected: [HistoryTransactionSnapshot]
+        let expected: [Transaction]
         let removedIDs: Set<String>
     }
 
@@ -224,19 +134,14 @@ final class HistoryStore: ObservableObject {
         before: [Transaction],
         after: [Transaction]
     ) {
-        recordSnapshots(
-            budgetID: budgetID,
-            kind: kind,
-            before: before.map(HistoryTransactionSnapshot.init),
-            after: after.map(HistoryTransactionSnapshot.init)
-        )
+        recordSnapshots(budgetID: budgetID, kind: kind, before: before, after: after)
     }
 
     func recordSnapshots(
         budgetID: String,
         kind: HistoryActionKind,
-        before: [HistoryTransactionSnapshot],
-        after: [HistoryTransactionSnapshot]
+        before: [Transaction],
+        after: [Transaction]
     ) {
         guard !Self.recordingSuppressed, !before.isEmpty || !after.isEmpty else { return }
 
@@ -247,7 +152,7 @@ final class HistoryStore: ObservableObject {
         // ponytail: split edits currently publish parent/child changes separately;
         // only merge adjacent publications for the same parent within 0.5s. The
         // ceiling is intentional. A future operation-scoped History transaction
-        // can remove the timing heuristic without changing stored snapshots.
+        // can remove the timing heuristic without changing stored transactions.
         if kind == .edited,
            let existing = actions.first,
            existing.status == .applied,
@@ -269,16 +174,16 @@ final class HistoryStore: ObservableObject {
             return
         }
 
-        if let snapshot = after.first,
+        if let transaction = after.first,
            after.count == 1,
            let existing = actions.first,
            existing.status == .applied,
            existing.budgetID == budgetID,
            existing.kind == kind,
            existing.after.count == 1,
-           let existingSnapshot = existing.after.first,
-           existingSnapshot.id == snapshot.transferId,
-           existingSnapshot.transferId == snapshot.id {
+           let existingTransaction = existing.after.first,
+           existingTransaction.id == transaction.transferId,
+           existingTransaction.transferId == transaction.id {
             actions[0] = HistoryAction(
                 id: existing.id,
                 createdAt: existing.createdAt,
@@ -375,7 +280,7 @@ final class HistoryStore: ObservableObject {
             }
         }
 
-        let expectedBefore: [HistoryTransactionSnapshot]
+        let expectedBefore: [Transaction]
         let removedIDs: Set<String>
         switch action.kind {
         case .created:
@@ -396,9 +301,7 @@ final class HistoryStore: ObservableObject {
         case .created:
             budgetStore.error = nil
             await budgetStore.deleteTransactions(
-                action.after
-                    .filter { $0.parentId == nil }
-                    .map { $0.transaction() }
+                action.after.filter { $0.parentId == nil }
             )
             guard budgetStore.error == nil else {
                 errorMessage = budgetStore.error
@@ -411,8 +314,8 @@ final class HistoryStore: ObservableObject {
             }
             do {
                 try await budgetStore.restoreTransactions(
-                    action.before.map { $0.transaction() },
-                    from: recordedAfterForRestore.map { $0.transaction() }
+                    action.before,
+                    from: recordedAfterForRestore
                 )
             } catch {
                 // The underlying batch API processes rows sequentially today.
@@ -420,8 +323,8 @@ final class HistoryStore: ObservableObject {
                 // partially restored when one row fails.
                 do {
                     try await budgetStore.restoreTransactions(
-                        recordedAfterForRestore.map { $0.transaction() },
-                        from: action.before.map { $0.transaction() }
+                        recordedAfterForRestore,
+                        from: action.before
                     )
                 } catch {
                     errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
@@ -458,15 +361,15 @@ final class HistoryStore: ObservableObject {
         defaults.set(data, forKey: key(budgetID))
     }
 
-    private static func tombstoned(_ snapshot: HistoryTransactionSnapshot) -> HistoryTransactionSnapshot {
-        var result = snapshot
+    private static func tombstoned(_ transaction: Transaction) -> Transaction {
+        var result = transaction
         result.tombstone = true
         return result
     }
 
     private static func splitParentID(
-        before: [HistoryTransactionSnapshot],
-        after: [HistoryTransactionSnapshot]
+        before: [Transaction],
+        after: [Transaction]
     ) -> String? {
         after.first(where: { $0.isParent })?.id
             ?? before.first(where: { $0.isParent })?.id
@@ -475,9 +378,9 @@ final class HistoryStore: ObservableObject {
     }
 
     private static func mergeBefore(
-        _ existing: [HistoryTransactionSnapshot],
-        _ newer: [HistoryTransactionSnapshot]
-    ) -> [HistoryTransactionSnapshot] {
+        _ existing: [Transaction],
+        _ newer: [Transaction]
+    ) -> [Transaction] {
         var result = existing
         let existingIDs = Set(existing.map(\.id))
         result.append(contentsOf: newer.filter { !existingIDs.contains($0.id) })
@@ -485,15 +388,15 @@ final class HistoryStore: ObservableObject {
     }
 
     private static func mergeAfter(
-        _ existing: [HistoryTransactionSnapshot],
-        _ newer: [HistoryTransactionSnapshot]
-    ) -> [HistoryTransactionSnapshot] {
+        _ existing: [Transaction],
+        _ newer: [Transaction]
+    ) -> [Transaction] {
         var result = existing
-        for snapshot in newer {
-            if let index = result.firstIndex(where: { $0.id == snapshot.id }) {
-                result[index] = snapshot
+        for transaction in newer {
+            if let index = result.firstIndex(where: { $0.id == transaction.id }) {
+                result[index] = transaction
             } else {
-                result.append(snapshot)
+                result.append(transaction)
             }
         }
         return result
