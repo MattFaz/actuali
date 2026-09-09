@@ -1,18 +1,19 @@
 import Foundation
 import Combine
 
-enum HistoryActionKind: String, Codable {
-    case created
-    case edited
-    case deleted
-}
+typealias HistoryTransactionSnapshot = Transaction
 
-enum HistoryActionStatus: String, Codable {
-    case applied
-    case undone
-}
+typealias HistorySplitPortionSnapshot = Transaction.SplitPortion
 
 extension Transaction {
+    init(_ snapshot: Transaction) {
+        self = snapshot
+    }
+
+    func transaction() -> Transaction {
+        self
+    }
+
     /// Compares only stable transaction state returned by the normal fetch path.
     /// Display-only values, insert-only values that aren't read back, and
     /// `sortOrder` normalization must not make a live row differ from history.
@@ -33,6 +34,17 @@ extension Transaction {
         importedPayee == transaction.importedPayee &&
         schedule == transaction.schedule
     }
+}
+
+enum HistoryActionKind: String, Codable {
+    case created
+    case edited
+    case deleted
+}
+
+enum HistoryActionStatus: String, Codable {
+    case applied
+    case undone
 }
 
 struct HistoryAction: Identifiable, Codable, Equatable {
