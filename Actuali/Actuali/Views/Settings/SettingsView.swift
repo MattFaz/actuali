@@ -80,6 +80,9 @@ struct SettingsView: View {
             .navigationTitle(String(localized: "navigation.settings"))
             .contentMargins(.horizontal, 6, for: .scrollContent)
         }
+        // Keep the store-wide loading indicator above the navigation stack so
+        // operations started from any destination remain covered, not only
+        // work launched from the hub form.
         .overlay {
             if budgetStore.isLoading {
                 ProgressView()
