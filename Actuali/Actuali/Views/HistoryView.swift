@@ -210,7 +210,7 @@ private struct HistoryUndoReviewView: View {
                     } else {
                         ForEach(action.before) { snapshot in
                             VStack(alignment: .leading, spacing: 3) {
-                                Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : "Transaction")
+                                Text(snapshot.payeeName?.isEmpty == false ? snapshot.payeeName! : String(localized: "Transaction"))
                                 Text(formatAmount(snapshot.amount))
                                     .font(.caption.monospacedDigit())
                                     .foregroundStyle(.secondary)
