@@ -303,6 +303,10 @@ struct CreditCardCycleRow: View {
         Self.urgencyColor(days: cycle.daysUntilDue())
     }
 
+    private var isPaid: Bool {
+        budgetStore.creditCardStatementDues[account.id]?.isPaid ?? false
+    }
+
     /// Card background with a colored left urgency border strip.
     nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
         RoundedRectangle(cornerRadius: 10)
@@ -332,16 +336,16 @@ struct CreditCardCycleRow: View {
 
             // Row 2: cycle spend + days left + due pill
             HStack {
-                        Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
+                Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(cycle.dueShortSummary())
+                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary())
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(dueColor.opacity(0.22), in: .capsule)
+                    .background((isPaid ? Color.green : dueColor).opacity(0.22), in: .capsule)
                     // The pill is the actionable half of this line, so the
                     // spend text takes the squeeze at large Dynamic Type sizes.
                     .fixedSize()
@@ -352,7 +356,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), cycle.dueSummary())
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary())
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

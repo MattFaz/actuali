@@ -218,6 +218,7 @@ enum BillsCalendarEngine: Sendable {
     static func itemsForCreditCards(
         accounts: [Account],
         cycles: [String: CreditCardCycle],
+        statementDues: [String: CreditCardCycle.StatementDue] = [:],
         year: Int,
         month: Int,
         today: DayDate = .today()
@@ -230,18 +231,46 @@ enum BillsCalendarEngine: Sendable {
 
             // Include if the payment due date is in this month
             if dueDate.year == year, dueDate.month == month {
-                // Actual represents credit card balances as negative when owed.
-                // An amount owed is shown as a positive bill to pay (or negative outflow).
-                let balanceOwed = max(0, -account.balance)
                 let status: ScheduleStatus
-                if balanceOwed == 0 {
-                    status = .paid
-                } else if dueDate < today {
-                    status = .missed
-                } else if dueDate == today {
-                    status = .due
+                let billAmount: Int
+                let dueText: String
+
+                if let statementDue = statementDues[account.id] {
+                    if statementDue.isPaid {
+                        status = .paid
+                        billAmount = statementDue.statementBalance
+                        dueText = String(localized: "Paid")
+                    } else if statementDue.remainingDue == 0 {
+                        status = .paid
+                        billAmount = 0
+                        dueText = String(localized: "Paid / Zero Balance")
+                    } else {
+                        billAmount = statementDue.remainingDue
+                        if dueDate < today {
+                            status = .missed
+                        } else if dueDate == today {
+                            status = .due
+                        } else {
+                            status = .upcoming
+                        }
+                        dueText = relativeDueText(for: dueDate, today: today, status: status)
+                    }
                 } else {
-                    status = .upcoming
+                    let balanceOwed = max(0, -account.balance)
+                    billAmount = balanceOwed
+                    if balanceOwed == 0 {
+                        status = .paid
+                        dueText = String(localized: "Paid / Zero Balance")
+                    } else if dueDate < today {
+                        status = .missed
+                        dueText = relativeDueText(for: dueDate, today: today, status: status)
+                    } else if dueDate == today {
+                        status = .due
+                        dueText = relativeDueText(for: dueDate, today: today, status: status)
+                    } else {
+                        status = .upcoming
+                        dueText = relativeDueText(for: dueDate, today: today, status: status)
+                    }
                 }
 
                 items.append(
@@ -249,12 +278,12 @@ enum BillsCalendarEngine: Sendable {
                         id: "cc_\(account.id)_\(dueDate.yyyymmdd)",
                         date: dueDate,
                         title: account.name,
-                        amount: -balanceOwed, // Represented as negative outflow/bill
+                        amount: -billAmount, // Represented as negative outflow/bill
                         categoryName: String(localized: "Credit Card Payment"),
                         accountName: account.name,
                         status: status,
                         kind: .creditCard,
-                        relativeDueText: balanceOwed == 0 ? String(localized: "Paid / Zero Balance") : relativeDueText(for: dueDate, today: today, status: status)
+                        relativeDueText: dueText
                     )
                 )
             }

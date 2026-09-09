@@ -24,6 +24,9 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @State private var statementDue: CreditCardCycle.StatementDue? = nil
+    @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
+    @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -66,7 +69,13 @@ struct AccountDetailView: View {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
         await reloadCycleSpend()
+        await reloadStatementDue()
+        await reloadRecentStatements()
         await currentPager().loadFirstPage(search: searchQuery)
+    }
+
+    private func reloadRecentStatements() async {
+        recentStatements = await budgetStore.fetchRecentStatements(accountId: account.id)
     }
 
     private func reloadCycleSpend() async {
@@ -80,6 +89,15 @@ struct AccountDetailView: View {
             start: range.start,
             end: range.end
         )
+    }
+
+    private func reloadStatementDue() async {
+        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else {
+            statementDue = nil
+            return
+        }
+        let pending = cycle.upcomingStatementDate()
+        statementDue = await budgetStore.fetchStatementDue(accountId: account.id, statementDate: pending)
     }
 
     private func reloadNote() async {
@@ -234,7 +252,52 @@ struct AccountDetailView: View {
 
                     if showingBillingCycle {
                         breakdownRow(String(localized: "Current Cycle"), value: "\(startStr) – \(endStr)")
+                        if let statementDue {
+                            if statementDue.isPaid {
+                                breakdownRow(String(localized: "Statement Due"), value: String(localized: "Paid"))
+                            } else {
+                                breakdownRow(String(localized: "Statement Due"), value: budgetStore.displayBalance(statementDue.remainingDue))
+                            }
+                        }
                         breakdownRow(String(localized: "Cycle Spend"), value: budgetStore.displayBalance(cycleSpend))
+
+                        if !recentStatements.isEmpty {
+                            Divider()
+                            ForEach(recentStatements) { statement in
+                                let sStartStr = Transaction.formattedDate(from: statement.startDate.yyyymmdd, style: .abbreviated)
+                                let sEndStr = Transaction.formattedDate(from: statement.endDate.yyyymmdd, style: .abbreviated)
+                                Button {
+                                    selectedStatement = statement
+                                } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("\(sStartStr) – \(sEndStr)")
+                                                .foregroundStyle(.primary)
+                                            if statement.isPaid {
+                                                Text(String(localized: "Paid"))
+                                                    .font(.caption)
+                                                    .foregroundStyle(.green)
+                                            } else {
+                                                let dueStr = Transaction.formattedDate(from: statement.dueDate.yyyymmdd, style: .abbreviated)
+                                                Text(String(format: String(localized: "Due %@"), dueStr))
+                                                    .font(.caption)
+                                                    .foregroundStyle(.secondary)
+                                            }
+                                        }
+                                        Spacer()
+                                        Text(budgetStore.displayBalance(statement.statementBalance))
+                                            .fontWeight(.semibold)
+                                            .foregroundStyle(.primary)
+                                        Image(systemName: "chevron.right")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.tertiary)
+                                    }
+                                    .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(String(format: String(localized: "Statement %1$@ to %2$@, %3$@"), sStartStr, sEndStr, budgetStore.displayBalance(statement.statementBalance)))
+                            }
+                        }
                     }
                 }
             }
@@ -429,6 +492,10 @@ struct AccountDetailView: View {
             )
             .environmentObject(budgetStore)
         }
+        .sheet(item: $selectedStatement) { statement in
+            CreditCardStatementDetailView(account: account, statement: statement)
+                .environmentObject(budgetStore)
+        }
         // Keyed on the account as well as the search: selecting another
         // account in the iPad split layout reuses this view, and without the
         // account in the key nothing would reload — the previous account's
@@ -441,6 +508,8 @@ struct AccountDetailView: View {
                 pager = nil
                 breakdown = nil
                 cycleSpend = 0
+                statementDue = nil
+                recentStatements = []
                 isSelecting = false
                 selectedTransactionIds.removeAll()
             } else if searchQuery != nil {
@@ -468,7 +537,10 @@ struct AccountDetailView: View {
             Task { await reload() }
         }
         .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
-            Task { await reloadCycleSpend() }
+            Task {
+                await reloadCycleSpend()
+                await reloadStatementDue()
+            }
         }
         .refreshable {
             await budgetStore.sync()

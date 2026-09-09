@@ -432,4 +432,38 @@ struct BillsCalendarEngineTests {
         #expect(octoberItems[0].date == DayDate(year: 2026, month: 10, day: 30))
         #expect(octoberItems[0].status == .upcoming)
     }
+
+    @Test func creditCardsMarkPaidWhenStatementIsPaidEvenWithNewSpend() {
+        let today = DayDate(year: 2026, month: 9, day: 4)
+        // User has a live balance of -$200.00 (-20000) from ongoing cycle spend,
+        // but their August statement ($500.00) was fully paid.
+        let account = Account(
+            id: "acc-cc",
+            name: "Visa Signature",
+            type: .credit,
+            offBudget: false,
+            closed: false,
+            sortOrder: 0,
+            balance: -20000
+        )
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0
+        )
+
+        let augustItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": statementDue],
+            year: 2026,
+            month: 8,
+            today: today
+        )
+        #expect(augustItems.count == 1)
+        #expect(augustItems[0].status == .paid)
+        #expect(augustItems[0].amount == -50000)
+        #expect(augustItems[0].relativeDueText == "Paid")
+    }
 }
