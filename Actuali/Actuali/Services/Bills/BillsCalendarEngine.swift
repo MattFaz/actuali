@@ -229,13 +229,18 @@ enum BillsCalendarEngine: Sendable {
             guard let cycle = cycles[account.id] else { continue }
             let dueDate = cycle.upcomingDueDate(for: DayDate(year: year, month: month, day: 1))
 
-            // Include if the payment due date is in this month
             if dueDate.year == year, dueDate.month == month {
                 let status: ScheduleStatus
                 let billAmount: Int
                 let dueText: String
 
-                if let statementDue = statementDues[account.id] {
+                // statementDues describes the statement that is pending today. Any other
+                // month projects a different statement, so fall back to the live balance.
+                let statementDue = (dueDate == cycle.upcomingDueDate(for: today))
+                    ? statementDues[account.id]
+                    : nil
+
+                if let statementDue {
                     if statementDue.isPaid {
                         status = .paid
                         billAmount = statementDue.statementBalance

@@ -136,7 +136,7 @@ enum CreditCardDueNotifier {
                 currencyCode: currencyCode,
                 narrowSymbol: narrowSymbol
             )
-            content.body = String(format: String(localized: "Statement due %@. Payment due %@."), dueAmount, dueDateFormatted)
+            content.body = String(format: String(localized: "Statement due %1$@. Payment due %2$@."), dueAmount, dueDateFormatted)
         } else {
             let formattedAmount = CurrencyAmountFormat.string(
                 cents: abs(account.balance),

@@ -24,9 +24,12 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
-    @State private var statementDue: CreditCardCycle.StatementDue? = nil
     @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
+
+    private var statementDue: CreditCardCycle.StatementDue? {
+        budgetStore.creditCardStatementDues[account.id]
+    }
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -69,7 +72,6 @@ struct AccountDetailView: View {
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
         await reloadCycleSpend()
-        await reloadStatementDue()
         await reloadRecentStatements()
         await currentPager().loadFirstPage(search: searchQuery)
     }
@@ -89,15 +91,6 @@ struct AccountDetailView: View {
             start: range.start,
             end: range.end
         )
-    }
-
-    private func reloadStatementDue() async {
-        guard let cycle = budgetStore.activeCreditCardCycle(for: account.id) else {
-            statementDue = nil
-            return
-        }
-        let pending = cycle.upcomingStatementDate()
-        statementDue = await budgetStore.fetchStatementDue(accountId: account.id, statementDate: pending)
     }
 
     private func reloadNote() async {
@@ -508,7 +501,6 @@ struct AccountDetailView: View {
                 pager = nil
                 breakdown = nil
                 cycleSpend = 0
-                statementDue = nil
                 recentStatements = []
                 isSelecting = false
                 selectedTransactionIds.removeAll()
@@ -539,7 +531,7 @@ struct AccountDetailView: View {
         .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
             Task {
                 await reloadCycleSpend()
-                await reloadStatementDue()
+                await reloadRecentStatements()
             }
         }
         .refreshable {

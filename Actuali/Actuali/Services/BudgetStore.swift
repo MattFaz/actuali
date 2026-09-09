@@ -4504,16 +4504,6 @@ final class BudgetStore: ObservableObject {
         )) ?? 0
     }
 
-    /// Statement due details for a credit card's statement closing date.
-    func fetchStatementDue(accountId: String, statementDate: DayDate) async -> CreditCardCycle.StatementDue? {
-        guard let database, let account = accounts.first(where: { $0.id == accountId }) else { return nil }
-        return try? await database.fetchCreditCardStatementDue(
-            accountId: accountId,
-            statementDate: statementDate,
-            liveBalance: account.balance
-        )
-    }
-
     /// Closed statements for a credit card account (up to 3), filtered to those with recorded data.
     func fetchRecentStatements(accountId: String) async -> [CreditCardCycle.StatementRecord] {
         guard let database,

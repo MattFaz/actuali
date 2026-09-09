@@ -9,8 +9,6 @@ struct CreditCardStatementDetailView: View {
 
     @State private var transactions: [Transaction] = []
     @State private var isLoading = true
-    @State private var isSelecting = false
-    @State private var selectedTransactionIds: Set<String> = []
     @State private var editingTransaction: Transaction?
 
     private var startStr: String {
@@ -70,12 +68,9 @@ struct CreditCardStatementDetailView: View {
                                         transaction: tx,
                                         showAccount: false,
                                         showDate: false,
-                                        isSelectionMode: $isSelecting,
-                                        isSelected: selectedTransactionIds.contains(tx.id),
-                                        editing: $editingTransaction,
-                                        onToggleSelect: {
-                                            selectedTransactionIds.formSymmetricDifference([tx.id])
-                                        }
+                                        isSelectionMode: .constant(false),
+                                        isSelected: false,
+                                        editing: $editingTransaction
                                     )
                                 }
                             }
@@ -87,12 +82,9 @@ struct CreditCardStatementDetailView: View {
                                     transaction: tx,
                                     showAccount: false,
                                     showDate: true,
-                                    isSelectionMode: $isSelecting,
-                                    isSelected: selectedTransactionIds.contains(tx.id),
-                                    editing: $editingTransaction,
-                                    onToggleSelect: {
-                                        selectedTransactionIds.formSymmetricDifference([tx.id])
-                                    }
+                                    isSelectionMode: .constant(false),
+                                    isSelected: false,
+                                    editing: $editingTransaction
                                 )
                             }
                         }

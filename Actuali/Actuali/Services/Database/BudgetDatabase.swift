@@ -1086,22 +1086,6 @@ final class BudgetDatabase: Sendable {
         }
     }
 
-    /// Statement balance, payments made since statement, and remaining due for a single credit card account.
-    func fetchCreditCardStatementDue(
-        accountId: String,
-        statementDate: DayDate,
-        liveBalance: Int
-    ) async throws -> CreditCardCycle.StatementDue {
-        let results = try await fetchCreditCardStatementDues(
-            for: [(accountId: accountId, statementDate: statementDate, liveBalance: liveBalance)]
-        )
-        return results[accountId] ?? CreditCardCycle.calculateStatementDue(
-            statementRawBalance: 0,
-            paymentsSince: 0,
-            liveBalance: liveBalance
-        )
-    }
-
     /// Statement records for the given closed cycles on a credit card account.
     /// Cycles with no recorded transactions and zero statement balance are excluded.
     func fetchRecentStatements(
