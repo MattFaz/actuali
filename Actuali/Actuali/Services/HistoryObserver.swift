@@ -189,10 +189,9 @@ final class HistoryObserver {
             handledRootIDs.insert(parentID)
 
             if oldRoot == nil, let newRoot {
-                let after = [HistoryTransactionSnapshot(newRoot)]
+                let after = [newRoot]
                     + newChildren.values
                         .sorted { Self.isBefore($0, $1) }
-                        .map(HistoryTransactionSnapshot.init)
                 HistoryStore.shared.recordSnapshots(
                     budgetID: budgetID,
                     kind: .created,
@@ -200,10 +199,9 @@ final class HistoryObserver {
                     after: after
                 )
             } else if let oldRoot, newRoot == nil {
-                let before = [HistoryTransactionSnapshot(oldRoot)]
+                let before = [oldRoot]
                     + oldChildren.values
                         .sorted { Self.isBefore($0, $1) }
-                        .map(HistoryTransactionSnapshot.init)
                 let after = before.map { snapshot in
                     var tombstoned = snapshot
                     tombstoned.tombstone = true
@@ -217,21 +215,21 @@ final class HistoryObserver {
                 )
             } else if let oldRoot, let newRoot {
                 let allChildIDs = Set(oldChildren.keys).union(newChildren.keys).sorted()
-                var before = [HistoryTransactionSnapshot(oldRoot)]
-                var after = [HistoryTransactionSnapshot(newRoot)]
+                var before = [oldRoot]
+                var after = [newRoot]
 
                 for childID in allChildIDs {
                     if let oldChild = oldChildren[childID], let newChild = newChildren[childID] {
-                        before.append(HistoryTransactionSnapshot(oldChild))
-                        after.append(HistoryTransactionSnapshot(newChild))
+                        before.append(oldChild)
+                        after.append(newChild)
                     } else if let newChild = newChildren[childID] {
-                        var absent = HistoryTransactionSnapshot(newChild)
+                        var absent = newChild
                         absent.tombstone = true
                         before.append(absent)
-                        after.append(HistoryTransactionSnapshot(newChild))
+                        after.append(newChild)
                     } else if let oldChild = oldChildren[childID] {
-                        before.append(HistoryTransactionSnapshot(oldChild))
-                        var tombstoned = HistoryTransactionSnapshot(oldChild)
+                        before.append(oldChild)
+                        var tombstoned = oldChild
                         tombstoned.tombstone = true
                         after.append(tombstoned)
                     }
@@ -251,9 +249,9 @@ final class HistoryObserver {
         let remainingChanged = changed.filter { !handledRootIDs.contains($0.id) }
 
         if !remainingAdded.isEmpty, remainingRemoved.isEmpty, remainingChanged.isEmpty {
-            HistoryStore.shared.record(budgetID: budgetID, kind: .created, before: [], after: remainingAdded)
+            HistoryStore.shared.recordSnapshots(budgetID: budgetID, kind: .created, before: [], after: remainingAdded)
         } else if remainingAdded.isEmpty, !remainingRemoved.isEmpty, remainingChanged.isEmpty {
-            HistoryStore.shared.record(
+            HistoryStore.shared.recordSnapshots(
                 budgetID: budgetID,
                 kind: .deleted,
                 before: remainingRemoved,
@@ -261,10 +259,10 @@ final class HistoryObserver {
             )
         } else if remainingAdded.isEmpty, remainingRemoved.isEmpty, !remainingChanged.isEmpty {
             let before = remainingChanged.compactMap { previous[$0.id] }
-            HistoryStore.shared.record(budgetID: budgetID, kind: .edited, before: before, after: remainingChanged)
+            HistoryStore.shared.recordSnapshots(budgetID: budgetID, kind: .edited, before: before, after: remainingChanged)
         } else if !remainingAdded.isEmpty || !remainingRemoved.isEmpty || !remainingChanged.isEmpty {
-            var before: [HistoryTransactionSnapshot] = []
-            var after: [HistoryTransactionSnapshot] = []
+            var before: [Transaction] = []
+            var after: [Transaction] = []
             let ids = Set(remainingAdded.map(\.id))
                 .union(remainingRemoved.map(\.id))
                 .union(remainingChanged.map(\.id))
@@ -272,18 +270,18 @@ final class HistoryObserver {
 
             for id in ids {
                 if let old = previous[id], let new = current[id] {
-                    before.append(HistoryTransactionSnapshot(old))
-                    after.append(HistoryTransactionSnapshot(new))
+                    before.append(old)
+                    after.append(new)
                 } else if let old = previous[id] {
-                    before.append(HistoryTransactionSnapshot(old))
-                    var tombstoned = HistoryTransactionSnapshot(old)
+                    before.append(old)
+                    var tombstoned = old
                     tombstoned.tombstone = true
                     after.append(tombstoned)
                 } else if let new = current[id] {
-                    var absent = HistoryTransactionSnapshot(new)
+                    var absent = new
                     absent.tombstone = true
                     before.append(absent)
-                    after.append(HistoryTransactionSnapshot(new))
+                    after.append(new)
                 }
             }
 
@@ -343,7 +341,7 @@ final class HistoryObserver {
     }
 
     private static func samePersistedState(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
-        HistoryTransactionSnapshot(lhs).matchesLiveTransaction(rhs)
+        lhs.matchesLiveTransaction(rhs)
     }
 
     private static func samePersistedState(
