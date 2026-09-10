@@ -105,7 +105,7 @@ struct BudgetView: View {
     @State private var newBudgetItem: NewBudgetItem?
     @State private var categoryFilter: BudgetCategoryFilter = .all
     @State private var templateResult: GoalTemplateResultAlert?
-    @State private var isRunningTemplates = false
+    @State private var isRunningBudgetAction = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -538,20 +538,36 @@ struct BudgetView: View {
             BudgetOptionsMenu(
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
+                onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
                     ? { runTemplates($0) } : nil
             )
         }
     }
 
+    private func setBudgetsToZero() {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            do {
+                try await budgetStore.setBudgetsToZero(month: selectedMonth)
+            } catch {
+                templateResult = .init(
+                    title: ReportStrings.text("Error", locale: locale, bundle: .main),
+                    message: error.localizedDescription)
+            }
+            isRunningBudgetAction = false
+        }
+    }
+
     /// Run the month's template action and surface the outcome — the web
     /// shows these as toast notifications; an alert is the iOS equivalent.
     private func runTemplates(_ action: BudgetStore.GoalTemplateAction) {
-        guard !isRunningTemplates else { return }
-        isRunningTemplates = true
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
         Task {
             let outcome = await budgetStore.runGoalTemplates(month: selectedMonth, action: action)
-            isRunningTemplates = false
+            isRunningBudgetAction = false
             switch outcome {
             case .applied(let count):
                 templateResult = .init(
