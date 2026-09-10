@@ -38,7 +38,7 @@ struct HistoryStoreTests {
         let store = HistoryStore(defaults: defaults)
 
         for index in 0..<11 {
-            store.record(
+            store.recordSnapshots(
                 budgetID: "budget",
                 kind: .created,
                 before: [],
@@ -59,7 +59,7 @@ struct HistoryStoreTests {
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let first = HistoryStore(defaults: defaults)
-        first.record(
+        first.recordSnapshots(
             budgetID: "budget",
             kind: .created,
             before: [],
@@ -78,13 +78,13 @@ struct HistoryStoreTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
-        store.record(
+        store.recordSnapshots(
             budgetID: "budget-a",
             kind: .created,
             before: [],
             after: [transaction(id: "a")]
         )
-        store.record(
+        store.recordSnapshots(
             budgetID: "budget-b",
             kind: .created,
             before: [],
@@ -119,7 +119,7 @@ struct HistoryStoreTests {
             budgetID: "budget-b",
             kind: .created,
             before: [],
-            after: [HistoryTransactionSnapshot(transaction(id: "b"))],
+            after: [transaction(id: "b")],
             status: .applied
         )
         let rightBudget = HistoryAction(
@@ -128,7 +128,7 @@ struct HistoryStoreTests {
             budgetID: "budget-a",
             kind: .created,
             before: [],
-            after: [HistoryTransactionSnapshot(transaction(id: "a"))],
+            after: [transaction(id: "a")],
             status: .applied
         )
         defaults.set(try! JSONEncoder().encode([wrongBudget, rightBudget]), forKey: "history.actions.budget-a")
@@ -152,23 +152,23 @@ struct HistoryStoreTests {
         let newChild = transaction(id: "child", amount: -700, parentId: "parent")
         let addedChild = transaction(id: "added", amount: -500, parentId: "parent")
 
-        var absentAddedChild = HistoryTransactionSnapshot(addedChild)
+        var absentAddedChild = addedChild
         absentAddedChild.tombstone = true
-        var removedChild = HistoryTransactionSnapshot(oldChild)
+        var removedChild = oldChild
         removedChild.tombstone = true
 
         store.recordSnapshots(
             budgetID: "budget",
             kind: .edited,
             before: [
-                HistoryTransactionSnapshot(oldParent),
-                HistoryTransactionSnapshot(oldChild),
+                oldParent,
+                oldChild,
                 absentAddedChild
             ],
             after: [
-                HistoryTransactionSnapshot(newParent),
-                HistoryTransactionSnapshot(newChild),
-                HistoryTransactionSnapshot(addedChild),
+                newParent,
+                newChild,
+                addedChild,
                 removedChild
             ]
         )
@@ -181,8 +181,8 @@ struct HistoryStoreTests {
     }
 
     @Test func splitTitleRecognizesCollapseFromBeforeState() {
-        let parent = HistoryTransactionSnapshot(transaction(id: "parent", isParent: true))
-        let collapsed = HistoryTransactionSnapshot(transaction(id: "parent"))
+        let parent = transaction(id: "parent", isParent: true)
+        let collapsed = transaction(id: "parent")
         let action = HistoryAction(
             id: "collapse",
             createdAt: Date(),
@@ -198,14 +198,14 @@ struct HistoryStoreTests {
 
     @Test func deletedActionsRepresentAbsentRowsAfterDeletion() {
         let source = transaction(id: "source")
-        var tombstone = HistoryTransactionSnapshot(source)
+        var tombstone = source
         tombstone.tombstone = true
         let action = HistoryAction(
             id: "deleted",
             createdAt: Date(),
             budgetID: "budget",
             kind: .deleted,
-            before: [HistoryTransactionSnapshot(source)],
+            before: [source],
             after: [tombstone],
             status: .applied
         )
@@ -225,7 +225,7 @@ struct HistoryStoreTests {
             budgetID: "budget",
             kind: .edited,
             before: [],
-            after: [HistoryTransactionSnapshot(transaction(id: "tx"))],
+            after: [transaction(id: "tx")],
             status: .undone
         )
 
@@ -235,7 +235,7 @@ struct HistoryStoreTests {
     }
 
     @Test func liveSnapshotComparisonIgnoresUnstableReadOnlyFields() {
-        var recorded = HistoryTransactionSnapshot(transaction(id: "tx"))
+        var recorded = transaction(id: "tx")
         recorded.sortOrder = 123.0
         recorded.financialId = "wallet-id"
         recorded.startingBalanceFlag = true
@@ -253,8 +253,8 @@ struct HistoryStoreTests {
     }
 
     @Test func liveSnapshotComparisonDetectsUndoRelevantChanges() {
-        let base = HistoryTransactionSnapshot(transaction(id: "tx"))
-        let mutators: [(inout HistoryTransactionSnapshot) -> Void] = [
+        let base = transaction(id: "tx")
+        let mutators: [(inout Transaction) -> Void] = [
             { $0.accountId = "other-account" },
             { $0.date += 1 },
             { $0.amount -= 1 },
@@ -274,7 +274,7 @@ struct HistoryStoreTests {
         for mutate in mutators {
             var changed = base
             mutate(&changed)
-            #expect(changed.matchesLiveTransaction(base.transaction()) == false)
+            #expect(changed.matchesLiveTransaction(base) == false)
         }
     }
 
@@ -292,14 +292,14 @@ struct HistoryStoreTests {
         store.recordSnapshots(
             budgetID: "budget",
             kind: .edited,
-            before: [HistoryTransactionSnapshot(oldParent)],
-            after: [HistoryTransactionSnapshot(newParent)]
+            before: [oldParent],
+            after: [newParent]
         )
         store.recordSnapshots(
             budgetID: "budget",
             kind: .edited,
-            before: [HistoryTransactionSnapshot(newParent), HistoryTransactionSnapshot(oldChild)],
-            after: [HistoryTransactionSnapshot(newParent), HistoryTransactionSnapshot(newChild)]
+            before: [newParent, oldChild],
+            after: [newParent, newChild]
         )
 
         #expect(store.actions.count == 1)
@@ -315,8 +315,8 @@ struct HistoryStoreTests {
         let source = transaction(id: "source")
         let target = transaction(id: "target")
 
-        var transferSource = HistoryTransactionSnapshot(source)
-        var transferTarget = HistoryTransactionSnapshot(target)
+        var transferSource = source
+        var transferTarget = target
         transferSource.transferId = target.id
         transferTarget.transferId = source.id
         transferSource.tombstone = true
@@ -326,13 +326,13 @@ struct HistoryStoreTests {
             createdAt: Date(),
             budgetID: "budget",
             kind: .deleted,
-            before: [HistoryTransactionSnapshot(source), HistoryTransactionSnapshot(target)],
+            before: [source, target],
             after: [transferSource, transferTarget],
             status: .applied
         )
         #expect(deletedTransfer.title == "Deleted transfer")
 
-        var splitParent = HistoryTransactionSnapshot(source)
+        var splitParent = source
         splitParent.isParent = true
         splitParent.tombstone = true
         let deletedSplit = HistoryAction(
@@ -340,7 +340,7 @@ struct HistoryStoreTests {
             createdAt: Date(),
             budgetID: "budget",
             kind: .deleted,
-            before: [HistoryTransactionSnapshot(source)],
+            before: [source],
             after: [splitParent],
             status: .applied
         )
@@ -355,8 +355,8 @@ struct HistoryStoreTests {
 
         let source = transaction(id: "source", amount: -5000)
         let target = transaction(id: "target", amount: 5000)
-        var sourceSnapshot = HistoryTransactionSnapshot(source)
-        var targetSnapshot = HistoryTransactionSnapshot(target)
+        var sourceSnapshot = source
+        var targetSnapshot = target
         sourceSnapshot.transferId = target.id
         targetSnapshot.transferId = source.id
 
@@ -389,8 +389,8 @@ struct HistoryStoreTests {
         let first = transaction(id: "first")
         let unrelated = transaction(id: "unrelated")
         let delayedPartner = transaction(id: "partner")
-        var firstSnapshot = HistoryTransactionSnapshot(first)
-        var partnerSnapshot = HistoryTransactionSnapshot(delayedPartner)
+        var firstSnapshot = first
+        var partnerSnapshot = delayedPartner
         firstSnapshot.transferId = delayedPartner.id
         partnerSnapshot.transferId = first.id
 
@@ -400,7 +400,7 @@ struct HistoryStoreTests {
             before: [],
             after: [firstSnapshot]
         )
-        store.record(
+        store.recordSnapshots(
             budgetID: "budget",
             kind: .created,
             before: [],
