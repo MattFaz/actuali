@@ -25,18 +25,20 @@ final class HistoryObserver {
                     self.previousSplitChildren = [:]
                     return
                 }
+                let isRemote = remoteRefreshPending || store.isBankSyncing
+                remoteRefreshPending = false
                 self.enqueueConsume(
                     store: store,
                     budgetID: budgetID,
                     transactions: store.transactions,
-                    isRemote: self.remoteRefreshPending || store.isBankSyncing
+                    isRemote: isRemote
                 )
             }
             .store(in: &cancellables)
 
         store.$isLoading
             .sink { [weak self] loading in
-                guard let self, loading else { return }
+                guard let self, Self.shouldResetBaselineForReload(isLoading: loading) else { return }
                 self.hasBaseline = false
                 self.previous = [:]
                 self.previousSplitChildren = [:]
@@ -46,7 +48,7 @@ final class HistoryObserver {
         store.$syncState
             .sink { [weak self] state in
                 guard let self else { return }
-                if self.wasSyncing, state == .idle {
+                if Self.shouldMarkRemoteRefresh(wasSyncing: self.wasSyncing, state: state) {
                     self.remoteRefreshPending = true
                 }
                 self.wasSyncing = state == .syncing
@@ -73,6 +75,14 @@ final class HistoryObserver {
             transactions: store.transactions,
             isRemote: false
         )
+    }
+
+    static func shouldMarkRemoteRefresh(wasSyncing: Bool, state: SyncState) -> Bool {
+        wasSyncing && state == .idle
+    }
+
+    static func shouldResetBaselineForReload(isLoading: Bool) -> Bool {
+        isLoading
     }
 
     private func enqueueConsume(
