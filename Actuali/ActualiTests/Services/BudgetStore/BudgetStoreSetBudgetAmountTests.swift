@@ -170,6 +170,74 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(groceries.budgeted == -10000)
     }
 
+    @Test func settingMonthBudgetsToZeroIncludesHiddenButNotEnvelopeIncome() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
+                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+                INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                    ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
+                    ('202607-cat-hidden', 202607, 'cat-hidden', 1500),
+                    ('202607-cat-income', 202607, 'cat-income', 5000);
+                """)
+        }
+        let store = try await makeStore(database: database)
+
+        try await store.setBudgetsToZero(month: "2026-07")
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amounts = try await queue.read { db in
+            try Dictionary(uniqueKeysWithValues: Row.fetchAll(
+                db, sql: "SELECT category, amount FROM zero_budgets"
+            ).map { ($0["category"] as String, $0["amount"] as Int) })
+        }
+        #expect(amounts["cat-groceries"] == 0)
+        #expect(amounts["cat-hidden"] == 0)
+        #expect(amounts["cat-income"] == 5000)
+    }
+
+    @Test func settingTrackingMonthBudgetsToZeroIncludesIncome() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                CREATE TABLE reflect_budgets (
+                    id TEXT PRIMARY KEY, month INTEGER, category TEXT,
+                    amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
+                    goal INTEGER, long_goal INTEGER
+                );
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
+                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+                INSERT INTO reflect_budgets (id, month, category, amount) VALUES
+                    ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
+                    ('202607-cat-income', 202607, 'cat-income', 5000);
+                """)
+        }
+        let store = try await makeStore(database: database)
+
+        try await store.setBudgetsToZero(month: "2026-07")
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amounts = try await queue.read { db in
+            try Int.fetchAll(db, sql: "SELECT amount FROM reflect_budgets ORDER BY category")
+        }
+        #expect(amounts == [0, 0])
+    }
+
+    @Test func zeroingAnOlderMonthPreservesTheNewerMonthSelection() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        await store.fetchBudgetMonth("2026-08")
+
+        try await store.setBudgetsToZero(month: "2026-07")
+
+        #expect(store.currentBudgetMonth?.month == "2026-08")
+    }
+
     // A rename runs the shared data refresh, which republishes the *current
     // calendar* month. Any other displayed month has to survive it, or the
     // table's rows stop matching its title and the next amount edit lands on

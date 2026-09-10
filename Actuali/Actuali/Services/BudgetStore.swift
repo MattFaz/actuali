@@ -6027,6 +6027,23 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Match upstream `budget/set-zero`: clear every live category, including
+    /// hidden ones, but leave income alone unless this is a tracking budget.
+    func setBudgetsToZero(month: String) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let budget = try await database.fetchBudgetMonth(month: month)
+        let categoryIds = budget.allCategoryBudgets.map(\.categoryId)
+            + (budget.isTrackingBudget ? budget.allIncomeCategories.map(\.categoryId) : [])
+        try await syncClient.applyGoalTemplateWrites(
+            month: month,
+            budgets: categoryIds.map { .init(category: $0, amount: 0) },
+            goals: []
+        )
+        await fetchBudgetMonth(requestedBudgetMonth ?? month)
+    }
+
     /// Turn "rollover overspending" on or off for a category (GH #372), then
     /// refetch the month so the published flag and Available recompute.
     /// Mirrors the web's balance menu: the flag is written from this month
