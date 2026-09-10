@@ -227,6 +227,17 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(amounts == [0, 0])
     }
 
+    @Test func zeroingAnOlderMonthPreservesTheNewerMonthSelection() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        await store.fetchBudgetMonth("2026-08")
+
+        try await store.setBudgetsToZero(month: "2026-07")
+
+        #expect(store.currentBudgetMonth?.month == "2026-08")
+    }
+
     // A rename runs the shared data refresh, which republishes the *current
     // calendar* month. Any other displayed month has to survive it, or the
     // table's rows stop matching its title and the next amount edit lands on

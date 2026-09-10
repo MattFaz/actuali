@@ -6041,7 +6041,7 @@ final class BudgetStore: ObservableObject {
             budgets: categoryIds.map { .init(category: $0, amount: 0) },
             goals: []
         )
-        await fetchBudgetMonth(month)
+        await fetchBudgetMonth(requestedBudgetMonth ?? month)
     }
 
     /// Turn "rollover overspending" on or off for a category (GH #372), then
