@@ -9,6 +9,8 @@ final class HistoryObserver {
     private var previous: [String: Transaction] = [:]
     private var previousSplitChildren: [String: [String: Transaction]] = [:]
     private var consumeTask: Task<Void, Never>?
+    private var wasSyncing = false
+    private var remoteRefreshPending = false
 
     init(store: BudgetStore) {
         previousBudgetID = store.currentBudgetId
@@ -23,37 +25,80 @@ final class HistoryObserver {
                     self.previousSplitChildren = [:]
                     return
                 }
-                self.enqueueConsume(store: store, budgetID: budgetID, transactions: store.transactions)
+                self.enqueueConsume(
+                    store: store,
+                    budgetID: budgetID,
+                    transactions: store.transactions,
+                    isRemote: self.remoteRefreshPending || store.isBankSyncing
+                )
+            }
+            .store(in: &cancellables)
+
+        store.$isLoading
+            .sink { [weak self] loading in
+                guard let self, loading else { return }
+                self.hasBaseline = false
+                self.previous = [:]
+                self.previousSplitChildren = [:]
+            }
+            .store(in: &cancellables)
+
+        store.$syncState
+            .sink { [weak self] state in
+                guard let self else { return }
+                if self.wasSyncing, state == .idle {
+                    self.remoteRefreshPending = true
+                }
+                self.wasSyncing = state == .syncing
             }
             .store(in: &cancellables)
 
         store.$transactions
             .sink { [weak self, weak store] transactions in
                 guard let self, let store else { return }
-                self.enqueueConsume(store: store, budgetID: store.currentBudgetId, transactions: transactions)
+                let isRemote = self.remoteRefreshPending || store.isBankSyncing
+                self.remoteRefreshPending = false
+                self.enqueueConsume(
+                    store: store,
+                    budgetID: store.currentBudgetId,
+                    transactions: transactions,
+                    isRemote: isRemote
+                )
             }
             .store(in: &cancellables)
 
-        enqueueConsume(store: store, budgetID: store.currentBudgetId, transactions: store.transactions)
+        enqueueConsume(
+            store: store,
+            budgetID: store.currentBudgetId,
+            transactions: store.transactions,
+            isRemote: false
+        )
     }
 
     private func enqueueConsume(
         store: BudgetStore,
         budgetID: String?,
-        transactions: [Transaction]
+        transactions: [Transaction],
+        isRemote: Bool
     ) {
         let previousTask = consumeTask
         consumeTask = Task { @MainActor [weak self, weak store] in
             _ = await previousTask?.result
             guard let self, let store else { return }
-            await self.consume(store, budgetID: budgetID, transactions: transactions)
+            await self.consume(
+                store,
+                budgetID: budgetID,
+                transactions: transactions,
+                isRemote: isRemote
+            )
         }
     }
 
     private func consume(
         _ store: BudgetStore,
         budgetID: String?,
-        transactions: [Transaction]
+        transactions: [Transaction],
+        isRemote: Bool
     ) async {
         guard let budgetID else {
             hasBaseline = false
@@ -98,7 +143,7 @@ final class HistoryObserver {
             return
         }
 
-        if HistoryStore.recordingSuppressed || store.isBankSyncing || store.syncState == .syncing {
+        if isRemote || HistoryStore.recordingSuppressed {
             previous = current
             previousSplitChildren = currentSplitChildren
             return
