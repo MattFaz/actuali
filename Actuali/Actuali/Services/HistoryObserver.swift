@@ -117,11 +117,8 @@ final class HistoryObserver {
             return
         }
 
-        guard store.isBudgetLoaded else { return }
-
-        // The observer serializes publications, but a queued task can still be
-        // stale after the selected budget changes while a child fetch is awaited.
-        // Never let one budget establish the baseline for another.
+        // `isLoading` resets the baseline before a reload publishes rows, so
+        // the first transaction snapshot of that load is safe to adopt.
         guard budgetID == store.currentBudgetId else { return }
 
         let current = Dictionary(uniqueKeysWithValues: transactions.map { ($0.id, $0) })
