@@ -131,9 +131,16 @@ enum CleanupEngine {
             }
 
             let totalWeight = sinks.reduce(0.0) { $0 + $1.2 }
-            for (category, _, weight) in sinks where pool > 0 {
-                let share = BudgetMonthMath.jsRound(weight / totalWeight * Double(pool))
+            var remainingPool = pool
+            for (index, sink) in sinks.enumerated() where remainingPool > 0 {
+                let (category, _, weight) = sink
+                let share = index == sinks.count - 1
+                    ? remainingPool
+                    : min(
+                        BudgetMonthMath.jsRound(weight / totalWeight * Double(pool)),
+                        remainingPool)
                 state.setBudget(state.budget(category.id) + share, for: category.id)
+                remainingPool -= share
             }
         }
 
@@ -157,6 +164,7 @@ enum CleanupEngine {
         }
 
         for category in categories {
+            guard state.available > 0 else { break }
             let balance = state.leftover(category.id)
             guard balance < 0, !category.isIncome,
                   !sheet.carryover(month: month, category: category.id) else { continue }
@@ -167,20 +175,22 @@ enum CleanupEngine {
         if budgetAvailable < 0 { warnings.append(.noGlobalFunds) }
 
         let totalWeight = globalSinks.reduce(0.0) { $0 + $1.1 }
-        for (index, sink) in globalSinks.enumerated() {
-            let budgeted = state.budget(sink.0.id)
-            var amount = budgeted
-                + BudgetMonthMath.jsRound(sink.1 / totalWeight * Double(budgetAvailable))
-            if index == globalSinks.count - 1, amount > state.available {
-                amount = budgeted + state.available
-            }
-            state.setBudget(amount, for: sink.0.id)
+        var remainingBudget = max(budgetAvailable, 0)
+        for (index, sink) in globalSinks.enumerated() where remainingBudget > 0 {
+            let share = index == globalSinks.count - 1
+                ? remainingBudget
+                : min(
+                    BudgetMonthMath.jsRound(
+                        sink.1 / totalWeight * Double(budgetAvailable)),
+                    remainingBudget)
+            state.setBudget(state.budget(sink.0.id) + share, for: sink.0.id)
+            remainingBudget -= share
         }
 
         let notification: Notification
         if !warnings.isEmpty {
             notification = .warning(warnings)
-        } else if sourceCount == 0 || budgetAvailable == 0 {
+        } else if state.writes.isEmpty && goals.isEmpty {
             notification = .upToDate
         } else {
             notification = .applied(sourceCount: sourceCount, sinkCount: globalSinks.count)

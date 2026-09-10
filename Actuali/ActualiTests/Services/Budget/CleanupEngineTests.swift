@@ -40,4 +40,38 @@ struct CleanupEngineTests {
         #expect(result.goals == [.init(category: "global-source", goal: 0, longGoal: false)])
         #expect(result.notification == .applied(sourceCount: 1, sinkCount: 2))
     }
+
+    @Test func poolRoundingDoesNotAllocateMoreThanAvailable() {
+        let categories: [CleanupEngine.Category] = [
+            .init(id: "source", name: "Source", cleanup: [.source(groupId: "pool")]),
+            .init(id: "sink-1", name: "Sink 1", cleanup: [.sink(groupId: "pool")]),
+            .init(id: "sink-2", name: "Sink 2", cleanup: [.sink(groupId: "pool")]),
+        ]
+        var sheet = GoalTemplateSheet()
+        sheet.budgeted[.init(202608, "source")] = 1
+        sheet.leftover[.init(202608, "source")] = 1
+
+        let result = CleanupEngine.run(
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+
+        #expect(result.budgets.filter { $0.category.hasPrefix("sink") }
+            .map(\.amount).reduce(0, +) == 1)
+        #expect(result.notification == .applied(sourceCount: 0, sinkCount: 0))
+    }
+
+    @Test func negativeAvailableFundsDoNotWorsenOverspending() {
+        let categories: [CleanupEngine.Category] = [
+            .init(id: "overspent", name: "Overspent", cleanup: []),
+            .init(id: "sink", name: "Sink", cleanup: [.sink()]),
+        ]
+        var sheet = GoalTemplateSheet()
+        sheet.availableStart = -100
+        sheet.leftover[.init(202608, "overspent")] = -50
+
+        let result = CleanupEngine.run(
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+
+        #expect(result.budgets.isEmpty)
+        #expect(result.notification == .warning([.noGlobalFunds]))
+    }
 }

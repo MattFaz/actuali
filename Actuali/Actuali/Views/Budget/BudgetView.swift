@@ -608,17 +608,13 @@ struct BudgetView: View {
     private func cleanupWarningMessage(_ warning: CleanupEngine.Warning) -> String {
         switch warning {
         case .noAvailableFunds(let category):
-            String(
-                format: ReportStrings.text(
-                    "%@ does not have available funds.", locale: locale, bundle: .main),
-                category)
+            ReportStrings.format(
+                "%@ does not have available funds.", category,
+                locale: locale, bundle: .main)
         case .noMatchingSinks(let group):
-            String(
-                format: ReportStrings.text(
-                    "Cleanup pool \"%@\" has no matching sink categories.",
-                    locale: locale,
-                    bundle: .main),
-                group)
+            ReportStrings.format(
+                "Cleanup pool \"%@\" has no matching sink categories.", group,
+                locale: locale, bundle: .main)
         case .noGlobalFunds:
             ReportStrings.text(
                 "No funds are available to reallocate.", locale: locale, bundle: .main)
