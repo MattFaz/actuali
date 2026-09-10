@@ -597,11 +597,11 @@ struct BudgetView: View {
     }
 
     private func runCleanup() {
-        guard !isRunningTemplates else { return }
-        isRunningTemplates = true
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
         Task {
             let outcome = await budgetStore.runCleanup(month: selectedMonth)
-            isRunningTemplates = false
+            isRunningBudgetAction = false
             let message: String
             switch outcome {
             case .completed(.applied):
