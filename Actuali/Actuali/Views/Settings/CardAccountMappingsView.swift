@@ -23,61 +23,46 @@ struct CardAccountMappingsView: View {
     }
 
     private var suggestedMappings: [CardMappingSuggestion] {
-        Self.computeSuggestions(
-            pendingImports: pendingImportStore.imports,
+        let budgetId = budgetStore.currentBudgetId
+        return Self.computeSuggestions(
+            pendingImports: pendingImportStore.imports.filter {
+                $0.originBudgetId == nil || $0.originBudgetId == budgetId
+            },
+            accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings
         )
     }
 
-    /// Finds unmapped card hints present in pending transactions.
-    /// ponytail: Deduplicate case-insensitively; skip hints that match any existing
-    /// keyword or exact keyword. Sort by highest frequency then alphabetically.
+    /// Card hints in pending transactions that do not route anywhere yet.
+    /// Reuses the routing chain so the list matches real behavior.
     nonisolated static func computeSuggestions(
         pendingImports: [PendingImport],
+        accounts: [Account],
         cardMappings: [String: String]
     ) -> [CardMappingSuggestion] {
-        let mappedKeys = Set(
-            cardMappings.keys
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() }
-                .filter { !$0.isEmpty }
-        )
-
-        var grouped: [String: (originalKeyword: String, count: Int, samplePayee: String?)] = [:]
+        var grouped: [String: (keyword: String, count: Int, samplePayee: String?)] = [:]
         for item in pendingImports {
-            guard let rawHint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines), !rawHint.isEmpty else {
+            guard let hint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !hint.isEmpty,
+                  BudgetStore.resolveAccountId(
+                      hint: hint, accounts: accounts, cardMappings: cardMappings) == nil else {
                 continue
             }
-            let lowerHint = rawHint.lowercased()
-            guard !mappedKeys.contains(where: { key in lowerHint == key || lowerHint.contains(key) }) else {
-                continue
-            }
-
-            if let existing = grouped[lowerHint] {
-                grouped[lowerHint] = (
-                    originalKeyword: existing.originalKeyword,
-                    count: existing.count + 1,
-                    samplePayee: existing.samplePayee ?? item.payee
-                )
-            } else {
-                grouped[lowerHint] = (
-                    originalKeyword: rawHint,
-                    count: 1,
-                    samplePayee: item.payee
-                )
-            }
+            let key = hint.lowercased()
+            let existing = grouped[key]
+            grouped[key] = (
+                existing?.keyword ?? hint,
+                (existing?.count ?? 0) + 1,
+                existing?.samplePayee ?? item.payee
+            )
         }
 
         return grouped.values.map {
-            CardMappingSuggestion(
-                keyword: $0.originalKeyword,
-                count: $0.count,
-                samplePayee: $0.samplePayee
-            )
-        }.sorted { first, second in
-            if first.count != second.count {
-                return first.count > second.count
-            }
-            return first.keyword.localizedCaseInsensitiveCompare(second.keyword) == .orderedAscending
+            CardMappingSuggestion(keyword: $0.keyword, count: $0.count, samplePayee: $0.samplePayee)
+        }.sorted {
+            $0.count != $1.count
+                ? $0.count > $1.count
+                : $0.keyword.localizedCaseInsensitiveCompare($1.keyword) == .orderedAscending
         }
     }
 
@@ -93,7 +78,7 @@ struct CardAccountMappingsView: View {
                 Section {
                     ForEach(suggestedMappings) { suggestion in
                         Button {
-                            selectSuggestion(suggestion)
+                            prepareAndShowAddSheet(keyword: suggestion.keyword)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
@@ -192,17 +177,13 @@ struct CardAccountMappingsView: View {
         }
     }
 
-    private func selectSuggestion(_ suggestion: CardMappingSuggestion) {
-        prepareAndShowAddSheet(keyword: suggestion.keyword)
-    }
-
     private func prepareAndShowAddSheet(keyword: String) {
-        if let defaultId = budgetStore.defaultAccountId,
-           budgetStore.accounts.contains(where: { $0.id == defaultId && !$0.closed }) {
-            selectedAccountId = defaultId
-        } else if let firstAccount = budgetStore.accounts.first(where: { !$0.closed }) {
-            selectedAccountId = firstAccount.id
-        }
+        selectedAccountId = PendingImportApprover.seedAccountId(
+            cardHint: keyword.isEmpty ? nil : keyword,
+            accounts: budgetStore.accounts,
+            cardMappings: budgetStore.cardAccountMappings,
+            defaultAccountId: budgetStore.defaultAccountId
+        ) ?? ""
         newKeyword = keyword
         showingAddSheet = true
     }
