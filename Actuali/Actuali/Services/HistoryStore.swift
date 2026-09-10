@@ -1,19 +1,7 @@
 import Foundation
 import Combine
 
-typealias HistoryTransactionSnapshot = Transaction
-
-typealias HistorySplitPortionSnapshot = Transaction.SplitPortion
-
 extension Transaction {
-    init(_ snapshot: Transaction) {
-        self = snapshot
-    }
-
-    func transaction() -> Transaction {
-        self
-    }
-
     /// Compares only stable transaction state returned by the normal fetch path.
     /// Display-only values, insert-only values that aren't read back, and
     /// `sortOrder` normalization must not make a live row differ from history.
@@ -138,15 +126,6 @@ final class HistoryStore: ObservableObject {
         loadedBudgetID = nil
         errorMessage = nil
         errorTitle = String(localized: "Couldn't Undo")
-    }
-
-    func record(
-        budgetID: String,
-        kind: HistoryActionKind,
-        before: [Transaction],
-        after: [Transaction]
-    ) {
-        recordSnapshots(budgetID: budgetID, kind: kind, before: before, after: after)
     }
 
     func recordSnapshots(
@@ -325,21 +304,20 @@ final class HistoryStore: ObservableObject {
                 (previous, afterByID[previous.id] ?? Self.tombstoned(previous))
             }
             // ponytail: restore one row per sync write so each update carries
-            // only its own changed fields. Grouping rows here would union their
+            // only its own changed fields. Grouping rows would union their
             // field sets and can overwrite concurrent CRDT edits on untouched rows.
             var restoredPairs: [(Transaction, Transaction)] = []
             do {
                 for (before, after) in restorePairs {
-                    try await budgetStore.restoreTransactions([before], from: [after])
+                    try await budgetStore.restoreTransaction(before, from: after)
                     restoredPairs.append((before, after))
                 }
             } catch {
-                // The underlying batch API processes rows sequentially today.
-                // Compensate on failure so a multi-row Undo does not remain
-                // partially restored when one row fails.
+                // The restore calls are sequential today. Compensate on failure
+                // so a multi-row Undo does not remain partially restored.
                 do {
                     for (before, after) in restoredPairs.reversed() {
-                        try await budgetStore.restoreTransactions([after], from: [before])
+                        try await budgetStore.restoreTransaction(after, from: before)
                     }
                 } catch {
                     errorMessage = String(localized: "Undo failed and the previous state could not be restored. Please reopen the budget and verify these transactions.")
