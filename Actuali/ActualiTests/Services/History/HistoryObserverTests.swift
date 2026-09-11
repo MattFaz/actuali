@@ -64,7 +64,7 @@ struct HistoryObserverTests {
         let original = transaction(id: "original")
         let reloaded = transaction(id: "reloaded")
         let store = makeStore(budgetID: budgetID, transactions: [original])
-        _ = HistoryObserver(store: store)
+        let observer = HistoryObserver(store: store)
         await settle()
 
         store.isLoading = true
@@ -74,6 +74,7 @@ struct HistoryObserverTests {
         await settle()
 
         #expect(HistoryStore.shared.actions.isEmpty)
+        _ = observer
     }
 
     @Test func addProducesOneCreatedAction() async {
@@ -83,7 +84,7 @@ struct HistoryObserverTests {
         let existing = transaction(id: "existing")
         let added = transaction(id: "added")
         let store = makeStore(budgetID: budgetID, transactions: [existing])
-        _ = HistoryObserver(store: store)
+        let observer = HistoryObserver(store: store)
         await settle()
 
         store.transactions = [existing, added]
@@ -92,6 +93,7 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.count == 1)
         #expect(HistoryStore.shared.actions.first?.kind == .created)
         #expect(HistoryStore.shared.actions.first?.after.map(\.id) == ["added"])
+        _ = observer
     }
 
     @Test func editProducesOneEditedAction() async {
@@ -102,7 +104,7 @@ struct HistoryObserverTests {
         var edited = original
         edited.amount = -1200
         let store = makeStore(budgetID: budgetID, transactions: [original])
-        _ = HistoryObserver(store: store)
+        let observer = HistoryObserver(store: store)
         await settle()
 
         store.transactions = [edited]
@@ -112,6 +114,7 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.first?.kind == .edited)
         #expect(HistoryStore.shared.actions.first?.before.first?.amount == -1000)
         #expect(HistoryStore.shared.actions.first?.after.first?.amount == -1200)
+        _ = observer
     }
 
     @Test func deleteProducesOneDeletedAction() async {
@@ -120,7 +123,7 @@ struct HistoryObserverTests {
 
         let existing = transaction(id: "deleted")
         let store = makeStore(budgetID: budgetID, transactions: [existing])
-        _ = HistoryObserver(store: store)
+        let observer = HistoryObserver(store: store)
         await settle()
 
         store.transactions = []
@@ -130,6 +133,7 @@ struct HistoryObserverTests {
         #expect(HistoryStore.shared.actions.first?.kind == .deleted)
         #expect(HistoryStore.shared.actions.first?.before.first?.id == "deleted")
         #expect(HistoryStore.shared.actions.first?.after.first?.tombstone == true)
+        _ = observer
     }
 
     @Test func publicationDuringSyncRefreshProducesNoHistoryAction() async {
@@ -140,7 +144,7 @@ struct HistoryObserverTests {
         var remoteEdit = original
         remoteEdit.amount = -1800
         let store = makeStore(budgetID: budgetID, transactions: [original])
-        _ = HistoryObserver(store: store)
+        let observer = HistoryObserver(store: store)
         await settle()
 
         store.syncState = .syncing
@@ -149,5 +153,6 @@ struct HistoryObserverTests {
         await settle()
 
         #expect(HistoryStore.shared.actions.isEmpty)
+        _ = observer
     }
 }
