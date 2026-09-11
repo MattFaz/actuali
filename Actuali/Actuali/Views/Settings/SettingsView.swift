@@ -61,6 +61,12 @@ struct SettingsView: View {
                             Label(item.title, systemImage: item.systemImage)
                         }
                     }
+
+                    NavigationLink {
+                        HistoryView()
+                    } label: {
+                        Label("History", systemImage: "clock.arrow.circlepath")
+                    }
                 }
                 Section(String(localized: "Information")) {
                     NavigationLink {

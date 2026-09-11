@@ -164,6 +164,7 @@ final class BudgetStore: ObservableObject {
     // MARK: - Published State
 
     @Published var isLoading = false
+    private(set) var isBudgetLoaded = false
     @Published var downloadingBudgetId: String?
     /// Global error alert (rendered in ContentView) for background/destructive operation failures (e.g. delete); form-local errors (e.g. saveTransaction validation) stay in the presenting view.
     @Published var error: String?
@@ -2085,6 +2086,7 @@ final class BudgetStore: ObservableObject {
 
     func loadLocalBudget(_ budgetId: String) async {
         isLoading = true
+        isBudgetLoaded = false
         error = nil
         let monthRequestGenerationBeforeLoad = budgetMonthRequestGeneration
         var published = false
@@ -2181,6 +2183,9 @@ final class BudgetStore: ObservableObject {
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
             
             accounts = fetchedAccounts
+            // Let observers establish their baseline before the transaction
+            // publication is visible as a user change.
+            isBudgetLoaded = true
             transactions = fetchedTransactions
             uncategorizedCount = fetchedUncategorizedCount
             categoryGroups = fetchedGroups
@@ -2884,6 +2889,13 @@ final class BudgetStore: ObservableObject {
         }
 
         let result = try await syncClient.createTransaction(transaction, applyRules: true)
+
+        // Publish the persisted row before the full refresh so local observers
+        // such as History see the transaction immediately.
+        if let database, let saved = try? await database.fetchTransaction(id: transaction.id) {
+            transactions.removeAll { $0.id == saved.id }
+            transactions.append(saved)
+        }
 
         // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
         await refreshDataOnly()
@@ -4070,6 +4082,7 @@ final class BudgetStore: ObservableObject {
         )
 
         try await syncClient.createTransfer(source: source, target: target)
+        await publishTransactionsImmediately([sourceId, targetId])
         await refreshDataOnly()
     }
 
@@ -4173,6 +4186,49 @@ final class BudgetStore: ObservableObject {
         let changedFields = Self.changedFields(original: original, updated: updated)
         try await syncClient.updateTransaction(updated, changedFields: changedFields)
         await refreshDataOnly()
+    }
+
+    /// Restore several transaction rows as one sync write. History uses this
+    /// for multi-row Undo so a transfer or split does not intentionally issue
+    /// one independent write per leg.
+    ///
+    /// Batches by distinct changed-field set rather than sending one union of
+    /// fields for every row: a row whose amount didn't change must not have
+    /// `amount` rewritten just because another row in the same batch changed
+    /// its amount — that would stamp a fresh HLC timestamp on an unchanged
+    /// value and could clobber a concurrent edit from another device.
+    func restoreTransactions(
+        _ transactions: [Transaction],
+        from recordedAfter: [Transaction]
+    ) async throws {
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        var batches: [Set<String>: [Transaction]] = [:]
+        for (updated, original) in zip(transactions, recordedAfter) {
+            let fields = Self.changedFields(original: original, updated: updated)
+            guard !fields.isEmpty else { continue }
+            batches[fields, default: []].append(updated)
+        }
+        guard !batches.isEmpty else { return }
+
+        for (fields, rows) in batches {
+            try await syncClient.updateTransactions(rows, changedFields: fields)
+        }
+        await refreshDataOnly()
+    }
+
+    /// Publish rows that have just been committed before the normal refresh.
+    /// History observes `transactions`, so this keeps every creation shape
+    /// consistent without changing the database's authoritative read path.
+    private func publishTransactionsImmediately(_ ids: [String]) async {
+        guard let database else { return }
+        for id in ids {
+            guard let saved = try? await database.fetchTransaction(id: id) else { continue }
+            transactions.removeAll { $0.id == saved.id }
+            transactions.append(saved)
+        }
     }
 
     /// Children share their parent's account, date and cleared state; keep
@@ -4869,6 +4925,7 @@ final class BudgetStore: ObservableObject {
                 children: children,
                 transferPartners: transferPartners
             )
+            await publishTransactionsImmediately([parent.id])
             await refreshDataOnly()
             if form.recordLocation, let payeeId {
                 recordPayeeLocationIfAppropriate(payeeId: payeeId)
