@@ -24,6 +24,7 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
@@ -35,7 +36,8 @@ struct AccountDetailView: View {
     /// in those states would make it look like the account balance changed when
     /// the user only changed the visible filter.
     private var shouldShowRunningBalance: Bool {
-        searchQuery == nil
+        showRunningBalance
+            && searchQuery == nil
             && !budgetStore.hideClearedTransactions
             && !budgetStore.hideReconciledTransactions
     }
@@ -120,25 +122,15 @@ struct AccountDetailView: View {
                 Button {
                     editingNote = true
                 } label: {
-                    // Tinted: an empty note row is an invitation to act, where
-                    // an existing note is content to read.
                     Label(String(localized: "common.addNote"), systemImage: "note.text.badge.plus")
                         .foregroundStyle(Color.accentColor)
                 }
-                // Plain: a tinted List button would tint the label twice over.
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("accountNoteRow")
             } else {
                 HStack(alignment: .top, spacing: 12) {
-                    // Attributed so markdown links and bare URLs in the note
-                    // are tappable (GH #190). That's also why this row is a
-                    // tap gesture rather than the Button the empty state uses:
-                    // a Button label swallows link taps, where links inside a
-                    // gesture-carrying row take precedence over the gesture.
                     Text(NoteLinkText.attributed(note.text))
                         .multilineTextAlignment(.leading)
-                        // Multi-line notes are the point — let the row grow
-                        // instead of truncating the guidance to one line.
                         .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     Image(systemName: "pencil")
@@ -173,9 +165,6 @@ struct AccountDetailView: View {
     var body: some View {
         List {
             Section {
-                // Tapping the balance reveals the cleared/uncleared/reconciled
-                // split (GH #134), so the reconciled figure can be checked
-                // against a bank statement without starting a reconciliation.
                 Button {
                     withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
                 } label: {
@@ -184,7 +173,7 @@ struct AccountDetailView: View {
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
+                            .animatedAmount(budgetStore.displayBalance(currentBalance))
                         if breakdown != nil {
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.semibold))
@@ -200,9 +189,6 @@ struct AccountDetailView: View {
                     ? String(localized: "Hides the balance breakdown")
                     : String(localized: "Shows cleared, uncleared, and reconciled balances"))
 
-                // Headroom on a tracked card with a limit set — the figure a
-                // card's balance is actually judged against, so it stays visible
-                // rather than hiding behind the disclosure.
                 if let headroom = creditHeadroom {
                     breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
                 }
@@ -224,9 +210,6 @@ struct AccountDetailView: View {
                     let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
                     let dueSummary = cycle.dueSummary()
 
-                    // Collapsed by default like the balance breakdown above, but
-                    // the due date rides on the header row rather than hiding —
-                    // it's the part of this section worth acting on.
                     Button {
                         withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
                     } label: {
@@ -278,9 +261,6 @@ struct AccountDetailView: View {
                                     }
                                 )
                             }
-                            // The sentinel rides in the last date section so
-                            // grouped mode doesn't grow a headerless section
-                            // (and its gap) of its own.
                             if pager.hasMore, group.id == groups.last?.id {
                                 TransactionPagingSentinel(pager: pager)
                             }
@@ -306,8 +286,6 @@ struct AccountDetailView: View {
                     }
                 }
             } else {
-                // Header stays put while the first page is still loading, so
-                // the screen doesn't reflow once the rows land.
                 Section("Recent Transactions") {
                     if pager != nil {
                         Text(searchQuery != nil
@@ -323,9 +301,6 @@ struct AccountDetailView: View {
             }
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
-        // The header sections (balance, billing cycle, note) are one or two rows
-        // each, so the stock inset-grouped gaps pushed the transactions off
-        // screen. Tighter spacing top and between.
         .contentMargins(.top, 8, for: .scrollContent)
         .listSectionSpacing(.compact)
         .readableWidth()
@@ -379,6 +354,14 @@ struct AccountDetailView: View {
             }
             ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $showRunningBalance) {
+                    Label(
+                        showRunningBalance ? "Hide running balance" : "Show running balance",
+                        systemImage: showRunningBalance ? "eye.slash" : "eye"
+                    )
+                }
             }
             ToolbarItem(placement: .secondaryAction) {
                 Toggle(isOn: $budgetStore.hideClearedTransactions) {
@@ -435,8 +418,6 @@ struct AccountDetailView: View {
                 .environmentObject(budgetStore)
         }
         .sheet(isPresented: $editingNote, onDismiss: {
-            // Only the note needs re-reading — a note save doesn't touch
-            // transactions or the balance.
             Task { await reloadNote() }
         }) {
             NoteEditorView(
@@ -446,39 +427,23 @@ struct AccountDetailView: View {
             )
             .environmentObject(budgetStore)
         }
-        // Keyed on the account as well as the search: selecting another
-        // account in the iPad split layout reuses this view, and without the
-        // account in the key nothing would reload — the previous account's
-        // rows would sit under the new one's name and balance.
         .task(id: [account.id, searchText]) {
             if pagerAccountId != account.id {
-                // Drop the previous account's page and balance split rather
-                // than showing them while the new ones load — and its
-                // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
                 cycleSpend = 0
                 isSelecting = false
                 selectedTransactionIds.removeAll()
             } else if searchQuery != nil {
-                // Debounce keystrokes; the initial (empty) load and account
-                // switches run immediately.
                 try? await Task.sleep(for: .milliseconds(250))
                 if Task.isCancelled { return }
             }
             await reload()
         }
         .onChange(of: budgetStore.dataVersion) {
-            // The store republished its data — refresh the cached page. This
-            // is the single reload path for every mutation (row toggles,
-            // deletes, sheet edits, sync, scheduled posts), so those sites
-            // carry no reload calls of their own. Concurrent reloads are
-            // safe: the pager's generation counter keeps the newest.
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideClearedTransactions) {
-            // The pager's fetch closure reads the flag, so a reload is all a
-            // toggle flip needs.
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
