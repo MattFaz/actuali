@@ -1418,6 +1418,26 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Store cleanup definitions parsed from notes without disturbing goal
+    /// definitions or the category's automation source marker.
+    func storeCleanupDefs(_ updates: [(categoryId: String, cleanupDef: String?)]) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard !updates.isEmpty else { return }
+
+        var messages: [CRDTMessage] = []
+        for update in updates {
+            messages += try await messageGenerator.messages(
+                dataset: "categories", row: update.categoryId,
+                fields: [("cleanup_def", update.cleanupDef)])
+        }
+        for message in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Store one category's automations from the editor UI — goal_def,
     /// cleanup_def and the template_settings source marker in one message
     /// batch (upstream `budget/set-category-automations`). nil defs clear
@@ -1480,7 +1500,8 @@ actor SyncClient {
     func applyGoalTemplateWrites(
         month: String,
         budgets: [GoalTemplateEngine.BudgetWrite],
-        goals: [GoalTemplateEngine.GoalWrite]
+        goals: [GoalTemplateEngine.GoalWrite],
+        writeFalseLongGoalsAsZero: Bool = false
     ) async throws {
         guard let database else { throw SyncError.notConfigured }
         guard !budgets.isEmpty || !goals.isEmpty else { return }
@@ -1505,8 +1526,12 @@ actor SyncClient {
             }
             if let goal = goalsByCategory[categoryId] {
                 fields.append(("goal", goal.goal))
-                // Upstream stores 1 or null, never 0.
-                fields.append(("long_goal", goal.longGoal ? 1 : nil))
+                // Goal templates store false as null; cleanup explicitly
+                // writes 0 when it resets a drained source's goal.
+                fields.append((
+                    "long_goal",
+                    goal.longGoal ? 1 : (writeFalseLongGoalsAsZero ? 0 : nil)
+                ))
             }
             messages += try await messageGenerator.messages(
                 dataset: cell.table, row: cell.rowId, fields: fields)

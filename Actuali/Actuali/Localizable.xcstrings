@@ -300,6 +300,7 @@
     "Reset Balance to Zero" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset Balance to Zero" } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Réinitialiser le solde à zéro" } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "Restablecer el saldo a cero" } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Redefinir o saldo para zero" } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Saldo auf null zurücksetzen" } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Reimposta il saldo a zero" } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Saldo op nul zetten" } } } },
     "Reset Available to Zero" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Reset Available to Zero" } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Réinitialiser le disponible à zéro" } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "Restablecer el disponible a cero" } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Redefinir o disponível para zero" } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Verfügbaren Betrag auf null zurücksetzen" } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Reimposta il disponibile a zero" } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Beschikbaar bedrag op nul zetten" } } } },
     "Set Budget to Zero" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Set Budget to Zero" } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mettre le budget à zéro" } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "Establecer el presupuesto en cero" } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Definir o orçamento como zero" } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Budget auf null setzen" } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Imposta il budget a zero" } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Budget op nul zetten" } } } },
+    "Set budgets to zero" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Set budgets to zero" } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mettre les budgets à zéro" } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "Establecer los presupuestos en cero" } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Definir os orçamentos como zero" } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Budgets auf null setzen" } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Imposta i budget a zero" } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Budgetten op nul zetten" } } } },
     "Set Assigned to Zero" : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Set Assigned to Zero" } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Mettre les fonds affectés à zéro" } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "Establecer lo asignado en cero" } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Definir o valor atribuído como zero" } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Zugewiesenen Betrag auf null setzen" } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Imposta l'assegnato a zero" } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Toegewezen bedrag op nul zetten" } } } },
     "Matched %lld transactions you already had." : { "localizations" : { "en" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "Matched %lld transaction you already had." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "Matched %lld transactions you already had." } } } } }, "fr" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld transaction déjà présente a été associée." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld transactions déjà présentes ont été associées." } } } } }, "es" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "Se vinculó %lld transacción que ya tenías." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "Se vincularon %lld transacciones que ya tenías." } } } } }, "pt-BR" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld transação que você já tinha foi associada." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld transações que você já tinha foram associadas." } } } } }, "de" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld bereits vorhandene Transaktion wurde zugeordnet." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld bereits vorhandene Transaktionen wurden zugeordnet." } } } } }, "it" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "Associata %lld transazione che avevi già." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "Associate %lld transazioni che avevi già." } } } } }, "nl" : { "variations" : { "plural" : { "one" : { "stringUnit" : { "state" : "translated", "value" : "%lld transactie die je al had, gekoppeld." } }, "other" : { "stringUnit" : { "state" : "translated", "value" : "%lld transacties die je al had, gekoppeld." } } } } } } },
     "No linked accounts to sync." : { "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "No linked accounts to sync." } }, "fr" : { "stringUnit" : { "state" : "translated", "value" : "Aucun compte associé à synchroniser." } }, "es" : { "stringUnit" : { "state" : "translated", "value" : "No hay cuentas vinculadas para sincronizar." } }, "pt-BR" : { "stringUnit" : { "state" : "translated", "value" : "Nenhuma conta vinculada para sincronizar." } }, "de" : { "stringUnit" : { "state" : "translated", "value" : "Keine verknüpften Konten zum Synchronisieren." } }, "it" : { "stringUnit" : { "state" : "translated", "value" : "Nessun conto collegato da sincronizzare." } }, "nl" : { "stringUnit" : { "state" : "translated", "value" : "Geen gekoppelde rekeningen om te synchroniseren." } } } },
@@ -42550,6 +42551,236 @@
           "stringUnit": {
             "state": "translated",
             "value": "Einde-maand-opschoning"
+          }
+        }
+      }
+    },
+    "End of month cleanup completed.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End of month cleanup completed."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le nettoyage de fin de mois est terminé."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La limpieza de fin de mes ha finalizado."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A limpeza de fim de mês foi concluída."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Monatsendbereinigung ist abgeschlossen."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La pulizia di fine mese è stata completata."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De einde-maandopschoning is voltooid."
+          }
+        }
+      }
+    },
+    "End of month cleanup is up to date.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "End of month cleanup is up to date."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le nettoyage de fin de mois est à jour."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La limpieza de fin de mes está al día."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "A limpeza de fim de mês está em dia."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Die Monatsendbereinigung ist aktuell."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "La pulizia di fine mese è aggiornata."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "De einde-maandopschoning is bijgewerkt."
+          }
+        }
+      }
+    },
+    "%@ does not have available funds.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ does not have available funds."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ n’a pas de fonds disponibles."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ no tiene fondos disponibles."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ não tem fundos disponíveis."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Für %@ sind keine verfügbaren Mittel vorhanden."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ non dispone di fondi disponibili."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ heeft geen beschikbare middelen."
+          }
+        }
+      }
+    },
+    "Cleanup pool \"%@\" has no matching sink categories.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Cleanup pool \"%@\" has no matching sink categories."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Le pool de nettoyage « %@ » n’a aucune catégorie de destination correspondante."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "El grupo de limpieza «%@» no tiene categorías de destino coincidentes."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "O pool de limpeza \"%@\" não tem categorias de destino correspondentes."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Der Bereinigungspool „%@“ hat keine passenden Zielkategorien."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Il pool di pulizia \"%@\" non ha categorie di destinazione corrispondenti."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opschoningspool '%@' heeft geen overeenkomende doelcategorieën."
+          }
+        }
+      }
+    },
+    "No funds are available to reallocate.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No funds are available to reallocate."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aucun fonds n’est disponible pour la réaffectation."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No hay fondos disponibles para reasignar."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Não há fundos disponíveis para realocar."
+          }
+        },
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Es sind keine Mittel zur Neuzuweisung verfügbar."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Non ci sono fondi disponibili da riassegnare."
+          }
+        },
+        "nl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Er zijn geen middelen beschikbaar om opnieuw toe te wijzen."
           }
         }
       }

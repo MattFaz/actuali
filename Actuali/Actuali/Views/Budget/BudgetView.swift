@@ -105,7 +105,7 @@ struct BudgetView: View {
     @State private var newBudgetItem: NewBudgetItem?
     @State private var categoryFilter: BudgetCategoryFilter = .all
     @State private var templateResult: GoalTemplateResultAlert?
-    @State private var isRunningTemplates = false
+    @State private var isRunningBudgetAction = false
 
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.isWideLayout) private var isWideLayout
@@ -538,20 +538,39 @@ struct BudgetView: View {
             BudgetOptionsMenu(
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
+                onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
-                    ? { runTemplates($0) } : nil
+                    ? { runTemplates($0) } : nil,
+                onCleanup: budgetStore.currentBudgetMonth?.isTrackingBudget == false
+                    && budgetStore.goalTemplatesEnabled
+                    ? { runCleanup() } : nil
             )
+        }
+    }
+
+    private func setBudgetsToZero() {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            do {
+                try await budgetStore.setBudgetsToZero(month: selectedMonth)
+            } catch {
+                templateResult = .init(
+                    title: ReportStrings.text("Error", locale: locale, bundle: .main),
+                    message: error.localizedDescription)
+            }
+            isRunningBudgetAction = false
         }
     }
 
     /// Run the month's template action and surface the outcome — the web
     /// shows these as toast notifications; an alert is the iOS equivalent.
     private func runTemplates(_ action: BudgetStore.GoalTemplateAction) {
-        guard !isRunningTemplates else { return }
-        isRunningTemplates = true
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
         Task {
             let outcome = await budgetStore.runGoalTemplates(month: selectedMonth, action: action)
-            isRunningTemplates = false
+            isRunningBudgetAction = false
             switch outcome {
             case .applied(let count):
                 templateResult = .init(
@@ -574,6 +593,47 @@ struct BudgetView: View {
                     title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
                     message: message)
             }
+        }
+    }
+
+    private func runCleanup() {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            let outcome = await budgetStore.runCleanup(month: selectedMonth)
+            isRunningBudgetAction = false
+            let message: String
+            switch outcome {
+            case .completed(.applied):
+                message = ReportStrings.text(
+                    "End of month cleanup completed.", locale: locale, bundle: .main)
+            case .completed(.upToDate):
+                message = ReportStrings.text(
+                    "End of month cleanup is up to date.", locale: locale, bundle: .main)
+            case .completed(.warning(let warnings)):
+                message = warnings.map(cleanupWarningMessage).joined(separator: "\n\n")
+            case .failed(let error):
+                message = error
+            }
+            templateResult = .init(
+                title: ReportStrings.text("End of Month Cleanup", locale: locale, bundle: .main),
+                message: message)
+        }
+    }
+
+    private func cleanupWarningMessage(_ warning: CleanupEngine.Warning) -> String {
+        switch warning {
+        case .noAvailableFunds(let category):
+            ReportStrings.format(
+                "%@ does not have available funds.", category,
+                locale: locale, bundle: .main)
+        case .noMatchingSinks(let group):
+            ReportStrings.format(
+                "Cleanup pool \"%@\" has no matching sink categories.", group,
+                locale: locale, bundle: .main)
+        case .noGlobalFunds:
+            ReportStrings.text(
+                "No funds are available to reallocate.", locale: locale, bundle: .main)
         }
     }
 

@@ -6084,6 +6084,23 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Match upstream `budget/set-zero`: clear every live category, including
+    /// hidden ones, but leave income alone unless this is a tracking budget.
+    func setBudgetsToZero(month: String) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        let budget = try await database.fetchBudgetMonth(month: month)
+        let categoryIds = budget.allCategoryBudgets.map(\.categoryId)
+            + (budget.isTrackingBudget ? budget.allIncomeCategories.map(\.categoryId) : [])
+        try await syncClient.applyGoalTemplateWrites(
+            month: month,
+            budgets: categoryIds.map { .init(category: $0, amount: 0) },
+            goals: []
+        )
+        await fetchBudgetMonth(requestedBudgetMonth ?? month)
+    }
+
     /// Turn "rollover overspending" on or off for a category (GH #372), then
     /// refetch the month so the published flag and Available recompute.
     /// Mirrors the web's balance menu: the flag is written from this month
@@ -6281,6 +6298,93 @@ final class BudgetStore: ObservableObject {
             }
         } catch {
             logger.error("Goal template run failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
+    enum CleanupOutcome {
+        case completed(CleanupEngine.Notification)
+        case failed(String)
+    }
+
+    /// Run Actual's end-of-month cleanup for one budget month. Notes-managed
+    /// definitions are refreshed first, then every budget change is written
+    /// through the same optimistic CRDT batch as goal templates.
+    func runCleanup(month: String) async -> CleanupOutcome {
+        guard let database, let syncClient else {
+            return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
+        }
+        do {
+            let rows = try await database.fetchGoalTemplateCategories()
+            let existingGroups = try await database.fetchCleanupGroups()
+            var groupIdsByName = Dictionary(
+                existingGroups.map { ($0.name.lowercased(), $0.id) },
+                uniquingKeysWith: { first, _ in first })
+            var groupNamesById = Dictionary(
+                existingGroups.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first })
+            var parsedByCategory: [String: [CleanupNotes.ParsedRow]] = [:]
+            var neededGroupNames: [String: String] = [:]
+
+            for row in rows where !row.sourceIsUI {
+                let parsed = row.note.map(CleanupNotes.parseRows(fromNote:)) ?? []
+                parsedByCategory[row.id] = parsed
+                for name in parsed.compactMap(\.groupName) {
+                    neededGroupNames[name.lowercased(), default: name] = name
+                }
+            }
+
+            for (key, name) in neededGroupNames.sorted(by: { $0.key < $1.key })
+                where groupIdsByName[key] == nil {
+                let id = try await resolveCleanupGroup(name: name)
+                try await syncClient.upsertCleanupGroup(id: id, name: name)
+                groupIdsByName[key] = id
+                groupNamesById[id] = name
+            }
+
+            var cleanupByCategory: [String: [CleanupTemplate]] = [:]
+            var updates: [(categoryId: String, cleanupDef: String?)] = []
+            for row in rows {
+                let cleanup: [CleanupTemplate]
+                if row.sourceIsUI {
+                    cleanup = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+                } else {
+                    cleanup = CleanupNotes.toTemplates(parsedByCategory[row.id] ?? []) {
+                        groupIdsByName[$0.lowercased()]
+                    }
+                    let stored = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+                    if stored != cleanup || (cleanup.isEmpty && row.cleanupDef != nil) {
+                        updates.append((
+                            row.id,
+                            cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup)
+                        ))
+                    }
+                }
+                cleanupByCategory[row.id] = cleanup
+            }
+            try await syncClient.storeCleanupDefs(updates)
+            try await database.tombstoneOrphanCleanupGroups()
+
+            let result = CleanupEngine.run(
+                month: month,
+                categories: rows.map {
+                    .init(
+                        id: $0.id, name: $0.name, isIncome: $0.isIncome,
+                        cleanup: cleanupByCategory[$0.id] ?? [])
+                },
+                groupNames: groupNamesById,
+                sheet: try await database.fetchGoalTemplateSheet(month: month)
+            )
+            try await syncClient.applyGoalTemplateWrites(
+                month: month,
+                budgets: result.budgets,
+                goals: result.goals,
+                writeFalseLongGoalsAsZero: true
+            )
+            await fetchBudgetMonth(month)
+            return .completed(result.notification)
+        } catch {
+            logger.error("Cleanup run failed: \(error.localizedDescription, privacy: .public)")
             return .failed(error.localizedDescription)
         }
     }
