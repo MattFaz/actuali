@@ -2,6 +2,7 @@ import Foundation
 import Testing
 @testable import Actuali
 
+@Suite(.serialized)
 @MainActor
 struct HistoryObserverTests {
     private func transaction(
