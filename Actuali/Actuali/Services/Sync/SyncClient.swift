@@ -1300,6 +1300,19 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Write Actual's synced manual next-month buffer.
+    func setBudgetBuffer(month: String, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard amount >= 0 else { throw SyncError.serverError("Buffer amount cannot be negative") }
+        guard try database.zeroBudgetMonthsTableExists() else { throw SyncError.budgetTableMissing }
+        let messages = try await messageGenerator.messages(
+            dataset: "zero_budget_months", row: month, fields: [("buffered", amount)])
+        for msg in try database.applyMessagesAndInsertMessages(messages) { merkle = merkle.inserting(msg.timestamp) }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Move budgeted funds between two categories in a month, or between a
     /// category and "To Budget" (nil side), optimistic local-first. Mirrors
     /// upstream transferCategory / coverOverspending / transferAvailable
