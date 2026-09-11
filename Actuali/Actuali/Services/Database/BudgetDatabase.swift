@@ -1866,11 +1866,17 @@ final class BudgetDatabase: Sendable {
             }
             .sorted { $0.sortOrder < $1.sortOrder }
 
+            let manualBuffered: Int = {
+                guard isEnvelope, (try? db.tableExists("zero_budget_months")) == true else { return 0 }
+                return (try? Int.fetchOne(db, sql: "SELECT buffered FROM zero_budget_months WHERE id = ?", arguments: [month])) ?? 0
+            }()
+
             return BudgetMonth(
                 month: month,
                 categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
                 incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
                 toBudget: isEnvelope ? walk.toBudget : nil,
+                buffered: manualBuffered,
                 hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
                 hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )
@@ -1903,6 +1909,10 @@ final class BudgetDatabase: Sendable {
     /// Sync (see the async/sync split above): the write path can't suspend.
     func notesTableExists() throws -> Bool {
         try dbQueue.read { db in try db.tableExists("notes") }
+    }
+
+    func zeroBudgetMonthsTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("zero_budget_months") }
     }
 
     /// Where a budget amount write for (month, category) must land: which

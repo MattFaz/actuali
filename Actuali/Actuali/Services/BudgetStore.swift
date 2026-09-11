@@ -5966,6 +5966,12 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// Read one budget month without publishing it to the current Budget tab selection.
+    func fetchBudgetMonthSnapshot(_ month: String) async -> BudgetMonth? {
+        guard let database else { return nil }
+        return try? await database.fetchBudgetMonth(month: month)
+    }
+
     // MARK: - Budget Amounts
 
     /// Prior category-month rows used for Quick Assign suggestions. Reading
@@ -6066,6 +6072,23 @@ final class BudgetStore: ObservableObject {
         let latest = BudgetMonthMath.addMonths(BudgetMonthMath.currentMonth(now), 12)
         let count = max(BudgetMonthMath.differenceInCalendarMonths(latest, month), 0)
         return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
+    }
+
+    /// Hold part or all of this envelope month's To Budget for next month.
+    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
+        guard let budget = currentBudgetMonth, budget.month == month, let toBudget = budget.toBudget, amountCents > 0 else { throw BudgetStoreError.invalidAmount }
+        let delta = min(amountCents, max(toBudget, 0))
+        guard delta > 0 else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: budget.buffered + delta)
+        await fetchBudgetMonth(month)
+    }
+
+    func resetBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
     }
 
     /// Move budgeted funds between categories (GH #128), nil meaning the
