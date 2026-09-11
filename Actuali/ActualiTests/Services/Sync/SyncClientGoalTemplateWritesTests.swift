@@ -131,4 +131,29 @@ struct SyncClientGoalTemplateWritesTests {
         let datasets = Set(try messageRows(path: path).compactMap { $0["dataset"] as String? })
         #expect(datasets == ["categories"])
     }
+
+    @Test func cleanupWritesDefinitionAndResetsLongGoal() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+        let cleanupDef = #"[{"groupId":null,"role":"source"}]"#
+        let templateSettingsBefore: String? = try firstRow(
+            path: path,
+            sql: "SELECT template_settings FROM categories WHERE id = 'cat-1'")?["template_settings"]
+
+        try await syncClient.storeCleanupDefs([("cat-1", cleanupDef)])
+        try await syncClient.applyGoalTemplateWrites(
+            month: "2024-01",
+            budgets: [.init(category: "cat-1", amount: 4000)],
+            goals: [.init(category: "cat-1", goal: 4000, longGoal: false)],
+            writeFalseLongGoalsAsZero: true)
+
+        let category = try #require(try firstRow(
+            path: path,
+            sql: "SELECT cleanup_def, template_settings FROM categories WHERE id = 'cat-1'"))
+        #expect((category["cleanup_def"] as String?) == cleanupDef)
+        #expect((category["template_settings"] as String?) == templateSettingsBefore)
+        let budget = try #require(try firstRow(path: path, sql: "SELECT * FROM zero_budgets"))
+        #expect(budget["long_goal"] == 0)
+    }
 }

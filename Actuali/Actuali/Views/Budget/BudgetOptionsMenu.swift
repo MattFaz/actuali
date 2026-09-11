@@ -47,6 +47,7 @@ struct BudgetOptionsMenu: View {
     /// no budget loaded, or the goalTemplatesEnabled flag is off, mirroring
     /// the web's month menu behind its feature flag.
     var onTemplateAction: ((BudgetStore.GoalTemplateAction) -> Void)?
+    var onCleanup: (() -> Void)?
 
     var body: some View {
         Menu {
@@ -108,6 +109,11 @@ struct BudgetOptionsMenu: View {
                         onTemplateAction(.overwrite)
                     } label: {
                         Label("Overwrite with Budget Template", systemImage: "wand.and.stars.inverse")
+                    }
+                    if let onCleanup {
+                        Button(action: onCleanup) {
+                            Label("End of Month Cleanup", systemImage: "arrow.3.trianglepath")
+                        }
                     }
                 }
             }

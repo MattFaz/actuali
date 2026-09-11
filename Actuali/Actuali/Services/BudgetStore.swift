@@ -6245,6 +6245,93 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    enum CleanupOutcome {
+        case completed(CleanupEngine.Notification)
+        case failed(String)
+    }
+
+    /// Run Actual's end-of-month cleanup for one budget month. Notes-managed
+    /// definitions are refreshed first, then every budget change is written
+    /// through the same optimistic CRDT batch as goal templates.
+    func runCleanup(month: String) async -> CleanupOutcome {
+        guard let database, let syncClient else {
+            return .failed(BudgetStoreError.syncNotConfigured.localizedDescription)
+        }
+        do {
+            let rows = try await database.fetchGoalTemplateCategories()
+            let existingGroups = try await database.fetchCleanupGroups()
+            var groupIdsByName = Dictionary(
+                existingGroups.map { ($0.name.lowercased(), $0.id) },
+                uniquingKeysWith: { first, _ in first })
+            var groupNamesById = Dictionary(
+                existingGroups.map { ($0.id, $0.name) },
+                uniquingKeysWith: { first, _ in first })
+            var parsedByCategory: [String: [CleanupNotes.ParsedRow]] = [:]
+            var neededGroupNames: [String: String] = [:]
+
+            for row in rows where !row.sourceIsUI {
+                let parsed = row.note.map(CleanupNotes.parseRows(fromNote:)) ?? []
+                parsedByCategory[row.id] = parsed
+                for name in parsed.compactMap(\.groupName) {
+                    neededGroupNames[name.lowercased(), default: name] = name
+                }
+            }
+
+            for (key, name) in neededGroupNames.sorted(by: { $0.key < $1.key })
+                where groupIdsByName[key] == nil {
+                let id = try await resolveCleanupGroup(name: name)
+                try await syncClient.upsertCleanupGroup(id: id, name: name)
+                groupIdsByName[key] = id
+                groupNamesById[id] = name
+            }
+
+            var cleanupByCategory: [String: [CleanupTemplate]] = [:]
+            var updates: [(categoryId: String, cleanupDef: String?)] = []
+            for row in rows {
+                let cleanup: [CleanupTemplate]
+                if row.sourceIsUI {
+                    cleanup = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+                } else {
+                    cleanup = CleanupNotes.toTemplates(parsedByCategory[row.id] ?? []) {
+                        groupIdsByName[$0.lowercased()]
+                    }
+                    let stored = row.cleanupDef.flatMap(CleanupTemplate.decodeArray(fromJSON:)) ?? []
+                    if stored != cleanup || (cleanup.isEmpty && row.cleanupDef != nil) {
+                        updates.append((
+                            row.id,
+                            cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup)
+                        ))
+                    }
+                }
+                cleanupByCategory[row.id] = cleanup
+            }
+            try await syncClient.storeCleanupDefs(updates)
+            try await database.tombstoneOrphanCleanupGroups()
+
+            let result = CleanupEngine.run(
+                month: month,
+                categories: rows.map {
+                    .init(
+                        id: $0.id, name: $0.name, isIncome: $0.isIncome,
+                        cleanup: cleanupByCategory[$0.id] ?? [])
+                },
+                groupNames: groupNamesById,
+                sheet: try await database.fetchGoalTemplateSheet(month: month)
+            )
+            try await syncClient.applyGoalTemplateWrites(
+                month: month,
+                budgets: result.budgets,
+                goals: result.goals,
+                writeFalseLongGoalsAsZero: true
+            )
+            await fetchBudgetMonth(month)
+            return .completed(result.notification)
+        } catch {
+            logger.error("Cleanup run failed: \(error.localizedDescription, privacy: .public)")
+            return .failed(error.localizedDescription)
+        }
+    }
+
     // MARK: Automation editor (goalTemplatesUIEnabled beta)
 
     /// Mirror of the web's `flags.goalTemplatesUIEnabled` synced preference —

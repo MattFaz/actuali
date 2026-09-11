@@ -540,7 +540,10 @@ struct BudgetView: View {
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
                 onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
-                    ? { runTemplates($0) } : nil
+                    ? { runTemplates($0) } : nil,
+                onCleanup: budgetStore.currentBudgetMonth?.isTrackingBudget == false
+                    && budgetStore.goalTemplatesEnabled
+                    ? { runCleanup() } : nil
             )
         }
     }
@@ -590,6 +593,47 @@ struct BudgetView: View {
                     title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
                     message: message)
             }
+        }
+    }
+
+    private func runCleanup() {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            let outcome = await budgetStore.runCleanup(month: selectedMonth)
+            isRunningBudgetAction = false
+            let message: String
+            switch outcome {
+            case .completed(.applied):
+                message = ReportStrings.text(
+                    "End of month cleanup completed.", locale: locale, bundle: .main)
+            case .completed(.upToDate):
+                message = ReportStrings.text(
+                    "End of month cleanup is up to date.", locale: locale, bundle: .main)
+            case .completed(.warning(let warnings)):
+                message = warnings.map(cleanupWarningMessage).joined(separator: "\n\n")
+            case .failed(let error):
+                message = error
+            }
+            templateResult = .init(
+                title: ReportStrings.text("End of Month Cleanup", locale: locale, bundle: .main),
+                message: message)
+        }
+    }
+
+    private func cleanupWarningMessage(_ warning: CleanupEngine.Warning) -> String {
+        switch warning {
+        case .noAvailableFunds(let category):
+            ReportStrings.format(
+                "%@ does not have available funds.", category,
+                locale: locale, bundle: .main)
+        case .noMatchingSinks(let group):
+            ReportStrings.format(
+                "Cleanup pool \"%@\" has no matching sink categories.", group,
+                locale: locale, bundle: .main)
+        case .noGlobalFunds:
+            ReportStrings.text(
+                "No funds are available to reallocate.", locale: locale, bundle: .main)
         }
     }
 
