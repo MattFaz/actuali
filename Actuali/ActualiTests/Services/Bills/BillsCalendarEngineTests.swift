@@ -432,4 +432,53 @@ struct BillsCalendarEngineTests {
         #expect(octoberItems[0].date == DayDate(year: 2026, month: 10, day: 30))
         #expect(octoberItems[0].status == .upcoming)
     }
+
+    @Test func creditCardsMarkPaidWhenStatementIsPaidEvenWithNewSpend() {
+        // Today is August 20, 2026: August 15 statement closed, payment is due August 30.
+        // User has a live balance of -$200.00 (-20000) from ongoing cycle spend,
+        // but their August statement ($500.00) was fully paid.
+        let today = DayDate(year: 2026, month: 8, day: 20)
+        let account = Account(
+            id: "acc-cc",
+            name: "Visa Signature",
+            type: .credit,
+            offBudget: false,
+            closed: false,
+            sortOrder: 0,
+            balance: -20000
+        )
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0
+        )
+
+        // August: pending statement due date matches today's cycle -> marked paid with statement amount
+        let augustItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": statementDue],
+            year: 2026,
+            month: 8,
+            today: today
+        )
+        #expect(augustItems.count == 1)
+        #expect(augustItems[0].status == .paid)
+        #expect(augustItems[0].amount == -50000)
+        #expect(augustItems[0].relativeDueText == "Paid")
+
+        // September: next month's statement projection -> does not use August statementDue, falls back to live balance
+        let septemberItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": statementDue],
+            year: 2026,
+            month: 9,
+            today: today
+        )
+        #expect(septemberItems.count == 1)
+        #expect(septemberItems[0].status == .upcoming)
+        #expect(septemberItems[0].amount == -20000)
+    }
 }

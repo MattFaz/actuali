@@ -754,6 +754,8 @@ final class BudgetDatabase: Sendable {
     /// SQL for the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
+        startDate: Int? = nil,
+        endDate: Int? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
@@ -814,6 +816,16 @@ final class BudgetDatabase: Sendable {
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
+            }
+
+            if let startDate {
+                sql += " AND t.date >= ?"
+                arguments.append(startDate)
+            }
+
+            if let endDate {
+                sql += " AND t.date <= ?"
+                arguments.append(endDate)
             }
 
             if unclearedOnly {
@@ -1036,6 +1048,105 @@ final class BudgetDatabase: Sendable {
                   AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId, fromDate, toDate]) ?? 0
+        }
+    }
+
+    /// Statement balance, payments made since statement closing, and remaining statement due
+    /// for credit card accounts. Run in a single read lock.
+    func fetchCreditCardStatementDues(
+        for requests: [(accountId: String, statementDate: DayDate, liveBalance: Int)]
+    ) async throws -> [String: CreditCardCycle.StatementDue] {
+        guard !requests.isEmpty else { return [:] }
+        return try await dbQueue.read { db in
+            var results: [String: CreditCardCycle.StatementDue] = [:]
+            for req in requests {
+                let row = try Row.fetchOne(db, sql: """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN t.date <= ? THEN t.amount ELSE 0 END), 0) AS statementRawBalance,
+                        COALESCE(SUM(CASE WHEN t.date > ? AND t.amount > 0 THEN t.amount ELSE 0 END), 0) AS paymentsSince
+                    FROM transactions t
+                    LEFT JOIN transactions p ON p.id = t.parent_id
+                    WHERE t.acct = ?
+                      AND t.date IS NOT NULL
+                      AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                      AND \(Self.aliveChildPredicate(parent: "p"))
+                      AND (t.isParent = 0 OR t.isParent IS NULL)
+                    """, arguments: [req.statementDate.yyyymmdd, req.statementDate.yyyymmdd, req.accountId])
+
+                let statementRawBalance: Int = row?["statementRawBalance"] ?? 0
+                let paymentsSince: Int = row?["paymentsSince"] ?? 0
+
+                results[req.accountId] = CreditCardCycle.calculateStatementDue(
+                    statementRawBalance: statementRawBalance,
+                    paymentsSince: paymentsSince,
+                    liveBalance: req.liveBalance
+                )
+            }
+            return results
+        }
+    }
+
+    /// Statement records for the given closed cycles on a credit card account.
+    /// Cycles with no recorded transactions and zero statement balance are excluded.
+    func fetchRecentStatements(
+        accountId: String,
+        cycles: [(start: DayDate, end: DayDate, dueDate: DayDate)],
+        liveBalance: Int
+    ) async throws -> [CreditCardCycle.StatementRecord] {
+        guard !cycles.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            var records: [CreditCardCycle.StatementRecord] = []
+            for cycle in cycles {
+                let row = try Row.fetchOne(db, sql: """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN t.date <= ? THEN t.amount ELSE 0 END), 0) AS statementRawBalance,
+                        COALESCE(SUM(CASE WHEN t.date > ? AND t.amount > 0 THEN t.amount ELSE 0 END), 0) AS paymentsSince,
+                        COALESCE(SUM(CASE WHEN t.date >= ? AND t.date <= ? AND t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS totalSpend,
+                        COUNT(CASE WHEN t.date >= ? AND t.date <= ? THEN 1 ELSE NULL END) AS transactionCount
+                    FROM transactions t
+                    LEFT JOIN transactions p ON p.id = t.parent_id
+                    WHERE t.acct = ?
+                      AND t.date IS NOT NULL
+                      AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                      AND \(Self.aliveChildPredicate(parent: "p"))
+                      AND (t.isParent = 0 OR t.isParent IS NULL)
+                    """, arguments: [
+                        cycle.end.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        cycle.start.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        cycle.start.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        accountId
+                    ])
+
+                let statementRawBalance: Int = row?["statementRawBalance"] ?? 0
+                let paymentsSince: Int = row?["paymentsSince"] ?? 0
+                let totalSpend: Int = row?["totalSpend"] ?? 0
+                let transactionCount: Int = row?["transactionCount"] ?? 0
+
+                let statementDue = CreditCardCycle.calculateStatementDue(
+                    statementRawBalance: statementRawBalance,
+                    paymentsSince: paymentsSince,
+                    liveBalance: liveBalance
+                )
+
+                // Only include if data is available (has transactions or non-zero statement balance)
+                if transactionCount > 0 || statementDue.statementBalance > 0 {
+                    records.append(CreditCardCycle.StatementRecord(
+                        startDate: cycle.start,
+                        endDate: cycle.end,
+                        statementDate: cycle.end,
+                        dueDate: cycle.dueDate,
+                        statementBalance: statementDue.statementBalance,
+                        paymentsSince: statementDue.paymentsSince,
+                        remainingDue: statementDue.remainingDue,
+                        totalSpend: totalSpend,
+                        transactionCount: transactionCount
+                    ))
+                }
+            }
+            return records
         }
     }
 

@@ -153,6 +153,61 @@ struct CreditCardDueNotifierTests {
         }
         #expect(center.removedIdentifiers == expected)
     }
+
+    @Test func paidStatementWithOngoingSpendSchedulesNothing() async {
+        let center = FakeCreditCardNotificationCenter()
+        // Card balance is -$200.00 (-20000), but statement was fully paid
+        let card = account(id: "card1", name: "Visa", balance: -20000)
+        let cycle = CreditCardCycle(statementDay: 15)
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0
+        )
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card],
+            cycles: ["card1": cycle],
+            statementDues: ["card1": statementDue],
+            currencyCode: "USD",
+            settings: makeDefaults(enabled: true),
+            center: center
+        )
+
+        #expect(center.authorizationRequested == true)
+        #expect(center.added.isEmpty)
+        let expectedRemoved = [7, 5, 3, 1].map { CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: $0) }
+        #expect(center.removedIdentifiers == expectedRemoved)
+    }
+
+    @Test func unpaidStatementIncludesStatementDueInNotificationBody() async {
+        let center = FakeCreditCardNotificationCenter()
+        let card = account(id: "card1", name: "Visa", balance: -70000)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 0,
+            remainingDue: 50000
+        )
+
+        let cal = fixedCalendar()
+        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 25, hour: 8, minute: 0))!
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card],
+            cycles: ["card1": cycle],
+            statementDues: ["card1": statementDue],
+            currencyCode: "USD",
+            settings: makeDefaults(enabled: true),
+            center: center,
+            now: now,
+            calendar: cal
+        )
+
+        #expect(!center.added.isEmpty)
+        let body = center.added.first?.content.body ?? ""
+        #expect(body.contains("$500.00"))
+    }
 }
 
 private final class FakeCreditCardNotificationCenter: NotificationPosting, @unchecked Sendable {

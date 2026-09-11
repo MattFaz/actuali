@@ -25,10 +25,11 @@ enum CreditCardDueNotifier {
     }
 
     /// Schedule or cancel notifications based on active credit card cycles,
-    /// account balances, and the user's notification setting.
+    /// statement dues, account balances, and the user's notification setting.
     nonisolated static func scheduleNotifications(
         accounts: [Account],
         cycles: [String: CreditCardCycle],
+        statementDues: [String: CreditCardCycle.StatementDue] = [:],
         currencyCode: String,
         narrowSymbol: Bool = false,
         settings: CreditCardNotificationSettings = CreditCardNotificationSettings(),
@@ -61,15 +62,17 @@ enum CreditCardDueNotifier {
 
         for accountId in Set(accounts.map(\.id)).union(cycles.keys) {
             let ids = reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
+            let statementDue = statementDues[accountId]
+            let isUnpaid = statementDue.map { $0.remainingDue > 0 } ?? (accountsById[accountId].map { $0.balance < 0 } ?? false)
             guard let account = accountsById[accountId],
                   !account.closed,
-                  account.balance < 0,
+                  isUnpaid,
                   let cycle = cycles[accountId] else {
                 center.removePendingNotificationRequests(withIdentifiers: ids)
                 continue
             }
 
-            // Card has an unpaid balance (< 0). Schedule reminders for upcoming offsets.
+            // Card has an unpaid balance. Schedule reminders for upcoming offsets.
             let dueDate = cycle.upcomingDueDate(for: today)
             for offset in reminderOffsets {
                 let reminderDay = dueDate.adding(days: -offset)
@@ -91,6 +94,7 @@ enum CreditCardDueNotifier {
                     account: account,
                     dueDate: dueDate,
                     offsetDays: offset,
+                    statementDue: statementDue,
                     currencyCode: currencyCode,
                     narrowSymbol: narrowSymbol
                 )
@@ -111,6 +115,7 @@ enum CreditCardDueNotifier {
         account: Account,
         dueDate: DayDate,
         offsetDays: Int,
+        statementDue: CreditCardCycle.StatementDue? = nil,
         currencyCode: String,
         narrowSymbol: Bool
     ) -> UNMutableNotificationContent {
@@ -124,13 +129,22 @@ enum CreditCardDueNotifier {
             : String(format: String(localized: "in %lld days"), Int64(offsetDays))
         content.title = String(format: String(localized: "%@ payment due %@"), account.name, daysText)
 
-        let formattedAmount = CurrencyAmountFormat.string(
-            cents: abs(account.balance),
-            currencyCode: currencyCode,
-            narrowSymbol: narrowSymbol
-        )
         let dueDateFormatted = Transaction.formattedDate(from: dueDate.yyyymmdd, style: .abbreviated)
-        content.body = String(format: String(localized: "Current balance %@. Payment due %@."), formattedAmount, dueDateFormatted)
+        if let statementDue, statementDue.remainingDue > 0 {
+            let dueAmount = CurrencyAmountFormat.string(
+                cents: statementDue.remainingDue,
+                currencyCode: currencyCode,
+                narrowSymbol: narrowSymbol
+            )
+            content.body = String(format: String(localized: "Statement due %1$@. Payment due %2$@."), dueAmount, dueDateFormatted)
+        } else {
+            let formattedAmount = CurrencyAmountFormat.string(
+                cents: abs(account.balance),
+                currencyCode: currencyCode,
+                narrowSymbol: narrowSymbol
+            )
+            content.body = String(format: String(localized: "Current balance %@. Payment due %@."), formattedAmount, dueDateFormatted)
+        }
 
         return content
     }
