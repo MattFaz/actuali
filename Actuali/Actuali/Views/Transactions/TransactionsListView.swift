@@ -479,6 +479,15 @@ struct TransactionRow: View {
             VStack(alignment: .trailing, spacing: 2) {
                 Text(budgetStore.displayBalance(transaction.amount))
                     .foregroundColor(transaction.isOutflow ? .primary : .green)
+                if let runningBalance = transaction.runningBalance {
+                    HStack(spacing: 3) {
+                        Text("Balance")
+                            .foregroundStyle(.secondary)
+                        Text(budgetStore.displayBalance(runningBalance))
+                            .foregroundStyle(balanceColor(for: runningBalance))
+                    }
+                    .font(.caption)
+                }
                 if showDate {
                     Text(transaction.dateFormatted)
                         .font(.caption)
