@@ -11,53 +11,20 @@ struct EnvelopeBudgetSummary: Equatable, Sendable {
 }
 
 extension BudgetStore {
-    /// Reconstructs the envelope summary from canonical BudgetMonth snapshots.
+    /// Reads the summary values produced by the canonical budget walk.
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
         guard Self.isValidBudgetMonth(month) else { return nil }
-
-        var snapshots: [String: BudgetMonth] = [:]
-        var cursor = month
-
-        while true {
-            guard let snapshot = await fetchBudgetMonthSnapshot(cursor) else { return nil }
-            snapshots[cursor] = snapshot
-            if Self.isSummaryBaseline(snapshot) { break }
-            guard let previous = Self.shiftBudgetMonth(cursor, by: -1) else { break }
-            cursor = previous
+        guard let database = databaseForLogger,
+              let data = try? await database.fetchEnvelopeBudgetSummary(month: month) else {
+            return nil
         }
-
-        let months = snapshots.keys.sorted()
-        guard !months.isEmpty else { return nil }
-
-        var previousToBudget = 0
-        var previousForNextMonth = 0
-
-        for currentMonth in months {
-            guard let current = snapshots[currentMonth], let toBudget = current.toBudget else { continue }
-            let previousMonth = Self.shiftBudgetMonth(currentMonth, by: -1)
-            let previous = previousMonth.flatMap { snapshots[$0] }
-
-            let lastMonthOverspent = previous.map { Self.lastMonthOverspent($0.allCategoryBudgets) } ?? 0
-            let budgeted = current.allCategoryBudgets.reduce(0) { $0 + $1.budgeted }
-            let income = current.allIncomeCategories.reduce(0) { $0 + $1.received }
-            let availableFunds = income + previousToBudget + previousForNextMonth
-            let summary = Self.makeEnvelopeBudgetSummary(
-                availableFunds: availableFunds,
-                lastMonthOverspent: lastMonthOverspent,
-                budgeted: budgeted,
-                toBudget: toBudget,
-                manualBuffered: current.buffered
-            )
-
-            if currentMonth == month {
-                return summary
-            }
-
-            previousToBudget = toBudget
-            previousForNextMonth = summary.forNextMonth
-        }
-
-        return nil
+        return Self.makeEnvelopeBudgetSummary(
+            availableFunds: data.availableFunds,
+            lastMonthOverspent: data.lastMonthOverspent,
+            budgeted: data.budgeted,
+            toBudget: data.toBudget,
+            manualBuffered: data.buffered
+        )
     }
 
     nonisolated static func lastMonthOverspent(_ categories: [CategoryBudget]) -> Int {

@@ -323,6 +323,15 @@ final class BudgetDatabase: Sendable {
                 source TEXT NOT NULL
             )
         """),
+        // Envelope buffers are synced rows in Actual's zero_budget_months
+        // table. Older files may not have received the table-creation
+        // migration yet, but local writes still need a real CRDT target.
+        (1780606215006, """
+            CREATE TABLE IF NOT EXISTS zero_budget_months (
+                id TEXT PRIMARY KEY,
+                buffered INTEGER NOT NULL DEFAULT 0
+            )
+        """),
         // Upstream 1765518577215 (multiple dashboards): pages table. Only the
         // schema half of upstream's migration — upstream also mints a default
         // "Main" page and moves widgets onto it, but that half generates no
@@ -432,6 +441,7 @@ final class BudgetDatabase: Sendable {
         1780606215004, // locally minted accounts.last_sync backfill
         1770000000003, // defensive CREATE banks
         1780606215005, // device-local FinanceKit link identities
+        1780606215006, // envelope buffer rows
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -1577,6 +1587,11 @@ final class BudgetDatabase: Sendable {
         let leftoverByMonthCat: [Int: [String: Int]]
         /// Envelope "To Budget" at the target month (0 for tracking).
         let toBudget: Int
+        let summaryIncome: Int
+        let summaryBudgeted: Int
+        let summaryLastMonthOverspent: Int
+        let summaryBuffered: Int
+        let summaryManualBuffered: Int
         let incomeCatIds: Set<String>
         let categories: [CategoryRecord]
         let groups: [CategoryGroupRecord]
@@ -1719,6 +1734,11 @@ final class BudgetDatabase: Sendable {
             // unallocated funds instead.
             var runningToBudget = 0
             var priorBuffered = 0
+            var summaryIncome = 0
+            var summaryBudgeted = 0
+            var summaryLastMonthOverspent = 0
+            var summaryBuffered = 0
+            var summaryManualBuffered = 0
             var leftoverByMonthCat: [Int: [String: Int]] = [:]
 
             var m = earliestMonth
@@ -1751,6 +1771,13 @@ final class BudgetDatabase: Sendable {
                     runningToBudget = income + runningToBudget + priorBuffered
                         + lastMonthOverspent - budgetedTotal - buffered
                     priorBuffered = buffered
+                    if m == targetMonthInt {
+                        summaryIncome = income
+                        summaryBudgeted = budgetedTotal
+                        summaryLastMonthOverspent = lastMonthOverspent
+                        summaryBuffered = buffered
+                        summaryManualBuffered = manualBuffered
+                    }
                 }
 
                 let touchedCats = Set(budgetsForMonth.keys)
@@ -1795,9 +1822,38 @@ final class BudgetDatabase: Sendable {
                 spentByMonthCat: spentByMonthCat,
                 leftoverByMonthCat: leftoverByMonthCat,
                 toBudget: runningToBudget,
+                summaryIncome: summaryIncome,
+                summaryBudgeted: summaryBudgeted,
+                summaryLastMonthOverspent: summaryLastMonthOverspent,
+                summaryBuffered: summaryBuffered,
+                summaryManualBuffered: summaryManualBuffered,
                 incomeCatIds: incomeCatIds,
                 categories: categories,
                 groups: groups)
+    }
+
+    struct EnvelopeBudgetSummaryData: Sendable {
+        let availableFunds: Int
+        let lastMonthOverspent: Int
+        let budgeted: Int
+        let toBudget: Int
+        let buffered: Int
+    }
+
+    func fetchEnvelopeBudgetSummary(month: String) async throws -> EnvelopeBudgetSummaryData? {
+        try await dbQueue.read { db in
+            let walk = try Self.budgetWalk(db, targetMonthInt: Self.monthStringToInt(month))
+            guard walk.isEnvelope else { return nil }
+            let availableFunds = walk.toBudget - walk.summaryLastMonthOverspent
+                + walk.summaryBudgeted + walk.summaryBuffered
+            return EnvelopeBudgetSummaryData(
+                availableFunds: availableFunds,
+                lastMonthOverspent: walk.summaryLastMonthOverspent,
+                budgeted: walk.summaryBudgeted,
+                toBudget: walk.toBudget,
+                buffered: walk.summaryManualBuffered
+            )
+        }
     }
 
     func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
@@ -1866,17 +1922,12 @@ final class BudgetDatabase: Sendable {
             }
             .sorted { $0.sortOrder < $1.sortOrder }
 
-            let manualBuffered: Int = {
-                guard isEnvelope, (try? db.tableExists("zero_budget_months")) == true else { return 0 }
-                return (try? Int.fetchOne(db, sql: "SELECT buffered FROM zero_budget_months WHERE id = ?", arguments: [month])) ?? 0
-            }()
-
             return BudgetMonth(
                 month: month,
                 categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
                 incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
                 toBudget: isEnvelope ? walk.toBudget : nil,
-                buffered: manualBuffered,
+                buffered: isEnvelope ? walk.summaryManualBuffered : 0,
                 hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
                 hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )

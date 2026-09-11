@@ -127,6 +127,14 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
         )
     }
 
+    @Test("Holding rejects amounts above To Budget instead of clamping")
+    func holdAmountValidation() {
+        #expect(BudgetStore.isValidHoldAmount(300, toBudget: 300))
+        #expect(BudgetStore.isValidHoldAmount(299, toBudget: 300))
+        #expect(!BudgetStore.isValidHoldAmount(301, toBudget: 300))
+        #expect(!BudgetStore.isValidHoldAmount(1, toBudget: 0))
+    }
+
     @Test("Automatic buffer hides manual Hold")
     func automaticBufferHidesHoldAction() {
         let summary = BudgetStore.makeEnvelopeBudgetSummary(

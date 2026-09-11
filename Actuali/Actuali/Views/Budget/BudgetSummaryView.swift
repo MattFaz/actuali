@@ -127,6 +127,8 @@ struct BudgetSummarySheet: View {
             glassCard
                 .padding(.horizontal, 24)
                 .frame(maxWidth: 390)
+                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                .onTapGesture { }
         }
         .presentationBackground(.clear)
         .task(id: month) { await loadSummary() }
@@ -235,16 +237,16 @@ struct BudgetSummarySheet: View {
                         .padding(.vertical, 14)
 
                     Button { showingActions = true } label: {
-                        HStack(spacing: 12) {
+                        VStack(spacing: 4) {
                             Text(resultTitle)
                                 .font(.body.weight(.semibold))
-                            Spacer()
                             Text(budgetStore.displayBalance(summary.toBudget))
                                 .font(.title3.weight(.semibold))
                                 .monospacedDigit()
                                 .lineLimit(1)
+                                .underline()
                         }
-                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+                        .frame(maxWidth: .infinity, minHeight: 64)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
