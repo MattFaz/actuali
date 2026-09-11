@@ -64,6 +64,31 @@ struct SyncClientSetBudgetAmountTests {
         }
     }
 
+    @Test func envelopeBufferCreatesMissingTableRowAndPersistsCRDTMessage() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let syncClient = try await makeSyncClient(database: database)
+
+        try await syncClient.setBudgetBuffer(month: "2026-07", amount: 2500)
+
+        let queue = try DatabaseQueue(path: path.path)
+        let buffered = try queue.read { db in
+            try Int.fetchOne(
+                db,
+                sql: "SELECT buffered FROM zero_budget_months WHERE id = ?",
+                arguments: ["2026-07"]
+            )
+        }
+        #expect(buffered == 2500)
+
+        let messages = try messageRows(path: path)
+        let message = try #require(messages.first)
+        #expect(message["dataset"] == "zero_budget_months")
+        #expect(message["row"] == "2026-07")
+        #expect(message["column"] == "buffered")
+        #expect(message["value"] == "N:2500")
+    }
+
     @Test func newCellInsertsRowAndEmitsFullInsertMessages() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

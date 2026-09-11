@@ -54,7 +54,7 @@ struct BudgetBufferSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.medium])
         .interactiveDismissDisabled(isSaving)
     }
 

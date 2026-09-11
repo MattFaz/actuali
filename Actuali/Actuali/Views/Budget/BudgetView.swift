@@ -1357,6 +1357,7 @@ struct CleanBudgetSummary: View {
 /// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
     @State private var showingSummary = false
 
     let label: String
@@ -1367,7 +1368,9 @@ struct SummaryStat: View {
 
     private var displayedLabel: String {
         guard let toBudget = budget?.toBudget else { return label }
-        return toBudget < 0 ? "Overbudgeted" : "To Budget"
+        return toBudget < 0
+            ? String(localized: "Overbudgeted", locale: locale)
+            : String(localized: "To Budget", locale: locale)
     }
 
     var body: some View {
@@ -1387,6 +1390,10 @@ struct SummaryStat: View {
                         .animatedAmount(value)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(
+                    Text("\(displayedLabel), \(value)")
+                )
+                .accessibilityHint(Text(String(localized: "Budget Summary", locale: locale)))
                 .accessibilityIdentifier("budgetToBudgetAction")
             } else {
                 Text(value)
