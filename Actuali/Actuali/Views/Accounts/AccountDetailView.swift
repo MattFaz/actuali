@@ -29,6 +29,22 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
+    /// Running balances are shown only when the account register contains its
+    /// complete transaction history. Filtered/search results omit rows that
+    /// would otherwise contribute to the balance, so showing a running balance
+    /// in those states would make it look like the account balance changed when
+    /// the user only changed the visible filter.
+    private var shouldShowRunningBalance: Bool {
+        searchQuery == nil
+            && !budgetStore.hideClearedTransactions
+            && !budgetStore.hideReconciledTransactions
+    }
+
+    private var transactionsForDisplay: [Transaction] {
+        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
+        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
+    }
+
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
     /// once so the visible row and the breakdown row can't disagree.
     private var creditHeadroom: (limit: Int, available: Int)? {
@@ -244,8 +260,9 @@ struct AccountDetailView: View {
             }
 
             if let pager, !pager.transactions.isEmpty {
+                let displayedTransactions = transactionsForDisplay
                 if budgetStore.transactionDisplayMode == .groupedByDate {
-                    let groups = pager.transactions.groupedByDate()
+                    let groups = displayedTransactions.groupedByDate()
                     ForEach(groups) { group in
                         Section(group.title) {
                             ForEach(group.transactions) { transaction in
@@ -271,7 +288,7 @@ struct AccountDetailView: View {
                     }
                 } else {
                     Section("Recent Transactions") {
-                        ForEach(pager.transactions) { transaction in
+                        ForEach(displayedTransactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
                                 showAccount: false,
