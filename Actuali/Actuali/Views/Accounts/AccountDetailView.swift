@@ -24,9 +24,25 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
+    @State private var loadedFullHistory = false
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
+    }
+
+    /// Running balances are shown only when the account register contains its
+    /// complete transaction history. Filtered/search results omit rows that
+    /// would otherwise contribute to the balance, so showing a running balance
+    /// in those states would make it look like the account balance changed when
+    /// the user only changed the visible filter.
+    private var shouldShowRunningBalance: Bool {
+        showRunningBalance && loadedFullHistory
+    }
+
+    private var transactionsForDisplay: [Transaction] {
+        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
+        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -63,10 +79,15 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
+        let fullHistory = searchQuery == nil
+            && !budgetStore.hideClearedTransactions
+            && !budgetStore.hideReconciledTransactions
+        loadedFullHistory = false
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
         await reloadCycleSpend()
         await currentPager().loadFirstPage(search: searchQuery)
+        loadedFullHistory = fullHistory
     }
 
     private func reloadCycleSpend() async {
@@ -168,7 +189,7 @@ struct AccountDetailView: View {
                         Spacer()
                         Text(budgetStore.displayBalance(currentBalance))
                             .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
+                            .animatedAmount(budgetStore.displayBalance(currentBalance))
                         if breakdown != nil {
                             Image(systemName: "chevron.down")
                                 .font(.caption2.weight(.semibold))
@@ -244,8 +265,9 @@ struct AccountDetailView: View {
             }
 
             if let pager, !pager.transactions.isEmpty {
+                let displayedTransactions = transactionsForDisplay
                 if budgetStore.transactionDisplayMode == .groupedByDate {
-                    let groups = pager.transactions.groupedByDate()
+                    let groups = displayedTransactions.groupedByDate()
                     ForEach(groups) { group in
                         Section(group.title) {
                             ForEach(group.transactions) { transaction in
@@ -271,7 +293,7 @@ struct AccountDetailView: View {
                     }
                 } else {
                     Section("Recent Transactions") {
-                        ForEach(pager.transactions) { transaction in
+                        ForEach(displayedTransactions) { transaction in
                             TransactionListRow(
                                 transaction: transaction,
                                 showAccount: false,
@@ -364,6 +386,14 @@ struct AccountDetailView: View {
                 TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $showRunningBalance) {
+                    Label(
+                        "Show Running Balance",
+                        systemImage: showRunningBalance ? "eye.slash" : "eye"
+                    )
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
                 Toggle(isOn: $budgetStore.hideClearedTransactions) {
                     Label(
                         "Hide Cleared Transactions",
@@ -434,6 +464,7 @@ struct AccountDetailView: View {
         // account in the key nothing would reload — the previous account's
         // rows would sit under the new one's name and balance.
         .task(id: [account.id, searchText]) {
+            loadedFullHistory = false
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
                 // than showing them while the new ones load — and its
@@ -462,9 +493,11 @@ struct AccountDetailView: View {
         .onChange(of: budgetStore.hideClearedTransactions) {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
+            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
+            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.creditCardStatementDays[account.id]) {

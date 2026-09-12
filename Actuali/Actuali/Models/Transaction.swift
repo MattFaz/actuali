@@ -44,6 +44,10 @@ struct Transaction: Identifiable, Hashable {
     // populated by fetchTransactions for isParent rows, so the list row can
     // show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
+    // Display-only running balance used by account transaction registers.
+    // It is populated from the account's current balance in account detail
+    // views and is intentionally not part of CRDT sync.
+    var runningBalance: Int? = nil
 
     struct SplitPortion: Hashable {
         var categoryName: String?
@@ -182,6 +186,22 @@ extension Array where Element == Transaction {
         }
         return order.map { date in
             TransactionDateGroup(date: date, transactions: groupDict[date] ?? [])
+        }
+    }
+
+    /// Adds the register balance after each transaction to a newest-first
+    /// transaction list. Starting at the account's current balance means the
+    /// newest transaction shows the current balance, while each older row
+    /// walks backward by that row's amount. This remains correct as additional
+    /// pages are appended to `TransactionPager`, because the full loaded prefix
+    /// is recalculated each time.
+    func withRunningBalances(startingAt currentBalance: Int) -> [Transaction] {
+        var balance = currentBalance
+        return map { transaction in
+            var transaction = transaction
+            transaction.runningBalance = balance
+            balance -= transaction.amount
+            return transaction
         }
     }
 }
