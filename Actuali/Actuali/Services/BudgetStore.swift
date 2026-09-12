@@ -6068,6 +6068,26 @@ final class BudgetStore: ObservableObject {
         return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
     }
 
+    /// Hold part or all of this envelope month's To Budget for next month.
+    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
+        guard let budget = currentBudgetMonth, budget.month == month, let toBudget = budget.toBudget, amountCents > 0 else { throw BudgetStoreError.invalidAmount }
+        guard Self.isValidHoldAmount(amountCents, toBudget: toBudget) else { throw BudgetStoreError.transferAmountExceedsSource }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: budget.buffered + amountCents)
+        await fetchBudgetMonth(month)
+    }
+
+    nonisolated static func isValidHoldAmount(_ amountCents: Int, toBudget: Int) -> Bool {
+        amountCents > 0 && toBudget > 0 && amountCents <= toBudget
+    }
+
+    func resetBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
+    }
+
     /// Move budgeted funds between categories (GH #128), nil meaning the
     /// month's "To Budget" pool on that side. Writes through the sync engine
     /// (optimistic local-first), then refetches the month so both categories'

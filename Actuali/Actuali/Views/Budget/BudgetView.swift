@@ -1335,6 +1335,7 @@ struct CleanBudgetSummary: View {
                     SummaryStat(
                         label: "To Budget",
                         value: budgetStore.displayBalance(toBudget),
+                        budget: budget,
                         valueColor: toBudget >= 0 ? .green : .red,
                         alignment: .trailing
                     )
@@ -1355,22 +1356,58 @@ struct CleanBudgetSummary: View {
 
 /// The leading figure in the summary bar (To Budget / Income).
 struct SummaryStat: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale
+    @State private var showingSummary = false
+
     let label: String
     let value: String
+    var budget: BudgetMonth? = nil
     var valueColor: Color = .primary
     var alignment: HorizontalAlignment = .leading
 
+    private var displayedLabel: String {
+        guard let toBudget = budget?.toBudget else { return label }
+        return toBudget < 0
+            ? String(localized: "Overbudgeted", locale: locale)
+            : String(localized: "To Budget", locale: locale)
+    }
+
     var body: some View {
         VStack(alignment: alignment) {
-            Text(label)
+            Text(displayedLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text(value)
-                .font(.headline)
-                .foregroundColor(valueColor)
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-                .animatedAmount(value)
+            if budget?.toBudget != nil {
+                Button {
+                    showingSummary = true
+                } label: {
+                    Text(value)
+                        .font(.headline)
+                        .foregroundColor(valueColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .animatedAmount(value)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(
+                    Text("\(displayedLabel), \(value)")
+                )
+                .accessibilityHint(Text(String(localized: "Budget Summary", locale: locale)))
+                .accessibilityIdentifier("budgetToBudgetAction")
+            } else {
+                Text(value)
+                    .font(.headline)
+                    .foregroundColor(valueColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.7)
+                    .animatedAmount(value)
+            }
+        }
+        .fullScreenCover(isPresented: $showingSummary) {
+            if let budget {
+                BudgetSummarySheet(month: budget.month)
+            }
         }
     }
 }

@@ -15,6 +15,9 @@ struct BudgetMonth: Identifiable, Hashable {
     /// for envelope budgets — nil for tracking budgets.
     var toBudget: Int?
 
+    /// Manual `zero_budget_months.buffered` amount held for next month.
+    var buffered: Int = 0
+
     /// Hidden rows stay available to the Budget tab without changing the
     /// visible-row totals or leaking into widgets and intents.
     var hiddenCategoryBudgets: [CategoryBudget] = []

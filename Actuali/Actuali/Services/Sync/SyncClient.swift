@@ -1300,6 +1300,24 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
+    /// Write Actual's synced manual next-month buffer. This mirrors
+    /// `packages/loot-core/src/server/budget/actions.ts:setBuffer`, which
+    /// updates or inserts `zero_budget_months` and lets the CRDT log carry
+    /// the row to other clients.
+    func setBudgetBuffer(month: String, amount: Int) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        guard amount >= 0 else {
+            throw SyncError.serverError(String(localized: "error.invalidAmount"))
+        }
+        guard try database.zeroBudgetMonthsTableExists() else { throw SyncError.budgetTableMissing }
+        let messages = try await messageGenerator.messages(
+            dataset: "zero_budget_months", row: month, fields: [("buffered", amount)])
+        for msg in try database.applyMessagesAndInsertMessages(messages) { merkle = merkle.inserting(msg.timestamp) }
+        merkle = merkle.pruned()
+        try saveClock()
+        scheduleAutomaticSync()
+    }
+
     /// Move budgeted funds between two categories in a month, or between a
     /// category and "To Budget" (nil side), optimistic local-first. Mirrors
     /// upstream transferCategory / coverOverspending / transferAvailable
