@@ -72,7 +72,7 @@ struct SyncClientSetBudgetAmountTests {
         try await syncClient.setBudgetBuffer(month: "2026-07", amount: 2500)
 
         let queue = try DatabaseQueue(path: path.path)
-        let buffered = try queue.read { db in
+        let buffered = try await queue.read { db in
             try Int.fetchOne(
                 db,
                 sql: "SELECT buffered FROM zero_budget_months WHERE id = ?",
