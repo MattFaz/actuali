@@ -23,11 +23,9 @@ struct CardAccountMappingsView: View {
     }
 
     private var suggestedMappings: [CardMappingSuggestion] {
-        let budgetId = budgetStore.currentBudgetId
         return Self.computeSuggestions(
-            pendingImports: pendingImportStore.imports.filter {
-                $0.originBudgetId == nil || $0.originBudgetId == budgetId
-            },
+            pendingImports: pendingImportStore.imports,
+            activeBudgetId: budgetStore.currentBudgetId,
             accounts: budgetStore.accounts,
             cardMappings: budgetStore.cardAccountMappings
         )
@@ -37,12 +35,14 @@ struct CardAccountMappingsView: View {
     /// Reuses the routing chain so the list matches real behavior.
     nonisolated static func computeSuggestions(
         pendingImports: [PendingImport],
+        activeBudgetId: String?,
         accounts: [Account],
         cardMappings: [String: String]
     ) -> [CardMappingSuggestion] {
         var grouped: [String: (keyword: String, count: Int, samplePayee: String?)] = [:]
         for item in pendingImports {
-            guard let hint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard item.originBudgetId == nil || item.originBudgetId == activeBudgetId,
+                  let hint = item.cardHint?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !hint.isEmpty,
                   BudgetStore.resolveAccountId(
                       hint: hint, accounts: accounts, cardMappings: cardMappings) == nil else {
@@ -86,7 +86,7 @@ struct CardAccountMappingsView: View {
                                         Text(suggestion.keyword)
                                             .font(.headline)
                                             .foregroundStyle(.primary)
-                                        Text(String(format: String(localized: "%lld pending"), Int64(suggestion.count)))
+                                        Text("\(suggestion.count) pending")
                                             .font(.caption)
                                             .foregroundStyle(.secondary)
                                     }

@@ -2332,45 +2332,59 @@
     "%lld pending": {
       "localizations": {
         "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pending"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld pending" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld pending" } }
+            }
           }
         },
         "fr": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld en attente"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld en attente" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld en attente" } }
+            }
           }
         },
         "es": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pendientes"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld pendiente" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld pendientes" } }
+            }
           }
         },
         "pt-BR": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld pendentes"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld pendente" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld pendentes" } }
+            }
           }
         },
         "de": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld ausstehend"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld ausstehend" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld ausstehend" } }
+            }
           }
         },
         "it": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld in sospeso"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld in sospeso" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld in sospeso" } }
+            }
           }
         },
         "nl": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld in behandeling"
+          "variations": {
+            "plural": {
+              "one": { "stringUnit": { "state": "translated", "value": "%lld in behandeling" } },
+              "other": { "stringUnit": { "state": "translated", "value": "%lld in behandeling" } }
+            }
           }
         }
       }

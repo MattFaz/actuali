@@ -5,10 +5,14 @@ import Testing
 
 @Suite("Card account mappings suggestions")
 struct CardAccountMappingsViewTests {
-    private func makeImport(cardHint: String?, payee: String? = nil) -> PendingImport {
+    private func makeImport(
+        cardHint: String?,
+        payee: String? = nil,
+        originBudgetId: String? = "budget-1"
+    ) -> PendingImport {
         PendingImport(
             id: UUID(),
-            originBudgetId: "budget-1",
+            originBudgetId: originBudgetId,
             amount: 25.0,
             sourceCurrencyCode: "USD",
             payee: payee,
@@ -28,6 +32,7 @@ struct CardAccountMappingsViewTests {
         let accounts = [account("acct_chase", name: "Chase")]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: [],
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: ["1234": "acct_chase"]
         )
@@ -43,6 +48,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: [:]
         )
@@ -60,6 +66,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: [
                 "1234": "acct_chase",
@@ -76,6 +83,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: ["HSBC": "acct_hsbc"]
         )
@@ -90,6 +98,7 @@ struct CardAccountMappingsViewTests {
         // Even with no card mappings, hint matches open account name so it routes already
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: [:]
         )
@@ -107,6 +116,7 @@ struct CardAccountMappingsViewTests {
         // 1234 maps to a closed account, so routing fails and falls through -> should be suggested to repair
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: ["1234": "acct_closed"]
         )
@@ -122,6 +132,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: ["1234": "acct_chase"]
         )
@@ -140,6 +151,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: [:]
         )
@@ -163,6 +175,7 @@ struct CardAccountMappingsViewTests {
         ]
         let suggestions = CardAccountMappingsView.computeSuggestions(
             pendingImports: imports,
+            activeBudgetId: "budget-1",
             accounts: accounts,
             cardMappings: [:]
         )
@@ -170,5 +183,20 @@ struct CardAccountMappingsViewTests {
         #expect(suggestions[0].keyword == "MMMM") // count 2
         #expect(suggestions[1].keyword == "AAAA") // count 1, alphabetical
         #expect(suggestions[2].keyword == "ZZZZ") // count 1, alphabetical
+    }
+
+    @Test func filtersOtherBudgetsButKeepsLegacyImports() {
+        let imports = [
+            makeImport(cardHint: "1111"),
+            makeImport(cardHint: "2222", originBudgetId: "budget-2"),
+            makeImport(cardHint: "3333", originBudgetId: nil)
+        ]
+        let suggestions = CardAccountMappingsView.computeSuggestions(
+            pendingImports: imports,
+            activeBudgetId: "budget-1",
+            accounts: [account("acct_main", name: "Main")],
+            cardMappings: [:]
+        )
+        #expect(suggestions.map(\.keyword) == ["1111", "3333"])
     }
 }
