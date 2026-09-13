@@ -75,6 +75,83 @@ struct NewCategoryGroupSheet: View {
     }
 }
 
+struct RenameCategoryGroupSheet: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.dismiss) private var dismiss
+
+    let group: CategoryGroup
+    let month: String
+
+    @State private var name: String
+    @State private var isSaving = false
+    @State private var errorMessage: String?
+
+    init(group: CategoryGroup, month: String) {
+        self.group = group
+        self.month = month
+        _name = State(initialValue: group.name)
+    }
+
+    private var trimmedName: String {
+        name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField("Group Name", text: $name)
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.words)
+                        .accessibilityIdentifier("categoryGroupEditor.name")
+                } footer: {
+                    if let errorMessage {
+                        Text(errorMessage)
+                            .foregroundStyle(.red)
+                    }
+                }
+            }
+            .navigationTitle("Rename Group")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task { await save() }
+                    }
+                    .disabled(isSaving || trimmedName.isEmpty)
+                }
+            }
+            .disabled(isSaving)
+            .interactiveDismissDisabled(isSaving)
+        }
+    }
+
+    private func save() async {
+        guard !isSaving else { return }
+        guard trimmedName != group.name else {
+            dismiss()
+            return
+        }
+        isSaving = true
+        errorMessage = nil
+
+        do {
+            try await budgetStore.renameCategoryGroup(
+                id: group.id,
+                name: name,
+                month: month
+            )
+            dismiss()
+        } catch {
+            errorMessage = error.localizedDescription
+            isSaving = false
+        }
+    }
+}
+
 struct NewCategorySheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss

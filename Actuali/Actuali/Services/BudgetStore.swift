@@ -28,6 +28,7 @@ enum BudgetStoreError: LocalizedError, Equatable {
     case categoryCreationFailed(String)
     case categoryUpdateFailed(String)
     case categoryGroupCreationFailed(String)
+    case categoryGroupUpdateFailed(String)
     case ruleNeedsCondition
     case ruleNeedsAction
     case ruleInvalidCondition(field: String, op: String)
@@ -91,6 +92,9 @@ enum BudgetStoreError: LocalizedError, Equatable {
         case .categoryGroupCreationFailed(let message):
             return ReportStrings.format(
                 "error.categoryGroupCreationFailed %@", message, locale: locale, bundle: bundle)
+        case .categoryGroupUpdateFailed(let message):
+            return ReportStrings.format(
+                "error.categoryGroupUpdateFailed %@", message, locale: locale, bundle: bundle)
         case .ruleNeedsCondition:
             return ReportStrings.text("error.ruleNeedsCondition", locale: locale, bundle: bundle)
         case .ruleNeedsAction:
@@ -2772,6 +2776,27 @@ final class BudgetStore: ObservableObject {
             throw error
         } catch {
             throw BudgetStoreError.categoryUpdateFailed(error.localizedDescription)
+        }
+
+        await refreshDataOnly()
+        await fetchBudgetMonth(month)
+    }
+
+    func renameCategoryGroup(id: String, name: String, month: String) async throws {
+        let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            throw BudgetStoreError.invalidCategoryGroupName
+        }
+        guard let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+
+        do {
+            try await syncClient.renameCategoryGroup(id: id, name: trimmedName)
+        } catch let error as BudgetDatabase.CategoryWriteError {
+            throw error
+        } catch {
+            throw BudgetStoreError.categoryGroupUpdateFailed(error.localizedDescription)
         }
 
         await refreshDataOnly()

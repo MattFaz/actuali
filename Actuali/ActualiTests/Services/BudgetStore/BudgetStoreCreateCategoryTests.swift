@@ -224,6 +224,50 @@ struct BudgetStoreCreateCategoryTests {
         ) == ["name"])
     }
 
+    @Test func renamingAGroupWritesOnlyItsNameMessage() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+
+        try await store.renameCategoryGroup(
+            id: "grp-daily",
+            name: "  Everyday  ",
+            month: "2026-07"
+        )
+
+        let renamed: String = try rows(
+            path: url,
+            sql: "SELECT name FROM category_groups WHERE id = 'grp-daily'"
+        )[0]["name"]
+        #expect(renamed == "Everyday")
+        #expect(try messagedColumns(
+            path: url,
+            dataset: "category_groups",
+            row: "grp-daily"
+        ) == ["name"])
+    }
+
+    @Test func aRejectedDuplicateGroupRenameEmitsNothing() async throws {
+        let (database, url) = try makeDatabase()
+        defer { cleanup(url) }
+        let store = try await makeStore(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO category_groups (id, name, sort_order)
+                VALUES ('grp-fun', 'Fun', 32768.0)
+                """)
+        }
+
+        await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Fun")) {
+            try await store.renameCategoryGroup(
+                id: "grp-daily",
+                name: "fun",
+                month: "2026-07"
+            )
+        }
+        #expect(try count(path: url, sql: "SELECT COUNT(*) FROM messages_crdt") == 0)
+    }
+
     @Test func aRejectedRenameEmitsNothing() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }

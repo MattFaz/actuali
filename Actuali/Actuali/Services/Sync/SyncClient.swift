@@ -1078,6 +1078,25 @@ actor SyncClient {
         await automaticSync()
     }
 
+    /// Rename a category group through the same optimistic CRDT path.
+    func renameCategoryGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.validateCategoryGroupRename(id: id, name: name)
+        let messages = try await messageGenerator.messages(
+            dataset: CategoryGroup.datasetName,
+            row: id,
+            fields: [("name", name)]
+        )
+        for message in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(message.timestamp)
+        }
+        merkle = merkle.pruned()
+        try saveClock()
+
+        await automaticSync()
+    }
+
     func setCategoryHidden(id: String, hidden: Bool) async throws {
         try await setHidden(dataset: Category.datasetName, id: id, hidden: hidden)
     }

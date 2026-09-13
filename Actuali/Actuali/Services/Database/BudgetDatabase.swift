@@ -1328,6 +1328,27 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    /// Validate a group rename before emitting its CRDT message. Group names
+    /// remain unique across the budget, matching creation and upstream Actual.
+    func validateCategoryGroupRename(id: String, name: String) throws {
+        try dbQueue.read { db in
+            let exists = try Bool.fetchOne(db, sql: """
+                SELECT 1 FROM category_groups
+                WHERE id = ? AND tombstone IS NOT 1
+                """, arguments: [id]) ?? false
+            guard exists else { throw CategoryWriteError.groupNotFound }
+
+            let clash = try String.fetchOne(db, sql: """
+                SELECT name FROM category_groups
+                WHERE id != ? AND UPPER(name) = UPPER(?) AND tombstone IS NOT 1
+                LIMIT 1
+                """, arguments: [id, name])
+            if let clash {
+                throw CategoryWriteError.duplicateGroupName(clash)
+            }
+        }
+    }
+
     /// Validate a category rename before the sync layer emits its name
     /// message. Names remain unique within a group, matching category
     /// creation and the web app.
