@@ -25,6 +25,45 @@ struct TransactionTextParserTests {
         #expect(result.payee == "Starbucks")
     }
 
+    @Test func parsesWalletDebitMessage() {
+        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00. Not you call 18000000000"
+        let result = TransactionTextParser.parseWithFallback(text)
+        #expect(result.amount == 250.00)
+        #expect(result.cardHint == "1234")
+        #expect(result.isIncome == false)
+        #expect(result.payee == "Sample Diner")
+    }
+
+    @Test func parsesCardAlertMessageWithLimitAndBalance() {
+        let text = "ALERT: INR 150.00 is spent on your SampleCard ending 4321 at Quick-mart Payments on 01-01-2026. Available credit limit is Rs 100,000.00, Current outstanding is Rs 150.00. Not you?  Call 18000000 (toll-free)"
+        let result = TransactionTextParser.parseWithFallback(text)
+        #expect(result.amount == 150.00)
+        #expect(result.sourceCurrencyCode == "INR")
+        #expect(result.cardHint == "4321")
+        #expect(result.isIncome == false)
+        #expect(result.payee == "Quick-mart Payments")
+    }
+
+    @Test func resolvePayeeReplacesFundingSourceWithActualMerchant() {
+        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00."
+        #expect(TransactionTextParser.resolvePayee("Sample", in: text, isIncome: false) == "Sample Diner")
+        #expect(TransactionTextParser.resolvePayee("Sample Meal wallet", in: text, isIncome: false) == "Sample Diner")
+        #expect(TransactionTextParser.resolvePayee("Sample Diner", in: text, isIncome: false) == "Sample Diner")
+    }
+
+    @Test func resolvePayeePreservesValidPayee() {
+        let text = "ALERT: INR 150.00 is spent on your SampleCard ending 4321 at Quick-mart Payments on 01-01-2026."
+        #expect(TransactionTextParser.resolvePayee("Quick-mart Payments", in: text, isIncome: false) == "Quick-mart Payments")
+    }
+
+    @Test func parseEntrypointResolvesExpectedFields() async {
+        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00."
+        let result = await TransactionTextParser.parse(text)
+        #expect(result.amount == 250.00)
+        #expect(result.payee == "Sample Diner")
+        #expect(result.cardHint == "1234")
+    }
+
     @Test func parsesRefundAsIncomeAndDoesNotCaptureCardAsMerchant() {
         let text = "Refund of $25.00 from Amazon credited to card 5555"
         let result = TransactionTextParser.parseWithFallback(text)
