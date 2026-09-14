@@ -508,7 +508,7 @@ struct ClearedIndicator: View {
         Group {
             if reconciled {
                 Image(systemName: "lock.fill")
-                    .foregroundStyle(.blue)
+                    .foregroundStyle(.green)
                     .imageScale(.large)
             } else if cleared {
                 Image(systemName: "checkmark.circle.fill")

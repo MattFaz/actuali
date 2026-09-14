@@ -265,19 +265,33 @@ struct ScheduleListFetchTests {
             """, ruleId: "rule-1")
         // Manual approximate schedule: two days of lookback.
         try insertSchedule(database, id: "sched-approx", ruleId: "rule-2")
+        // Recurring exact-date schedule: frequency allows four days of lookback.
+        try insertSchedule(database, id: "sched-recurring", conditions: """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-08-13","interval":1}},
+             {"op":"is","field":"amount","value":-500}]
+            """, ruleId: "rule-3")
+        // A future occurrence must not steal a late payment from the current one.
+        try insertSchedule(database, id: "sched-future", conditions: """
+            [{"op":"is","field":"account","value":"acct-1"},
+             {"op":"is","field":"date","value":{"frequency":"weekly","start":"2026-08-20","interval":1}},
+             {"op":"is","field":"amount","value":-500}]
+            """, ruleId: "rule-4", nextDate: 20260820, postsTransaction: true)
 
         try await database.dbQueueForTesting.write { db in
-            // Two days early — covers the approx schedule only.
             try db.execute(sql: """
                 INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
                 VALUES ('t1', 'acct-1', 20260811, -500, 'sched-exact', 0),
-                       ('t2', 'acct-1', 20260811, -500, 'sched-approx', 0)
+                       ('t2', 'acct-1', 20260811, -500, 'sched-approx', 0),
+                       ('t3', 'acct-1', 20260809, -500, 'sched-recurring', 0),
+                       ('t4', 'acct-1', 20260818, -500, 'sched-future', 0)
                 """)
         }
 
         let schedules = try await database.fetchSchedules()
-        let paid = try await database.fetchPaidScheduleIds(for: schedules)
-        #expect(paid == ["sched-approx"])
+        let paid = try await database.fetchPaidScheduleIds(
+            for: schedules, today: DayDate(yyyymmdd: 20260813)!)
+        #expect(paid == ["sched-approx", "sched-recurring"])
     }
 
     @Test func tombstonedTransactionsDoNotCountAsPaid() async throws {

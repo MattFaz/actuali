@@ -432,4 +432,158 @@ struct BillsCalendarEngineTests {
         #expect(octoberItems[0].date == DayDate(year: 2026, month: 10, day: 30))
         #expect(octoberItems[0].status == .upcoming)
     }
+
+    @Test func autoPostingSalaryPaidOnLastDayOfPriorMonthIsPaid() {
+        // Recurring salary on 1st, auto-posting enabled,
+        // payment arrives on Aug 31 for Sep 1 occurrence.
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 1))
+        let schedule = ScheduleSummary(
+            id: "sch-salary",
+            name: "Monthly Salary",
+            nextDate: DayDate(year: 2026, month: 9, day: 1),
+            amount: .fixed(500000),
+            amountOp: .isApprox,
+            dateOp: "isapprox",
+            dateCondition: .recurring(config),
+            postsTransaction: true,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: ["sch-salary": .paid],
+            paymentDates: ["sch-salary": [DayDate(year: 2026, month: 8, day: 31)]],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 1))
+        #expect(items[0].status == .paid)
+        #expect(items[0].relativeDueText == "Paid")
+    }
+
+    @Test func exactRentPaidEarlyInCurrentMonthIsPaid() {
+        // Rent: monthly on 4th, exact date match, paid on Sep 1 (3 days early).
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 4))
+        let schedule = ScheduleSummary(
+            id: "sch-rent",
+            name: "Rent",
+            nextDate: DayDate(year: 2026, month: 9, day: 4),
+            amount: .fixed(-4_000_000),
+            amountOp: .isExactly,
+            dateOp: "is",
+            dateCondition: .recurring(config),
+            postsTransaction: false,
+            completed: false,
+            isCustom: false
+        )
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule],
+            statuses: ["sch-rent": .paid],
+            paymentDates: ["sch-rent": [DayDate(year: 2026, month: 9, day: 1)]],
+            accounts: [],
+            payees: [],
+            categoryGroups: [],
+            year: 2026,
+            month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9)
+        )
+
+        #expect(items.count == 1)
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 4))
+        #expect(items[0].status == .paid)
+        #expect(items[0].relativeDueText == "Paid")
+    }
+
+    @Test func advancedScheduleWithoutPaymentIsMissed() {
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 1))
+        let schedule = ScheduleSummary(
+            id: "sch-skipped", nextDate: DayDate(year: 2026, month: 10, day: 1),
+            amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: false,
+            completed: false, isCustom: false)
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [schedule.id: .scheduled],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9))
+
+        #expect(items.map(\.status) == [.missed])
+    }
+
+    @Test func lateWeeklyPaymentStaysWithCurrentOccurrence() {
+        let config = RecurConfig(frequency: .weekly, start: DayDate(year: 2026, month: 9, day: 7))
+        let schedule = ScheduleSummary(
+            id: "sch-weekly", nextDate: DayDate(year: 2026, month: 9, day: 14),
+            amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: true,
+            completed: false, isCustom: false)
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [schedule.id: .upcoming],
+            paymentDates: [schedule.id: [DayDate(year: 2026, month: 9, day: 12)]],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
+            today: DayDate(year: 2026, month: 9, day: 13))
+
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 7))
+        #expect(items[0].status == .paid)
+        #expect(items[1].date == DayDate(year: 2026, month: 9, day: 14))
+        #expect(items[1].status == .upcoming)
+    }
+
+    @Test func creditCardsUseEachPendingStatementWhenDueDatesOverlap() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let account = Account(
+            id: "acc-cc",
+            name: "Visa Signature",
+            type: .credit,
+            offBudget: false,
+            closed: false,
+            sortOrder: 0,
+            balance: -50000
+        )
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
+        let paidJanuary = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0,
+            dueDate: DayDate(year: 2026, month: 3, day: 1)
+        )
+        let unpaidFebruary = CreditCardCycle.StatementDue(
+            statementBalance: 30000,
+            paymentsSince: 0,
+            remainingDue: 30000,
+            dueDate: DayDate(year: 2026, month: 4, day: 1)
+        )
+
+        let marchItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
+            year: 2026,
+            month: 3,
+            today: today
+        )
+        #expect(marchItems.count == 1)
+        #expect(marchItems[0].status == .paid)
+        #expect(marchItems[0].amount == -50000)
+        #expect(marchItems[0].relativeDueText == "Paid")
+
+        let aprilItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
+            year: 2026,
+            month: 4,
+            today: today
+        )
+        #expect(aprilItems.count == 1)
+        #expect(aprilItems[0].status == .upcoming)
+        #expect(aprilItems[0].amount == -30000)
+    }
 }

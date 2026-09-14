@@ -99,6 +99,16 @@ struct BudgetStoreSetBudgetAmountTests {
         try? FileManager.default.removeItem(at: url)
     }
 
+    private func seedIncomeCategory(_ database: BudgetDatabase) async throws {
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-income', 'Income', 1);
+                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-income', 1);
+                INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', 'cat-salary')
+                """)
+        }
+    }
+
     // MARK: - Amount parsing (pure)
 
     @Test func parsesDollarsToCents() throws {
@@ -168,6 +178,61 @@ struct BudgetStoreSetBudgetAmountTests {
         let month = try #require(store.currentBudgetMonth)
         let groceries = try #require(month.categoryBudgets.first { $0.categoryId == "cat-groceries" })
         #expect(groceries.budgeted == -10000)
+    }
+
+    @Test func holdingMoreAndResettingPersistsAndRefreshesMonth() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await seedIncomeCategory(database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date)
+                VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701)
+                """)
+        }
+        let store = try await makeStore(database: database)
+        await store.fetchBudgetMonth("2026-07")
+
+        try await store.holdBudgetForNextMonth(month: "2026-07", amountCents: 4000)
+        #expect(store.currentBudgetMonth?.buffered == 4000)
+        #expect(store.currentBudgetMonth?.toBudget == 6000)
+
+        try await store.holdBudgetForNextMonth(month: "2026-07", amountCents: 1000)
+        #expect(store.currentBudgetMonth?.buffered == 5000)
+        #expect(store.currentBudgetMonth?.toBudget == 5000)
+        #expect(try await database.fetchBudgetMonth(month: "2026-08").toBudget == 10000)
+
+        try await store.resetBudgetBuffer(month: "2026-07")
+        #expect(store.currentBudgetMonth?.buffered == 0)
+        #expect(store.currentBudgetMonth?.toBudget == 10000)
+    }
+
+    @Test func disablingAutomaticBufferClearsIncomeCarryover() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await seedIncomeCategory(database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO transactions (id, acct, category, amount, date)
+                VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701);
+                INSERT INTO zero_budgets (id, month, category, carryover)
+                VALUES ('salary-budget', 202607, 'cat-salary', 1)
+                """)
+        }
+        let store = try await makeStore(database: database)
+        await store.fetchBudgetMonth("2026-07")
+
+        let before = try #require(await store.fetchEnvelopeBudgetSummary("2026-07"))
+        #expect(before.autoBuffered == 10000)
+        #expect(before.toBudget == 0)
+
+        try await store.disableAutomaticBudgetBuffer(month: "2026-07")
+
+        let carryover = try await database.dbQueueForTesting.read { db in
+            try Int.fetchOne(db, sql: "SELECT carryover FROM zero_budgets WHERE id = 'salary-budget'")
+        }
+        #expect(carryover == 0)
+        #expect(store.currentBudgetMonth?.toBudget == 10000)
     }
 
     @Test func settingMonthBudgetsToZeroIncludesHiddenButNotEnvelopeIncome() async throws {

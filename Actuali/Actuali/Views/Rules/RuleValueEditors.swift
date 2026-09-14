@@ -58,6 +58,7 @@ struct RuleConditionEditor: View {
                 }
                 .labelsHidden()
             }
+            .pickerStyle(.menu)
 
             // onBudget/offBudget read the account, not a value; upstream hides
             // the value input for them.
@@ -540,3 +541,18 @@ struct RuleIdMultiPicker: View {
         return .list((visible + hidden).map(RuleValue.string))
     }
 }
+
+#if DEBUG
+struct RuleConditionUITestFixture: View {
+    @State private var condition = Rule.Condition(
+        op: "oneOf", field: "payee", value: .list([]), options: nil)
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                RuleConditionEditor(condition: $condition)
+            }
+        }
+    }
+}
+#endif

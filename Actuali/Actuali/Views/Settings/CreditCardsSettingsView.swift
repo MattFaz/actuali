@@ -300,8 +300,17 @@ struct CreditCardCycleRow: View {
     }
 
     private var dueColor: Color {
-        Self.urgencyColor(days: cycle.daysUntilDue())
+        Self.urgencyColor(days: cycle.daysUntilDue(dueDate: statementDue?.dueDate))
     }
+
+    private var statementDue: CreditCardCycle.StatementDue? {
+        guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
+        let today = DayDate.today()
+        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            ?? dues.first { today <= $0.dueDate }
+    }
+
+    private var isPaid: Bool { statementDue?.isPaid ?? false }
 
     /// Card background with a colored left urgency border strip.
     nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
@@ -332,16 +341,16 @@ struct CreditCardCycleRow: View {
 
             // Row 2: cycle spend + days left + due pill
             HStack {
-                        Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
+                Text(String(format: String(localized: "Spend %@ · %lldd left"), budgetStore.displayBalance(cycleSpend), Int64(cycle.daysRemainingInCycle())))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(cycle.dueShortSummary())
+                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary(dueDate: statementDue?.dueDate))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
                     .padding(.vertical, 2)
-                    .background(dueColor.opacity(0.22), in: .capsule)
+                    .background((isPaid ? Color.green : dueColor).opacity(0.22), in: .capsule)
                     // The pill is the actionable half of this line, so the
                     // spend text takes the squeeze at large Dynamic Type sizes.
                     .fixedSize()
@@ -352,7 +361,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), cycle.dueSummary())
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary(dueDate: statementDue?.dueDate))
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

@@ -51,6 +51,16 @@ struct BudgetStoreSaveTransactionTests {
                 )
                 """)
             try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions_op TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
                 CREATE TABLE messages_crdt (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL UNIQUE,
@@ -90,7 +100,9 @@ struct BudgetStoreSaveTransactionTests {
         type: TransactionType = .expense,
         amount: String = "10.50",
         payeeName: String = "",
-        transferToAccountId: String? = nil
+        transferToAccountId: String? = nil,
+        categoryId: String? = nil,
+        categoryIsExplicit: Bool = false
     ) -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: "acct-1",
@@ -98,10 +110,11 @@ struct BudgetStoreSaveTransactionTests {
             amount: amount,
             payeeName: payeeName,
             transferToAccountId: transferToAccountId,
-            categoryId: nil,
+            categoryId: categoryId,
             notes: "",
             date: Date(),
-            cleared: false
+            cleared: false,
+            categoryIsExplicit: categoryIsExplicit
         )
     }
 
@@ -230,6 +243,115 @@ struct BudgetStoreSaveTransactionTests {
         let createdPayee = try #require(store.payees.first { $0.name == "Trader Joe's" })
         #expect(row["description"] == createdPayee.id)
         #expect(row["tombstone"] == 0)
+    }
+
+    @Test func ruleCategoryOnlyReplacesSuggestedCategory() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-amazon", name: "Amazon")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-amazon', 'Amazon')")
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions_op, conditions, actions)
+                VALUES ('amazon-category', 'and',
+                    '[{"op":"is","field":"description","value":"payee-amazon"}]',
+                    '[{"op":"set","field":"category","value":"cat-clothing"}]')
+                """)
+        }
+
+        let explicitId = try #require(try await store.saveTransaction(
+            form(
+                payeeName: "Amazon",
+                categoryId: "cat-groceries",
+                categoryIsExplicit: true
+            )
+        ))
+        let suggestedId = try #require(try await store.saveTransaction(
+            form(payeeName: "Amazon", categoryId: "cat-groceries")
+        ))
+
+        let rows = try transactionRows(path: path)
+        let explicitRow = try #require(rows.first { $0["id"] == explicitId })
+        let suggestedRow = try #require(rows.first { $0["id"] == suggestedId })
+        #expect(explicitRow["category"] == "cat-groceries")
+        #expect(suggestedRow["category"] == "cat-clothing")
+    }
+
+    @Test func automaticCategoryShowsRuleResultInsteadOfPayeeHistory() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-cafe", name: "Cafe")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe')")
+            try db.execute(sql: """
+                INSERT INTO transactions
+                    (id, acct, category, amount, description, date, tombstone)
+                VALUES
+                    ('previous-cafe', 'acct-1', 'cat-gifts', -500,
+                     'payee-cafe', 20260913, 0)
+                """)
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions_op, conditions, actions)
+                VALUES ('cafe-category', 'and',
+                    '[{"op":"is","field":"description","value":"payee-cafe"}]',
+                    '[{"op":"set","field":"category","value":"cat-dining"}]')
+                """)
+        }
+
+        let preview = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe")
+        )
+        let historyOnly = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe"),
+            applyRules: false
+        )
+
+        #expect(preview.sourceCategoryId == "cat-gifts")
+        #expect(preview.resultCategoryId == "cat-dining")
+        #expect(historyOnly.resultCategoryId == "cat-gifts")
+    }
+
+    @Test func automaticCategoryPreviewDoesNotChangeTheSaveRuleInput() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-cafe", name: "Cafe")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-cafe', 'Cafe')")
+            try db.execute(sql: """
+                INSERT INTO transactions
+                    (id, acct, category, amount, description, date, tombstone)
+                VALUES
+                    ('previous-cafe', 'acct-1', 'cat-gifts', -500,
+                     'payee-cafe', 20260913, 0)
+                """)
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions_op, conditions, actions)
+                VALUES ('cafe-category', 'and',
+                    '[{"op":"is","field":"description","value":"payee-cafe"},
+                      {"op":"is","field":"category","value":"cat-gifts"}]',
+                    '[{"op":"set","field":"category","value":"cat-dining"},
+                      {"op":"set","field":"notes","value":"rule-ran"}]')
+                """)
+        }
+
+        let preview = try await store.automaticCategoryPreview(
+            for: form(payeeName: "Cafe")
+        )
+        var savedForm = form(payeeName: "Cafe", categoryId: preview.resultCategoryId)
+        savedForm.automaticCategoryPreview = preview
+        let savedId = try #require(try await store.saveTransaction(
+            savedForm
+        ))
+
+        let row = try #require(try transactionRows(path: path).first { $0["id"] == savedId })
+        #expect(row["category"] == "cat-dining")
+        #expect(row["notes"] as String? == "rule-ran")
     }
 
     @Test func editingATransactionReturnsNoCreatedID() async throws {
