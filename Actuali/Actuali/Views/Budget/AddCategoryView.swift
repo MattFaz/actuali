@@ -12,88 +12,33 @@ enum NewBudgetItem: String, Identifiable {
     var id: String { rawValue }
 }
 
-struct NewCategoryGroupSheet: View {
+struct CategoryGroupSheet: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
 
-    @State private var name = ""
-    @State private var isSaving = false
-    @State private var errorMessage: String?
-
-    private var trimmedName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section {
-                    TextField("Group Name", text: $name)
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.words)
-                } footer: {
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .foregroundStyle(.red)
-                    } else {
-                        Text("The group is added below your existing ones, ready for categories.")
-                    }
-                }
-            }
-            .navigationTitle("New Group")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Create") {
-                        Task { await create() }
-                    }
-                    .disabled(isSaving || trimmedName.isEmpty)
-                }
-            }
-            .disabled(isSaving)
-            .interactiveDismissDisabled(isSaving)
-        }
-    }
-
-    private func create() async {
-        // A second tap can race the button's .disabled(isSaving) re-render
-        // and enqueue a second Task — bail so one tap means one group.
-        guard !isSaving else { return }
-        isSaving = true
-        errorMessage = nil
-
-        do {
-            try await budgetStore.createCategoryGroup(name: name)
-            dismiss()
-        } catch {
-            errorMessage = error.localizedDescription
-            isSaving = false
-        }
-    }
-}
-
-struct RenameCategoryGroupSheet: View {
-    @EnvironmentObject private var budgetStore: BudgetStore
-    @Environment(\.dismiss) private var dismiss
-
-    let group: CategoryGroup
+    let group: CategoryGroup?
     let month: String
 
     @State private var name: String
     @State private var isSaving = false
     @State private var errorMessage: String?
 
-    init(group: CategoryGroup, month: String) {
+    init(group: CategoryGroup? = nil, month: String = "") {
         self.group = group
         self.month = month
-        _name = State(initialValue: group.name)
+        _name = State(initialValue: group?.name ?? "")
     }
 
     private var trimmedName: String {
         name.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var title: LocalizedStringKey {
+        group == nil ? "New Group" : "Rename Group"
+    }
+
+    private var actionTitle: LocalizedStringKey {
+        group == nil ? "Create" : "Save"
     }
 
     var body: some View {
@@ -108,18 +53,20 @@ struct RenameCategoryGroupSheet: View {
                     if let errorMessage {
                         Text(errorMessage)
                             .foregroundStyle(.red)
+                    } else if group == nil {
+                        Text("The group is added below your existing ones, ready for categories.")
                     }
                 }
             }
-            .navigationTitle("Rename Group")
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") {
-                        Task { await save() }
+                    Button(actionTitle) {
+                        Task { await submit() }
                     }
                     .disabled(isSaving || trimmedName.isEmpty)
                 }
@@ -129,21 +76,27 @@ struct RenameCategoryGroupSheet: View {
         }
     }
 
-    private func save() async {
+    private func submit() async {
+        // A second tap can race the button's .disabled(isSaving) re-render
+        // and enqueue a second Task — bail so one tap means one group.
         guard !isSaving else { return }
-        guard trimmedName != group.name else {
-            dismiss()
-            return
-        }
         isSaving = true
         errorMessage = nil
 
         do {
-            try await budgetStore.renameCategoryGroup(
-                id: group.id,
-                name: name,
-                month: month
-            )
+            if let group {
+                guard trimmedName != group.name else {
+                    dismiss()
+                    return
+                }
+                try await budgetStore.renameCategoryGroup(
+                    id: group.id,
+                    name: name,
+                    month: month
+                )
+            } else {
+                try await budgetStore.createCategoryGroup(name: name)
+            }
             dismiss()
         } catch {
             errorMessage = error.localizedDescription
@@ -237,7 +190,7 @@ struct NewCategorySheet: View {
 }
 
 #Preview("New Group") {
-    NewCategoryGroupSheet()
+    CategoryGroupSheet()
         .environmentObject(BudgetStore.previewInstance())
 }
 

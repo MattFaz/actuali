@@ -224,10 +224,15 @@ struct BudgetStoreCreateCategoryTests {
         ) == ["name"])
     }
 
-    @Test func renamingAGroupWritesOnlyItsNameMessage() async throws {
+    @Test func renamingAnIncomeGroupWritesOnlyItsNameMessage() async throws {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let store = try await makeStore(database: database)
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                UPDATE category_groups SET is_income = 1 WHERE id = 'grp-daily'
+                """)
+        }
 
         try await store.renameCategoryGroup(
             id: "grp-daily",
@@ -254,14 +259,14 @@ struct BudgetStoreCreateCategoryTests {
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
                 INSERT INTO category_groups (id, name, sort_order)
-                VALUES ('grp-fun', 'Fun', 32768.0)
+                VALUES ('grp-savings', 'Épargne', 32768.0)
                 """)
         }
 
-        await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Fun")) {
+        await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Épargne")) {
             try await store.renameCategoryGroup(
                 id: "grp-daily",
-                name: "fun",
+                name: "épargne",
                 month: "2026-07"
             )
         }

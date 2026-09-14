@@ -1328,6 +1328,11 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    private static func duplicateName(_ name: String, among names: [String]) -> String? {
+        let foldedName = name.uppercased()
+        return names.first { $0.uppercased() == foldedName }
+    }
+
     /// Validate a group rename before emitting its CRDT message. Group names
     /// remain unique across the budget, matching creation and upstream Actual.
     func validateCategoryGroupRename(id: String, name: String) throws {
@@ -1338,12 +1343,11 @@ final class BudgetDatabase: Sendable {
                 """, arguments: [id]) ?? false
             guard exists else { throw CategoryWriteError.groupNotFound }
 
-            let clash = try String.fetchOne(db, sql: """
+            let names = try String.fetchAll(db, sql: """
                 SELECT name FROM category_groups
-                WHERE id != ? AND UPPER(name) = UPPER(?) AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [id, name])
-            if let clash {
+                WHERE id != ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [id])
+            if let clash = Self.duplicateName(name, among: names) {
                 throw CategoryWriteError.duplicateGroupName(clash)
             }
         }
@@ -1364,13 +1368,11 @@ final class BudgetDatabase: Sendable {
                 SELECT name FROM category_groups
                 WHERE id = ? AND tombstone IS NOT 1
                 """, arguments: [groupId]) ?? "That group"
-            let clash = try Bool.fetchOne(db, sql: """
-                SELECT 1 FROM categories
-                WHERE cat_group = ? AND id != ? AND UPPER(name) = UPPER(?)
-                  AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [groupId, id, name]) ?? false
-            if clash {
+            let names = try String.fetchAll(db, sql: """
+                SELECT name FROM categories
+                WHERE cat_group = ? AND id != ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [groupId, id])
+            if Self.duplicateName(name, among: names) != nil {
                 throw CategoryWriteError.duplicateCategoryName(
                     name: name,
                     groupName: groupName
@@ -1386,12 +1388,11 @@ final class BudgetDatabase: Sendable {
     /// messages.
     func insertCategoryGroup(id: String, name: String) throws -> CategoryGroup {
         try dbQueue.write { db in
-            let clash = try String.fetchOne(db, sql: """
+            let names = try String.fetchAll(db, sql: """
                 SELECT name FROM category_groups
-                WHERE UPPER(name) = UPPER(?) AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [name])
-            if let clash {
+                WHERE name IS NOT NULL AND tombstone IS NOT 1
+                """)
+            if let clash = Self.duplicateName(name, among: names) {
                 throw CategoryWriteError.duplicateGroupName(clash)
             }
 
@@ -1437,12 +1438,11 @@ final class BudgetDatabase: Sendable {
             }
             let groupName: String = group["name"] ?? "That group"
 
-            let clash = try Bool.fetchOne(db, sql: """
-                SELECT 1 FROM categories
-                WHERE cat_group = ? AND UPPER(name) = UPPER(?) AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [groupId, name]) ?? false
-            if clash {
+            let names = try String.fetchAll(db, sql: """
+                SELECT name FROM categories
+                WHERE cat_group = ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [groupId])
+            if Self.duplicateName(name, among: names) != nil {
                 throw CategoryWriteError.duplicateCategoryName(name: name, groupName: groupName)
             }
 

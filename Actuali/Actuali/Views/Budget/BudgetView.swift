@@ -229,7 +229,7 @@ struct BudgetView: View {
                 EditBudgetAmountSheet(category: category)
             }
             .sheet(item: $editingCategoryGroup) { group in
-                RenameCategoryGroupSheet(group: group, month: selectedMonth)
+                CategoryGroupSheet(group: group, month: selectedMonth)
             }
             // Compact only — in a wide window the inspector below presents
             // the same selection instead. The conditional binding also hands
@@ -264,7 +264,7 @@ struct BudgetView: View {
                 case .category:
                     NewCategorySheet(groupId: firstSelectableGroupId ?? "")
                 case .group:
-                    NewCategoryGroupSheet()
+                    CategoryGroupSheet()
                 }
             }
             .navigationDestination(item: $transactionsDestination) { destination in
@@ -409,11 +409,9 @@ struct BudgetView: View {
                     }
                 }
             } header: {
-                // The Income group can only be unhidden, never hidden:
-                // hiding it would drop the app's only income total
-                // from the budget table entirely. `onSetHidden` is passed
-                // only when the group is already hidden (e.g. leftover
-                // state from before this restriction existed). GH #130's
+                // The Income group can only be unhidden, never hidden: hiding
+                // it would drop the app's only income total from the table.
+                // Rename is safe, so its menu remains available. GH #130's
                 // collapse control still applies.
                 BudgetGroupHeader(
                     name: name,
