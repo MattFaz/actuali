@@ -6054,7 +6054,7 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetCarryover(
-            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
+            months: Self.carryoverMonths(from: month, now: now), categoryIds: [categoryId], flag: enabled)
         await fetchBudgetMonth(month)
     }
 
@@ -6085,6 +6085,13 @@ final class BudgetStore: ObservableObject {
         guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
+    }
+
+    func disableAutomaticBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.resetIncomeCarryover(month: month)
         await fetchBudgetMonth(month)
     }
 

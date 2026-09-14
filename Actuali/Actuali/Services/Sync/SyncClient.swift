@@ -1363,31 +1363,34 @@ actor SyncClient {
         scheduleAutomaticSync()
     }
 
-    /// Set a category's carryover ("rollover overspending") flag on every
+    /// Set categories' carryover ("rollover overspending") flags on every
     /// month in `months`, optimistic local-first. Mirrors upstream
     /// setCategoryCarryover / setCarryover (loot-core budget/actions.ts):
     /// each month reuses its existing (month, category) row or creates the
     /// {YYYYMM}-{categoryId} one, and the flag lands as 1/0. All months go
     /// out in one message batch, like upstream's batchMessages.
-    func setBudgetCarryover(months: [String], categoryId: String, flag: Bool) async throws {
+    func setBudgetCarryover(months: [String], categoryIds: [String], flag: Bool) async throws {
         guard let database else { throw SyncError.notConfigured }
+        guard !months.isEmpty, !categoryIds.isEmpty else { return }
 
-        logger.debug("setBudgetCarryover() - months: \(months.count, privacy: .public), category: \(categoryId, privacy: .private), flag: \(flag, privacy: .public)")
+        logger.debug("setBudgetCarryover() - months: \(months.count, privacy: .public), categories: \(categoryIds.count, privacy: .public), flag: \(flag, privacy: .public)")
 
         // 1. Generate CRDT messages for every month (before any DB write, so
         //    an HLC failure leaves nothing stranded)
         var messages: [CRDTMessage] = []
         for month in months {
-            guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
-                throw SyncError.budgetTableMissing
+            for categoryId in categoryIds {
+                guard let cell = try database.budgetCell(month: month, categoryId: categoryId) else {
+                    throw SyncError.budgetTableMissing
+                }
+                var fields: [(column: String, value: (any Sendable)?)] = []
+                if !cell.exists {
+                    fields.append(("month", cell.monthInt))
+                    fields.append(("category", categoryId))
+                }
+                fields.append(("carryover", flag ? 1 : 0))
+                messages += try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
             }
-            var fields: [(column: String, value: (any Sendable)?)] = []
-            if !cell.exists {
-                fields.append(("month", cell.monthInt))
-                fields.append(("category", categoryId))
-            }
-            fields.append(("carryover", flag ? 1 : 0))
-            messages += try await messageGenerator.messages(dataset: cell.table, row: cell.rowId, fields: fields)
         }
         logger.debug("Generated \(messages.count, privacy: .public) CRDT messages")
 
@@ -1404,6 +1407,15 @@ actor SyncClient {
 
         // 4. Push to the server in the background
         scheduleAutomaticSync()
+    }
+
+    func resetIncomeCarryover(month: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+        try await setBudgetCarryover(
+            months: [month],
+            categoryIds: try database.incomeCategoryIds(),
+            flag: false
+        )
     }
 
     /// Store parsed goal templates into `categories.goal_def` (optimistic

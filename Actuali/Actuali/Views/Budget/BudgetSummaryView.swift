@@ -3,6 +3,7 @@ import SwiftUI
 /// Actions available from the envelope budget summary result menu.
 enum EnvelopeBudgetSummaryAction: Equatable {
     case resetBuffer
+    case disableAutoBuffer
     case moveToCategory
     case holdForNextMonth
     case coverFromCategory
@@ -12,17 +13,17 @@ extension EnvelopeBudgetSummaryAction {
     nonisolated static func available(for summary: EnvelopeBudgetSummary) -> [Self] {
         var actions: [Self] = []
 
-        if summary.manualBuffered > 0 {
-            actions.append(.resetBuffer)
-        }
-
         if summary.toBudget > 0 {
             actions.append(.moveToCategory)
-            if summary.manualBuffered == 0 && summary.autoBuffered == 0 {
+            if summary.autoBuffered == 0 {
                 actions.append(.holdForNextMonth)
             }
         } else if summary.toBudget < 0 {
             actions.append(.coverFromCategory)
+        }
+
+        if summary.forNextMonth > 0 {
+            actions.append(summary.manualBuffered == 0 ? .disableAutoBuffer : .resetBuffer)
         }
 
         return actions
@@ -68,6 +69,14 @@ struct BudgetBufferCompactSummaryStat: View {
                     .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(ReportStrings.format(
+                "%@, %@",
+                displayedLabel,
+                budgetStore.displayBalance(stat.amount),
+                locale: locale,
+                bundle: .main
+            ))
+            .accessibilityHint(Text(String(localized: "Opens the budget summary", locale: locale)))
         }
         .fullScreenCover(isPresented: $showingSummary) {
             if let budget = budgetStore.currentBudgetMonth, budget.toBudget != nil {
@@ -95,7 +104,7 @@ struct BudgetSummarySheet: View {
     @State private var showingActions = false
     @State private var showingCategorySheet = false
     @State private var showingHoldSheet = false
-    @State private var resetErrorMessage: String?
+    @State private var bufferErrorMessage: String?
 
     let month: String
 
@@ -133,15 +142,15 @@ struct BudgetSummarySheet: View {
         .presentationBackground(.clear)
         .task(id: month) { await loadSummary() }
         .alert(
-            String(localized: "Unable to reset buffer"),
+            String(localized: "Unable to update buffer"),
             isPresented: Binding(
-                get: { resetErrorMessage != nil },
-                set: { if !$0 { resetErrorMessage = nil } }
+                get: { bufferErrorMessage != nil },
+                set: { if !$0 { bufferErrorMessage = nil } }
             )
         ) {
-            Button(String(localized: "OK"), role: .cancel) { resetErrorMessage = nil }
+            Button(String(localized: "OK"), role: .cancel) { bufferErrorMessage = nil }
         } message: {
-            Text(resetErrorMessage ?? String(localized: "The buffer could not be reset."))
+            Text(bufferErrorMessage ?? String(localized: "The buffer could not be updated."))
         }
         .confirmationDialog(
             resultTitle,
@@ -154,6 +163,10 @@ struct BudgetSummarySheet: View {
                     case .resetBuffer:
                         Button(String(localized: "Reset next month's buffer")) {
                             resetBuffer()
+                        }
+                    case .disableAutoBuffer:
+                        Button(String(localized: "Disable current auto hold")) {
+                            disableAutoBuffer()
                         }
                     case .moveToCategory:
                         Button(String(localized: "Move to a category")) {
@@ -185,12 +198,8 @@ struct BudgetSummarySheet: View {
             isPresented: $showingCategorySheet,
             onDismiss: { Task { await loadSummary() } }
         ) {
-            if let current = budgetStore.currentBudgetMonth, let toBudget = current.toBudget {
-                BudgetToCategorySheet(
-                    budget: current,
-                    amount: toBudget,
-                    isCovering: toBudget < 0
-                )
+            if let current = budgetStore.currentBudgetMonth, current.toBudget != nil {
+                BudgetTransferSheet(context: BudgetTransferContext(toBudgetIn: current))
             }
         }
     }
@@ -297,7 +306,18 @@ struct BudgetSummarySheet: View {
                 try await budgetStore.resetBudgetBuffer(month: month)
                 await loadSummary()
             } catch {
-                resetErrorMessage = error.localizedDescription
+                bufferErrorMessage = error.localizedDescription
+            }
+        }
+    }
+
+    private func disableAutoBuffer() {
+        Task {
+            do {
+                try await budgetStore.disableAutomaticBudgetBuffer(month: month)
+                await loadSummary()
+            } catch {
+                bufferErrorMessage = error.localizedDescription
             }
         }
     }

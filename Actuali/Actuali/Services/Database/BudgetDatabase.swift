@@ -1966,6 +1966,15 @@ final class BudgetDatabase: Sendable {
         try dbQueue.read { db in try db.tableExists("zero_budget_months") }
     }
 
+    func incomeCategoryIds() throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT id FROM categories
+                WHERE is_income = 1 AND (tombstone = 0 OR tombstone IS NULL)
+                """)
+        }
+    }
+
     /// Where a budget amount write for (month, category) must land: which
     /// budget table this file uses, and the row to update or create.
     struct BudgetCellRef: Equatable {

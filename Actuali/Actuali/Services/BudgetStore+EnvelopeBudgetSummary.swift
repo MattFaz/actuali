@@ -1,5 +1,3 @@
-import Foundation
-
 struct EnvelopeBudgetSummary: Equatable, Sendable {
     let availableFunds: Int
     let lastMonthOverspent: Int
@@ -25,12 +23,6 @@ extension BudgetStore {
             toBudget: data.toBudget,
             manualBuffered: data.buffered
         )
-    }
-
-    nonisolated static func lastMonthOverspent(_ categories: [CategoryBudget]) -> Int {
-        categories.reduce(0) { total, category in
-            category.carryoverEnabled ? total : total + min(0, category.available)
-        }
     }
 
     nonisolated static func makeEnvelopeBudgetSummary(
@@ -66,12 +58,4 @@ extension BudgetStore {
         return true
     }
 
-    nonisolated static func isSummaryBaseline(_ budget: BudgetMonth) -> Bool {
-        budget.toBudget == 0
-            && budget.allIncomeCategories.allSatisfy { $0.received == 0 && $0.budgeted == 0 }
-            && budget.allCategoryBudgets.allSatisfy {
-                $0.budgeted == 0 && $0.spent == 0 && $0.available == 0 && $0.carryover == 0
-            }
-            && budget.buffered == 0
-    }
 }
