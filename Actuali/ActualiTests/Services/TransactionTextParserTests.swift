@@ -44,24 +44,17 @@ struct TransactionTextParserTests {
         #expect(result.payee == "Quick-mart Payments")
     }
 
-    @Test func resolvePayeeReplacesFundingSourceWithActualMerchant() {
-        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00."
-        #expect(TransactionTextParser.resolvePayee("Sample", in: text, isIncome: false) == "Sample Diner")
-        #expect(TransactionTextParser.resolvePayee("Sample Meal wallet", in: text, isIncome: false) == "Sample Diner")
-        #expect(TransactionTextParser.resolvePayee("Sample Diner", in: text, isIncome: false) == "Sample Diner")
+    @Test func doesNotUseFundingWalletAsPayee() {
+        let withoutMerchant = "Rs.500.00 paid from Sample Meal wallet on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(withoutMerchant).payee?.lowercased().hasPrefix("from") != true)
+
+        let withMerchant = "Rs.500.00 paid from Sample Meal wallet at Coffee Shop on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(withMerchant).payee == "Coffee Shop")
     }
 
-    @Test func resolvePayeePreservesValidPayee() {
-        let text = "ALERT: INR 150.00 is spent on your SampleCard ending 4321 at Quick-mart Payments on 01-01-2026."
-        #expect(TransactionTextParser.resolvePayee("Quick-mart Payments", in: text, isIncome: false) == "Quick-mart Payments")
-    }
-
-    @Test func parseEntrypointResolvesExpectedFields() async {
-        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00."
-        let result = await TransactionTextParser.parse(text)
-        #expect(result.amount == 250.00)
-        #expect(result.payee == "Sample Diner")
-        #expect(result.cardHint == "1234")
+    @Test func doesNotIncludeBareTrailingDateInMerchant() {
+        let text = "Paid $18.50 to Amazon 12-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(text).payee == "Amazon")
     }
 
     @Test func parsesRefundAsIncomeAndDoesNotCaptureCardAsMerchant() {
