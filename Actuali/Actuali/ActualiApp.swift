@@ -34,7 +34,9 @@ struct ActualiApp: App {
         WindowGroup {
             Group {
                 #if DEBUG
-                if CommandLine.arguments.contains("-showScheduleRowFixture") {
+                if CommandLine.arguments.contains("-showRuleConditionFixture") {
+                    RuleConditionUITestFixture()
+                } else if CommandLine.arguments.contains("-showScheduleRowFixture") {
                     ScheduleRowUITestFixture()
                 } else {
                     ContentView()
