@@ -536,11 +536,8 @@ struct BillsCalendarEngineTests {
         #expect(items[1].status == .upcoming)
     }
 
-    @Test func creditCardsMarkPaidWhenStatementIsPaidEvenWithNewSpend() {
-        // Today is August 20, 2026: August 15 statement closed, payment is due August 30.
-        // User has a live balance of -$200.00 (-20000) from ongoing cycle spend,
-        // but their August statement ($500.00) was fully paid.
-        let today = DayDate(year: 2026, month: 8, day: 20)
+    @Test func creditCardsUseEachPendingStatementWhenDueDatesOverlap() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
         let account = Account(
             id: "acc-cc",
             name: "Visa Signature",
@@ -548,40 +545,45 @@ struct BillsCalendarEngineTests {
             offBudget: false,
             closed: false,
             sortOrder: 0,
-            balance: -20000
+            balance: -50000
         )
-        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
-        let statementDue = CreditCardCycle.StatementDue(
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
+        let paidJanuary = CreditCardCycle.StatementDue(
             statementBalance: 50000,
             paymentsSince: 50000,
-            remainingDue: 0
+            remainingDue: 0,
+            dueDate: DayDate(year: 2026, month: 3, day: 1)
+        )
+        let unpaidFebruary = CreditCardCycle.StatementDue(
+            statementBalance: 30000,
+            paymentsSince: 0,
+            remainingDue: 30000,
+            dueDate: DayDate(year: 2026, month: 4, day: 1)
         )
 
-        // August: pending statement due date matches today's cycle -> marked paid with statement amount
-        let augustItems = BillsCalendarEngine.itemsForCreditCards(
+        let marchItems = BillsCalendarEngine.itemsForCreditCards(
             accounts: [account],
             cycles: ["acc-cc": cycle],
-            statementDues: ["acc-cc": statementDue],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
             year: 2026,
-            month: 8,
+            month: 3,
             today: today
         )
-        #expect(augustItems.count == 1)
-        #expect(augustItems[0].status == .paid)
-        #expect(augustItems[0].amount == -50000)
-        #expect(augustItems[0].relativeDueText == "Paid")
+        #expect(marchItems.count == 1)
+        #expect(marchItems[0].status == .paid)
+        #expect(marchItems[0].amount == -50000)
+        #expect(marchItems[0].relativeDueText == "Paid")
 
-        // September: next month's statement projection -> does not use August statementDue, falls back to live balance
-        let septemberItems = BillsCalendarEngine.itemsForCreditCards(
+        let aprilItems = BillsCalendarEngine.itemsForCreditCards(
             accounts: [account],
             cycles: ["acc-cc": cycle],
-            statementDues: ["acc-cc": statementDue],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
             year: 2026,
-            month: 9,
+            month: 4,
             today: today
         )
-        #expect(septemberItems.count == 1)
-        #expect(septemberItems[0].status == .upcoming)
-        #expect(septemberItems[0].amount == -20000)
+        #expect(aprilItems.count == 1)
+        #expect(aprilItems[0].status == .upcoming)
+        #expect(aprilItems[0].amount == -30000)
     }
 }

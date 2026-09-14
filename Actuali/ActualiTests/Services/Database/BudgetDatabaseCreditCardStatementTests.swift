@@ -91,12 +91,13 @@ struct BudgetDatabaseCreditCardStatementTests {
         }
 
         let statementDate = DayDate(year: 2026, month: 2, day: 15)
+        let dueDate = DayDate(year: 2026, month: 3, day: 2)
 
         // Case 1: Before payment, statement balance is $500, remaining due is $500, live balance is $700.
         let resultsBefore = try await db.fetchCreditCardStatementDues(for: [
-            (accountId: "card1", statementDate: statementDate, liveBalance: -70000)
+            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -70000)
         ])
-        let dueBeforePayment = resultsBefore["card1"]!
+        let dueBeforePayment = resultsBefore["card1"]!.first!
         #expect(dueBeforePayment.statementBalance == 50000)
         #expect(dueBeforePayment.paymentsSince == 0)
         #expect(dueBeforePayment.remainingDue == 50000)
@@ -111,9 +112,9 @@ struct BudgetDatabaseCreditCardStatementTests {
         }
 
         let resultsAfter = try await db.fetchCreditCardStatementDues(for: [
-            (accountId: "card1", statementDate: statementDate, liveBalance: -20000)
+            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -20000)
         ])
-        let dueAfterPayment = resultsAfter["card1"]!
+        let dueAfterPayment = resultsAfter["card1"]!.first!
         #expect(dueAfterPayment.statementBalance == 50000)
         #expect(dueAfterPayment.paymentsSince == 50000)
         #expect(dueAfterPayment.remainingDue == 0)
@@ -133,14 +134,14 @@ struct BudgetDatabaseCreditCardStatementTests {
         }
 
         let results = try await db.fetchCreditCardStatementDues(for: [
-            (accountId: "card1", statementDate: DayDate(year: 2026, month: 1, day: 15), liveBalance: -40000),
-            (accountId: "card2", statementDate: DayDate(year: 2026, month: 1, day: 10), liveBalance: -15000)
+            (accountId: "card1", statementDate: DayDate(year: 2026, month: 1, day: 15), dueDate: DayDate(year: 2026, month: 2, day: 1), liveBalance: -40000),
+            (accountId: "card2", statementDate: DayDate(year: 2026, month: 1, day: 10), dueDate: DayDate(year: 2026, month: 1, day: 25), liveBalance: -15000)
         ])
 
-        #expect(results["card1"]?.statementBalance == 40000)
-        #expect(results["card1"]?.remainingDue == 40000)
-        #expect(results["card2"]?.statementBalance == 15000)
-        #expect(results["card2"]?.remainingDue == 15000)
+        #expect(results["card1"]?.first?.statementBalance == 40000)
+        #expect(results["card1"]?.first?.remainingDue == 40000)
+        #expect(results["card2"]?.first?.statementBalance == 15000)
+        #expect(results["card2"]?.first?.remainingDue == 15000)
     }
 
     @Test func fetchRecentStatementsReturnsOnlyStatementsWithData() async throws {
@@ -176,21 +177,19 @@ struct BudgetDatabaseCreditCardStatementTests {
         #expect(records.count == 2)
 
         // Most recent statement (Cycle 1)
-        #expect(records[0].statementDate == DayDate(year: 2026, month: 8, day: 15))
+        #expect(records[0].endDate == DayDate(year: 2026, month: 8, day: 15))
         #expect(records[0].statementBalance == 30000)
         #expect(records[0].totalSpend == 30000)
-        #expect(records[0].transactionCount == 2)
         #expect(records[0].remainingDue == 30000)
         #expect(records[0].isPaid == false)
 
         // Older statement (Cycle 2)
-        #expect(records[1].statementDate == DayDate(year: 2026, month: 7, day: 15))
+        #expect(records[1].endDate == DayDate(year: 2026, month: 7, day: 15))
         #expect(records[1].statementBalance == 40000)
         #expect(records[1].totalSpend == 40000)
         #expect(records[1].paymentsSince == 40000)
         #expect(records[1].remainingDue == 0)
         #expect(records[1].isPaid == true)
-        #expect(records[1].transactionCount == 2)
     }
 
     @Test func fetchTransactionsWithDateRangeFiltersAccurately() async throws {

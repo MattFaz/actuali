@@ -28,7 +28,10 @@ struct AccountDetailView: View {
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
 
     private var statementDue: CreditCardCycle.StatementDue? {
-        budgetStore.creditCardStatementDues[account.id]
+        guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
+        let today = DayDate.today()
+        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            ?? dues.first { today <= $0.dueDate }
     }
 
     private var currentBalance: Int {
@@ -217,7 +220,7 @@ struct AccountDetailView: View {
                     let range = cycle.cycleRange()
                     let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
                     let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
-                    let dueSummary = cycle.dueSummary()
+                    let dueSummary = cycle.dueSummary(dueDate: statementDue?.dueDate)
 
                     // Collapsed by default like the balance breakdown above, but
                     // the due date rides on the header row rather than hiding —

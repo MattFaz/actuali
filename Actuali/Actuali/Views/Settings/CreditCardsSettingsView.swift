@@ -300,12 +300,17 @@ struct CreditCardCycleRow: View {
     }
 
     private var dueColor: Color {
-        Self.urgencyColor(days: cycle.daysUntilDue())
+        Self.urgencyColor(days: cycle.daysUntilDue(dueDate: statementDue?.dueDate))
     }
 
-    private var isPaid: Bool {
-        budgetStore.creditCardStatementDues[account.id]?.isPaid ?? false
+    private var statementDue: CreditCardCycle.StatementDue? {
+        guard let dues = budgetStore.creditCardStatementDues[account.id] else { return nil }
+        let today = DayDate.today()
+        return dues.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            ?? dues.first { today <= $0.dueDate }
     }
+
+    private var isPaid: Bool { statementDue?.isPaid ?? false }
 
     /// Card background with a colored left urgency border strip.
     nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
@@ -340,7 +345,7 @@ struct CreditCardCycleRow: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary())
+                Text(isPaid ? String(localized: "Paid") : cycle.dueShortSummary(dueDate: statementDue?.dueDate))
                     .font(.caption2.weight(.semibold))
                     .foregroundStyle(.primary)
                     .padding(.horizontal, 7)
@@ -356,7 +361,7 @@ struct CreditCardCycleRow: View {
         // header — the long `dueSummary` carries the date the pill drops.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
-            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary())
+            String(format: String(localized: "%@, balance %@, cycle spend %@, %@"), account.name, budgetStore.displayBalance(account.balance), budgetStore.displayBalance(cycleSpend), isPaid ? String(localized: "Paid") : cycle.dueSummary(dueDate: statementDue?.dueDate))
         )
         // dataVersion is in the key so a transaction landing while this screen
         // is open refreshes the spend, the way AccountDetailView's reload does.

@@ -251,7 +251,7 @@ final class BudgetStore: ObservableObject {
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var schedulePaymentDates: [String: Set<DayDate>] = [:]
     /// Statement dues (statement balance, payments since closing, remaining due) for active credit card accounts.
-    @Published var creditCardStatementDues: [String: CreditCardCycle.StatementDue] = [:]
+    @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
@@ -4534,7 +4534,7 @@ final class BudgetStore: ObservableObject {
         guard let database,
               let cycle = activeCreditCardCycle(for: accountId),
               let account = accounts.first(where: { $0.id == accountId }) else { return [] }
-        let cycles = cycle.recentStatementCycles(count: 3)
+        let cycles = cycle.recentStatementCycles()
         return (try? await database.fetchRecentStatements(
             accountId: accountId,
             cycles: cycles,
@@ -4549,7 +4549,7 @@ final class BudgetStore: ObservableObject {
             accountId: accountId,
             startDate: startDate,
             endDate: endDate,
-            limit: 1000
+            limit: .max
         )) ?? []
     }
 
@@ -5867,17 +5867,24 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Loads the latest statement dues for all active credit cards.
-    func loadCreditCardStatementDues() async {
+    func loadCreditCardStatementDues(today: DayDate = .today()) async {
         guard let database else {
             creditCardStatementDues = [:]
             return
         }
-        let today = DayDate.today()
-        var requests: [(accountId: String, statementDate: DayDate, liveBalance: Int)] = []
+        var requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)] = []
         for account in accounts where !account.closed {
             guard let cycle = activeCreditCardCycle(for: account.id) else { continue }
-            let pendingStatement = cycle.upcomingStatementDate(for: today)
-            requests.append((accountId: account.id, statementDate: pendingStatement, liveBalance: account.balance))
+            // Keep recent closed statements for the Bills history. The 60-day
+            // maximum means these three cover every statement still pending.
+            let recentStatements = cycle.recentStatementCycles(today: today).reversed()
+            for statement in recentStatements {
+                requests.append((account.id, statement.end, statement.dueDate, account.balance))
+            }
+            if !recentStatements.contains(where: { today <= $0.dueDate }) {
+                let statementDate = cycle.cycleRange(for: today).end
+                requests.append((account.id, statementDate, cycle.dueDate(forStatement: statementDate), account.balance))
+            }
         }
         guard !requests.isEmpty else {
             creditCardStatementDues = [:]

@@ -5,11 +5,16 @@ struct CreditCardStatementDetailView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
 
     let account: Account
-    let statement: CreditCardCycle.StatementRecord
+    @State private var statement: CreditCardCycle.StatementRecord
 
     @State private var transactions: [Transaction] = []
     @State private var isLoading = true
     @State private var editingTransaction: Transaction?
+
+    init(account: Account, statement: CreditCardCycle.StatementRecord) {
+        self.account = account
+        _statement = State(initialValue: statement)
+    }
 
     private var startStr: String {
         Transaction.formattedDate(from: statement.startDate.yyyymmdd, style: .abbreviated)
@@ -101,7 +106,7 @@ struct CreditCardStatementDetailView: View {
                 }
             }
             .sheet(item: $editingTransaction, onDismiss: {
-                Task { await loadTransactions() }
+                Task { await reloadAfterEdit() }
             }) { transaction in
                 AddTransactionView(editing: transaction)
                     .environmentObject(budgetStore)
@@ -131,5 +136,15 @@ struct CreditCardStatementDetailView: View {
             endDate: statement.endDate.yyyymmdd
         )
         isLoading = false
+    }
+
+    private func reloadAfterEdit() async {
+        await loadTransactions()
+        guard let refreshed = await budgetStore.fetchRecentStatements(accountId: account.id)
+            .first(where: { $0.id == statement.id }) else {
+            dismiss()
+            return
+        }
+        statement = refreshed
     }
 }

@@ -151,6 +151,10 @@ struct CreditCardCycleTests {
         #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 3, day: 1)) == "Due tomorrow")
         #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasPrefix("Due "))
         #expect(cycle.dueSummary(for: DayDate(year: 2026, month: 2, day: 20)).hasSuffix("(10d)"))
+        #expect(cycle.dueShortSummary(
+            for: DayDate(year: 2026, month: 2, day: 20),
+            dueDate: DayDate(year: 2026, month: 4, day: 1)
+        ) == "Due in 40d")
     }
 
     @Test func dueShortSummaryMatchesTheLongFormNearTheDueDate() {
@@ -243,11 +247,13 @@ struct CreditCardCycleTests {
     }
 
     @Test func calculateStatementDueScenarios() {
+        let dueDate = DayDate(year: 2026, month: 3, day: 2)
         // Scenario 1: $500 statement owed, $200 new spend, $0 payment -> $500 due
         let s1 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: -50000,
             paymentsSince: 0,
-            liveBalance: -70000
+            liveBalance: -70000,
+            dueDate: dueDate
         )
         #expect(s1.statementBalance == 50000)
         #expect(s1.paymentsSince == 0)
@@ -258,7 +264,8 @@ struct CreditCardCycleTests {
         let s2 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: -50000,
             paymentsSince: 50000,
-            liveBalance: -20000
+            liveBalance: -20000,
+            dueDate: dueDate
         )
         #expect(s2.statementBalance == 50000)
         #expect(s2.paymentsSince == 50000)
@@ -269,7 +276,8 @@ struct CreditCardCycleTests {
         let s3 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: -50000,
             paymentsSince: 30000,
-            liveBalance: -40000
+            liveBalance: -40000,
+            dueDate: dueDate
         )
         #expect(s3.statementBalance == 50000)
         #expect(s3.paymentsSince == 30000)
@@ -280,7 +288,8 @@ struct CreditCardCycleTests {
         let s4 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: -50000,
             paymentsSince: 10000,
-            liveBalance: -60000
+            liveBalance: -60000,
+            dueDate: dueDate
         )
         #expect(s4.statementBalance == 50000)
         #expect(s4.paymentsSince == 10000)
@@ -291,7 +300,8 @@ struct CreditCardCycleTests {
         let s5 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: -50000,
             paymentsSince: 60000,
-            liveBalance: 0
+            liveBalance: 0,
+            dueDate: dueDate
         )
         #expect(s5.remainingDue == 0)
         #expect(s5.isPaid == true)
@@ -300,7 +310,8 @@ struct CreditCardCycleTests {
         let s6 = CreditCardCycle.calculateStatementDue(
             statementRawBalance: 0,
             paymentsSince: 0,
-            liveBalance: -20000
+            liveBalance: -20000,
+            dueDate: dueDate
         )
         #expect(s6.statementBalance == 0)
         #expect(s6.remainingDue == 0)
@@ -315,7 +326,7 @@ struct CreditCardCycleTests {
         // 2: Jun 16 - Jul 15
         // 3: May 16 - Jun 15
         let today = DayDate(year: 2026, month: 9, day: 9)
-        let cycles = cycle.recentStatementCycles(count: 3, today: today)
+        let cycles = cycle.recentStatementCycles(today: today)
 
         #expect(cycles.count == 3)
         #expect(cycles[0].start == DayDate(year: 2026, month: 7, day: 16))
@@ -338,7 +349,7 @@ struct CreditCardCycleTests {
         // Statement 2: Feb 28 (clamped)
         // Statement 3: Jan 31
         let today = DayDate(year: 2026, month: 4, day: 10)
-        let cycles = cycle.recentStatementCycles(count: 3, today: today)
+        let cycles = cycle.recentStatementCycles(today: today)
 
         #expect(cycles.count == 3)
         #expect(cycles[0].end == DayDate(year: 2026, month: 3, day: 31))

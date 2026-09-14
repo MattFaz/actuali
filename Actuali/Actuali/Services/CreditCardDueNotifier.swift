@@ -6,7 +6,7 @@ private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "CreditC
 
 /// Schedules local notifications for credit cards with upcoming payment due dates.
 /// Reminders are posted at 7, 5, 3, and 1 days before the due date if the card has
-/// an unpaid balance (`balance < 0`).
+/// an unpaid statement, falling back to the live balance when statement data is unavailable.
 enum CreditCardDueNotifier {
     /// Reminders scheduled at 7, 5, 3, and 1 day before due date.
     static let reminderOffsets = [7, 5, 3, 1]
@@ -29,7 +29,7 @@ enum CreditCardDueNotifier {
     nonisolated static func scheduleNotifications(
         accounts: [Account],
         cycles: [String: CreditCardCycle],
-        statementDues: [String: CreditCardCycle.StatementDue] = [:],
+        statementDues: [String: [CreditCardCycle.StatementDue]] = [:],
         currencyCode: String,
         narrowSymbol: Bool = false,
         settings: CreditCardNotificationSettings = CreditCardNotificationSettings(),
@@ -62,8 +62,11 @@ enum CreditCardDueNotifier {
 
         for accountId in Set(accounts.map(\.id)).union(cycles.keys) {
             let ids = reminderOffsets.map { requestIdentifier(accountId: accountId, offsetDays: $0) }
-            let statementDue = statementDues[accountId]
-            let isUnpaid = statementDue.map { $0.remainingDue > 0 } ?? (accountsById[accountId].map { $0.balance < 0 } ?? false)
+            let dues = statementDues[accountId]
+            let statementDue = dues?.first { today <= $0.dueDate && $0.remainingDue > 0 }
+            let isUnpaid = dues == nil
+                ? (accountsById[accountId].map { $0.balance < 0 } ?? false)
+                : statementDue != nil
             guard let account = accountsById[accountId],
                   !account.closed,
                   isUnpaid,
@@ -73,7 +76,7 @@ enum CreditCardDueNotifier {
             }
 
             // Card has an unpaid balance. Schedule reminders for upcoming offsets.
-            let dueDate = cycle.upcomingDueDate(for: today)
+            let dueDate = statementDue?.dueDate ?? cycle.upcomingDueDate(for: today)
             for offset in reminderOffsets {
                 let reminderDay = dueDate.adding(days: -offset)
                 var components = DateComponents()

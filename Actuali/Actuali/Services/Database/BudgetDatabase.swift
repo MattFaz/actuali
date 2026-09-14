@@ -1064,11 +1064,11 @@ final class BudgetDatabase: Sendable {
     /// Statement balance, payments made since statement closing, and remaining statement due
     /// for credit card accounts. Run in a single read lock.
     func fetchCreditCardStatementDues(
-        for requests: [(accountId: String, statementDate: DayDate, liveBalance: Int)]
-    ) async throws -> [String: CreditCardCycle.StatementDue] {
+        for requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)]
+    ) async throws -> [String: [CreditCardCycle.StatementDue]] {
         guard !requests.isEmpty else { return [:] }
         return try await dbQueue.read { db in
-            var results: [String: CreditCardCycle.StatementDue] = [:]
+            var results: [String: [CreditCardCycle.StatementDue]] = [:]
             for req in requests {
                 let row = try Row.fetchOne(db, sql: """
                     SELECT
@@ -1086,11 +1086,12 @@ final class BudgetDatabase: Sendable {
                 let statementRawBalance: Int = row?["statementRawBalance"] ?? 0
                 let paymentsSince: Int = row?["paymentsSince"] ?? 0
 
-                results[req.accountId] = CreditCardCycle.calculateStatementDue(
+                results[req.accountId, default: []].append(CreditCardCycle.calculateStatementDue(
                     statementRawBalance: statementRawBalance,
                     paymentsSince: paymentsSince,
-                    liveBalance: req.liveBalance
-                )
+                    liveBalance: req.liveBalance,
+                    dueDate: req.dueDate
+                ))
             }
             return results
         }
@@ -1138,7 +1139,8 @@ final class BudgetDatabase: Sendable {
                 let statementDue = CreditCardCycle.calculateStatementDue(
                     statementRawBalance: statementRawBalance,
                     paymentsSince: paymentsSince,
-                    liveBalance: liveBalance
+                    liveBalance: liveBalance,
+                    dueDate: cycle.dueDate
                 )
 
                 // Only include if data is available (has transactions or non-zero statement balance)
@@ -1146,13 +1148,11 @@ final class BudgetDatabase: Sendable {
                     records.append(CreditCardCycle.StatementRecord(
                         startDate: cycle.start,
                         endDate: cycle.end,
-                        statementDate: cycle.end,
                         dueDate: cycle.dueDate,
                         statementBalance: statementDue.statementBalance,
                         paymentsSince: statementDue.paymentsSince,
                         remainingDue: statementDue.remainingDue,
-                        totalSpend: totalSpend,
-                        transactionCount: transactionCount
+                        totalSpend: totalSpend
                     ))
                 }
             }

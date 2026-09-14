@@ -224,7 +224,7 @@ enum BillsCalendarEngine: Sendable {
     static func itemsForCreditCards(
         accounts: [Account],
         cycles: [String: CreditCardCycle],
-        statementDues: [String: CreditCardCycle.StatementDue] = [:],
+        statementDues: [String: [CreditCardCycle.StatementDue]] = [:],
         year: Int,
         month: Int,
         today: DayDate = .today()
@@ -240,11 +240,7 @@ enum BillsCalendarEngine: Sendable {
                 let billAmount: Int
                 let dueText: String
 
-                // statementDues describes the statement that is pending today. Any other
-                // month projects a different statement, so fall back to the live balance.
-                let statementDue = (dueDate == cycle.upcomingDueDate(for: today))
-                    ? statementDues[account.id]
-                    : nil
+                let statementDue = statementDues[account.id]?.first { $0.dueDate == dueDate }
 
                 if let statementDue {
                     if statementDue.isPaid {
