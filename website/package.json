@@ -18,7 +18,7 @@
   "dependencies": {
     "@astrojs/cloudflare": "^14.0.0",
     "@tailwindcss/vite": "^4.2.2",
-    "astro": "^7.0.2",
+    "astro": "^7.2.8",
     "tailwindcss": "^4.2.2"
   },
   "devDependencies": {
