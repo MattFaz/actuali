@@ -5812,9 +5812,9 @@ final class BudgetStore: ObservableObject {
         }
         do {
             let loaded = try await database.fetchSchedules()
-            let paid = try await database.fetchPaidScheduleIds(for: loaded)
-            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
             let today = DayDate.today()
+            let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
+            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
 
             var statuses: [String: ScheduleStatus] = [:]
             for schedule in loaded {
@@ -6079,7 +6079,7 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetCarryover(
-            months: Self.carryoverMonths(from: month, now: now), categoryId: categoryId, flag: enabled)
+            months: Self.carryoverMonths(from: month, now: now), categoryIds: [categoryId], flag: enabled)
         await fetchBudgetMonth(month)
     }
 
@@ -6091,6 +6091,33 @@ final class BudgetStore: ObservableObject {
         let latest = BudgetMonthMath.addMonths(BudgetMonthMath.currentMonth(now), 12)
         let count = max(BudgetMonthMath.differenceInCalendarMonths(latest, month), 0)
         return (0...count).map { BudgetMonthMath.addMonths(month, $0) }
+    }
+
+    /// Hold part or all of this envelope month's To Budget for next month.
+    func holdBudgetForNextMonth(month: String, amountCents: Int) async throws {
+        guard let budget = currentBudgetMonth, budget.month == month, let toBudget = budget.toBudget, amountCents > 0 else { throw BudgetStoreError.invalidAmount }
+        guard Self.isValidHoldAmount(amountCents, toBudget: toBudget) else { throw BudgetStoreError.transferAmountExceedsSource }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: budget.buffered + amountCents)
+        await fetchBudgetMonth(month)
+    }
+
+    nonisolated static func isValidHoldAmount(_ amountCents: Int, toBudget: Int) -> Bool {
+        amountCents > 0 && toBudget > 0 && amountCents <= toBudget
+    }
+
+    func resetBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.setBudgetBuffer(month: month, amount: 0)
+        await fetchBudgetMonth(month)
+    }
+
+    func disableAutomaticBudgetBuffer(month: String) async throws {
+        guard currentBudgetMonth?.month == month else { throw BudgetStoreError.invalidAmount }
+        guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
+        try await syncClient.resetIncomeCarryover(month: month)
+        await fetchBudgetMonth(month)
     }
 
     /// Move budgeted funds between categories (GH #128), nil meaning the

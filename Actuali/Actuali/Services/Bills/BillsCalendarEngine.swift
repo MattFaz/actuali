@@ -131,25 +131,31 @@ enum BillsCalendarEngine: Sendable {
 
                 let sortedDates = occurrenceDates.sorted()
                 for (index, date) in sortedDates.enumerated() {
+                    let prevDate = index > 0 ? sortedDates[index - 1] : nil
+                    let earlyBound = ScheduleStatusCalculator.occurrenceMatchStartDate(
+                        nextDate: date,
+                        dateOp: schedule.dateOp,
+                        postsTransaction: schedule.postsTransaction,
+                        frequency: config.frequency)
+                    let matchStart = prevDate.map { max($0.adding(days: 1), earlyBound) } ?? earlyBound
+
+                    let nextDate = sortedDates.dropFirst(index + 1).first
+                        ?? ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: date.adding(days: 1))
+                    let nextMatchStart = nextDate.flatMap { next -> DayDate? in
+                        guard next > date else { return nil }
+                        guard next <= today else { return next }
+                        return max(date.adding(days: 1), ScheduleStatusCalculator.occurrenceMatchStartDate(
+                            nextDate: next,
+                            dateOp: schedule.dateOp,
+                            postsTransaction: schedule.postsTransaction,
+                            frequency: config.frequency))
+                    }
+
                     let itemStatus: ScheduleStatus
                     if date == schedule.nextDate {
                         itemStatus = baseStatus
                     } else if paymentDates[schedule.id]?.contains(where: { paymentDate in
-                        let matchStart = ScheduleStatusCalculator.occurrenceMatchStartDate(
-                            nextDate: date,
-                            dateOp: schedule.dateOp,
-                            postsTransaction: schedule.postsTransaction
-                        )
-                        let nextDate = sortedDates.dropFirst(index + 1).first
-                            ?? ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: date.adding(days: 1))
-                        let nextMatchStart = nextDate.flatMap { next in
-                            next > date ? ScheduleStatusCalculator.occurrenceMatchStartDate(
-                                nextDate: next,
-                                dateOp: schedule.dateOp,
-                                postsTransaction: schedule.postsTransaction
-                            ) : nil
-                        }
-                        return paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
+                        paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
                     }) == true {
                         itemStatus = .paid
                     } else if date < today {

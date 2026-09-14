@@ -278,4 +278,19 @@ struct CategoryBudgetProgressTests {
             == ["small", "large", "partial"])
         #expect(!context.canUseToBudget)
     }
+
+    @Test func toBudgetTransferUsesCategoriesAsTheOtherEndpoint() {
+        let partial = makeCategory(id: "partial", groupId: "home", budgeted: 3000, spent: 0, available: 3000)
+        let large = makeCategory(id: "large", groupId: "other", budgeted: 12000, spent: 0, available: 12000)
+        let small = makeCategory(id: "small", groupId: "home", budgeted: 6000, spent: 0, available: 6000)
+        let context = BudgetTransferContext(toBudgetIn: BudgetMonth(
+            month: "2026-07",
+            categoryBudgets: [partial, large, small],
+            toBudget: -5000
+        ))
+
+        #expect(context.amount == -5000)
+        #expect(context.rankedCategories.map(\.categoryId) == ["small", "large", "partial"])
+        #expect(!context.canUseToBudget)
+    }
 }

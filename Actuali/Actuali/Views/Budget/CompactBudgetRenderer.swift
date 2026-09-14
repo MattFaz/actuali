@@ -19,11 +19,18 @@ struct CompactBudgetSummary: View {
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 8) {
-                    CompactOverviewStat(
-                        stat: overview.leading,
-                        isResult: overview.leading.kind == .toBudget,
-                        alignment: .leading
-                    )
+                    if overview.leading.kind == .toBudget {
+                        BudgetBufferCompactSummaryStat(
+                            stat: overview.leading,
+                            alignment: .leading
+                        )
+                    } else {
+                        CompactOverviewStat(
+                            stat: overview.leading,
+                            isResult: false,
+                            alignment: .leading
+                        )
+                    }
                     ForEach(Array(overview.columns.enumerated()), id: \.offset) { _, stat in
                         HStack {
                                 Text(stat.label(locale: locale, bundle: .main))
@@ -35,15 +42,24 @@ struct CompactBudgetSummary: View {
                 }
             } else {
                 HStack(spacing: 0) {
-                    CompactOverviewStat(
-                        stat: overview.leading,
-                        isResult: overview.leading.kind == .toBudget,
+                    Group {
+                        if overview.leading.kind == .toBudget {
+                            BudgetBufferCompactSummaryStat(
+                                stat: overview.leading,
+                                alignment: .leading
+                            )
+                        } else {
+                            CompactOverviewStat(
+                                stat: overview.leading,
+                                isResult: false,
+                                alignment: .leading
+                            )
+                        }
+                    }
+                    .frame(
+                        width: CompactBudgetTableLayout.titleColumnWidth,
                         alignment: .leading
                     )
-                        .frame(
-                            width: CompactBudgetTableLayout.titleColumnWidth,
-                            alignment: .leading
-                        )
 
                     HStack(spacing: CompactBudgetTableLayout.amountColumnSpacing) {
                         ForEach(Array(overview.columns.enumerated()), id: \.offset) { _, stat in
