@@ -440,7 +440,7 @@ struct BillsCalendarEngineTests {
         let schedule = ScheduleSummary(
             id: "sch-salary",
             name: "Monthly Salary",
-            nextDate: DayDate(year: 2026, month: 10, day: 1),
+            nextDate: DayDate(year: 2026, month: 9, day: 1),
             amount: .fixed(500000),
             amountOp: .isApprox,
             dateOp: "isapprox",
@@ -452,7 +452,7 @@ struct BillsCalendarEngineTests {
 
         let items = BillsCalendarEngine.itemsForSchedules(
             schedules: [schedule],
-            statuses: ["sch-salary": .scheduled],
+            statuses: ["sch-salary": .paid],
             paymentDates: ["sch-salary": [DayDate(year: 2026, month: 8, day: 31)]],
             accounts: [],
             payees: [],
@@ -474,7 +474,7 @@ struct BillsCalendarEngineTests {
         let schedule = ScheduleSummary(
             id: "sch-rent",
             name: "Rent",
-            nextDate: DayDate(year: 2026, month: 10, day: 4),
+            nextDate: DayDate(year: 2026, month: 9, day: 4),
             amount: .fixed(-4_000_000),
             amountOp: .isExactly,
             dateOp: "is",
@@ -486,7 +486,7 @@ struct BillsCalendarEngineTests {
 
         let items = BillsCalendarEngine.itemsForSchedules(
             schedules: [schedule],
-            statuses: ["sch-rent": .scheduled],
+            statuses: ["sch-rent": .paid],
             paymentDates: ["sch-rent": [DayDate(year: 2026, month: 9, day: 1)]],
             accounts: [],
             payees: [],
@@ -500,5 +500,39 @@ struct BillsCalendarEngineTests {
         #expect(items[0].date == DayDate(year: 2026, month: 9, day: 4))
         #expect(items[0].status == .paid)
         #expect(items[0].relativeDueText == "Paid")
+    }
+
+    @Test func advancedScheduleWithoutPaymentIsMissed() {
+        let config = RecurConfig(frequency: .monthly, start: DayDate(year: 2026, month: 1, day: 1))
+        let schedule = ScheduleSummary(
+            id: "sch-skipped", nextDate: DayDate(year: 2026, month: 10, day: 1),
+            amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: false,
+            completed: false, isCustom: false)
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [schedule.id: .scheduled],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
+            today: DayDate(year: 2026, month: 9, day: 9))
+
+        #expect(items.map(\.status) == [.missed])
+    }
+
+    @Test func lateWeeklyPaymentStaysWithCurrentOccurrence() {
+        let config = RecurConfig(frequency: .weekly, start: DayDate(year: 2026, month: 9, day: 7))
+        let schedule = ScheduleSummary(
+            id: "sch-weekly", nextDate: DayDate(year: 2026, month: 9, day: 14),
+            amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: true,
+            completed: false, isCustom: false)
+
+        let items = BillsCalendarEngine.itemsForSchedules(
+            schedules: [schedule], statuses: [schedule.id: .upcoming],
+            paymentDates: [schedule.id: [DayDate(year: 2026, month: 9, day: 12)]],
+            accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
+            today: DayDate(year: 2026, month: 9, day: 13))
+
+        #expect(items[0].date == DayDate(year: 2026, month: 9, day: 7))
+        #expect(items[0].status == .paid)
+        #expect(items[1].date == DayDate(year: 2026, month: 9, day: 14))
+        #expect(items[1].status == .upcoming)
     }
 }
