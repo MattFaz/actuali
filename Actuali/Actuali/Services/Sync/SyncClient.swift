@@ -1064,8 +1064,30 @@ actor SyncClient {
         guard let database else { throw SyncError.notConfigured }
 
         try database.validateCategoryRename(id: id, name: name)
+        try await rename(database: database, dataset: Category.datasetName, id: id, name: name)
+    }
+
+    /// Rename a category group through the same optimistic CRDT path.
+    func renameCategoryGroup(id: String, name: String) async throws {
+        guard let database else { throw SyncError.notConfigured }
+
+        try database.validateCategoryGroupRename(id: id, name: name)
+        try await rename(
+            database: database,
+            dataset: CategoryGroup.datasetName,
+            id: id,
+            name: name
+        )
+    }
+
+    private func rename(
+        database: BudgetDatabase,
+        dataset: String,
+        id: String,
+        name: String
+    ) async throws {
         let messages = try await messageGenerator.messages(
-            dataset: Category.datasetName,
+            dataset: dataset,
             row: id,
             fields: [("name", name)]
         )

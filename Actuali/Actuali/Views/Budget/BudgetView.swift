@@ -99,6 +99,7 @@ struct BudgetView: View {
     @Environment(\.locale) private var locale
     @State private var selectedMonth = currentMonthString()
     @State private var editingCategory: CategoryBudget?
+    @State private var editingCategoryGroup: CategoryGroup?
     @State private var selectedCategory: CategoryBudget?
     @State private var transferContext: BudgetTransferContext?
     @State private var transactionsDestination: CategoryTransactionsDestination?
@@ -227,6 +228,9 @@ struct BudgetView: View {
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
             }
+            .sheet(item: $editingCategoryGroup) { group in
+                CategoryGroupSheet(group: group, month: selectedMonth)
+            }
             // Compact only — in a wide window the inspector below presents
             // the same selection instead. The conditional binding also hands
             // an open presentation over to the other style on a window resize.
@@ -260,7 +264,7 @@ struct BudgetView: View {
                 case .category:
                     NewCategorySheet(groupId: firstSelectableGroupId ?? "")
                 case .group:
-                    NewCategoryGroupSheet()
+                    CategoryGroupSheet()
                 }
             }
             .navigationDestination(item: $transactionsDestination) { destination in
@@ -327,6 +331,7 @@ struct BudgetView: View {
                     onSetHidden: {
                         setCategoryGroupHidden(group.id, hidden: $0)
                     },
+                    onRename: { editCategoryGroup(group.id) },
                     onToggleCollapse: { toggleCollapsed(group.id) }
                 )
                 .textCase(nil)
@@ -360,6 +365,7 @@ struct BudgetView: View {
                     onSetHidden: {
                         setCategoryGroupHidden(group.id, hidden: $0)
                     },
+                    onRename: { editCategoryGroup(group.id) },
                     totals: budgetStore.showGroupTotals ? group.totals : nil,
                     showsSpent: budgetStore.showCompactSpentColumn,
                     onToggleCollapse: { toggleCollapsed(group.id) }
@@ -382,6 +388,9 @@ struct BudgetView: View {
         let onSetHidden = group.flatMap { group -> ((Bool) -> Void)? in
             group.hidden ? { setCategoryGroupHidden(group.id, hidden: $0) } : nil
         }
+        let onRename = group.map { group in
+            { editingCategoryGroup = group }
+        }
         switch budgetStore.budgetDisplayStyle {
         case .clean:
             Section {
@@ -400,17 +409,16 @@ struct BudgetView: View {
                     }
                 }
             } header: {
-                // The Income group can only be unhidden, never hidden:
-                // hiding it would drop the app's only income total
-                // from the budget table entirely. `onSetHidden` is passed
-                // only when the group is already hidden (e.g. leftover
-                // state from before this restriction existed). GH #130's
+                // The Income group can only be unhidden, never hidden: hiding
+                // it would drop the app's only income total from the table.
+                // Rename is safe, so its menu remains available. GH #130's
                 // collapse control still applies.
                 BudgetGroupHeader(
                     name: name,
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
                     onSetHidden: onSetHidden,
+                    onRename: onRename,
                     receivedTotal: budget.totalIncome,
                     onToggleCollapse: {
                         toggleCollapsed(Self.incomeGroupCollapseID)
@@ -441,6 +449,7 @@ struct BudgetView: View {
                     isCollapsed: isCollapsed,
                     isHidden: group?.hidden == true,
                     onSetHidden: onSetHidden,
+                    onRename: onRename,
                     totalBudgeted: budget.totalBudgetedIncome,
                     totalReceived: budget.totalIncome,
                     showsBudgeted: budget.isTrackingBudget,
@@ -845,6 +854,10 @@ struct BudgetView: View {
                 budgetStore.error = error.localizedDescription
             }
         }
+    }
+
+    private func editCategoryGroup(_ id: String) {
+        editingCategoryGroup = budgetStore.categoryGroups.first { $0.id == id }
     }
 
     private func setCategoryGroupHidden(_ id: String, hidden: Bool) {
@@ -1420,6 +1433,7 @@ struct BudgetGroupHeader: View {
     let isCollapsed: Bool
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
+    var onRename: (() -> Void)? = nil
     /// Income groups show the money received beside their name.
     var receivedTotal: Int? = nil
     let onToggleCollapse: () -> Void
@@ -1456,15 +1470,22 @@ struct BudgetGroupHeader: View {
             .accessibilityLabel(accessibilityLabel)
             .accessibilityHint(ReportStrings.text("Toggles the group's categories", locale: locale, bundle: .main))
 
-            if let onSetHidden {
+            if onSetHidden != nil || onRename != nil {
                 Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
+                    if let onRename {
+                        Button(action: onRename) {
+                            Label("Rename Group", systemImage: "pencil")
+                        }
+                    }
+                    if let onSetHidden {
+                        Button {
+                            onSetHidden(!isHidden)
+                        } label: {
+                            Label(
+                                ReportStrings.text(isHidden ? "Show Group" : "Hide Group", locale: locale, bundle: .main),
+                                systemImage: isHidden ? "eye" : "eye.slash"
+                            )
+                        }
                     }
                 } label: {
                     Image(systemName: "ellipsis")

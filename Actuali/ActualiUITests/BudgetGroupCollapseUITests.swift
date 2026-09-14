@@ -186,6 +186,83 @@ final class BudgetGroupCollapseUITests: XCTestCase {
     }
 
     @MainActor
+    func testCleanExpenseGroupCanBeRenamed() throws {
+        try assertGroupCanBeRenamed(
+            displayStyle: "clean",
+            from: "Essentials",
+            to: "Core Spending"
+        )
+    }
+
+    @MainActor
+    func testCompactExpenseGroupCanBeRenamed() throws {
+        try assertGroupCanBeRenamed(
+            displayStyle: "compact",
+            from: "Essentials",
+            to: "Core Spending"
+        )
+    }
+
+    @MainActor
+    func testCompactIncomeGroupCanBeRenamed() throws {
+        try assertGroupCanBeRenamed(
+            displayStyle: "compact",
+            from: "Income",
+            to: "Earnings"
+        )
+    }
+
+    @MainActor
+    private func assertGroupCanBeRenamed(
+        displayStyle: String,
+        from oldName: String,
+        to newName: String
+    ) throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", displayStyle, "-initialTab", "1",
+        ]
+        app.launch()
+
+        let header = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(oldName), ")
+        ).firstMatch
+        for _ in 0..<20 where !header.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(header.isHittable, "\(oldName) group should be reachable")
+
+        if displayStyle == "clean" {
+            let options = app.buttons["Options for \(oldName)"]
+            XCTAssertTrue(options.waitForExistence(timeout: 5))
+            options.tap()
+        } else {
+            header.press(forDuration: 1)
+        }
+
+        let rename = app.descendants(matching: .any)["Rename Group"].firstMatch
+        XCTAssertTrue(rename.waitForExistence(timeout: 5))
+        rename.tap()
+
+        let field = app.textFields["categoryGroupEditor.name"]
+        XCTAssertTrue(field.waitForExistence(timeout: 5))
+        field.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: oldName.count))
+        field.typeText("  \(newName)  ")
+        app.buttons["Save"].tap()
+        XCTAssertTrue(field.waitForNonExistence(timeout: 10))
+
+        let renamedHeader = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH %@", "\(newName), ")
+        ).firstMatch
+        for _ in 0..<20 where !renamedHeader.isHittable {
+            app.swipeUp(velocity: .slow)
+        }
+        XCTAssertTrue(renamedHeader.isHittable, "the trimmed group name should be visible")
+    }
+
+    @MainActor
     private func setGroupHidden(
         _ hidden: Bool,
         app: XCUIApplication,

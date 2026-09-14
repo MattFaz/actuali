@@ -162,6 +162,7 @@ struct CompactBudgetGroupHeader: View {
     let isCollapsed: Bool
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)? = nil
+    var onRename: (() -> Void)? = nil
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
@@ -181,15 +182,22 @@ struct CompactBudgetGroupHeader: View {
 
     var body: some View {
         Group {
-            if let onSetHidden {
+            if onSetHidden != nil || onRename != nil {
                 Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale),
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
+                    if let onRename {
+                        Button(action: onRename) {
+                            Label("Rename Group", systemImage: "pencil")
+                        }
+                    }
+                    if let onSetHidden {
+                        Button {
+                            onSetHidden(!isHidden)
+                        } label: {
+                            Label(
+                                isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale),
+                                systemImage: isHidden ? "eye" : "eye.slash"
+                            )
+                        }
                     }
                 } label: {
                     headerContent
@@ -206,7 +214,7 @@ struct CompactBudgetGroupHeader: View {
         .accessibilityIdentifier("compactBudgetGroup.\(name)")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(
-            onSetHidden == nil
+            onSetHidden == nil && onRename == nil
                 ? String(localized: "Toggles the group's categories", bundle: .main, locale: locale)
                 : String(localized: "Tap to toggle the group's categories; touch and hold for options", bundle: .main, locale: locale)
         )
@@ -534,6 +542,7 @@ struct CompactIncomeGroupHeader: View {
     var isCollapsed = false
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)? = nil
+    var onRename: (() -> Void)? = nil
     let totalBudgeted: Int
     let totalReceived: Int
     let showsBudgeted: Bool
@@ -557,15 +566,22 @@ struct CompactIncomeGroupHeader: View {
 
     var body: some View {
         Group {
-            if let onSetHidden {
+            if onSetHidden != nil || onRename != nil {
                 Menu {
-                    Button {
-                        onSetHidden(!isHidden)
-                    } label: {
-                        Label(
-                            isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale),
-                            systemImage: isHidden ? "eye" : "eye.slash"
-                        )
+                    if let onRename {
+                        Button(action: onRename) {
+                            Label("Rename Group", systemImage: "pencil")
+                        }
+                    }
+                    if let onSetHidden {
+                        Button {
+                            onSetHidden(!isHidden)
+                        } label: {
+                            Label(
+                                isHidden ? String(localized: "Show", bundle: .main, locale: locale) : String(localized: "Hide", bundle: .main, locale: locale),
+                                systemImage: isHidden ? "eye" : "eye.slash"
+                            )
+                        }
                     }
                 } label: {
                     headerContent
@@ -582,7 +598,7 @@ struct CompactIncomeGroupHeader: View {
         .accessibilityIdentifier("compactIncomeSection")
         .accessibilityLabel(accessibilityLabel)
         .accessibilityHint(
-            onSetHidden == nil
+            onSetHidden == nil && onRename == nil
                 ? String(localized: "Toggles the income categories", bundle: .main, locale: locale)
                 : String(localized: "Tap to toggle the income categories; touch and hold for options", bundle: .main, locale: locale)
         )
