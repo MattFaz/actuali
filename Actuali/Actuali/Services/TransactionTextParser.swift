@@ -265,8 +265,8 @@ enum TransactionTextParser {
     private static func extractMerchant(from text: String) -> String? {
         // Keyword-based extraction for common bank SMS patterns with word boundaries.
         // Rejects "from" to avoid capturing funding sources (e.g. "paid from Wallet").
-        // Hyphens are only matched between letters to prevent capturing trailing dates.
-        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)((?:[A-Za-z0-9\s&'.]|(?<=[A-Za-z])-(?=[A-Za-z]))+?)(?:\s+(?:on|using|via|for|with|card|ref|\.|\,)|$)"#
+        // Hyphens are only matched between letters, and trailing dates act as delimiters.
+        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)((?:[A-Za-z0-9\s&'.]|(?<=[A-Za-z])-(?=[A-Za-z]))+?)(?:\s+(?:on|using|via|for|with|card|ref|\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}|\.|\,)|$)"#
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
