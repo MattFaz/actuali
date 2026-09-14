@@ -78,20 +78,22 @@ enum ScheduleStatusCalculator {
         return .scheduled
     }
 
-    /// Port of loot-core `getScheduleOccurrenceMatchStartDate`: the earliest
-    /// date a transaction may carry and still count as covering this
-    /// occurrence.
-    ///
-    /// An exact-date schedule and an auto-posting one both match only on or
-    /// after the occurrence itself — a lookback there would let yesterday's
-    /// posting satisfy today's occurrence. Everything else (a manual
-    /// `isapprox` schedule) allows two days, so paying a bill early still
-    /// reads as `paid`.
+    /// Earliest date a transaction may carry and still cover this occurrence.
+    /// Recurring schedules deliberately differ from loot-core by allowing a
+    /// frequency-bounded early payment window.
     static func occurrenceMatchStartDate(
         nextDate: DayDate,
         dateOp: String?,
-        postsTransaction: Bool
+        postsTransaction: Bool,
+        frequency: RecurConfig.Frequency? = nil
     ) -> DayDate {
+        if let frequency {
+            switch frequency {
+            case .daily: return nextDate
+            case .weekly: return nextDate.adding(days: -2)
+            case .monthly, .yearly: return nextDate.adding(days: -4)
+            }
+        }
         if dateOp == "is" { return nextDate }
         if postsTransaction { return nextDate }
         return nextDate.adding(days: -2)

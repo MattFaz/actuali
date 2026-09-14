@@ -4362,13 +4362,25 @@ final class BudgetDatabase: Sendable {
     /// loot-core `getHasTransactionsQuery`, collapsed into one grouped query
     /// rather than a large OR: each schedule's own lower bound is applied in
     /// Swift against the latest linked transaction date.
-    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) async throws -> Set<String> {
+    func fetchPaidScheduleIds(
+        for schedules: [ScheduleSummary],
+        today: DayDate = .today()
+    ) async throws -> Set<String> {
         let bounds: [(id: String, start: Int)] = schedules.compactMap { schedule in
             guard let nextDate = schedule.nextDate else { return nil }
+            let frequency: RecurConfig.Frequency?
+            // A future occurrence must not absorb a late payment that still
+            // belongs to the current one.
+            if nextDate <= today, case .recurring(let config)? = schedule.dateCondition {
+                frequency = config.frequency
+            } else {
+                frequency = nil
+            }
             let start = ScheduleStatusCalculator.occurrenceMatchStartDate(
                 nextDate: nextDate,
                 dateOp: schedule.dateOp,
-                postsTransaction: schedule.postsTransaction)
+                postsTransaction: schedule.postsTransaction,
+                frequency: frequency)
             return (schedule.id, start.yyyymmdd)
         }
         guard !bounds.isEmpty else { return [] }

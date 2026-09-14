@@ -5787,9 +5787,9 @@ final class BudgetStore: ObservableObject {
         }
         do {
             let loaded = try await database.fetchSchedules()
-            let paid = try await database.fetchPaidScheduleIds(for: loaded)
-            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
             let today = DayDate.today()
+            let paid = try await database.fetchPaidScheduleIds(for: loaded, today: today)
+            let paymentDates = try await database.fetchSchedulePaymentDates(for: loaded)
 
             var statuses: [String: ScheduleStatus] = [:]
             for schedule in loaded {
