@@ -88,29 +88,91 @@ struct CreditCardCycle: Equatable, Hashable {
         }
     }
 
-    /// Next upcoming payment due date.
-    ///
-    /// Statements close monthly but the due offset can run longer than a cycle
-    /// (45+ days is common outside the US), so more than one closed statement
-    /// can be awaiting payment at once. The next payment is the earliest one
-    /// whose due date hasn't passed, so this walks back through closed
-    /// statements rather than assuming only the most recent one is pending.
-    func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
-        // Fallback: everything already closed is paid or past due, so the next
-        // payment covers the cycle now running.
-        var due = dueDate(forStatement: cycleRange(for: today).end)
+    /// The statement closing date whose payment is next due.
+    /// Walks back through closed statements rather than assuming only the most
+    /// recent one is pending, in case offset exceeds a monthly cycle.
+    func upcomingStatementDate(for today: DayDate = .today()) -> DayDate {
+        var pendingStatement = cycleRange(for: today).end
         var statement = previousStatementDate(for: today)
-        // A statement can only be pending while its due date is within the due
-        // window of today, which spans at most one cycle per whole month of
-        // offset. A fixed day of the month never exceeds one cycle, and the 15
-        // this returns for that rule already bounds the walk.
         for _ in 0...(dueOffsetDays / 28 + 1) {
             let statementDue = dueDate(forStatement: statement)
             guard today <= statementDue else { break }
-            due = statementDue
+            pendingStatement = statement
             statement = previousStatementDate(for: statement)
         }
-        return due
+        return pendingStatement
+    }
+
+    /// Next upcoming payment due date.
+    func upcomingDueDate(for today: DayDate = .today()) -> DayDate {
+        dueDate(forStatement: upcomingStatementDate(for: today))
+    }
+
+    /// The last three closed billing statement cycles, ordered newest to oldest.
+    /// Each item contains the statement's cycle start, cycle end (closing date), and payment due date.
+    func recentStatementCycles(today: DayDate = .today()) -> [(start: DayDate, end: DayDate, dueDate: DayDate)] {
+        var cycles: [(start: DayDate, end: DayDate, dueDate: DayDate)] = []
+        var currentEnd = previousStatementDate(for: today)
+        for _ in 0..<3 {
+            let prevEnd = previousStatementDate(for: currentEnd)
+            let start = prevEnd.adding(days: 1)
+            let due = dueDate(forStatement: currentEnd)
+            cycles.append((start: start, end: currentEnd, dueDate: due))
+            currentEnd = prevEnd
+        }
+        return cycles
+    }
+
+    /// Status of the payment due for a credit card statement.
+    struct StatementDue: Equatable, Hashable, Sendable {
+        /// Balance in cents owed when the statement closed (positive).
+        let statementBalance: Int
+        /// Payments/credits in cents received since the statement closed (positive).
+        let paymentsSince: Int
+        /// Remaining balance in cents to pay for this statement (positive).
+        let remainingDue: Int
+        /// Payment due date for this statement.
+        let dueDate: DayDate
+
+        /// Whether this statement has been fully paid off.
+        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+    }
+
+    /// Record of a closed credit card billing statement with spend, due, and transaction metrics.
+    struct StatementRecord: Identifiable, Equatable, Hashable, Sendable {
+        var id: Int { endDate.yyyymmdd }
+        let startDate: DayDate
+        let endDate: DayDate
+        let dueDate: DayDate
+        /// Balance in cents owed when the statement closed (positive).
+        let statementBalance: Int
+        /// Payments/credits in cents received since the statement closed (positive).
+        let paymentsSince: Int
+        /// Remaining balance in cents to pay for this statement (positive).
+        let remainingDue: Int
+        /// Outflow spend in cents during the billing cycle (positive).
+        let totalSpend: Int
+
+        /// Whether this statement has been fully paid off.
+        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+    }
+
+    /// Computes the statement payment status given raw balances and payments.
+    static func calculateStatementDue(
+        statementRawBalance: Int,
+        paymentsSince: Int,
+        liveBalance: Int,
+        dueDate: DayDate
+    ) -> StatementDue {
+        let statementOwed = max(0, -statementRawBalance)
+        let unpaid = max(0, statementOwed - paymentsSince)
+        let remaining = min(unpaid, max(0, -liveBalance))
+        return StatementDue(
+            statementBalance: statementOwed,
+            paymentsSince: paymentsSince,
+            remainingDue: remaining,
+            dueDate: dueDate
+        )
     }
 
     /// Days remaining until the current billing cycle closes.
@@ -120,27 +182,30 @@ struct CreditCardCycle: Equatable, Hashable {
     }
 
     /// Days remaining until the next payment due date.
-    func daysUntilDue(for today: DayDate = .today()) -> Int {
-        let due = upcomingDueDate(for: today)
+    func daysUntilDue(for today: DayDate = .today(), dueDate: DayDate? = nil) -> Int {
+        let due = dueDate ?? upcomingDueDate(for: today)
         return max(0, today.days(until: due))
     }
 
     /// One-line payment summary ("Due 30 Aug 2026 (9d)"). Shared by the Credit
     /// Cards row and the account detail header so the two can't word the same
     /// fact differently.
-    func dueSummary(for today: DayDate = .today()) -> String {
-        let days = daysUntilDue(for: today)
+    func dueSummary(for today: DayDate = .today(), dueDate: DayDate? = nil) -> String {
+        let dueDate = dueDate ?? upcomingDueDate(for: today)
+        let days = daysUntilDue(for: today, dueDate: dueDate)
         if days == 0 { return String(localized: "Due today") }
         if days == 1 { return String(localized: "Due tomorrow") }
-        let dueStr = Transaction.formattedDate(from: upcomingDueDate(for: today).yyyymmdd, style: .abbreviated)
+        let dueStr = Transaction.formattedDate(from: dueDate.yyyymmdd, style: .abbreviated)
         return String(format: String(localized: "Due %@ (%lldd)"), dueStr, Int64(days))
     }
 
     /// Compact variant of `dueSummary` for pill badges ("Due in 27d"). Defers to
     /// `dueSummary` within a day of the due date, so the two can't drift on the
     /// wording that matters most.
-    func dueShortSummary(for today: DayDate = .today()) -> String {
-        let days = daysUntilDue(for: today)
-        return days <= 1 ? dueSummary(for: today) : String(format: String(localized: "Due in %lldd"), Int64(days))
+    func dueShortSummary(for today: DayDate = .today(), dueDate: DayDate? = nil) -> String {
+        let days = daysUntilDue(for: today, dueDate: dueDate)
+        return days <= 1
+            ? dueSummary(for: today, dueDate: dueDate)
+            : String(format: String(localized: "Due in %lldd"), Int64(days))
     }
 }

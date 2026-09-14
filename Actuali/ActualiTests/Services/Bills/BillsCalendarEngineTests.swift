@@ -535,4 +535,55 @@ struct BillsCalendarEngineTests {
         #expect(items[1].date == DayDate(year: 2026, month: 9, day: 14))
         #expect(items[1].status == .upcoming)
     }
+
+    @Test func creditCardsUseEachPendingStatementWhenDueDatesOverlap() {
+        let today = DayDate(year: 2026, month: 2, day: 20)
+        let account = Account(
+            id: "acc-cc",
+            name: "Visa Signature",
+            type: .credit,
+            offBudget: false,
+            closed: false,
+            sortOrder: 0,
+            balance: -50000
+        )
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
+        let paidJanuary = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0,
+            dueDate: DayDate(year: 2026, month: 3, day: 1)
+        )
+        let unpaidFebruary = CreditCardCycle.StatementDue(
+            statementBalance: 30000,
+            paymentsSince: 0,
+            remainingDue: 30000,
+            dueDate: DayDate(year: 2026, month: 4, day: 1)
+        )
+
+        let marchItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
+            year: 2026,
+            month: 3,
+            today: today
+        )
+        #expect(marchItems.count == 1)
+        #expect(marchItems[0].status == .paid)
+        #expect(marchItems[0].amount == -50000)
+        #expect(marchItems[0].relativeDueText == "Paid")
+
+        let aprilItems = BillsCalendarEngine.itemsForCreditCards(
+            accounts: [account],
+            cycles: ["acc-cc": cycle],
+            statementDues: ["acc-cc": [paidJanuary, unpaidFebruary]],
+            year: 2026,
+            month: 4,
+            today: today
+        )
+        #expect(aprilItems.count == 1)
+        #expect(aprilItems[0].status == .upcoming)
+        #expect(aprilItems[0].amount == -30000)
+    }
 }

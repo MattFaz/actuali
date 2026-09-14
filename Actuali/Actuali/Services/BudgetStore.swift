@@ -250,6 +250,8 @@ final class BudgetStore: ObservableObject {
     @Published var upcomingScheduledTransactionLength: String?
     @Published var scheduleStatuses: [String: ScheduleStatus] = [:]
     @Published var schedulePaymentDates: [String: Set<DayDate>] = [:]
+    /// Statement dues (statement balance, payments since closing, remaining due) for active credit card accounts.
+    @Published var creditCardStatementDues: [String: [CreditCardCycle.StatementDue]] = [:]
     @Published var currentBudgetMonth: BudgetMonth?
     /// Accounts wired up to a bank feed, refreshed alongside the rest of the
     /// budget so the accounts tab knows which rows can be synced.
@@ -834,6 +836,7 @@ final class BudgetStore: ObservableObject {
             creditCardConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
+        await loadCreditCardStatementDues()
         await scheduleCreditCardDueNotifications()
     }
 
@@ -866,6 +869,7 @@ final class BudgetStore: ObservableObject {
         await CreditCardDueNotifier.scheduleNotifications(
             accounts: accounts,
             cycles: cycles,
+            statementDues: creditCardStatementDues,
             currencyCode: currencyCode,
             narrowSymbol: useNarrowCurrencySymbol
         )
@@ -2465,6 +2469,7 @@ final class BudgetStore: ObservableObject {
             dataVersion += 1
 
             await loadSchedules()
+            await loadCreditCardStatementDues()
             await loadBankSyncAccounts()
             publishWidgetSnapshot()
             await scheduleCreditCardDueNotifications()
@@ -4524,6 +4529,30 @@ final class BudgetStore: ObservableObject {
         )) ?? 0
     }
 
+    /// Closed statements for a credit card account (up to 3), filtered to those with recorded data.
+    func fetchRecentStatements(accountId: String) async -> [CreditCardCycle.StatementRecord] {
+        guard let database,
+              let cycle = activeCreditCardCycle(for: accountId),
+              let account = accounts.first(where: { $0.id == accountId }) else { return [] }
+        let cycles = cycle.recentStatementCycles()
+        return (try? await database.fetchRecentStatements(
+            accountId: accountId,
+            cycles: cycles,
+            liveBalance: account.balance
+        )) ?? []
+    }
+
+    /// Transactions within a credit card billing statement date range [startDate, endDate].
+    func fetchStatementTransactions(accountId: String, startDate: Int, endDate: Int) async -> [Transaction] {
+        guard let database else { return [] }
+        return (try? await database.fetchTransactions(
+            accountId: accountId,
+            startDate: startDate,
+            endDate: endDate,
+            limit: .max
+        )) ?? []
+    }
+
     /// Finish reconciling: lock every cleared, not-yet-reconciled transaction
     /// in the account (reconciled = true), like upstream's lockTransactions.
     /// Returns the number of rows locked; 0 with `error` set on failure.
@@ -5834,6 +5863,38 @@ final class BudgetStore: ObservableObject {
             schedules = []
             scheduleStatuses = [:]
             schedulePaymentDates = [:]
+        }
+    }
+
+    /// Loads the latest statement dues for all active credit cards.
+    func loadCreditCardStatementDues(today: DayDate = .today()) async {
+        guard let database else {
+            creditCardStatementDues = [:]
+            return
+        }
+        var requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)] = []
+        for account in accounts where !account.closed {
+            guard let cycle = activeCreditCardCycle(for: account.id) else { continue }
+            // Keep recent closed statements for the Bills history. The 60-day
+            // maximum means these three cover every statement still pending.
+            let recentStatements = cycle.recentStatementCycles(today: today).reversed()
+            for statement in recentStatements {
+                requests.append((account.id, statement.end, statement.dueDate, account.balance))
+            }
+            if !recentStatements.contains(where: { today <= $0.dueDate }) {
+                let statementDate = cycle.cycleRange(for: today).end
+                requests.append((account.id, statementDate, cycle.dueDate(forStatement: statementDate), account.balance))
+            }
+        }
+        guard !requests.isEmpty else {
+            creditCardStatementDues = [:]
+            return
+        }
+        do {
+            creditCardStatementDues = try await database.fetchCreditCardStatementDues(for: requests)
+        } catch {
+            logger.error("Failed to load credit card statement dues: \(error, privacy: .public)")
+            creditCardStatementDues = [:]
         }
     }
 

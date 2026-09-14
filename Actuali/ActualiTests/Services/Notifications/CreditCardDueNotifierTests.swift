@@ -153,6 +153,108 @@ struct CreditCardDueNotifierTests {
         }
         #expect(center.removedIdentifiers == expected)
     }
+
+    @Test func paidStatementWithOngoingSpendSchedulesNothing() async {
+        let center = FakeCreditCardNotificationCenter()
+        // Card balance is -$200.00 (-20000), but statement was fully paid
+        let card = account(id: "card1", name: "Visa", balance: -20000)
+        let cycle = CreditCardCycle(statementDay: 15)
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 50000,
+            remainingDue: 0,
+            dueDate: cycle.upcomingDueDate()
+        )
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card],
+            cycles: ["card1": cycle],
+            statementDues: ["card1": [statementDue]],
+            currencyCode: "USD",
+            settings: makeDefaults(enabled: true),
+            center: center
+        )
+
+        #expect(center.authorizationRequested == true)
+        #expect(center.added.isEmpty)
+        let expectedRemoved = [7, 5, 3, 1].map { CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: $0) }
+        #expect(center.removedIdentifiers == expectedRemoved)
+    }
+
+    @Test func unpaidStatementIncludesStatementDueInNotificationBody() async {
+        let center = FakeCreditCardNotificationCenter()
+        let card = account(id: "card1", name: "Visa", balance: -70000)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
+        let statementDue = CreditCardCycle.StatementDue(
+            statementBalance: 50000,
+            paymentsSince: 0,
+            remainingDue: 50000,
+            dueDate: DayDate(year: 2026, month: 3, day: 2)
+        )
+
+        let cal = fixedCalendar()
+        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 25, hour: 8, minute: 0))!
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card],
+            cycles: ["card1": cycle],
+            statementDues: ["card1": [statementDue]],
+            currencyCode: "USD",
+            narrowSymbol: true,
+            settings: makeDefaults(enabled: true),
+            center: center,
+            now: now,
+            calendar: cal
+        )
+
+        #expect(!center.added.isEmpty)
+        let body = center.added.first?.content.body ?? ""
+        let expectedAmount = CurrencyAmountFormat.string(
+            cents: 50000, currencyCode: "USD", narrowSymbol: true)
+        #expect(body.contains(expectedAmount))
+    }
+
+    @Test func paidEarlierStatementSchedulesNextUnpaidStatement() async {
+        let center = FakeCreditCardNotificationCenter()
+        let card = account(id: "card1", name: "Visa", balance: -50000)
+        let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
+        let dues = [
+            CreditCardCycle.StatementDue(
+                statementBalance: 50000,
+                paymentsSince: 50000,
+                remainingDue: 0,
+                dueDate: DayDate(year: 2026, month: 3, day: 1)
+            ),
+            CreditCardCycle.StatementDue(
+                statementBalance: 30000,
+                paymentsSince: 0,
+                remainingDue: 30000,
+                dueDate: DayDate(year: 2026, month: 4, day: 1)
+            )
+        ]
+        let cal = fixedCalendar()
+        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
+
+        await CreditCardDueNotifier.scheduleNotifications(
+            accounts: [card],
+            cycles: ["card1": cycle],
+            statementDues: ["card1": dues],
+            currencyCode: "USD",
+            narrowSymbol: true,
+            settings: makeDefaults(enabled: true),
+            center: center,
+            now: now,
+            calendar: cal
+        )
+
+        #expect(center.added.count == 4)
+        let expectedAmount = CurrencyAmountFormat.string(
+            cents: 30000, currencyCode: "USD", narrowSymbol: true)
+        #expect(center.added.first?.content.body.contains(expectedAmount) == true)
+        let firstTrigger = center.added.first?.trigger as? UNCalendarNotificationTrigger
+        #expect(firstTrigger?.dateComponents.month == 3)
+        #expect(firstTrigger?.dateComponents.day == 25)
+    }
 }
 
 private final class FakeCreditCardNotificationCenter: NotificationPosting, @unchecked Sendable {

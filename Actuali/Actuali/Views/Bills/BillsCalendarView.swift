@@ -58,6 +58,7 @@ struct BillsCalendarView: View {
             return BillsCalendarEngine.itemsForCreditCards(
                 accounts: budgetStore.accounts,
                 cycles: cycles,
+                statementDues: budgetStore.creditCardStatementDues,
                 year: selectedYear,
                 month: selectedMonth,
                 today: today
