@@ -4645,6 +4645,8 @@ final class BudgetStore: ObservableObject {
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
+        /// True for a picker choice or prefill; false for payee-history suggestions.
+        var categoryIsExplicit: Bool = false
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
@@ -5000,7 +5002,7 @@ final class BudgetStore: ObservableObject {
                 )
                 try await createTransaction(
                     transaction,
-                    preserveCategory: form.categoryId != nil
+                    preserveCategory: form.categoryIsExplicit
                 )
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)

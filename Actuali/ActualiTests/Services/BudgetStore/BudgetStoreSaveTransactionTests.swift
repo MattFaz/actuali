@@ -101,7 +101,8 @@ struct BudgetStoreSaveTransactionTests {
         amount: String = "10.50",
         payeeName: String = "",
         transferToAccountId: String? = nil,
-        categoryId: String? = nil
+        categoryId: String? = nil,
+        categoryIsExplicit: Bool = false
     ) -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: "acct-1",
@@ -112,7 +113,8 @@ struct BudgetStoreSaveTransactionTests {
             categoryId: categoryId,
             notes: "",
             date: Date(),
-            cleared: false
+            cleared: false,
+            categoryIsExplicit: categoryIsExplicit
         )
     }
 
@@ -243,7 +245,7 @@ struct BudgetStoreSaveTransactionTests {
         #expect(row["tombstone"] == 0)
     }
 
-    @Test func savingANewTransactionKeepsExplicitCategoryInsteadOfRuleDefault() async throws {
+    @Test func ruleCategoryOnlyReplacesSuggestedCategory() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
         let store = try await makeStore(database: database)
@@ -259,12 +261,22 @@ struct BudgetStoreSaveTransactionTests {
                 """)
         }
 
-        try await store.saveTransaction(
+        let explicitId = try #require(try await store.saveTransaction(
+            form(
+                payeeName: "Amazon",
+                categoryId: "cat-groceries",
+                categoryIsExplicit: true
+            )
+        ))
+        let suggestedId = try #require(try await store.saveTransaction(
             form(payeeName: "Amazon", categoryId: "cat-groceries")
-        )
+        ))
 
-        let row = try #require(try transactionRows(path: path).first)
-        #expect(row["category"] == "cat-groceries")
+        let rows = try transactionRows(path: path)
+        let explicitRow = try #require(rows.first { $0["id"] == explicitId })
+        let suggestedRow = try #require(rows.first { $0["id"] == suggestedId })
+        #expect(explicitRow["category"] == "cat-groceries")
+        #expect(suggestedRow["category"] == "cat-clothing")
     }
 
     @Test func editingATransactionReturnsNoCreatedID() async throws {

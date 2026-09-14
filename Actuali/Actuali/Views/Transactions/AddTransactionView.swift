@@ -738,7 +738,8 @@ struct AddTransactionView: View {
             splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
             collapseSplit: unsplitRequested,
             recordLocation: saveLocation,
-            reviewConfirmations: confirmedReviewRequirements
+            reviewConfirmations: confirmedReviewRequirements,
+            categoryIsExplicit: userPickedCategory
         )
 
         do {
