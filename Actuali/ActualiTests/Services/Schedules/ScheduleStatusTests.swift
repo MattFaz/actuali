@@ -100,4 +100,19 @@ struct ScheduleStatusTests {
             nextDate: next, dateOp: "isapprox", postsTransaction: false)
             == DayDate(yyyymmdd: 20260811)!)
     }
+
+    @Test func recurringSchedulesUseFrequencyBoundedLookback() {
+        let next = DayDate(yyyymmdd: 20260813)!
+        #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .daily) == next)
+        #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .weekly)
+            == DayDate(yyyymmdd: 20260811)!)
+        #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .monthly)
+            == DayDate(yyyymmdd: 20260809)!)
+        #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .yearly)
+            == DayDate(yyyymmdd: 20260809)!)
+    }
 }

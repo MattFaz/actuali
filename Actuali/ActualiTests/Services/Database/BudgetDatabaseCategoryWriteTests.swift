@@ -91,6 +91,32 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(groups.count == 3)
     }
 
+    @Test func groupNamesUseUnicodeCaseFolding() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        _ = try db.insertCategoryGroup(id: "grp-savings", name: "Épargne")
+
+        #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Épargne")) {
+            try db.insertCategoryGroup(id: "grp-dupe", name: "épargne")
+        }
+    }
+
+    @Test func unnamedCRDTRowsDoNotBlockCategoryWrites() async throws {
+        let (db, url) = try makeDatabase()
+        defer { cleanup(url) }
+        try await db.dbQueueForTesting.write { conn in
+            try conn.execute(sql: "INSERT INTO category_groups (id) VALUES ('grp-partial')")
+            try conn.execute(sql: """
+                INSERT INTO categories (id, cat_group) VALUES ('cat-partial', 'grp-daily')
+                """)
+        }
+
+        _ = try db.insertCategoryGroup(id: "grp-fun", name: "Fun")
+        _ = try db.insertCategory(id: "cat-coffee", name: "Coffee", groupId: "grp-daily")
+        try db.validateCategoryGroupRename(id: "grp-bills", name: "Fixed Costs")
+        try db.validateCategoryRename(id: "cat-fuel", name: "Transport")
+    }
+
     @Test func aTombstonedGroupDoesNotBlockItsName() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
