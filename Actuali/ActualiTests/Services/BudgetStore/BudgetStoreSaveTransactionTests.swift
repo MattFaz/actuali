@@ -51,6 +51,16 @@ struct BudgetStoreSaveTransactionTests {
                 )
                 """)
             try db.execute(sql: """
+                CREATE TABLE rules (
+                    id TEXT PRIMARY KEY,
+                    stage TEXT,
+                    conditions_op TEXT,
+                    conditions TEXT,
+                    actions TEXT,
+                    tombstone INTEGER DEFAULT 0
+                )
+                """)
+            try db.execute(sql: """
                 CREATE TABLE messages_crdt (
                     id INTEGER PRIMARY KEY,
                     timestamp TEXT NOT NULL UNIQUE,
@@ -90,7 +100,8 @@ struct BudgetStoreSaveTransactionTests {
         type: TransactionType = .expense,
         amount: String = "10.50",
         payeeName: String = "",
-        transferToAccountId: String? = nil
+        transferToAccountId: String? = nil,
+        categoryId: String? = nil
     ) -> BudgetStore.TransactionForm {
         BudgetStore.TransactionForm(
             accountId: "acct-1",
@@ -98,7 +109,7 @@ struct BudgetStoreSaveTransactionTests {
             amount: amount,
             payeeName: payeeName,
             transferToAccountId: transferToAccountId,
-            categoryId: nil,
+            categoryId: categoryId,
             notes: "",
             date: Date(),
             cleared: false
@@ -230,6 +241,30 @@ struct BudgetStoreSaveTransactionTests {
         let createdPayee = try #require(store.payees.first { $0.name == "Trader Joe's" })
         #expect(row["description"] == createdPayee.id)
         #expect(row["tombstone"] == 0)
+    }
+
+    @Test func savingANewTransactionKeepsExplicitCategoryInsteadOfRuleDefault() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        let store = try await makeStore(database: database)
+        store.payees = [payee(id: "payee-amazon", name: "Amazon")]
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(
+                sql: "INSERT INTO payees (id, name) VALUES ('payee-amazon', 'Amazon')")
+            try db.execute(sql: """
+                INSERT INTO rules (id, conditions_op, conditions, actions)
+                VALUES ('amazon-category', 'and',
+                    '[{"op":"is","field":"description","value":"payee-amazon"}]',
+                    '[{"op":"set","field":"category","value":"cat-clothing"}]')
+                """)
+        }
+
+        try await store.saveTransaction(
+            form(payeeName: "Amazon", categoryId: "cat-groceries")
+        )
+
+        let row = try #require(try transactionRows(path: path).first)
+        #expect(row["category"] == "cat-groceries")
     }
 
     @Test func editingATransactionReturnsNoCreatedID() async throws {

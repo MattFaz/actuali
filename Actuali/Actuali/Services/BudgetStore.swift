@@ -2908,12 +2908,19 @@ final class BudgetStore: ObservableObject {
 
     /// Create a new transaction (optimistic local-first)
     @discardableResult
-    func createTransaction(_ transaction: Transaction) async throws -> SyncClient.TransactionCreateResult {
+    func createTransaction(
+        _ transaction: Transaction,
+        preserveCategory: Bool = false
+    ) async throws -> SyncClient.TransactionCreateResult {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
-        let result = try await syncClient.createTransaction(transaction, applyRules: true)
+        let result = try await syncClient.createTransaction(
+            transaction,
+            applyRules: true,
+            preserveCategory: preserveCategory
+        )
 
         // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
         await refreshDataOnly()
@@ -4991,7 +4998,10 @@ final class BudgetStore: ObservableObject {
                     sortOrder: nil,  // Set to Date.now() during insert
                     importedPayee: payeeName
                 )
-                try await createTransaction(transaction)
+                try await createTransaction(
+                    transaction,
+                    preserveCategory: form.categoryId != nil
+                )
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }
