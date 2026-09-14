@@ -2908,12 +2908,19 @@ final class BudgetStore: ObservableObject {
 
     /// Create a new transaction (optimistic local-first)
     @discardableResult
-    func createTransaction(_ transaction: Transaction) async throws -> SyncClient.TransactionCreateResult {
+    func createTransaction(
+        _ transaction: Transaction,
+        preserveCategory: Bool = false
+    ) async throws -> SyncClient.TransactionCreateResult {
         guard let syncClient else {
             throw BudgetStoreError.syncNotConfigured
         }
 
-        let result = try await syncClient.createTransaction(transaction, applyRules: true)
+        let result = try await syncClient.createTransaction(
+            transaction,
+            applyRules: true,
+            preserveCategory: preserveCategory
+        )
 
         // Refresh local data (without recreating SyncClient, which would cancel the scheduled sync)
         await refreshDataOnly()
@@ -4615,6 +4622,11 @@ final class BudgetStore: ObservableObject {
 
     // MARK: - Transaction Form
 
+    struct AutomaticCategoryPreview: Equatable {
+        var sourceCategoryId: String?
+        var resultCategoryId: String?
+    }
+
     /// Input gathered by the add/edit transaction form (`AddTransactionView`).
     /// `amount` is the raw field text, always unsigned — `type` determines
     /// the sign and whether the save is a transfer.
@@ -4638,6 +4650,74 @@ final class BudgetStore: ObservableObject {
         /// on so Shortcuts and existing callers keep recording.
         var recordLocation: Bool = true
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
+        /// True for a picker choice or prefill; false for payee-history suggestions.
+        var categoryIsExplicit: Bool = false
+        var automaticCategoryPreview: AutomaticCategoryPreview? = nil
+    }
+
+    /// Category the add form should show before the user makes an explicit
+    /// choice: payee history first, then the same rules pass used on save.
+    func automaticCategoryPreview(
+        for form: TransactionForm,
+        applyRules: Bool = true
+    ) async throws -> AutomaticCategoryPreview {
+        guard form.type != .transfer,
+              form.splits.isEmpty,
+              !offBudgetAccountIds.contains(form.accountId) else {
+            return AutomaticCategoryPreview(sourceCategoryId: nil, resultCategoryId: nil)
+        }
+
+        let trimmedPayee = form.payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let payeeId = payees.first {
+            !$0.tombstone && $0.transferAccountId == nil &&
+                $0.name.caseInsensitiveCompare(trimmedPayee) == .orderedSame
+        }?.id
+        let historyCategoryId: String?
+        if let payeeId, let database {
+            historyCategoryId = try await database.mostRecentCategoryId(forPayeeId: payeeId)
+        } else {
+            historyCategoryId = nil
+        }
+
+        let unsignedCents = Double(form.amount)
+            .flatMap(Transaction.cents(fromDollars:)) ?? 0
+        let amountCents = form.type == .income ? unsignedCents : -unsignedCents
+        let payeeName = trimmedPayee.isEmpty ? nil : trimmedPayee
+        let transaction = Transaction(
+            id: "category-preview",
+            accountId: form.accountId,
+            date: Transaction.yyyymmdd(from: form.date),
+            amount: amountCents,
+            payeeId: payeeId,
+            payeeName: payeeName,
+            categoryId: historyCategoryId,
+            categoryName: nil,
+            notes: form.notes.isEmpty ? nil : form.notes,
+            cleared: form.cleared,
+            reconciled: false,
+            transferId: nil,
+            isParent: false,
+            parentId: nil,
+            tombstone: false,
+            sortOrder: nil,
+            importedPayee: payeeName
+        )
+        guard applyRules, let syncClient else {
+            return AutomaticCategoryPreview(
+                sourceCategoryId: historyCategoryId,
+                resultCategoryId: historyCategoryId
+            )
+        }
+        let prepared = try await syncClient.prepareRules()
+        let resultCategoryId = RulesEngine.apply(
+            transaction,
+            rules: prepared.rules,
+            context: prepared.context
+        ).transaction.categoryId
+        return AutomaticCategoryPreview(
+            sourceCategoryId: historyCategoryId,
+            resultCategoryId: resultCategoryId
+        )
     }
 
     /// One line of a split entered in the form. `amount` is raw field text,
@@ -4972,6 +5052,14 @@ final class BudgetStore: ObservableObject {
                 }
                 return nil
             } else {
+                let categoryId: String?
+                if form.categoryIsExplicit {
+                    categoryId = form.categoryId
+                } else if let preview = form.automaticCategoryPreview {
+                    categoryId = preview.sourceCategoryId
+                } else {
+                    categoryId = form.categoryId
+                }
                 let transaction = Transaction(
                     id: UUID().uuidString,
                     accountId: form.accountId,
@@ -4979,7 +5067,7 @@ final class BudgetStore: ObservableObject {
                     amount: amountCents,
                     payeeId: payeeId,
                     payeeName: payeeName,
-                    categoryId: form.categoryId,
+                    categoryId: categoryId,
                     categoryName: nil,
                     notes: notes,
                     cleared: form.cleared,
@@ -4991,7 +5079,10 @@ final class BudgetStore: ObservableObject {
                     sortOrder: nil,  // Set to Date.now() during insert
                     importedPayee: payeeName
                 )
-                try await createTransaction(transaction)
+                try await createTransaction(
+                    transaction,
+                    preserveCategory: form.categoryIsExplicit
+                )
                 if form.recordLocation, let payeeId {
                     recordPayeeLocationIfAppropriate(payeeId: payeeId)
                 }

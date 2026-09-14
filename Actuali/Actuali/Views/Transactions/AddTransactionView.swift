@@ -28,6 +28,7 @@ struct AddTransactionView: View {
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var userPickedCategory = false
+    @State private var automaticCategoryPreview: BudgetStore.AutomaticCategoryPreview?
     @State private var nearbyPayees: [NearbyPayee] = []
     @State private var showPayeePicker = false
     @State private var saveLocation = true
@@ -118,6 +119,38 @@ struct AddTransactionView: View {
     private var isTransfer: Bool { txType == .transfer }
     private var isEditingSplitParent: Bool { editing?.isParent == true }
     private var isEditingTransfer: Bool { editing?.transferId != nil }
+
+    private struct AutomaticCategoryInput: Equatable {
+        var accountId: String
+        var type: TransactionType
+        var amount: String
+        var payeeId: String?
+        var payeeName: String
+        var notes: String
+        var date: Date
+        var cleared: Bool
+        var isSplit: Bool
+        var isEditing: Bool
+        var categoryIsExplicit: Bool
+        var applyRules: Bool
+    }
+
+    private var automaticCategoryInput: AutomaticCategoryInput {
+        AutomaticCategoryInput(
+            accountId: selectedAccountId,
+            type: txType,
+            amount: amount,
+            payeeId: matchingPayee(for: payeeName)?.id,
+            payeeName: payeeName,
+            notes: notes,
+            date: date,
+            cleared: cleared,
+            isSplit: isSplitting,
+            isEditing: isEditing,
+            categoryIsExplicit: userPickedCategory,
+            applyRules: !isEditing && saveOverride == nil
+        )
+    }
 
     /// Whether the edit form may offer turning this transaction into a
     /// transfer (GH #259). Split parents and children are excluded — the
@@ -222,15 +255,37 @@ struct AddTransactionView: View {
         }
     }
 
-    private func applyCategoryFromHistory(payeeId: String) {
-        guard !userPickedCategory else { return }
-        guard let db = budgetStore.databaseForLogger else { return }
+    private func applyAutomaticCategory(for input: AutomaticCategoryInput) async {
+        guard !input.categoryIsExplicit,
+              !input.isEditing,
+              input.type != .transfer,
+              !input.isSplit,
+              input == automaticCategoryInput else { return }
+        let form = currentForm()
+        let preview: BudgetStore.AutomaticCategoryPreview
+        do {
+            preview = try await budgetStore.automaticCategoryPreview(
+                for: form,
+                applyRules: input.applyRules
+            )
+        } catch { return }
+        guard !Task.isCancelled,
+              !userPickedCategory,
+              input == automaticCategoryInput else { return }
+        automaticCategoryPreview = preview
+        selectedCategoryId = preview.resultCategoryId
+    }
+
+    private func applyEditCategoryFromHistory(payeeId: String) {
+        guard isEditing, !userPickedCategory,
+              let database = budgetStore.databaseForLogger else { return }
         Task { @MainActor in
-            guard let cat = try? await db.mostRecentCategoryId(forPayeeId: payeeId) else { return }
-            // Re-check after the await: the user may have picked a category
-            // while the lookup was in flight — don't clobber their choice.
-            guard !userPickedCategory else { return }
-            selectedCategoryId = cat
+            guard let categoryId = try? await database.mostRecentCategoryId(
+                forPayeeId: payeeId
+            ) else { return }
+            guard !userPickedCategory,
+                  matchingPayee(for: payeeName)?.id == payeeId else { return }
+            selectedCategoryId = categoryId
         }
     }
 
@@ -372,13 +427,13 @@ struct AddTransactionView: View {
                                 nearbyPayees: $nearbyPayees,
                                 onSelect: { payee in
                                     payeeName = payee.name
-                                    applyCategoryFromHistory(payeeId: payee.id)
+                                    applyEditCategoryFromHistory(payeeId: payee.id)
                                     showPayeePicker = false
                                 },
                                 onCommit: { name in
                                     payeeName = name
                                     if let payee = matchingPayee(for: name) {
-                                        applyCategoryFromHistory(payeeId: payee.id)
+                                        applyEditCategoryFromHistory(payeeId: payee.id)
                                     }
                                     showPayeePicker = false
                                 },
@@ -541,6 +596,9 @@ struct AddTransactionView: View {
                 // payees load as empty so a parent payee edit follows through
                 // to them, mirroring Actual's cascade rule.
                 await loadSplitChildren()
+            }
+            .task(id: automaticCategoryInput) {
+                await applyAutomaticCategory(for: automaticCategoryInput)
             }
         }
     }
@@ -725,21 +783,8 @@ struct AddTransactionView: View {
         errorMessage = nil
         defer { isLoading = false }
 
-        let form = BudgetStore.TransactionForm(
-            accountId: selectedAccountId,
-            type: txType,
-            amount: amount,
-            payeeName: payeeName,
-            transferToAccountId: transferToAccountId,
-            categoryId: selectedCategoryId,
-            notes: notes,
-            date: date,
-            cleared: cleared,
-            splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
-            collapseSplit: unsplitRequested,
-            recordLocation: saveLocation,
-            reviewConfirmations: confirmedReviewRequirements
-        )
+        await applyAutomaticCategory(for: automaticCategoryInput)
+        let form = currentForm()
 
         do {
             let savedTransactionId: String? = if let saveOverride {
@@ -770,6 +815,26 @@ struct AddTransactionView: View {
         }
     }
 
+    private func currentForm() -> BudgetStore.TransactionForm {
+        BudgetStore.TransactionForm(
+            accountId: selectedAccountId,
+            type: txType,
+            amount: amount,
+            payeeName: payeeName,
+            transferToAccountId: transferToAccountId,
+            categoryId: selectedCategoryId,
+            notes: notes,
+            date: date,
+            cleared: cleared,
+            splits: isTransfer ? [] : (unsplitRequested ? [] : splitLines),
+            collapseSplit: unsplitRequested,
+            recordLocation: saveLocation,
+            reviewConfirmations: confirmedReviewRequirements,
+            categoryIsExplicit: userPickedCategory,
+            automaticCategoryPreview: automaticCategoryPreview
+        )
+    }
+
     private func resetForm() {
         amount = ""
         txType = .expense
@@ -785,6 +850,7 @@ struct AddTransactionView: View {
         // A fresh form suggests categories from payee history again — a
         // discarded manual pick must not keep suppressing the lookup.
         userPickedCategory = false
+        automaticCategoryPreview = nil
         // A reset can arrive with the amount or payee field still focused —
         // Esc or ⌘Return from a hardware keyboard — and a fresh form doesn't
         // keep the old keyboard up.

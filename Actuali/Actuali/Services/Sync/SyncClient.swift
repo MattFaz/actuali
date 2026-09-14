@@ -216,12 +216,14 @@ actor SyncClient {
     func createTransaction(
         _ transaction: Transaction,
         applyRules: Bool = true,
-        prepared: PreparedRules? = nil
+        prepared: PreparedRules? = nil,
+        preserveCategory: Bool = false
     ) async throws -> TransactionCreateResult {
         try await createTransaction(
             transaction,
             applyRules: applyRules,
             prepared: prepared,
+            preserveCategory: preserveCategory,
             financialIdPolicy: .unique,
             resolveOriginalBankPayee: false
         )
@@ -238,6 +240,7 @@ actor SyncClient {
             transaction,
             applyRules: true,
             prepared: prepared,
+            preserveCategory: false,
             financialIdPolicy: .occurrences(maxLiveFinancialIdOccurrences),
             resolveOriginalBankPayee: true,
             expectedLink: expectedLink
@@ -326,6 +329,7 @@ actor SyncClient {
         _ transaction: Transaction,
         applyRules: Bool,
         prepared: PreparedRules?,
+        preserveCategory: Bool,
         financialIdPolicy: FinancialIdPolicy,
         resolveOriginalBankPayee: Bool,
         expectedLink: ExpectedBankSyncLink? = nil
@@ -359,6 +363,9 @@ actor SyncClient {
             }
 
             finalTransaction = result.transaction
+            if preserveCategory, let categoryId = transaction.categoryId {
+                finalTransaction.categoryId = categoryId
+            }
             if let name = result.pendingPayeeName {
                 finalTransaction.payeeId = try await resolvePayee(
                     named: name,
