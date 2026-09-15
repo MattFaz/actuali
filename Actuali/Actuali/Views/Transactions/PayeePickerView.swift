@@ -11,8 +11,9 @@ struct PayeePickerView: View {
     let onDeleteNearby: (NearbyPayee) -> Void
 
     @State private var searchText: String
+    @State private var searchSelection: TextSelection?
     @State private var suggestedPayees: [Payee] = []
-    @State private var isSearchPresented = true
+    @FocusState private var searchFocused: Bool
 
     init(
         payeeName: String,
@@ -28,6 +29,12 @@ struct PayeePickerView: View {
         self.onCommit = onCommit
         self.onDeleteNearby = onDeleteNearby
         _searchText = State(initialValue: payeeName)
+    }
+
+    /// Select the whole pre-filled payee name so the first keystroke replaces
+    /// it instead of appending to it (GH #486).
+    private func selectAllSearchText() {
+        searchSelection = TextSelection(range: searchText.startIndex..<searchText.endIndex)
     }
 
     private var trimmedSearchText: String {
@@ -256,16 +263,22 @@ struct PayeePickerView: View {
                     }
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                searchBar
+            }
             .navigationTitle("Payee")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(
-                text: $searchText,
-                isPresented: $isSearchPresented,
-                placement: .navigationBarDrawer(displayMode: .always),
-                prompt: "Search payees"
-            )
-            .autocorrectionDisabled()
-            .textInputAutocapitalization(.words)
+            .scrollDismissesKeyboard(.immediately)
+            .onAppear {
+                searchFocused = true
+            }
+            .onChange(of: searchFocused) { _, focused in
+                // Select the whole pre-filled name when focus lands so the
+                // first keystroke replaces it instead of appending (GH #486).
+                if focused {
+                    selectAllSearchText()
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button {
@@ -288,5 +301,35 @@ struct PayeePickerView: View {
                 )
             }
         }
+    }
+}
+
+// The picker's search field. `TextField(_:text:selection:)` (iOS 16+) is the
+// whole fix for GH #486: writing a select-all `TextSelection` while the field
+// is focused makes the first keystroke replace the pre-filled name — the
+// `.searchable` drawer field ignores `.searchSelection` writes entirely.
+private extension PayeePickerView {
+    var searchBar: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            TextField("Search payees", text: $searchText, selection: $searchSelection)
+                .focused($searchFocused)
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .onSubmit { searchFocused = false }
+            if !searchText.isEmpty {
+                Button {
+                    searchText = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .accessibilityLabel("Clear text")
+            }
+        }
+        .padding(8)
+        .background(.bar)
     }
 }
