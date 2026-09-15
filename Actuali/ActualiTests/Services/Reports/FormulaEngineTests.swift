@@ -66,9 +66,23 @@ struct FormulaEngineTests {
         }
     }
 
-    @Test func functionsBeyondQueryAreUnsupported() {
+    @Test func evaluatesBasicFormulaCardFunctionsAndText() {
+        let transactions = [
+            tx("expense", date: 20260705, amount: -25_000),
+            tx("income", date: 20260702, amount: 100_000),
+        ]
+        let formula = #"=IF(QUERY("income")=0,0,ROUND(1-(ABS(QUERY("expenses"))/QUERY("income")),4)*100)&"%""#
+
         let result = FormulaEngine.compute(
-            meta: meta(formula: #"=IF(query("a")>0, 1, 2)"#),
+            meta: meta(formula: formula, queries: savedThisMonthQueries),
+            transactions: transactions, today: today, context: .empty)
+
+        #expect(result == .text("75%"))
+    }
+
+    @Test func functionsOutsideSupportedFormulaSubsetAreUnsupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=SUM(query("a"))"#),
             transactions: [], today: today, context: .empty)
         guard case .unsupported = result else {
             Issue.record("expected .unsupported, got \(result)"); return
