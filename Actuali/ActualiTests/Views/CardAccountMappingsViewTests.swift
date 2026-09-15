@@ -185,6 +185,22 @@ struct CardAccountMappingsViewTests {
         #expect(suggestions[2].keyword == "ZZZZ") // count 1, alphabetical
     }
 
+    @Test func editingWithoutRenameRemovesNothing() {
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: nil, cleanedKeyword: "1234").isEmpty)
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "1234", cleanedKeyword: "1234").isEmpty)
+    }
+
+    @Test func renamingAKeywordRemovesTheOriginalKey() {
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "1234", cleanedKeyword: "4321") == ["1234"])
+    }
+
+    @Test func caseOnlyRenameRemovesTheOriginalKey() {
+        // Resolution lowercases hints, but dictionary keys are exact, so a
+        // case-only rename must still drop the old key or the list shows two
+        // rows for one mapping.
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "HSBC", cleanedKeyword: "hsbc") == ["HSBC"])
+    }
+
     @Test func filtersOtherBudgetsButKeepsLegacyImports() {
         let imports = [
             makeImport(cardHint: "1111"),
