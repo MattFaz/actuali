@@ -107,6 +107,40 @@ struct BudgetStoreAccountMappingTests {
         #expect(fetched.isEmpty)
     }
 
+    @Test func setCardAccountMappingRemovingKeywordsPersistsInOneWrite() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        await store.setCardAccountMapping(keyword: "1234", accountId: "acct_chase")
+        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_hdfc")
+
+        // Rename: new key written and old key dropped in one persisted write.
+        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_amex", removingKeywords: ["1234"])
+
+        #expect(store.cardAccountMappings == ["4321": "acct_amex"])
+        let fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched == ["4321": "acct_amex"])
+
+        // Account-only edit keeps the key.
+        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_chase")
+        #expect(store.cardAccountMappings == ["4321": "acct_chase"])
+    }
+
     @Test func deleteCardAccountMappingsRemovesEveryKeyword() async throws {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

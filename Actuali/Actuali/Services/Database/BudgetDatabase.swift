@@ -323,6 +323,15 @@ final class BudgetDatabase: Sendable {
                 source TEXT NOT NULL
             )
         """),
+        // Envelope buffers are synced rows in Actual's zero_budget_months
+        // table. Older files may not have received the table-creation
+        // migration yet, but local writes still need a real CRDT target.
+        (1780606215006, """
+            CREATE TABLE IF NOT EXISTS zero_budget_months (
+                id TEXT PRIMARY KEY,
+                buffered INTEGER NOT NULL DEFAULT 0
+            )
+        """),
         // Upstream 1765518577215 (multiple dashboards): pages table. Only the
         // schema half of upstream's migration — upstream also mints a default
         // "Main" page and moves widgets onto it, but that half generates no
@@ -432,6 +441,7 @@ final class BudgetDatabase: Sendable {
         1780606215004, // locally minted accounts.last_sync backfill
         1770000000003, // defensive CREATE banks
         1780606215005, // device-local FinanceKit link identities
+        1780606215006, // envelope buffer rows
     ]
 
     /// Whether `runPendingMigrations()` would perform any write. Mirrors the
@@ -754,6 +764,8 @@ final class BudgetDatabase: Sendable {
     /// SQL for the same reason: pages stay full-sized and cover full history.
     func fetchTransactions(
         accountId: String? = nil,
+        startDate: Int? = nil,
+        endDate: Int? = nil,
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
@@ -814,6 +826,16 @@ final class BudgetDatabase: Sendable {
             if let accountId {
                 sql += " AND t.acct = ?"
                 arguments.append(accountId)
+            }
+
+            if let startDate {
+                sql += " AND t.date >= ?"
+                arguments.append(startDate)
+            }
+
+            if let endDate {
+                sql += " AND t.date <= ?"
+                arguments.append(endDate)
             }
 
             if unclearedOnly {
@@ -1036,6 +1058,105 @@ final class BudgetDatabase: Sendable {
                   AND \(Self.aliveChildPredicate(parent: "p"))
                   AND (t.isParent = 0 OR t.isParent IS NULL)
                 """, arguments: [accountId, fromDate, toDate]) ?? 0
+        }
+    }
+
+    /// Statement balance, payments made since statement closing, and remaining statement due
+    /// for credit card accounts. Run in a single read lock.
+    func fetchCreditCardStatementDues(
+        for requests: [(accountId: String, statementDate: DayDate, dueDate: DayDate, liveBalance: Int)]
+    ) async throws -> [String: [CreditCardCycle.StatementDue]] {
+        guard !requests.isEmpty else { return [:] }
+        return try await dbQueue.read { db in
+            var results: [String: [CreditCardCycle.StatementDue]] = [:]
+            for req in requests {
+                let row = try Row.fetchOne(db, sql: """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN t.date <= ? THEN t.amount ELSE 0 END), 0) AS statementRawBalance,
+                        COALESCE(SUM(CASE WHEN t.date > ? AND t.amount > 0 THEN t.amount ELSE 0 END), 0) AS paymentsSince
+                    FROM transactions t
+                    LEFT JOIN transactions p ON p.id = t.parent_id
+                    WHERE t.acct = ?
+                      AND t.date IS NOT NULL
+                      AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                      AND \(Self.aliveChildPredicate(parent: "p"))
+                      AND (t.isParent = 0 OR t.isParent IS NULL)
+                    """, arguments: [req.statementDate.yyyymmdd, req.statementDate.yyyymmdd, req.accountId])
+
+                let statementRawBalance: Int = row?["statementRawBalance"] ?? 0
+                let paymentsSince: Int = row?["paymentsSince"] ?? 0
+
+                results[req.accountId, default: []].append(CreditCardCycle.calculateStatementDue(
+                    statementRawBalance: statementRawBalance,
+                    paymentsSince: paymentsSince,
+                    liveBalance: req.liveBalance,
+                    dueDate: req.dueDate
+                ))
+            }
+            return results
+        }
+    }
+
+    /// Statement records for the given closed cycles on a credit card account.
+    /// Cycles with no recorded transactions and zero statement balance are excluded.
+    func fetchRecentStatements(
+        accountId: String,
+        cycles: [(start: DayDate, end: DayDate, dueDate: DayDate)],
+        liveBalance: Int
+    ) async throws -> [CreditCardCycle.StatementRecord] {
+        guard !cycles.isEmpty else { return [] }
+        return try await dbQueue.read { db in
+            var records: [CreditCardCycle.StatementRecord] = []
+            for cycle in cycles {
+                let row = try Row.fetchOne(db, sql: """
+                    SELECT
+                        COALESCE(SUM(CASE WHEN t.date <= ? THEN t.amount ELSE 0 END), 0) AS statementRawBalance,
+                        COALESCE(SUM(CASE WHEN t.date > ? AND t.amount > 0 THEN t.amount ELSE 0 END), 0) AS paymentsSince,
+                        COALESCE(SUM(CASE WHEN t.date >= ? AND t.date <= ? AND t.amount < 0 THEN -t.amount ELSE 0 END), 0) AS totalSpend,
+                        COUNT(CASE WHEN t.date >= ? AND t.date <= ? THEN 1 ELSE NULL END) AS transactionCount
+                    FROM transactions t
+                    LEFT JOIN transactions p ON p.id = t.parent_id
+                    WHERE t.acct = ?
+                      AND t.date IS NOT NULL
+                      AND (t.tombstone = 0 OR t.tombstone IS NULL)
+                      AND \(Self.aliveChildPredicate(parent: "p"))
+                      AND (t.isParent = 0 OR t.isParent IS NULL)
+                    """, arguments: [
+                        cycle.end.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        cycle.start.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        cycle.start.yyyymmdd,
+                        cycle.end.yyyymmdd,
+                        accountId
+                    ])
+
+                let statementRawBalance: Int = row?["statementRawBalance"] ?? 0
+                let paymentsSince: Int = row?["paymentsSince"] ?? 0
+                let totalSpend: Int = row?["totalSpend"] ?? 0
+                let transactionCount: Int = row?["transactionCount"] ?? 0
+
+                let statementDue = CreditCardCycle.calculateStatementDue(
+                    statementRawBalance: statementRawBalance,
+                    paymentsSince: paymentsSince,
+                    liveBalance: liveBalance,
+                    dueDate: cycle.dueDate
+                )
+
+                // Only include if data is available (has transactions or non-zero statement balance)
+                if transactionCount > 0 || statementDue.statementBalance > 0 {
+                    records.append(CreditCardCycle.StatementRecord(
+                        startDate: cycle.start,
+                        endDate: cycle.end,
+                        dueDate: cycle.dueDate,
+                        statementBalance: statementDue.statementBalance,
+                        paymentsSince: statementDue.paymentsSince,
+                        remainingDue: statementDue.remainingDue,
+                        totalSpend: totalSpend
+                    ))
+                }
+            }
+            return records
         }
     }
 
@@ -1328,6 +1449,31 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    private static func duplicateName(_ name: String, among names: [String]) -> String? {
+        let foldedName = name.uppercased()
+        return names.first { $0.uppercased() == foldedName }
+    }
+
+    /// Validate a group rename before emitting its CRDT message. Group names
+    /// remain unique across the budget, matching creation and upstream Actual.
+    func validateCategoryGroupRename(id: String, name: String) throws {
+        try dbQueue.read { db in
+            let exists = try Bool.fetchOne(db, sql: """
+                SELECT 1 FROM category_groups
+                WHERE id = ? AND tombstone IS NOT 1
+                """, arguments: [id]) ?? false
+            guard exists else { throw CategoryWriteError.groupNotFound }
+
+            let names = try String.fetchAll(db, sql: """
+                SELECT name FROM category_groups
+                WHERE id != ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [id])
+            if let clash = Self.duplicateName(name, among: names) {
+                throw CategoryWriteError.duplicateGroupName(clash)
+            }
+        }
+    }
+
     /// Validate a category rename before the sync layer emits its name
     /// message. Names remain unique within a group, matching category
     /// creation and the web app.
@@ -1343,13 +1489,11 @@ final class BudgetDatabase: Sendable {
                 SELECT name FROM category_groups
                 WHERE id = ? AND tombstone IS NOT 1
                 """, arguments: [groupId]) ?? "That group"
-            let clash = try Bool.fetchOne(db, sql: """
-                SELECT 1 FROM categories
-                WHERE cat_group = ? AND id != ? AND UPPER(name) = UPPER(?)
-                  AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [groupId, id, name]) ?? false
-            if clash {
+            let names = try String.fetchAll(db, sql: """
+                SELECT name FROM categories
+                WHERE cat_group = ? AND id != ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [groupId, id])
+            if Self.duplicateName(name, among: names) != nil {
                 throw CategoryWriteError.duplicateCategoryName(
                     name: name,
                     groupName: groupName
@@ -1365,12 +1509,11 @@ final class BudgetDatabase: Sendable {
     /// messages.
     func insertCategoryGroup(id: String, name: String) throws -> CategoryGroup {
         try dbQueue.write { db in
-            let clash = try String.fetchOne(db, sql: """
+            let names = try String.fetchAll(db, sql: """
                 SELECT name FROM category_groups
-                WHERE UPPER(name) = UPPER(?) AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [name])
-            if let clash {
+                WHERE name IS NOT NULL AND tombstone IS NOT 1
+                """)
+            if let clash = Self.duplicateName(name, among: names) {
                 throw CategoryWriteError.duplicateGroupName(clash)
             }
 
@@ -1416,12 +1559,11 @@ final class BudgetDatabase: Sendable {
             }
             let groupName: String = group["name"] ?? "That group"
 
-            let clash = try Bool.fetchOne(db, sql: """
-                SELECT 1 FROM categories
-                WHERE cat_group = ? AND UPPER(name) = UPPER(?) AND tombstone IS NOT 1
-                LIMIT 1
-                """, arguments: [groupId, name]) ?? false
-            if clash {
+            let names = try String.fetchAll(db, sql: """
+                SELECT name FROM categories
+                WHERE cat_group = ? AND name IS NOT NULL AND tombstone IS NOT 1
+                """, arguments: [groupId])
+            if Self.duplicateName(name, among: names) != nil {
                 throw CategoryWriteError.duplicateCategoryName(name: name, groupName: groupName)
             }
 
@@ -1577,6 +1719,11 @@ final class BudgetDatabase: Sendable {
         let leftoverByMonthCat: [Int: [String: Int]]
         /// Envelope "To Budget" at the target month (0 for tracking).
         let toBudget: Int
+        let summaryIncome: Int
+        let summaryBudgeted: Int
+        let summaryLastMonthOverspent: Int
+        let summaryBuffered: Int
+        let summaryManualBuffered: Int
         let incomeCatIds: Set<String>
         let categories: [CategoryRecord]
         let groups: [CategoryGroupRecord]
@@ -1719,6 +1866,11 @@ final class BudgetDatabase: Sendable {
             // unallocated funds instead.
             var runningToBudget = 0
             var priorBuffered = 0
+            var summaryIncome = 0
+            var summaryBudgeted = 0
+            var summaryLastMonthOverspent = 0
+            var summaryBuffered = 0
+            var summaryManualBuffered = 0
             var leftoverByMonthCat: [Int: [String: Int]] = [:]
 
             var m = earliestMonth
@@ -1751,6 +1903,13 @@ final class BudgetDatabase: Sendable {
                     runningToBudget = income + runningToBudget + priorBuffered
                         + lastMonthOverspent - budgetedTotal - buffered
                     priorBuffered = buffered
+                    if m == targetMonthInt {
+                        summaryIncome = income
+                        summaryBudgeted = budgetedTotal
+                        summaryLastMonthOverspent = lastMonthOverspent
+                        summaryBuffered = buffered
+                        summaryManualBuffered = manualBuffered
+                    }
                 }
 
                 let touchedCats = Set(budgetsForMonth.keys)
@@ -1795,9 +1954,38 @@ final class BudgetDatabase: Sendable {
                 spentByMonthCat: spentByMonthCat,
                 leftoverByMonthCat: leftoverByMonthCat,
                 toBudget: runningToBudget,
+                summaryIncome: summaryIncome,
+                summaryBudgeted: summaryBudgeted,
+                summaryLastMonthOverspent: summaryLastMonthOverspent,
+                summaryBuffered: summaryBuffered,
+                summaryManualBuffered: summaryManualBuffered,
                 incomeCatIds: incomeCatIds,
                 categories: categories,
                 groups: groups)
+    }
+
+    struct EnvelopeBudgetSummaryData: Sendable {
+        let availableFunds: Int
+        let lastMonthOverspent: Int
+        let budgeted: Int
+        let toBudget: Int
+        let buffered: Int
+    }
+
+    func fetchEnvelopeBudgetSummary(month: String) async throws -> EnvelopeBudgetSummaryData? {
+        try await dbQueue.read { db in
+            let walk = try Self.budgetWalk(db, targetMonthInt: Self.monthStringToInt(month))
+            guard walk.isEnvelope else { return nil }
+            let availableFunds = walk.toBudget - walk.summaryLastMonthOverspent
+                + walk.summaryBudgeted + walk.summaryBuffered
+            return EnvelopeBudgetSummaryData(
+                availableFunds: availableFunds,
+                lastMonthOverspent: walk.summaryLastMonthOverspent,
+                budgeted: walk.summaryBudgeted,
+                toBudget: walk.toBudget,
+                buffered: walk.summaryManualBuffered
+            )
+        }
     }
 
     func fetchBudgetMonth(month: String) async throws -> BudgetMonth {
@@ -1871,6 +2059,7 @@ final class BudgetDatabase: Sendable {
                 categoryBudgets: allCategoryBudgets.filter { !$0.isEffectivelyHidden },
                 incomeCategories: allIncomeCategories.filter { !$0.isEffectivelyHidden },
                 toBudget: isEnvelope ? walk.toBudget : nil,
+                buffered: isEnvelope ? walk.summaryManualBuffered : 0,
                 hiddenCategoryBudgets: allCategoryBudgets.filter(\.isEffectivelyHidden),
                 hiddenIncomeCategories: allIncomeCategories.filter(\.isEffectivelyHidden)
             )
@@ -1903,6 +2092,19 @@ final class BudgetDatabase: Sendable {
     /// Sync (see the async/sync split above): the write path can't suspend.
     func notesTableExists() throws -> Bool {
         try dbQueue.read { db in try db.tableExists("notes") }
+    }
+
+    func zeroBudgetMonthsTableExists() throws -> Bool {
+        try dbQueue.read { db in try db.tableExists("zero_budget_months") }
+    }
+
+    func incomeCategoryIds() throws -> [String] {
+        try dbQueue.read { db in
+            try String.fetchAll(db, sql: """
+                SELECT id FROM categories
+                WHERE is_income = 1 AND (tombstone = 0 OR tombstone IS NULL)
+                """)
+        }
     }
 
     /// Where a budget amount write for (month, category) must land: which
@@ -4292,13 +4494,25 @@ final class BudgetDatabase: Sendable {
     /// loot-core `getHasTransactionsQuery`, collapsed into one grouped query
     /// rather than a large OR: each schedule's own lower bound is applied in
     /// Swift against the latest linked transaction date.
-    func fetchPaidScheduleIds(for schedules: [ScheduleSummary]) async throws -> Set<String> {
+    func fetchPaidScheduleIds(
+        for schedules: [ScheduleSummary],
+        today: DayDate = .today()
+    ) async throws -> Set<String> {
         let bounds: [(id: String, start: Int)] = schedules.compactMap { schedule in
             guard let nextDate = schedule.nextDate else { return nil }
+            let frequency: RecurConfig.Frequency?
+            // A future occurrence must not absorb a late payment that still
+            // belongs to the current one.
+            if nextDate <= today, case .recurring(let config)? = schedule.dateCondition {
+                frequency = config.frequency
+            } else {
+                frequency = nil
+            }
             let start = ScheduleStatusCalculator.occurrenceMatchStartDate(
                 nextDate: nextDate,
                 dateOp: schedule.dateOp,
-                postsTransaction: schedule.postsTransaction)
+                postsTransaction: schedule.postsTransaction,
+                frequency: frequency)
             return (schedule.id, start.yyyymmdd)
         }
         guard !bounds.isEmpty else { return [] }
