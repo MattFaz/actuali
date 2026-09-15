@@ -83,21 +83,22 @@ final class ReconciliationUITests: XCTestCase {
     func testTappingBalanceRevealsBreakdown() throws {
         let app = openChaseChecking()
 
-        let balanceRow = app.buttons.matching(
-            NSPredicate(format: "label BEGINSWITH 'Current Balance'")
-        ).firstMatch
-        XCTAssertTrue(balanceRow.waitForExistence(timeout: 10))
+        let balanceToggle = app.buttons["accountBalance.toggle"].firstMatch
+        XCTAssertTrue(balanceToggle.waitForExistence(timeout: 10),
+                      "On Budget account should expose the balance disclosure")
+        XCTAssertTrue(app.staticTexts["Cleared"].exists,
+                      "cleared should be visible without expanding the balance")
+        XCTAssertTrue(app.staticTexts["Uncleared"].exists,
+                      "uncleared should be visible without expanding the balance")
         XCTAssertFalse(app.staticTexts["Reconciled"].exists,
-                       "breakdown starts collapsed")
+                       "reconciled starts collapsed")
 
-        balanceRow.tap()
+        balanceToggle.tap()
 
-        // GH #134: the split appears in place, without a reconciliation.
-        XCTAssertTrue(app.staticTexts["Cleared"].waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["Uncleared"].exists)
-        XCTAssertTrue(app.staticTexts["Reconciled"].exists)
+        // GH #134: the split appears in place, without starting reconciliation.
+        XCTAssertTrue(app.staticTexts["Reconciled"].waitForExistence(timeout: 10))
 
-        balanceRow.tap()
+        balanceToggle.tap()
 
         let collapsed = NSPredicate(format: "exists == false")
         expectation(for: collapsed, evaluatedWith: app.staticTexts["Reconciled"])
