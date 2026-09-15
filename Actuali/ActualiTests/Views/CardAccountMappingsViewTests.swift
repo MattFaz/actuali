@@ -201,6 +201,20 @@ struct CardAccountMappingsViewTests {
         #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "HSBC", cleanedKeyword: "hsbc") == ["HSBC"])
     }
 
+    @Test func multiKeywordSaveRemovesOnlyDeletedKeywords() {
+        let original = ["1234", "5678", "CSR"]
+        let cleaned = ["1234", "CSR", "9999"]
+        let removed = CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: original, cleanedKeywords: cleaned)
+        #expect(removed == ["5678"])
+    }
+
+    @Test func multiKeywordSaveWithNoDeletionsRemovesNothing() {
+        let original = ["1234", "CSR"]
+        let cleaned = ["1234", "CSR", "9999"]
+        let removed = CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: original, cleanedKeywords: cleaned)
+        #expect(removed.isEmpty)
+    }
+
     @Test func filtersOtherBudgetsButKeepsLegacyImports() {
         let imports = [
             makeImport(cardHint: "1111"),
