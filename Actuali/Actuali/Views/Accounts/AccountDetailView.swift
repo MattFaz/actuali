@@ -197,7 +197,7 @@ struct AccountDetailView: View {
         .accessibilityIdentifier(identifier)
     }
 
-    private var onBudgetBalanceHeader: some View {
+    private var balanceHeader: some View {
         HStack(alignment: .top, spacing: 8) {
             balanceColumn(
                 String(localized: "Cleared"),
@@ -250,46 +250,12 @@ struct AccountDetailView: View {
         }
     }
 
-    private var offBudgetBalanceHeader: some View {
-        Button {
-            withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
-        } label: {
-            HStack {
-                Text(String(localized: "Current Balance"))
-                Spacer()
-                Text(budgetStore.displayBalance(currentBalance))
-                    .fontWeight(.semibold)
-                    .animatedAmount(budgetStore.displayBalance(currentBalance))
-                if breakdown != nil {
-                    Image(systemName: "chevron.down")
-                        .font(.caption2.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                }
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
-        .accessibilityHint(showingBreakdown
-            ? String(localized: "Hides the balance breakdown")
-            : String(localized: "Shows cleared, uncleared, and reconciled balances"))
-    }
-
     var body: some View {
         List {
             Section {
-                if account.offBudget {
-                    offBudgetBalanceHeader
-                } else {
-                    onBudgetBalanceHeader
-                }
+                balanceHeader
 
                 if showingBreakdown, let breakdown {
-                    if account.offBudget {
-                        breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
-                        breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
-                    }
                     breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
                 }
 
