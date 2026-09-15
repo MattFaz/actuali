@@ -137,6 +137,7 @@ struct CardAccountMappingsView: View {
                                 Spacer()
                             }
                         }
+                        .accessibilityIdentifier("cardMappings.row.\(mapping.keyword)")
                     }
                     .onDelete(perform: deleteMapping)
                 }
@@ -160,7 +161,10 @@ struct CardAccountMappingsView: View {
                             .autocorrectionDisabled()
                         
                         Picker(String(localized: "Target Account"), selection: $selectedAccountId) {
-                            ForEach(budgetStore.accounts.filter { !$0.closed }) { account in
+                            // The current target stays selectable even when closed:
+                            // mappings to closed accounts are a supported, repairable
+                            // state, and an edit must pre-fill with what it edits.
+                            ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == selectedAccountId }) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
@@ -183,7 +187,7 @@ struct CardAccountMappingsView: View {
                             saveMapping()
                             showingAddSheet = false
                         }
-                        .disabled(newKeyword.trimmingCharacters(in: .whitespaces).isEmpty || selectedAccountId.isEmpty)
+                        .disabled(newKeyword.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || selectedAccountId.isEmpty)
                     }
                 }
             }
@@ -219,17 +223,14 @@ struct CardAccountMappingsView: View {
     }
 
     private func saveMapping() {
-        let cleaned = newKeyword.trimmingCharacters(in: .whitespaces)
+        // Same normalization as BudgetStore.setCardAccountMapping, so the
+        // rename comparison below sees the key that will actually be written.
+        let cleaned = newKeyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty, !selectedAccountId.isEmpty else { return }
         let accountId = selectedAccountId
         let removed = Self.keywordsRemovedBySave(originalKeyword: editingKeyword, cleanedKeyword: cleaned)
         Task {
-            // Set the new key before removing the old one so the mapping is
-            // never absent mid-rename.
-            await budgetStore.setCardAccountMapping(keyword: cleaned, accountId: accountId)
-            if !removed.isEmpty {
-                await budgetStore.deleteCardAccountMappings(keywords: removed)
-            }
+            await budgetStore.setCardAccountMapping(keyword: cleaned, accountId: accountId, removingKeywords: removed)
         }
     }
 }

@@ -726,8 +726,10 @@ final class BudgetStore: ObservableObject {
     }
 
     /// Writes or removes a card-to-account mapping and persists it through SyncClient.
-    /// Passing nil or empty `accountId` removes the keyword mapping.
-    func setCardAccountMapping(keyword: String, accountId: String?) async {
+    /// Passing nil or empty `accountId` removes the keyword mapping. Keywords in
+    /// `removingKeywords` are dropped in the same persisted write, so an edit that
+    /// renames a keyword can never leave both keys mapped.
+    func setCardAccountMapping(keyword: String, accountId: String?, removingKeywords: [String] = []) async {
         let cleaned = keyword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleaned.isEmpty else { return }
         var updated = cardAccountMappings
@@ -735,6 +737,10 @@ final class BudgetStore: ObservableObject {
             updated[cleaned] = accountId
         } else {
             updated.removeValue(forKey: cleaned)
+        }
+        for keyword in removingKeywords {
+            updated.removeValue(forKey: keyword)
+            updated.removeValue(forKey: keyword.trimmingCharacters(in: .whitespacesAndNewlines))
         }
         await persistCardAccountMappings(updated)
     }
