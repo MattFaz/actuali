@@ -36,5 +36,19 @@ final class PayeePickerSelectAllUITests: XCTestCase {
         searchField.typeText("x")
         XCTAssertEqual(searchField.value as? String, "x",
                        "typing should overwrite the pre-filled payee, not append to it")
+
+        // Scrolling dismisses the keyboard; re-focusing must not re-select-all,
+        // or the next keystroke would wipe the query the user already typed.
+        app.swipeUp()
+        searchField.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                      "keyboard did not come back for the refocused field")
+        XCTAssertEqual(searchField.value as? String, "x",
+                       "refocusing must not wipe the query")
+        searchField.typeText("y")
+        let refocusedValue = (searchField.value as? String) ?? ""
+        XCTAssertTrue(["xy", "yx"].contains(refocusedValue),
+                      "after refocus the keystroke should append (got \(refocusedValue); "
+                      + "\"y\" alone means re-select-all)")
     }
 }

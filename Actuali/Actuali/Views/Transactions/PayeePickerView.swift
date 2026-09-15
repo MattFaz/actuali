@@ -12,6 +12,7 @@ struct PayeePickerView: View {
 
     @State private var searchText: String
     @State private var searchSelection: TextSelection?
+    @State private var hasAutoSelectedAll = false
     @State private var suggestedPayees: [Payee] = []
     @FocusState private var searchFocused: Bool
 
@@ -273,11 +274,12 @@ struct PayeePickerView: View {
                 searchFocused = true
             }
             .onChange(of: searchFocused) { _, focused in
-                // Select the whole pre-filled name when focus lands so the
-                // first keystroke replaces it instead of appending (GH #486).
-                if focused {
-                    selectAllSearchText()
-                }
+                // Select the pre-filled name only when focus first lands.
+                // Re-selecting on every refocus would wipe a query the user
+                // typed before scrolling (GH #486 review).
+                guard focused, !hasAutoSelectedAll else { return }
+                hasAutoSelectedAll = true
+                selectAllSearchText()
             }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
