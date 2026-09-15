@@ -73,7 +73,7 @@ struct BudgetStoreAccountMappingTests {
         #expect(UserDefaults.standard.dictionary(forKey: "cardAccountMappings_\(budgetId)") == nil)
     }
 
-    @Test func setCardAccountMappingPersistsThroughSync() async throws {
+    @Test func setCardAccountMappingsPersistsThroughSync() async throws {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -92,7 +92,7 @@ struct BudgetStoreAccountMappingTests {
         store.currentBudgetId = "test-budget"
         store.configureForTesting(database: database, syncClient: syncClient)
 
-        await store.setCardAccountMapping(keyword: "1234", accountId: "acct_chase")
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
 
         #expect(store.cardAccountMappings["1234"] == "acct_chase")
 
@@ -100,14 +100,14 @@ struct BudgetStoreAccountMappingTests {
         #expect(fetched["1234"] == "acct_chase")
 
         // Removing mapping
-        await store.setCardAccountMapping(keyword: "1234", accountId: nil)
+        await store.setCardAccountMappings(accountId: nil, keywords: ["1234"])
         #expect(store.cardAccountMappings["1234"] == nil)
 
         fetched = try await database.fetchCardAccountMappings()
         #expect(fetched.isEmpty)
     }
 
-    @Test func setCardAccountMappingRemovingKeywordsPersistsInOneWrite() async throws {
+    @Test func setCardAccountMappingsRemovingKeywordsPersistsInOneWrite() async throws {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -126,18 +126,18 @@ struct BudgetStoreAccountMappingTests {
         store.currentBudgetId = "test-budget"
         store.configureForTesting(database: database, syncClient: syncClient)
 
-        await store.setCardAccountMapping(keyword: "1234", accountId: "acct_chase")
-        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_hdfc")
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
+        await store.setCardAccountMappings(accountId: "acct_hdfc", keywords: ["4321"])
 
         // Rename: new key written and old key dropped in one persisted write.
-        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_amex", removingKeywords: ["1234"])
+        await store.setCardAccountMappings(accountId: "acct_amex", keywords: ["4321"], removingKeywords: ["1234"])
 
         #expect(store.cardAccountMappings == ["4321": "acct_amex"])
         let fetched = try await database.fetchCardAccountMappings()
         #expect(fetched == ["4321": "acct_amex"])
 
         // Account-only edit keeps the key.
-        await store.setCardAccountMapping(keyword: "4321", accountId: "acct_chase")
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["4321"])
         #expect(store.cardAccountMappings == ["4321": "acct_chase"])
     }
 
@@ -160,8 +160,8 @@ struct BudgetStoreAccountMappingTests {
         store.currentBudgetId = "test-budget"
         store.configureForTesting(database: database, syncClient: syncClient)
 
-        await store.setCardAccountMapping(keyword: "1234", accountId: "acct_chase")
-        await store.setCardAccountMapping(keyword: "HSBC", accountId: "acct_hsbc")
+        await store.setCardAccountMappings(accountId: "acct_chase", keywords: ["1234"])
+        await store.setCardAccountMappings(accountId: "acct_hsbc", keywords: ["HSBC"])
 
         // Deleting non-existent keywords should be a safe no-op
         await store.deleteCardAccountMappings(keywords: ["UNKNOWN"])
@@ -174,7 +174,7 @@ struct BudgetStoreAccountMappingTests {
         #expect(fetched.isEmpty)
     }
 
-    @Test func updateCardAccountMappingsPersistsMultipleAndRemovesSpecified() async throws {
+    @Test func setCardAccountMappingsPersistsMultipleAndRemovesSpecified() async throws {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         defer { try? FileManager.default.removeItem(at: tempURL) }
@@ -194,7 +194,7 @@ struct BudgetStoreAccountMappingTests {
         store.configureForTesting(database: database, syncClient: syncClient)
 
         // Map initial keywords
-        await store.updateCardAccountMappings(
+        await store.setCardAccountMappings(
             accountId: "acct_chase",
             keywords: ["1234", "5678", "CSR"]
         )
@@ -205,7 +205,7 @@ struct BudgetStoreAccountMappingTests {
         ])
 
         // Edit: remove 5678, add 9999, retain 1234 and CSR
-        await store.updateCardAccountMappings(
+        await store.setCardAccountMappings(
             accountId: "acct_chase",
             keywords: ["1234", "CSR", " 9999 "],
             removingKeywords: ["5678"]
