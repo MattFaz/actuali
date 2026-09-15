@@ -745,6 +745,23 @@ final class BudgetStore: ObservableObject {
         await persistCardAccountMappings(updated)
     }
 
+    /// Sets multiple keywords for an account and removes any requested keywords in a single batch write.
+    func updateCardAccountMappings(accountId: String, keywords: [String], removingKeywords: [String] = []) async {
+        guard !accountId.isEmpty else { return }
+        var updated = cardAccountMappings
+        for key in removingKeywords {
+            updated.removeValue(forKey: key)
+            updated.removeValue(forKey: key.trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+        for raw in keywords {
+            let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !cleaned.isEmpty {
+                updated[cleaned] = accountId
+            }
+        }
+        await persistCardAccountMappings(updated)
+    }
+
     /// Removes multiple card-to-account mappings in a single batch write.
     func deleteCardAccountMappings(keywords: [String]) async {
         guard !keywords.isEmpty else { return }

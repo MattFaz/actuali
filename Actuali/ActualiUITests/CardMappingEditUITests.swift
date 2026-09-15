@@ -35,7 +35,7 @@ final class CardMappingEditUITests: XCTestCase {
 
         let row = app.buttons["cardMappings.row.\(keyword)"]
         XCTAssertTrue(row.waitForExistence(timeout: 5), "created mapping row not found")
-        XCTAssertTrue(app.staticTexts["Routes to Chase Checking"].exists,
+        XCTAssertTrue(app.staticTexts["Chase Checking"].exists,
                       "new mapping should route to the first open demo account")
     }
 
@@ -65,7 +65,7 @@ final class CardMappingEditUITests: XCTestCase {
         ally.tap()
 
         app.buttons["Save"].tap()
-        XCTAssertTrue(app.staticTexts["Routes to Ally Savings"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.staticTexts["Ally Savings"].waitForExistence(timeout: 5),
                       "saving the edit did not retarget the mapping")
     }
 }

@@ -174,6 +174,56 @@ struct BudgetStoreAccountMappingTests {
         #expect(fetched.isEmpty)
     }
 
+    @Test func updateCardAccountMappingsPersistsMultipleAndRemovesSpecified() async throws {
+        let tempURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: tempURL) }
+        let queue = try DatabaseQueue(path: tempURL.path)
+        try await queue.write { db in
+            try db.execute(sql: """
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL);
+            """)
+        }
+        let database = try BudgetDatabase(path: tempURL)
+        let syncClient = SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
+        try await syncClient.configure(database: database, fileId: "test-file", groupId: "test-group")
+
+        let store = BudgetStore.previewInstance()
+        store.currentBudgetId = "test-budget"
+        store.configureForTesting(database: database, syncClient: syncClient)
+
+        // Map initial keywords
+        await store.updateCardAccountMappings(
+            accountId: "acct_chase",
+            keywords: ["1234", "5678", "CSR"]
+        )
+        #expect(store.cardAccountMappings == [
+            "1234": "acct_chase",
+            "5678": "acct_chase",
+            "CSR": "acct_chase"
+        ])
+
+        // Edit: remove 5678, add 9999, retain 1234 and CSR
+        await store.updateCardAccountMappings(
+            accountId: "acct_chase",
+            keywords: ["1234", "CSR", " 9999 "],
+            removingKeywords: ["5678"]
+        )
+        #expect(store.cardAccountMappings == [
+            "1234": "acct_chase",
+            "CSR": "acct_chase",
+            "9999": "acct_chase"
+        ])
+
+        let fetched = try await database.fetchCardAccountMappings()
+        #expect(fetched == [
+            "1234": "acct_chase",
+            "CSR": "acct_chase",
+            "9999": "acct_chase"
+        ])
+    }
+
     @Test func cardAccountMappingsScopedPerBudget() async throws {
         let (store, manager, budgetA, root) = try makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
