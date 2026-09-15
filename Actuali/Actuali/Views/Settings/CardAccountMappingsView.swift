@@ -7,6 +7,9 @@ struct CardAccountMappingsView: View {
     @State private var showingAddSheet = false
     @State private var newKeyword = ""
     @State private var selectedAccountId = ""
+    /// Keyword being edited, if the sheet was opened from an existing row.
+    /// Nil means the sheet is adding a new mapping.
+    @State private var editingKeyword: String?
 
     struct CardMappingSuggestion: Identifiable, Equatable {
         var id: String { keyword }
@@ -15,10 +18,10 @@ struct CardAccountMappingsView: View {
         let samplePayee: String?
     }
 
-    private var sortedMappings: [(keyword: String, accountName: String)] {
+    private var sortedMappings: [(keyword: String, accountId: String, accountName: String)] {
         let accountsById = Dictionary(budgetStore.accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         return budgetStore.cardAccountMappings.map { (keyword, accountId) in
-            (keyword: keyword, accountName: accountsById[accountId] ?? "Unknown Account")
+            (keyword: keyword, accountId: accountId, accountName: accountsById[accountId] ?? "Unknown Account")
         }.sorted { $0.keyword < $1.keyword }
     }
 
@@ -116,15 +119,23 @@ struct CardAccountMappingsView: View {
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(sortedMappings, id: \.keyword) { mapping in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(mapping.keyword)
-                                    .font(.headline)
-                                Text(String(format: String(localized: "Routes to %@"), mapping.accountName))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.secondary)
+                        Button {
+                            editingKeyword = mapping.keyword
+                            newKeyword = mapping.keyword
+                            selectedAccountId = mapping.accountId
+                            showingAddSheet = true
+                        } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(mapping.keyword)
+                                        .font(.headline)
+                                        .foregroundStyle(.primary)
+                                    Text(String(format: String(localized: "Routes to %@"), mapping.accountName))
+                                        .font(.subheadline)
+                                        .foregroundStyle(.secondary)
+                                }
+                                Spacer()
                             }
-                            Spacer()
                         }
                     }
                     .onDelete(perform: deleteMapping)
@@ -159,7 +170,9 @@ struct CardAccountMappingsView: View {
                         Text(String(localized: "Enter the digits or keyword exactly as your shortcut passes them in the Card or Account Hint field."))
                     }
                 }
-                .navigationTitle(String(localized: "Add Mapping"))
+                .navigationTitle(editingKeyword == nil
+                    ? String(localized: "Add Mapping")
+                    : String(localized: "Edit Mapping"))
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
@@ -177,6 +190,15 @@ struct CardAccountMappingsView: View {
         }
     }
 
+    /// Keywords to remove when saving the sheet. A rename must drop the
+    /// original key, otherwise the edit leaves both keywords mapped. Exact
+    /// (not case-insensitive) compare: resolution lowercases hints but the
+    /// dictionary keys are not merged, so a case-only rename also swaps keys.
+    nonisolated static func keywordsRemovedBySave(originalKeyword: String?, cleanedKeyword: String) -> [String] {
+        guard let originalKeyword, originalKeyword != cleanedKeyword else { return [] }
+        return [originalKeyword]
+    }
+
     private func prepareAndShowAddSheet(keyword: String) {
         selectedAccountId = PendingImportApprover.seedAccountId(
             cardHint: keyword.isEmpty ? nil : keyword,
@@ -185,6 +207,7 @@ struct CardAccountMappingsView: View {
             defaultAccountId: budgetStore.defaultAccountId
         ) ?? ""
         newKeyword = keyword
+        editingKeyword = nil
         showingAddSheet = true
     }
 
@@ -199,8 +222,14 @@ struct CardAccountMappingsView: View {
         let cleaned = newKeyword.trimmingCharacters(in: .whitespaces)
         guard !cleaned.isEmpty, !selectedAccountId.isEmpty else { return }
         let accountId = selectedAccountId
+        let removed = Self.keywordsRemovedBySave(originalKeyword: editingKeyword, cleanedKeyword: cleaned)
         Task {
+            // Set the new key before removing the old one so the mapping is
+            // never absent mid-rename.
             await budgetStore.setCardAccountMapping(keyword: cleaned, accountId: accountId)
+            if !removed.isEmpty {
+                await budgetStore.deleteCardAccountMappings(keywords: removed)
+            }
         }
     }
 }
