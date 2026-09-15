@@ -133,13 +133,22 @@ private struct CompactOverviewAmount: View {
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
             .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
+            .padding(.horizontal, stat.kind == .balance ? 5 : 0)
+            .padding(.vertical, stat.kind == .balance ? 2 : 0)
+            .background {
+                if stat.kind == .balance {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(resultColor.opacity(budgetStore.hideBalances ? 0.08 : 0.14))
+                }
+            }
             .accessibilityLabel(ReportStrings.format(
                 "%@, %@",
                 stat.label(locale: locale, bundle: .main),
                 budgetStore.displayBalance(stat.amount),
                 locale: locale,
                 bundle: .main
-            ))
+            )
+        )
     }
 
     private var resultColor: Color {
