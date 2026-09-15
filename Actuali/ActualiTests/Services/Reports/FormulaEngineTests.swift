@@ -80,6 +80,68 @@ struct FormulaEngineTests {
         #expect(result == .text("75%"))
     }
 
+    @Test func comparisonResultRendersAsBoolean() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"=1>2"#), transactions: [], today: today, context: .empty)
+        #expect(result == .text("FALSE"))
+    }
+
+    @Test func comparisonOperatorsEvaluate() {
+        let cases = [
+            (#"=2=2"#, "TRUE"),
+            (#"=2<>3"#, "TRUE"),
+            (#"=3>2"#, "TRUE"),
+            (#"=2<3"#, "TRUE"),
+            (#"=2>=2"#, "TRUE"),
+            (#"=2<=2"#, "TRUE"),
+        ]
+
+        for (formula, expected) in cases {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            #expect(result == .text(expected))
+        }
+    }
+
+    @Test func textComparisonUsesAllOperators() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"="a"<"b""#), transactions: [], today: today, context: .empty)
+        #expect(result == .text("TRUE"))
+    }
+
+    @Test func roundSupportsDefaultAndNegativeDigitCounts() {
+        let defaultDigits = FormulaEngine.compute(
+            meta: meta(formula: "=ROUND(2.5)"), transactions: [], today: today, context: .empty)
+        #expect(defaultDigits == .value(3))
+
+        let negativeDigits = FormulaEngine.compute(
+            meta: meta(formula: "=ROUND(123.456,-2)"), transactions: [], today: today, context: .empty)
+        #expect(negativeDigits == .value(100))
+    }
+
+    @Test func concatenationBindsTighterThanComparison() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"="a"&"b"="ab""#),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .text("TRUE"))
+    }
+
+    @Test func concatenationUsesNumberConversionAndAbs() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: #"="Balance: "&ABS(-12.5)"#),
+            transactions: [], today: today, context: .empty)
+        #expect(result == .text("Balance: 12.5"))
+    }
+
+    @Test func nonFiniteResultsAreUnsupported() {
+        let result = FormulaEngine.compute(
+            meta: meta(formula: "=ROUND(1,400)"), transactions: [], today: today, context: .empty)
+        guard case .unsupported = result else {
+            Issue.record("expected .unsupported, got \(result)")
+            return
+        }
+    }
+
     @Test func functionsOutsideSupportedFormulaSubsetAreUnsupported() {
         let result = FormulaEngine.compute(
             meta: meta(formula: #"=SUM(query("a"))"#),
