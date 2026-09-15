@@ -20,6 +20,11 @@ xcodebuild -project Actuali/Actuali.xcodeproj -scheme Actuali \
 
 The sync engine tests (`Actuali/ActualiTests/Services/Sync/SyncEngineFixtureTests.swift` and friends) verify CRDT behavior against fixtures derived from upstream Actual Budget — please keep them passing.
 
+## UI tests
+
+- New views must set `.accessibilityIdentifier()` on the elements UI tests attach to (buttons, text fields, rows, key containers), using a stable, feature-scoped name such as `categoryEditor.name` or `transactionRow.<id>`. UI tests target these identifiers instead of localized labels, which change with copy and locale.
+- Identifiers are not user-facing: keep them out of the String Catalogs.
+
 ## Localization
 
 All user-facing text must use the appropriate String Catalog through `String(localized:)` or a localized SwiftUI initializer. Do not add hard-coded English text to views, accessibility labels, errors, notifications, AppIntents, or services. Main app strings go in `Actuali/Actuali/Localizable.xcstrings`, App Shortcut phrases in `Actuali/Actuali/AppShortcuts.xcstrings`, and widget strings in `Actuali/ActualiWidgets/Localizable.xcstrings`.

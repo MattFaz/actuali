@@ -50,6 +50,14 @@ const icons: Record<string, string> = {
   pencil:
     '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/>',
   sync: '<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-7.5-4M3 12a9 9 0 0 1 9-9 9 9 0 0 1 7.5 4"/><path d="M21 3v5h-5"/><path d="M3 21v-5h5"/>',
+  wallet:
+    '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/>',
+  landmark:
+    '<path d="M3 22h18"/><path d="M6 18v-7"/><path d="M10 18v-7"/><path d="M14 18v-7"/><path d="M18 18v-7"/><path d="m12 2 8 5H4l8-5Z"/>',
+  calendar:
+    '<rect width="18" height="18" x="3" y="4" rx="2"/><path d="M16 2v4"/><path d="M8 2v4"/><path d="M3 10h18"/>',
+  bell:
+    '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
   shield:
     '<path d="M12 3 5 6v5c0 4.5 3 8 7 10 4-2 7-5.5 7-10V6l-7-3Z"/><path d="m9 12 2 2 4-4"/>',
 };
@@ -91,9 +99,37 @@ const supported = [
     body: "The Reports tab renders the dashboard you configured in the Actual webapp — Net Worth, Cash Flow, Spending, and Summary widgets with real data, synced from your server.",
   },
   {
+    icon: "calendar",
+    title: "Bills & schedules calendar",
+    body: "Upcoming bills and recurring schedules on one dashboard, with early-payment matching so a bill paid ahead of its due date doesn't double-count.",
+  },
+  {
+    icon: "bell",
+    title: "Card payment reminders",
+    body: 'Statement due dates and payment reminders for your credit cards, so a forgotten bill never turns into interest. See the <a href="/guides/credit-cards" class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">credit cards guide</a>.',
+  },
+  {
     icon: "theme",
     title: "Light & Dark mode",
     body: "Follows your system appearance by default, or pin it to Light or Dark from the More tab. Tuned for both so your morning coffee log doesn't blind you.",
+  },
+];
+
+const capture = [
+  {
+    icon: "wallet",
+    title: "Apple Wallet, synced for real",
+    body: 'Connect once and your <strong>Apple Card, Apple Cash, and Savings</strong> transactions and balances import themselves via Apple\u2019s FinanceKit — no screenshots, no typing, no forgetting. Purchases you already logged by hand are matched, not duplicated.',
+  },
+  {
+    icon: "landmark",
+    title: "Your banks, on autopilot",
+    body: 'Link bank accounts through <strong>SimpleFIN</strong>, the read-only aggregation Actual\u2019s web app already uses. Transactions and balances flow into the right budget accounts, reconciled against anything you logged yourself.',
+  },
+  {
+    icon: "bolt",
+    title: "Or let automations log it",
+    body: 'A Shortcuts automation can log every Wallet card charge the moment it happens, parse purchase texts from your bank, or take dictation from Siri — see the <a href="/guides/wallet-automation" class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">Wallet</a>, <a href="/guides/sms-automation" class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">SMS</a>, and <a href="/guides/shortcuts" class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500">Siri</a> guides. If a background run fails, its notification reopens a prefilled form so nothing is lost.',
   },
 ];
 
@@ -164,8 +200,9 @@ const privacy = [
             href="https://actualbudget.org"
             class="font-medium text-violet-700 underline decoration-violet-200 underline-offset-2 hover:decoration-violet-500"
             > Actual Budget</a
-          >. Local-first, offline-capable, and built to feel right at home on
-          iPhone.
+          >. Apple Wallet imports itself, your banks sync over SimpleFIN, and
+          Siri logs purchases as you make them — local-first, offline-capable,
+          and built to feel right at home on iPhone.
         </p>
         <div
           class="flex flex-wrap items-center justify-center gap-3 pt-2 lg:justify-start"
@@ -251,6 +288,47 @@ const privacy = [
               <h3 class="font-semibold">{screen.title}</h3>
               <p class="text-sm text-neutral-600">{screen.body}</p>
             </div>
+          </div>
+        ))
+      }
+    </div>
+  </section>
+
+  <!-- Automatic capture -->
+  <section class="space-y-10 py-16">
+    <div class="space-y-3 text-center">
+      <p class="text-sm font-semibold uppercase tracking-wider text-violet-600">
+        Synced, not typed
+      </p>
+      <h2 class="text-3xl font-semibold tracking-tight sm:text-4xl">
+        Every purchase, captured
+      </h2>
+      <p class="mx-auto max-w-xl text-neutral-600">
+        Your budget fills itself in. Pick the capture methods that match how
+        you spend — or stack all three.
+      </p>
+    </div>
+
+    <div class="grid gap-4 md:grid-cols-3">
+      {
+        capture.map((feature) => (
+          <div class="group rounded-2xl border border-neutral-200 bg-white p-6 transition duration-300 hover:-translate-y-1 hover:border-violet-200 hover:shadow-lg">
+            <div class="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-violet-600 to-violet-800 text-white shadow-sm">
+              <svg
+                width="22"
+                height="22"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+                set:html={icons[feature.icon]}
+              />
+            </div>
+            <h3 class="font-semibold">{feature.title}</h3>
+            <p class="mt-1.5 text-sm text-neutral-600" set:html={feature.body} />
           </div>
         ))
       }
