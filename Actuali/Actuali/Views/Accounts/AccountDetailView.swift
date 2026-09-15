@@ -211,26 +211,49 @@ struct AccountDetailView: View {
         )
     }
 
-    @ViewBuilder private var balanceSection: some View {
-        Section {
-            // Match the Actual PWA account header: cleared on the left,
-            // balance centered, uncleared on the right. Only Balance is
-            // interactive; tapping it reveals the reconciled balance.
-            HStack(alignment: .top, spacing: 8) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(localized: "Cleared"))
-                        .font(.caption)
-                    Text(budgetStore.displayBalance(breakdown?.cleared ?? 0))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .animatedAmount(budgetStore.displayBalance(breakdown?.cleared ?? 0))
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+    private func columnAmount(_ cents: Int?) -> String {
+        cents.map(budgetStore.displayBalance) ?? "—"
+    }
 
-                VStack(alignment: .center, spacing: 2) {
-                    Button {
-                        withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
-                    } label: {
+    private func balanceColumn(
+        _ title: String,
+        cents: Int?,
+        alignment: HorizontalAlignment,
+        identifier: String
+    ) -> some View {
+        let value = columnAmount(cents)
+        return VStack(alignment: alignment, spacing: 2) {
+            Text(title)
+                .font(.caption)
+            Text(value)
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .animatedAmount(value)
+        }
+        .frame(
+            maxWidth: .infinity,
+            alignment: alignment == .leading ? .leading : .trailing
+        )
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier(identifier)
+    }
+
+    private var onBudgetBalanceHeader: some View {
+        HStack(alignment: .top, spacing: 8) {
+            balanceColumn(
+                String(localized: "Cleared"),
+                cents: breakdown?.cleared,
+                alignment: .leading,
+                identifier: "accountBalance.cleared"
+            )
+
+            VStack(alignment: .center, spacing: 2) {
+                Button {
+                    withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+                } label: {
+                    VStack(spacing: 2) {
                         HStack(spacing: 4) {
                             Text(String(localized: "Balance"))
                                 .font(.subheadline)
@@ -239,37 +262,76 @@ struct AccountDetailView: View {
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                                 .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
+                                .opacity(breakdown == nil ? 0 : 1)
                         }
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
+                        Text(budgetStore.displayBalance(currentBalance))
+                            .font(.headline)
+                            .foregroundStyle(balanceColor(for: currentBalance))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .animatedAmount(budgetStore.displayBalance(currentBalance))
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
-                    .accessibilityHint(showingBreakdown
-                        ? String(localized: "Hides the reconciled balance")
-                        : String(localized: "Shows the reconciled balance"))
-
-                    Text(budgetStore.displayBalance(currentBalance))
-                        .font(.headline)
-                        .foregroundStyle(balanceColor(for: currentBalance))
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .animatedAmount(budgetStore.displayBalance(currentBalance))
+                    .frame(maxWidth: .infinity)
+                    .contentShape(Rectangle())
                 }
-                .frame(maxWidth: .infinity, alignment: .center)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("accountBalance.toggle")
+                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+                .accessibilityHint(showingBreakdown
+                    ? String(localized: "Hides the balance breakdown")
+                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+                .disabled(breakdown == nil)
+            }
+            .frame(maxWidth: .infinity, alignment: .center)
 
-                VStack(alignment: .trailing, spacing: 2) {
-                    Text(String(localized: "Uncleared"))
-                        .font(.caption)
-                    Text(budgetStore.displayBalance(breakdown?.uncleared ?? 0))
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .animatedAmount(budgetStore.displayBalance(breakdown?.uncleared ?? 0))
+            balanceColumn(
+                String(localized: "Uncleared"),
+                cents: breakdown?.uncleared,
+                alignment: .trailing,
+                identifier: "accountBalance.uncleared"
+            )
+        }
+    }
+
+    private var offBudgetBalanceHeader: some View {
+        Button {
+            withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+        } label: {
+            HStack {
+                Text(String(localized: "Current Balance"))
+                Spacer()
+                Text(budgetStore.displayBalance(currentBalance))
+                    .fontWeight(.semibold)
+                    .animatedAmount(budgetStore.displayBalance(currentBalance))
+                if breakdown != nil {
+                    Image(systemName: "chevron.down")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+        .accessibilityHint(showingBreakdown
+            ? String(localized: "Hides the balance breakdown")
+            : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+    }
+
+    @ViewBuilder private var balanceSection: some View {
+        Section {
+            if account.offBudget {
+                offBudgetBalanceHeader
+            } else {
+                onBudgetBalanceHeader
             }
 
             if showingBreakdown, let breakdown {
+                if account.offBudget {
+                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
+                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
+                }
                 breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
             }
 
