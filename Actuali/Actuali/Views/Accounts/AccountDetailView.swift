@@ -171,45 +171,72 @@ struct AccountDetailView: View {
     var body: some View {
         List {
             Section {
-                // Tapping the balance reveals the cleared/uncleared/reconciled
-                // split (GH #134), so the reconciled figure can be checked
-                // against a bank statement without starting a reconciliation.
-                Button {
-                    withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
-                } label: {
-                    HStack {
-                        Text(String(localized: "Current Balance"))
-                        Spacer()
-                        Text(budgetStore.displayBalance(currentBalance))
-                            .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
-                        if breakdown != nil {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                        }
+                // Match the Actual PWA account header: cleared on the left,
+                // balance centered, uncleared on the right. Only Balance is
+                // interactive; tapping it reveals the reconciled balance.
+                HStack(alignment: .top, spacing: 8) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(String(localized: "Cleared"))
+                            .font(.caption)
+                        Text(budgetStore.displayBalance(breakdown?.cleared ?? 0))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .animatedAmount(budgetStore.displayBalance(breakdown?.cleared ?? 0))
                     }
-                    .contentShape(Rectangle())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    VStack(alignment: .center, spacing: 2) {
+                        Button {
+                            withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(String(localized: "Balance"))
+                                    .font(.subheadline)
+                                    .fontWeight(.medium)
+                                Image(systemName: "chevron.down")
+                                    .font(.caption2.weight(.semibold))
+                                    .foregroundStyle(.tertiary)
+                                    .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+                        .accessibilityHint(showingBreakdown
+                            ? String(localized: "Hides the reconciled balance")
+                            : String(localized: "Shows the reconciled balance"))
+
+                        Text(budgetStore.displayBalance(currentBalance))
+                            .font(.headline)
+                            .foregroundStyle(balanceColor(for: currentBalance))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .animatedAmount(budgetStore.displayBalance(currentBalance))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .center)
+
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(String(localized: "Uncleared"))
+                            .font(.caption)
+                        Text(budgetStore.displayBalance(breakdown?.uncleared ?? 0))
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .animatedAmount(budgetStore.displayBalance(breakdown?.uncleared ?? 0))
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
-                .accessibilityHint(showingBreakdown
-                    ? String(localized: "Hides the balance breakdown")
-                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+
+                if showingBreakdown, let breakdown {
+                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
+                }
 
                 // Headroom on a tracked card with a limit set — the figure a
                 // card's balance is actually judged against, so it stays visible
                 // rather than hiding behind the disclosure.
                 if let headroom = creditHeadroom {
                     breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
-                }
-
-                if showingBreakdown, let breakdown {
-                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
-                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
-                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
-                    if let headroom = creditHeadroom {
+                    if showingBreakdown {
                         breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
                     }
                 }
