@@ -245,19 +245,6 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    private func scrollUntilHittable(
-        _ element: XCUIElement,
-        in app: XCUIApplication,
-        maxSwipes: Int = 12
-    ) {
-        var swipesLeft = maxSwipes
-        while !element.isHittable && swipesLeft > 0 {
-            app.swipeUp()
-            swipesLeft -= 1
-        }
-    }
-
-    @MainActor
     private func ensureGroupExpanded(
         _ name: String,
         revealing element: XCUIElement,
@@ -280,12 +267,5 @@ final class CompactBudgetParityUITests: XCTestCase {
 
     private func currentMonthTitle() -> String {
         monthTitle(offset: 0)
-    }
-
-    private func monthTitle(offset: Int) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "MMMM yyyy"
-        let date = Calendar.current.date(byAdding: .month, value: offset, to: Date()) ?? Date()
-        return formatter.string(from: date)
     }
 }

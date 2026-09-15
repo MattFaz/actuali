@@ -107,10 +107,15 @@ struct BudgetStoreSchedulePostingTriggerTests {
     }
 
     /// A postable monthly schedule whose next date is already in the past.
+    /// The monthly recurrence is anchored to the due date itself, not a fixed
+    /// calendar day: with a fixed start (e.g. the 15th) the catch-up loop
+    /// posts `dueOn`, advances onto today when today IS that day, and posts
+    /// again — the test failed on the 15th of every month (posted == 2).
     private func insertDueSchedule(_ db: BudgetDatabase, dueOn: Int) throws {
+        let startISO = DayDate(yyyymmdd: dueOn)!.iso
         let conditionsJSON = """
             [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}},
+             {"op":"is","field":"date","value":{"frequency":"monthly","start":"\(startISO)","interval":1}},
              {"op":"is","field":"amount","value":-1500}]
             """
         try db.dbQueueForTesting.write { conn in
