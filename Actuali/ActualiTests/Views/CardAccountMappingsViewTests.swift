@@ -186,19 +186,75 @@ struct CardAccountMappingsViewTests {
     }
 
     @Test func editingWithoutRenameRemovesNothing() {
-        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: nil, cleanedKeyword: "1234").isEmpty)
-        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "1234", cleanedKeyword: "1234").isEmpty)
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: [], cleanedKeywords: ["1234"]).isEmpty)
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: ["1234"], cleanedKeywords: ["1234"]).isEmpty)
     }
 
     @Test func renamingAKeywordRemovesTheOriginalKey() {
-        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "1234", cleanedKeyword: "4321") == ["1234"])
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: ["1234"], cleanedKeywords: ["4321"]) == ["1234"])
     }
 
     @Test func caseOnlyRenameRemovesTheOriginalKey() {
         // Resolution lowercases hints, but dictionary keys are exact, so a
         // case-only rename must still drop the old key or the list shows two
         // rows for one mapping.
-        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeyword: "HSBC", cleanedKeyword: "hsbc") == ["HSBC"])
+        #expect(CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: ["HSBC"], cleanedKeywords: ["hsbc"]) == ["HSBC"])
+    }
+
+    @Test func multiKeywordSaveRemovesOnlyDeletedKeywords() {
+        let original = ["1234", "5678", "CSR"]
+        let cleaned = ["1234", "CSR", "9999"]
+        let removed = CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: original, cleanedKeywords: cleaned)
+        #expect(removed == ["5678"])
+    }
+
+    @Test func multiKeywordSaveWithNoDeletionsRemovesNothing() {
+        let original = ["1234", "CSR"]
+        let cleaned = ["1234", "CSR", "9999"]
+        let removed = CardAccountMappingsView.keywordsRemovedBySave(originalKeywords: original, cleanedKeywords: cleaned)
+        #expect(removed.isEmpty)
+    }
+
+    @Test func groupByAccountGroupsAndSortsAccountsAndKeywords() {
+        let accounts = [
+            account("acct_chase", name: "Chase Sapphire"),
+            account("acct_citi", name: "Citi Double Cash")
+        ]
+        let mappings = [
+            "CSR": "acct_chase",
+            "1234": "acct_chase",
+            "5678": "acct_chase",
+            "CitiDC": "acct_citi",
+            "9012": "acct_citi"
+        ]
+        let grouped = CardAccountMappingsView.groupByAccount(cardMappings: mappings, accounts: accounts)
+
+        #expect(grouped.count == 2)
+        #expect(grouped[0].accountId == "acct_chase")
+        #expect(grouped[0].accountName == "Chase Sapphire")
+        #expect(grouped[0].keywords == ["1234", "5678", "CSR"])
+
+        #expect(grouped[1].accountId == "acct_citi")
+        #expect(grouped[1].accountName == "Citi Double Cash")
+        #expect(grouped[1].keywords == ["9012", "CitiDC"])
+    }
+
+    @Test func groupByAccountHandlesUnknownAndDuplicateAccountNames() {
+        let accounts = [
+            account("acct_1", name: "Savings"),
+            account("acct_2", name: "Savings")
+        ]
+        let mappings = [
+            "1111": "acct_1",
+            "2222": "acct_2",
+            "3333": "acct_missing"
+        ]
+        let grouped = CardAccountMappingsView.groupByAccount(cardMappings: mappings, accounts: accounts)
+
+        #expect(grouped.count == 3)
+        let missing = grouped.first { $0.accountId == "acct_missing" }
+        #expect(missing?.accountName == "Unknown Account")
+        #expect(missing?.keywords == ["3333"])
     }
 
     @Test func filtersOtherBudgetsButKeepsLegacyImports() {

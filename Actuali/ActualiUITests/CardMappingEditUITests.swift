@@ -30,12 +30,21 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(field.waitForExistence(timeout: 5), "keyword field not found")
         field.tap()
         field.typeText(keyword)
+        let saveButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save'")).firstMatch
+        _ = saveButton.waitForExistence(timeout: 5)
+        print("DEBUG SAVE LABEL: '\(saveButton.label)' isEnabled=\(saveButton.isEnabled)")
+        let savePredicate = NSPredicate(format: "isEnabled == true")
+        let expectation = XCTNSPredicateExpectation(predicate: savePredicate, object: saveButton)
+        let result = XCTWaiter.wait(for: [expectation], timeout: 5)
+        XCTAssertEqual(result, .completed, "Save button should be enabled after entering keyword and account")
 
-        app.buttons["Save"].tap()
+        saveButton.tap()
+        XCTAssertTrue(app.navigationBars["Add Mapping"].waitForNonExistence(timeout: 5),
+                      "add sheet did not dismiss after save")
 
         let row = app.buttons["cardMappings.row.\(keyword)"]
         XCTAssertTrue(row.waitForExistence(timeout: 5), "created mapping row not found")
-        XCTAssertTrue(app.staticTexts["Routes to Chase Checking"].exists,
+        XCTAssertTrue(row.staticTexts["Chase Checking"].exists,
                       "new mapping should route to the first open demo account")
     }
 
@@ -65,7 +74,11 @@ final class CardMappingEditUITests: XCTestCase {
         ally.tap()
 
         app.buttons["Save"].tap()
-        XCTAssertTrue(app.staticTexts["Routes to Ally Savings"].waitForExistence(timeout: 5),
+        XCTAssertTrue(app.navigationBars["Edit Mapping"].waitForNonExistence(timeout: 5),
+                      "edit sheet did not dismiss after save")
+        let updatedRow = app.buttons["cardMappings.row.1234"]
+        XCTAssertTrue(updatedRow.waitForExistence(timeout: 5), "mapping row not found after save")
+        XCTAssertTrue(updatedRow.staticTexts["Ally Savings"].exists,
                       "saving the edit did not retarget the mapping")
     }
 }
