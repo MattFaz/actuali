@@ -117,6 +117,7 @@ Rules:
 - No dead code: don't leave commented-out blocks, unused parameters, or "just in case" branches.
 - Comments explain *why* (constraints, upstream parity, non-obvious invariants), not *what* the next line does.
 - Keep changes scoped: don't reformat, rename, or refactor code unrelated to the task at hand.
+- Tag new views for UI tests: `.accessibilityIdentifier()` on the elements a UI test attaches to (buttons, fields, rows), using the dotted, feature-scoped names already in the codebase (`categoryEditor.name`, `transactionRow.<id>`). Identifiers are not user-facing and stay out of the String Catalogs.
 
 ### Localization
 
