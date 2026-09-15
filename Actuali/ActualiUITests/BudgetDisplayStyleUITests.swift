@@ -405,4 +405,64 @@ final class BudgetDisplayStyleUITests: XCTestCase {
                       "the horizontal check-in filter keeps matching categories in the budget table")
         XCTAssertFalse(app.buttons["Details for Groceries"].exists)
     }
+
+    /// Clean rows used to carry hide/show `.swipeActions`, which swallowed the
+    /// shared horizontal month swipe (GH #425). Compact has the same guard in
+    /// `CompactBudgetParityUITests.testKeepsSharedMonthSwipeNavigation`.
+    @MainActor
+    func testCleanStyleKeepsMonthSwipeNavigation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let currentMonth = monthTitle(offset: 0)
+        let nextMonth = monthTitle(offset: 1)
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 10))
+
+        app.swipeLeft()
+        XCTAssertTrue(app.buttons[nextMonth].waitForExistence(timeout: 5),
+                      "the shared horizontal gesture advances Clean by one month")
+        app.swipeRight()
+        XCTAssertTrue(app.buttons[currentMonth].waitForExistence(timeout: 5))
+    }
+
+    /// The hide/show action moved off the clean income row's swipe (GH #425)
+    /// into its context menu, matching Compact's income row.
+    @MainActor
+    func testCleanIncomeContextMenuOffersHide() throws {
+        let app = XCUIApplication()
+        app.launchArguments = [
+            "-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1",
+        ]
+        app.launch()
+
+        let salary = app.buttons["All transactions for Salary"]
+        scrollUntilHittable(salary, in: app)
+        XCTAssertTrue(salary.isHittable)
+        salary.press(forDuration: 1)
+        XCTAssertTrue(app.buttons["Hide"].firstMatch.waitForExistence(timeout: 5),
+                      "the clean income row offers hide/show without a swipe action")
+    }
+
+    @MainActor
+    private func scrollUntilHittable(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        maxSwipes: Int = 12
+    ) {
+        var swipesLeft = maxSwipes
+        while !element.isHittable && swipesLeft > 0 {
+            app.swipeUp()
+            swipesLeft -= 1
+        }
+    }
+
+    private func monthTitle(offset: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        let date = Calendar.current.date(byAdding: .month, value: offset, to: Date()) ?? Date()
+        return formatter.string(from: date)
+    }
 }
