@@ -5,10 +5,15 @@ struct CardAccountMappingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @ObservedObject var pendingImportStore: PendingImportStore = .shared
     @State private var showingSheet = false
-    @State private var keywords: [String] = [""]
+    @State private var keywords: [KeywordEntry] = [KeywordEntry(text: "")]
     @State private var originalKeywords: [String] = []
     @State private var selectedAccountId = ""
     @State private var isEditing = false
+
+    private struct KeywordEntry: Identifiable, Equatable {
+        let id = UUID()
+        var text: String
+    }
 
     struct CardMappingSuggestion: Identifiable, Equatable {
         var id: String { keyword }
@@ -24,19 +29,26 @@ struct CardAccountMappingsView: View {
         let keywords: [String]
     }
 
-    private var mappedAccounts: [MappedAccount] {
-        let accountsById = Dictionary(budgetStore.accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+    nonisolated static func groupByAccount(
+        cardMappings: [String: String],
+        accounts: [Account]
+    ) -> [MappedAccount] {
+        let accountsById = Dictionary(accounts.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         var keywordsByAccount: [String: [String]] = [:]
-        for (keyword, accountId) in budgetStore.cardAccountMappings {
+        for (keyword, accountId) in cardMappings {
             keywordsByAccount[accountId, default: []].append(keyword)
         }
-        return keywordsByAccount.map { (accountId, keywords) in
+        return keywordsByAccount.map { accountId, keywords in
             MappedAccount(
                 accountId: accountId,
                 accountName: accountsById[accountId] ?? String(localized: "Unknown Account"),
                 keywords: keywords.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
             )
         }.sorted { $0.accountName.localizedCaseInsensitiveCompare($1.accountName) == .orderedAscending }
+    }
+
+    private var mappedAccounts: [MappedAccount] {
+        Self.groupByAccount(cardMappings: budgetStore.cardAccountMappings, accounts: budgetStore.accounts)
     }
 
     private var suggestedMappings: [CardMappingSuggestion] {
@@ -84,7 +96,17 @@ struct CardAccountMappingsView: View {
     }
 
     private var cleanedKeywords: [String] {
-        keywords.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        keywords.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+    }
+
+    private var effectiveAccountId: String {
+        if !selectedAccountId.isEmpty { return selectedAccountId }
+        return PendingImportApprover.seedAccountId(
+            cardHint: nil,
+            accounts: budgetStore.accounts,
+            cardMappings: budgetStore.cardAccountMappings,
+            defaultAccountId: budgetStore.defaultAccountId
+        ) ?? budgetStore.accounts.first(where: { !$0.closed })?.id ?? ""
     }
 
     var body: some View {
@@ -138,7 +160,7 @@ struct CardAccountMappingsView: View {
                 } else {
                     ForEach(mappedAccounts) { item in
                         Button {
-                            prepareAndShowEditSheet(accountId: item.accountId, keywords: item.keywords)
+                            prepareAndShowEditSheet(accountId: item.accountId, existingKeywords: item.keywords)
                         } label: {
                             HStack {
                                 VStack(alignment: .leading, spacing: 6) {
@@ -180,8 +202,14 @@ struct CardAccountMappingsView: View {
             NavigationStack {
                 Form {
                     Section {
-                        Picker(String(localized: "cardMappings.targetAccount"), selection: $selectedAccountId) {
-                            ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == selectedAccountId }) { account in
+                        Picker(
+                            String(localized: "cardMappings.targetAccount"),
+                            selection: Binding(
+                                get: { effectiveAccountId },
+                                set: { selectedAccountId = $0 }
+                            )
+                        ) {
+                            ForEach(budgetStore.accounts.filter { !$0.closed || $0.id == effectiveAccountId }) { account in
                                 Text(account.name).tag(account.id)
                             }
                         }
@@ -191,15 +219,16 @@ struct CardAccountMappingsView: View {
                     }
 
                     Section {
-                        ForEach(Array(keywords.indices), id: \.self) { index in
+                        ForEach($keywords) { $entry in
+                            let index = keywords.firstIndex(where: { $0.id == entry.id }) ?? 0
                             HStack {
-                                TextField(String(localized: "cardMappings.keywordPrompt"), text: $keywords[index])
+                                TextField(String(localized: "cardMappings.keywordPrompt"), text: $entry.text)
                                     .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
                                     .autocorrectionDisabled()
 
                                 if keywords.count > 1 {
                                     Button(role: .destructive) {
-                                        keywords.remove(at: index)
+                                        keywords.removeAll { $0.id == entry.id }
                                     } label: {
                                         Image(systemName: "minus.circle.fill")
                                             .foregroundStyle(.red)
@@ -212,7 +241,7 @@ struct CardAccountMappingsView: View {
                         }
 
                         Button {
-                            keywords.append("")
+                            keywords.append(KeywordEntry(text: ""))
                         } label: {
                             Label(String(localized: "cardMappings.addKeyword"), systemImage: "plus")
                         }
@@ -236,7 +265,7 @@ struct CardAccountMappingsView: View {
                             saveMapping()
                             showingSheet = false
                         }
-                        .disabled(cleanedKeywords.isEmpty || selectedAccountId.isEmpty)
+                        .disabled(cleanedKeywords.isEmpty || effectiveAccountId.isEmpty)
                     }
                 }
             }
@@ -250,12 +279,6 @@ struct CardAccountMappingsView: View {
         return originalKeywords.filter { !cleanedSet.contains($0) }
     }
 
-    /// Backwards-compatible single keyword removal helper.
-    nonisolated static func keywordsRemovedBySave(originalKeyword: String?, cleanedKeyword: String) -> [String] {
-        guard let originalKeyword, originalKeyword != cleanedKeyword else { return [] }
-        return [originalKeyword]
-    }
-
     private func prepareAndShowAddSheet(keyword: String) {
         selectedAccountId = PendingImportApprover.seedAccountId(
             cardHint: keyword.isEmpty ? nil : keyword,
@@ -263,16 +286,16 @@ struct CardAccountMappingsView: View {
             cardMappings: budgetStore.cardAccountMappings,
             defaultAccountId: budgetStore.defaultAccountId
         ) ?? ""
-        keywords = keyword.isEmpty ? [""] : [keyword]
+        keywords = keyword.isEmpty ? [KeywordEntry(text: "")] : [KeywordEntry(text: keyword)]
         originalKeywords = []
         isEditing = false
         showingSheet = true
     }
 
-    private func prepareAndShowEditSheet(accountId: String, keywords: [String]) {
+    private func prepareAndShowEditSheet(accountId: String, existingKeywords: [String]) {
         selectedAccountId = accountId
-        self.keywords = keywords.isEmpty ? [""] : keywords
-        originalKeywords = keywords
+        keywords = existingKeywords.isEmpty ? [KeywordEntry(text: "")] : existingKeywords.map { KeywordEntry(text: $0) }
+        originalKeywords = existingKeywords
         isEditing = true
         showingSheet = true
     }
@@ -286,11 +309,11 @@ struct CardAccountMappingsView: View {
 
     private func saveMapping() {
         let cleaned = cleanedKeywords
-        guard !cleaned.isEmpty, !selectedAccountId.isEmpty else { return }
-        let accountId = selectedAccountId
+        let accountId = effectiveAccountId
+        guard !cleaned.isEmpty, !accountId.isEmpty else { return }
         let removed = Self.keywordsRemovedBySave(originalKeywords: originalKeywords, cleanedKeywords: cleaned)
         Task {
-            await budgetStore.updateCardAccountMappings(accountId: accountId, keywords: cleaned, removingKeywords: removed)
+            await budgetStore.setCardAccountMappings(accountId: accountId, keywords: cleaned, removingKeywords: removed)
         }
     }
 }
@@ -300,24 +323,24 @@ private struct FlowLayout: Layout {
     var spacing: CGFloat = 6
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let width = proposal.width ?? .infinity
-        var height: CGFloat = 0
+        let maxWidth = proposal.replacingUnspecifiedDimensions().width
+        var usedWidth: CGFloat = 0
         var currentX: CGFloat = 0
         var currentY: CGFloat = 0
         var maxHeightInRow: CGFloat = 0
 
         for subview in subviews {
             let size = subview.sizeThatFits(.unspecified)
-            if currentX + size.width > width && currentX > 0 {
+            if currentX + size.width > maxWidth && currentX > 0 {
                 currentX = 0
                 currentY += maxHeightInRow + spacing
                 maxHeightInRow = 0
             }
             currentX += size.width + spacing
+            usedWidth = max(usedWidth, currentX - spacing)
             maxHeightInRow = max(maxHeightInRow, size.height)
-            height = currentY + maxHeightInRow
         }
-        return CGSize(width: width, height: height)
+        return CGSize(width: min(usedWidth, maxWidth), height: currentY + maxHeightInRow)
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
