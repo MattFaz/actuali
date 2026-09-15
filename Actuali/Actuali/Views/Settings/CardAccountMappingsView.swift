@@ -158,6 +158,7 @@ struct CardAccountMappingsView: View {
                 Form {
                     Section {
                         TextField(String(localized: "Card Last-4 or Keyword (e.g. 1234, HSBC)"), text: $newKeyword)
+                            .accessibilityIdentifier("cardMappings.keywordField")
                             .autocorrectionDisabled()
                         
                         Picker(String(localized: "Target Account"), selection: $selectedAccountId) {
@@ -168,6 +169,7 @@ struct CardAccountMappingsView: View {
                                 Text(account.name).tag(account.id)
                             }
                         }
+                        .accessibilityIdentifier("cardMappings.accountPicker")
                     } header: {
                         Text(String(localized: "Mapping Details"))
                     } footer: {
