@@ -334,10 +334,10 @@ final class HistoryStore: ObservableObject {
             Self.finishUndoRecording()
             return
         }
-        actions[index].status = .undone
-        save(action.budgetID)
-        Self.finishUndoRecording()
-    }
+actions[index].status = .undone
+save(action.budgetID)
+await Task.yield()
+Self.finishUndoRecording()
 
     static func finishUndoRecording() {
         recordingSuppressed = false
