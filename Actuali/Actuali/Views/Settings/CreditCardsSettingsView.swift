@@ -93,13 +93,6 @@ struct CreditCardsSettingsView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(detached)
-                        .listRowBackground(
-                            CreditCardCycleRow.cardBackground(
-                                daysUntilDue: item.cycle.daysUntilDue()
-                            )
-                        )
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
                     }
                     .onDelete { offsets in
                         for accountId in offsets.map({ cards[$0].account.id }) {
@@ -276,8 +269,9 @@ struct CreditCardsSettingsView: View {
 }
 
 /// Compact card row: name + balance on top, spend + due pill on bottom.
-/// The colored left border and card background are applied by the parent via
-/// `listRowBackground` using `cardBackground(daysUntilDue:)`.
+/// Rendered as a plain list row (system section background) so the screen
+/// matches the Clean budget view's grid (GH #453); urgency color lives in
+/// the due pill, not a per-row background.
 struct CreditCardCycleRow: View {
     @EnvironmentObject var budgetStore: BudgetStore
     let account: Account
@@ -289,10 +283,9 @@ struct CreditCardCycleRow: View {
         cycle.cycleRange()
     }
 
-    /// Urgency color: red ≤3d, orange ≤7d, yellow otherwise. Used at full
-    /// strength for the border strip and heavily faded behind the pill — the
-    /// pill's own text stays `.primary`, because system yellow on a light
-    /// background is about 1.4:1 and unreadable at caption size.
+    /// Urgency color: red ≤3d, orange ≤7d, yellow otherwise. Used behind the
+    /// pill — the pill's own text stays `.primary`, because system yellow on a
+    /// light background is about 1.4:1 and unreadable at caption size.
     nonisolated static func urgencyColor(days: Int) -> Color {
         if days <= 3 { return .red }
         if days <= 7 { return .orange }
@@ -311,20 +304,6 @@ struct CreditCardCycleRow: View {
     }
 
     private var isPaid: Bool { statementDue?.isPaid ?? false }
-
-    /// Card background with a colored left urgency border strip.
-    nonisolated static func cardBackground(daysUntilDue days: Int) -> some View {
-        RoundedRectangle(cornerRadius: 10)
-            .fill(Color(.secondarySystemGroupedBackground))
-            .overlay(alignment: .leading) {
-                UnevenRoundedRectangle(
-                    topLeadingRadius: 10, bottomLeadingRadius: 10,
-                    bottomTrailingRadius: 0, topTrailingRadius: 0
-                )
-                .fill(urgencyColor(days: days))
-                .frame(width: 3)
-            }
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
