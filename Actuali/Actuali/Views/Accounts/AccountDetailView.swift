@@ -40,9 +40,9 @@ struct AccountDetailView: View {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
     }
 
-    /// Running balances are shown only when the account register contains its
-    /// complete transaction history. Filtered/search results omit rows that
-    /// would otherwise contribute to the balance, so showing a running balance
+    /// Running balances are shown only when the register is unfiltered (no search,
+    /// and not hiding cleared/reconciled rows). Filtered/search results omit rows
+    /// that would otherwise contribute to the balance, so showing a running balance
     /// in those states would make it look like the account balance changed when
     /// the user only changed the visible filter.
     private var shouldShowRunningBalance: Bool {
@@ -448,7 +448,7 @@ struct AccountDetailView: View {
                 Toggle(isOn: $showRunningBalance) {
                     Label(
                         "Show Running Balance",
-                        systemImage: showRunningBalance ? "eye.slash" : "eye"
+                        systemImage: showRunningBalance ? "eye" : "eye.slash"
                     )
                 }
             }
