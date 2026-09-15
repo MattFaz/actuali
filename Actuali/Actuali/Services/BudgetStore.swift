@@ -571,6 +571,34 @@ final class BudgetStore: ObservableObject {
         }
     }
 
+    /// The status preset selected by the transaction lists' chip strip
+    /// (GH #439). Persisted so the choice survives a relaunch, and shared so
+    /// the All Accounts list and every account list agree.
+    @Published var transactionStatusFilter: TransactionStatusFilter = .all {
+        didSet {
+            UserDefaults.standard.set(
+                transactionStatusFilter.rawValue,
+                forKey: TransactionStatusFilter.defaultsKey
+            )
+        }
+    }
+
+    /// Whether the transaction lists show the status filter strip. Persisted
+    /// to UserDefaults, defaults to on, like the Budget tab's check-in strip.
+    /// Hiding the strip drops any active filter with it: a chip that isn't
+    /// visible can't be tapped back to All.
+    @Published var showTransactionStatusFilters: Bool = true {
+        didSet {
+            UserDefaults.standard.set(
+                showTransactionStatusFilters,
+                forKey: TransactionStatusFilter.stripVisibilityDefaultsKey
+            )
+            if !showTransactionStatusFilters {
+                transactionStatusFilter = .all
+            }
+        }
+    }
+
     /// Whether the Accounts list drops its Closed Accounts section, for
     /// budgets that have accumulated closed accounts over the years
     /// (GH #277). Persisted to UserDefaults, defaults to off.
@@ -1395,6 +1423,11 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showGroupTotals", default: true))
         _showBudgetCheckInStrip = Published(
             initialValue: persistedBool("showBudgetCheckInStrip", default: true))
+        _showTransactionStatusFilters = Published(
+            initialValue: persistedBool(
+                TransactionStatusFilter.stripVisibilityDefaultsKey, default: true))
+        _transactionStatusFilter = Published(initialValue: TransactionStatusFilter.resolved(
+            from: defaults.string(forKey: TransactionStatusFilter.defaultsKey)))
         _showOverspentBadge = Published(
             initialValue: persistedBool("showOverspentBadge", default: true))
         _conventionalAmountEntry = Published(
@@ -2871,12 +2904,14 @@ final class BudgetStore: ObservableObject {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
+        statusFilter: TransactionStatusFilter = .all,
         unclearedOnly: Bool = false,
         hideReconciled: Bool = false
     ) async -> [Transaction] {
         do {
             return try await database?.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
+                statusFilter: statusFilter,
                 unclearedOnly: unclearedOnly, hideReconciled: hideReconciled
             ) ?? []
         } catch is CancellationError {
