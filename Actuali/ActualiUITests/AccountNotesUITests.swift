@@ -79,13 +79,16 @@ final class AccountNotesUITests: XCTestCase {
 
         // Secondary toolbar actions are presented inside the system toolbar
         // overflow on the compact iPhone layout. Open it before looking up the
-        // notes visibility action; otherwise XCTest only sees the overflow
-        // container itself ("More").
+        // notes visibility action.
         let toolbarOverflow = app.buttons["OverflowBarButtonItem"]
         XCTAssertTrue(toolbarOverflow.waitForExistence(timeout: 10), "toolbar overflow not shown")
         toolbarOverflow.tap()
 
-        let visibilityButton = app.buttons["accountDetails.notesVisibility"]
+        // SwiftUI's toolbar overflow exposes the menu action by its visible
+        // label, but does not propagate the Button accessibility identifier
+        // into the overflow item. The hierarchy confirms "Hide Notes" is
+        // present, so use the label for the UI test.
+        var visibilityButton = app.buttons["Hide Notes"]
         XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "note visibility control not shown")
 
         // Normalize the persisted preference so this test is independent of a
@@ -93,19 +96,19 @@ final class AccountNotesUITests: XCTestCase {
         if !noteRow.waitForExistence(timeout: 2) {
             visibilityButton.tap()
             XCTAssertTrue(noteRow.waitForExistence(timeout: 10), "notes could not be restored before testing")
-            // Reopen the overflow because the menu closes after selecting an
-            // action, and the next toggle must come from the toolbar again.
             toolbarOverflow.tap()
+            visibilityButton = app.buttons["Hide Notes"]
             XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "note visibility control not shown after restore")
         }
 
         visibilityButton.tap()
         XCTAssertTrue(noteRow.waitForNonExistence(timeout: 10), "note row did not hide")
 
-        // The toolbar menu closes after every selection, so reopening it is
-        // required to verify that the visibility action remains available.
+        // The toolbar menu closes after every selection. The action's label
+        // changes to "Show Notes" when notes are hidden.
         toolbarOverflow.tap()
-        XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "note visibility control disappeared while notes were hidden")
+        visibilityButton = app.buttons["Show Notes"]
+        XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "Show Notes control not shown while notes are hidden")
 
         app.terminate()
         app.launch()
@@ -119,8 +122,8 @@ final class AccountNotesUITests: XCTestCase {
         XCTAssertTrue(relaunchedToolbarOverflow.waitForExistence(timeout: 10), "toolbar overflow not shown after relaunch")
         relaunchedToolbarOverflow.tap()
 
-        let relaunchedVisibilityButton = app.buttons["accountDetails.notesVisibility"]
-        XCTAssertTrue(relaunchedVisibilityButton.waitForExistence(timeout: 10), "note visibility control not shown after relaunch")
+        let relaunchedVisibilityButton = app.buttons["Show Notes"]
+        XCTAssertTrue(relaunchedVisibilityButton.waitForExistence(timeout: 10), "Show Notes control not shown after relaunch")
         XCTAssertFalse(relaunchedNoteRow.waitForExistence(timeout: 2), "hidden note reappeared after relaunch")
 
         relaunchedVisibilityButton.tap()
