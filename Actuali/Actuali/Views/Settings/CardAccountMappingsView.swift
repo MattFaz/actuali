@@ -5,14 +5,14 @@ struct CardAccountMappingsView: View {
     @EnvironmentObject var budgetStore: BudgetStore
     @ObservedObject var pendingImportStore: PendingImportStore = .shared
     @State private var showingSheet = false
-    @State private var keywords: [KeywordEntry] = [KeywordEntry(text: "")]
+    @State private var keywords: [KeywordEntry] = [KeywordEntry()]
+    @State private var keywordTexts: [UUID: String] = [:]
     @State private var originalKeywords: [String] = []
     @State private var selectedAccountId = ""
     @State private var isEditing = false
 
-    private struct KeywordEntry: Identifiable, Equatable {
+    private struct KeywordEntry: Identifiable {
         let id = UUID()
-        var text: String
     }
 
     struct CardMappingSuggestion: Identifiable, Equatable {
@@ -96,7 +96,8 @@ struct CardAccountMappingsView: View {
     }
 
     private var cleanedKeywords: [String] {
-        keywords.map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        keywords.compactMap { keywordTexts[$0.id]?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
     }
 
     private var effectiveAccountId: String {
@@ -219,16 +220,24 @@ struct CardAccountMappingsView: View {
                     }
 
                     Section {
-                        ForEach($keywords) { $entry in
-                            let index = keywords.firstIndex(where: { $0.id == entry.id }) ?? 0
+                        ForEach(keywords) { entry in
+                            let entryID = entry.id
+                            let index = keywords.firstIndex(where: { $0.id == entryID }) ?? 0
                             HStack {
-                                TextField(String(localized: "cardMappings.keywordPrompt"), text: $entry.text)
+                                TextField(
+                                    String(localized: "cardMappings.keywordPrompt"),
+                                    text: Binding(
+                                        get: { keywordTexts[entryID, default: ""] },
+                                        set: { keywordTexts[entryID] = $0 }
+                                    )
+                                )
                                     .accessibilityIdentifier(index == 0 ? "cardMappings.keywordField" : "cardMappings.keywordField.\(index)")
                                     .autocorrectionDisabled()
 
                                 if keywords.count > 1 {
                                     Button(role: .destructive) {
-                                        keywords.removeAll { $0.id == entry.id }
+                                        keywords.removeAll { $0.id == entryID }
+                                        keywordTexts.removeValue(forKey: entryID)
                                     } label: {
                                         Image(systemName: "minus.circle.fill")
                                             .foregroundStyle(.red)
@@ -238,10 +247,13 @@ struct CardAccountMappingsView: View {
                                     .accessibilityIdentifier("cardMappings.removeKeyword.\(index)")
                                 }
                             }
+                            .id(entryID)
                         }
 
                         Button {
-                            keywords.append(KeywordEntry(text: ""))
+                            let entry = KeywordEntry()
+                            keywords.append(entry)
+                            keywordTexts[entry.id] = ""
                         } label: {
                             Label(String(localized: "cardMappings.addKeyword"), systemImage: "plus")
                         }
@@ -286,7 +298,9 @@ struct CardAccountMappingsView: View {
             cardMappings: budgetStore.cardAccountMappings,
             defaultAccountId: budgetStore.defaultAccountId
         ) ?? ""
-        keywords = keyword.isEmpty ? [KeywordEntry(text: "")] : [KeywordEntry(text: keyword)]
+        let entry = KeywordEntry()
+        keywords = [entry]
+        keywordTexts = [entry.id: keyword]
         originalKeywords = []
         isEditing = false
         showingSheet = true
@@ -294,7 +308,9 @@ struct CardAccountMappingsView: View {
 
     private func prepareAndShowEditSheet(accountId: String, existingKeywords: [String]) {
         selectedAccountId = accountId
-        keywords = existingKeywords.isEmpty ? [KeywordEntry(text: "")] : existingKeywords.map { KeywordEntry(text: $0) }
+        let entries = existingKeywords.isEmpty ? [KeywordEntry()] : existingKeywords.map { _ in KeywordEntry() }
+        keywords = entries
+        keywordTexts = Dictionary(uniqueKeysWithValues: zip(entries.map(\.id), existingKeywords.isEmpty ? [""] : existingKeywords))
         originalKeywords = existingKeywords
         isEditing = true
         showingSheet = true

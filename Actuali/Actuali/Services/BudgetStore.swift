@@ -754,10 +754,8 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-    /// Writes or removes a card-to-account mapping and persists it through SyncClient.
-    /// Passing nil or empty `accountId` removes the keyword mapping. Keywords in
-    /// Sets keywords for an account and removes any requested keywords in a single batch write.
-    /// If accountId is nil or empty, the keywords are removed.
+    /// Sets keywords for an account and removes requested keywords in one batch write.
+    /// An empty account ID removes the keywords.
     func setCardAccountMappings(accountId: String?, keywords: [String], removingKeywords: [String] = []) async {
         var updated = cardAccountMappings
         for key in removingKeywords + keywords {

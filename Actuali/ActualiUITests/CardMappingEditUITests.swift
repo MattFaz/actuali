@@ -32,7 +32,6 @@ final class CardMappingEditUITests: XCTestCase {
         field.typeText(keyword)
         let saveButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save'")).firstMatch
         _ = saveButton.waitForExistence(timeout: 5)
-        print("DEBUG SAVE LABEL: '\(saveButton.label)' isEnabled=\(saveButton.isEnabled)")
         let savePredicate = NSPredicate(format: "isEnabled == true")
         let expectation = XCTNSPredicateExpectation(predicate: savePredicate, object: saveButton)
         let result = XCTWaiter.wait(for: [expectation], timeout: 5)
@@ -80,5 +79,56 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(updatedRow.waitForExistence(timeout: 5), "mapping row not found after save")
         XCTAssertTrue(updatedRow.staticTexts["Ally Savings"].exists,
                       "saving the edit did not retarget the mapping")
+    }
+
+    @MainActor
+    func testAddingAndRemovingMultipleKeywords() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
+        app.launch()
+        openCardMappings(in: app)
+
+        app.buttons["Add Card Mapping"].tap()
+        XCTAssertTrue(app.navigationBars["Add Mapping"].waitForExistence(timeout: 5), "add sheet did not open")
+        let firstField = app.textFields["cardMappings.keywordField"]
+        XCTAssertTrue(firstField.waitForExistence(timeout: 5), "keyword field not found")
+        XCTAssertTrue(firstField.isHittable, "keyword field is not hittable")
+        firstField.tap()
+        firstField.typeText("246813")
+        let firstValue = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == '246813'"), object: firstField
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [firstValue], timeout: 5), .completed)
+        app.buttons["cardMappings.addKeywordButton"].tap()
+        let secondField = app.textFields["cardMappings.keywordField.1"]
+        XCTAssertTrue(secondField.waitForExistence(timeout: 5), "second keyword field not found")
+        XCTAssertTrue(secondField.isHittable, "second keyword field is not hittable")
+        secondField.tap()
+        secondField.typeText("975310")
+        let secondValue = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == '975310'"), object: secondField
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [secondValue], timeout: 5), .completed)
+        let removeButtons = app.buttons.matching(
+            NSPredicate(format: "identifier BEGINSWITH 'cardMappings.removeKeyword.'")
+        )
+        let removeSecond = removeButtons.element(boundBy: 1)
+        XCTAssertTrue(removeSecond.waitForExistence(timeout: 5), "second keyword remove button not found")
+        removeSecond.tap()
+        XCTAssertTrue(secondField.waitForNonExistence(timeout: 5), "removed keyword field is still present")
+        app.buttons["cardMappings.addKeywordButton"].tap()
+        let replacementField = app.textFields["cardMappings.keywordField.1"]
+        XCTAssertTrue(replacementField.waitForExistence(timeout: 5), "replacement keyword field not found")
+        XCTAssertTrue(replacementField.isHittable, "replacement keyword field is not hittable")
+        replacementField.tap()
+        replacementField.typeText("975310")
+
+        app.buttons["Save"].tap()
+        XCTAssertTrue(app.navigationBars["Add Mapping"].waitForNonExistence(timeout: 5),
+                      "add sheet did not dismiss after save")
+        XCTAssertTrue(app.staticTexts["cardMappings.badge.246813"].waitForExistence(timeout: 5),
+                      "first keyword is missing")
+        XCTAssertTrue(app.staticTexts["cardMappings.badge.975310"].waitForExistence(timeout: 5),
+                      "second keyword is missing")
     }
 }
