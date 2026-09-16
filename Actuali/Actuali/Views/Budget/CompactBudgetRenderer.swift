@@ -116,6 +116,23 @@ private struct CompactOverviewStat: View {
     }
 }
 
+private extension View {
+    @ViewBuilder
+    func balancePill(_ color: Color, isMasked: Bool, active: Bool) -> some View {
+        if active {
+            self
+                .padding(.horizontal, 5)
+                .padding(.vertical, 2)
+                .background {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(color.opacity(isMasked ? 0.08 : 0.14))
+                }
+        } else {
+            self
+        }
+    }
+}
+
 private struct CompactOverviewAmount: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
@@ -133,14 +150,11 @@ private struct CompactOverviewAmount: View {
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(resultColor)
             .animatedAmount(budgetStore.displayBudgetCell(stat.amount))
-            .padding(.horizontal, stat.kind == .balance ? 5 : 0)
-            .padding(.vertical, stat.kind == .balance ? 2 : 0)
-            .background {
-                if stat.kind == .balance {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(resultColor.opacity(budgetStore.hideBalances ? 0.08 : 0.14))
-                }
-            }
+            .balancePill(
+                resultColor,
+                isMasked: budgetStore.hideBalances,
+                active: stat.kind == .balance
+            )
             .accessibilityLabel(ReportStrings.format(
                 "%@, %@",
                 stat.label(locale: locale, bundle: .main),
@@ -856,14 +870,11 @@ private struct CompactAmountText: View {
             .allowsTightening(!dynamicTypeSize.isAccessibilitySize)
             .foregroundStyle(foregroundColor)
             .animatedAmount(budgetStore.displayBudgetCell(amount))
-            .padding(.horizontal, isBalance ? 5 : 0)
-            .padding(.vertical, isBalance ? 2 : 0)
-            .background {
-                if isBalance {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(foregroundColor.opacity(budgetStore.hideBalances ? 0.08 : 0.14))
-                }
-            }
+            .balancePill(
+                foregroundColor,
+                isMasked: budgetStore.hideBalances,
+                active: isBalance
+            )
             .accessibilityLabel(budgetStore.displayBalance(amount))
     }
 
