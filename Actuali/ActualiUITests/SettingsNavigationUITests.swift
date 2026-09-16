@@ -27,6 +27,8 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.staticTexts["Rules Unavailable"]
         case "Bank Sync (SimpleFIN & Wallet)":
             content = app.textFields["Setup token"]
+        case "History":
+            content = app.staticTexts["No History Yet"]
         case "About":
             content = app.staticTexts["Version"]
         default:
@@ -55,6 +57,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Scheduled Transactions",
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
+            "History",
             "About"
         ] {
             let row = app.buttons[destination]
