@@ -594,6 +594,7 @@ struct AccountDetailView: View {
                 // selection state, which was scoped to its rows.
                 pager = nil
                 breakdown = nil
+                showingBreakdown = false
                 cycleSpend = 0
                 recentStatements = []
                 isSelecting = false
