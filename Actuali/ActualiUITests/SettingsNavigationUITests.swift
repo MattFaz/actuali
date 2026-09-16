@@ -27,6 +27,8 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.staticTexts["Rules Unavailable"]
         case "Bank Sync (SimpleFIN & Wallet)":
             content = app.textFields["Setup token"]
+        case "History":
+            content = app.staticTexts["No History Yet"]
         case "About":
             content = app.staticTexts["Version"]
         case "Support":
