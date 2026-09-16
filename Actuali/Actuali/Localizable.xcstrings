@@ -7622,6 +7622,9 @@
         }
       }
     },
+    "Discord": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Discord" } }, "fr": { "stringUnit": { "state": "translated", "value": "Discord" } }, "es": { "stringUnit": { "state": "translated", "value": "Discord" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "Discord" } }, "de": { "stringUnit": { "state": "translated", "value": "Discord" } }, "it": { "stringUnit": { "state": "translated", "value": "Discord" } }, "nl": { "stringUnit": { "state": "translated", "value": "Discord" } } } },
+    "Email": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "Email" } }, "fr": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "es": { "stringUnit": { "state": "translated", "value": "Correo electrónico" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "de": { "stringUnit": { "state": "translated", "value": "E-Mail" } }, "it": { "stringUnit": { "state": "translated", "value": "E-mail" } }, "nl": { "stringUnit": { "state": "translated", "value": "E-mail" } } } },
+    "GitHub": { "localizations": { "en": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "fr": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "es": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "pt-BR": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "de": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "it": { "stringUnit": { "state": "translated", "value": "GitHub" } }, "nl": { "stringUnit": { "state": "translated", "value": "GitHub" } } } },
     "Version": {
       "localizations": {
         "en": {

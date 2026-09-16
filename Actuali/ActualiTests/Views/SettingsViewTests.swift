@@ -13,6 +13,7 @@ struct SettingsViewTests {
         #expect(SettingsView.manageItems(includeRules: true).map(\.title) == [
             "Bank Sync (SimpleFIN & Wallet)", "Bills & Calendar", "Rules", "Scheduled Transactions"
         ])
+        #expect(SettingsView.informationItems.map(\.title) == ["About", "Support"])
     }
 
     @Test func titlesSortCaseInsensitively() {
