@@ -54,6 +54,14 @@ struct ActualiApp: App {
                             tracking: CommandLine.arguments.contains("-loadTrackingDemoData")
                         )
                     }
+                    if CommandLine.arguments.contains("-resetStatusFilterState") {
+                        // UI tests share the simulator's persisted defaults
+                        // across launches, so a stale strip toggle or chip
+                        // selection from any earlier session would poison
+                        // the run. Force the known starting state instead.
+                        budgetStore.transactionStatusFilter = .all
+                        budgetStore.showTransactionStatusFilters = true
+                    }
                     if CommandLine.arguments.contains("-connectedServerSettings") {
                         // Seed the view state directly: fetchRemoteBudgets owns
                         // the single test seam that suppresses network work.

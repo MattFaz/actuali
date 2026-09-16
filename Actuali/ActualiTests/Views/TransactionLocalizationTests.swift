@@ -50,6 +50,44 @@ struct TransactionLocalizationTests {
         }
     }
 
+    @Test func transactionStatusFilterChipsUseTheAppCatalog() {
+        let expected: [(TransactionStatusFilter, [String])] = [
+            (.all, ["All", "Tout", "Todas"]),
+            (.uncategorized, ["Uncategorized", "Sans catégorie", "Sem categoria"]),
+            (.uncleared, ["Uncleared", "Non pointée", "Não compensado"]),
+            (.cleared, ["Cleared", "Pointée", "Compensado"]),
+            (.reconciled, ["Reconciled", "Rapproché", "Conciliado"])
+        ]
+
+        for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {
+            let locale = Locale(identifier: localeIdentifier)
+            for (filter, values) in expected {
+                #expect(filter.label(locale: locale, bundle: appBundle) == values[index])
+            }
+        }
+    }
+
+    @Test func transactionFilterEmptyStateUsesTheAppCatalog() {
+        let expected: [String: [String]] = [
+            "No Matching Transactions": [
+                "No Matching Transactions", "Aucune transaction correspondante", "Nenhuma transação correspondente"
+            ],
+            "Try another status filter.": [
+                "Try another status filter.", "Essayez un autre filtre de statut.", "Tente outro filtro de status."
+            ],
+            "Show All Transactions": [
+                "Show All Transactions", "Afficher toutes les transactions", "Mostrar todas as transações"
+            ]
+        ]
+
+        for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {
+            let locale = Locale(identifier: localeIdentifier)
+            for (key, values) in expected {
+                #expect(ReportStrings.text(key, locale: locale, bundle: appBundle) == values[index])
+            }
+        }
+    }
+
     @Test func transactionSelectionLabelsUseTheRequestedLocale() {
         let expected = [
             (Locale(identifier: "en_US"), ["Selected", "Not selected"]),
