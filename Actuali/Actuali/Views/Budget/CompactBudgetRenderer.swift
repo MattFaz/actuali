@@ -153,7 +153,7 @@ private struct CompactOverviewAmount: View {
             .balancePill(
                 resultColor,
                 isMasked: budgetStore.hideBalances,
-                active: stat.kind == .balance
+                active: isResult
             )
             .accessibilityLabel(ReportStrings.format(
                 "%@, %@",
