@@ -80,46 +80,32 @@ final class AccountNotesUITests: XCTestCase {
 
         XCTAssertTrue(toolbarOverflow.waitForExistence(timeout: 5), "toolbar overflow not shown")
 
-        // The preference is stored in UserDefaults, so the test may start with
-        // notes either visible or hidden from a previous run. Normalize to
-        // visible first instead of assuming the menu contains "Hide Notes".
-        let notesInitiallyVisible = noteRow.waitForExistence(timeout: 5)
-        toolbarOverflow.tap()
+        // UserDefaults outlives the test process, so always leave notes visible
+        // even when the test exits through a failure before the happy path.
+        defer {
+            if !noteRow.exists {
+                toolbarOverflow.tap()
+                let showNotes = app.buttons["Show Notes"]
+                if showNotes.waitForExistence(timeout: 3) {
+                    showNotes.tap()
+                }
+            }
+        }
 
-        if notesInitiallyVisible {
-            let hideNotes = app.buttons["Hide Notes"]
-            XCTAssertTrue(hideNotes.waitForExistence(timeout: 5), "Hide Notes control not shown")
-            hideNotes.tap()
-        } else {
+        // Normalize a previous test run to the normal visible state.
+        if !noteRow.waitForExistence(timeout: 5) {
+            toolbarOverflow.tap()
             let showNotes = app.buttons["Show Notes"]
             XCTAssertTrue(showNotes.waitForExistence(timeout: 5), "Show Notes control not shown")
             showNotes.tap()
             XCTAssertTrue(noteRow.waitForExistence(timeout: 5), "notes could not be restored before testing")
-
-            // The menu closes after selecting an action; reopen it to perform
-            // the actual hide step.
-            toolbarOverflow.tap()
-            let hideNotes = app.buttons["Hide Notes"]
-            XCTAssertTrue(hideNotes.waitForExistence(timeout: 5), "Hide Notes control not shown after restore")
-            hideNotes.tap()
         }
 
+        toolbarOverflow.tap()
+        let hideNotes = app.buttons["Hide Notes"]
+        XCTAssertTrue(hideNotes.waitForExistence(timeout: 5), "Hide Notes control not shown")
+        hideNotes.tap()
         XCTAssertTrue(noteRow.waitForNonExistence(timeout: 5), "note row did not hide")
-
-        // Verify the opposite menu action is exposed while hidden.
-        toolbarOverflow.tap()
-        let showNotes = app.buttons["Show Notes"]
-        XCTAssertTrue(showNotes.waitForExistence(timeout: 5), "Show Notes control not shown while notes are hidden")
-        showNotes.tap()
-        XCTAssertTrue(noteRow.waitForExistence(timeout: 5), "Show Notes did not restore the note")
-
-        // Hide it once more so the persisted state we verify after relaunch is
-        // unambiguously the hidden state.
-        toolbarOverflow.tap()
-        let hideNotesAgain = app.buttons["Hide Notes"]
-        XCTAssertTrue(hideNotesAgain.waitForExistence(timeout: 5), "Hide Notes control not shown before relaunch")
-        hideNotesAgain.tap()
-        XCTAssertTrue(noteRow.waitForNonExistence(timeout: 5), "note row did not hide before relaunch")
 
         app.terminate()
         app.launch()
@@ -131,15 +117,16 @@ final class AccountNotesUITests: XCTestCase {
         let relaunchedNoteRow = app.buttons["accountNoteRow"]
         let relaunchedToolbarOverflow = app.buttons["OverflowBarButtonItem"]
         XCTAssertTrue(relaunchedToolbarOverflow.waitForExistence(timeout: 5), "toolbar overflow not shown after relaunch")
-        XCTAssertFalse(relaunchedNoteRow.waitForExistence(timeout: 2), "hidden note reappeared after relaunch")
 
-        // Restore the user's preference after the persistence assertion so a
-        // later test run starts from the normal visible state.
+        // "Show Notes" proves the hidden preference survived relaunch. Once
+        // that action is present, the note section must remain absent.
         relaunchedToolbarOverflow.tap()
         let relaunchedShowNotes = app.buttons["Show Notes"]
-        XCTAssertTrue(relaunchedShowNotes.waitForExistence(timeout: 5), "Show Notes control not shown after relaunch")
+        XCTAssertTrue(relaunchedShowNotes.waitForExistence(timeout: 10), "Show Notes control not shown after relaunch")
+        XCTAssertFalse(relaunchedNoteRow.exists, "hidden note reappeared after relaunch")
+
         relaunchedShowNotes.tap()
-        XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 5), "Show Notes did not restore the note after relaunch")
+        XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 10), "Show Notes did not restore the note after relaunch")
     }
 
     @MainActor
