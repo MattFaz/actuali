@@ -1035,22 +1035,7 @@ struct BudgetCheckInStrip: View {
                             isTrackingBudget: budget.isTrackingBudget,
                             locale: locale
                         ))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(selection == filter ? Color.white : Color.primary)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 40)
-                            .background {
-                                Capsule()
-                                    .fill(selection == filter
-                                        ? Color.accentColor
-                                        : Color(.secondarySystemGroupedBackground))
-                            }
-                            .overlay {
-                                if selection != filter {
-                                    Capsule()
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                }
-                            }
+                            .filterChip(isSelected: selection == filter)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(

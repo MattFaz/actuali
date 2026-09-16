@@ -41,6 +41,7 @@ struct TransactionsListView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 limit: limit, offset: offset, search: search,
+                statusFilter: store.transactionStatusFilter,
                 unclearedOnly: store.hideClearedTransactions,
                 hideReconciled: store.hideReconciledTransactions
             )
@@ -58,6 +59,16 @@ struct TransactionsListView: View {
             if let pager, pager.transactions.isEmpty, !budgetStore.isLoading {
                 if searchQuery != nil {
                     ContentUnavailableView.search(text: searchText)
+                } else if budgetStore.transactionStatusFilter != .all {
+                    ContentUnavailableView {
+                        Label("No Matching Transactions", systemImage: "line.3.horizontal.decrease.circle")
+                    } description: {
+                        Text("Try another status filter.")
+                    } actions: {
+                        Button("Show All Transactions") {
+                            budgetStore.transactionStatusFilter = .all
+                        }
+                    }
                 } else if budgetStore.hideClearedTransactions {
                     ContentUnavailableView(
                         "No Uncleared Transactions",
@@ -134,6 +145,11 @@ struct TransactionsListView: View {
                 .accessibilityIdentifier("transactions.selectionMode")
             }
             ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
+                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
                 TransactionGroupingToggle()
             }
             ToolbarItem(placement: .secondaryAction) {
@@ -185,6 +201,11 @@ struct TransactionsListView: View {
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.transactionStatusFilter) {
+            // The pager's fetch closure reads the chip, so a reload is all a
+            // chip tap needs.
             Task { await reload() }
         }
         .refreshable {

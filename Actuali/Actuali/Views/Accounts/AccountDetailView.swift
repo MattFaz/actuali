@@ -51,6 +51,32 @@ struct AccountDetailView: View {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// What the Recent Transactions section says when it has no rows. A
+    /// search or a status chip gets the neutral message; the hide toggles
+    /// name themselves so the user knows which menu item to flip back.
+    private var emptyTransactionsText: LocalizedStringKey {
+        Self.emptyTransactionsText(
+            isSearching: searchQuery != nil,
+            statusFilter: budgetStore.transactionStatusFilter,
+            hideCleared: budgetStore.hideClearedTransactions,
+            hideReconciled: budgetStore.hideReconciledTransactions
+        )
+    }
+
+    /// Pure so tests can reach every branch without a view (same seam as
+    /// `MonthPicker.title`).
+    nonisolated static func emptyTransactionsText(
+        isSearching: Bool,
+        statusFilter: TransactionStatusFilter,
+        hideCleared: Bool,
+        hideReconciled: Bool
+    ) -> LocalizedStringKey {
+        if isSearching || statusFilter != .all { return "No matching transactions" }
+        if hideCleared { return "No uncleared transactions" }
+        if hideReconciled { return "No unreconciled transactions" }
+        return "No transactions"
+    }
+
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time. Rebuilt when the account changes: the closure
@@ -62,6 +88,7 @@ struct AccountDetailView: View {
         let created = TransactionPager { offset, limit, search in
             await store.fetchTransactions(
                 accountId: accountId, limit: limit, offset: offset, search: search,
+                statusFilter: store.transactionStatusFilter,
                 unclearedOnly: store.hideClearedTransactions,
                 hideReconciled: store.hideReconciledTransactions
             )
@@ -168,201 +195,205 @@ struct AccountDetailView: View {
         .font(.subheadline)
     }
 
-    var body: some View {
-        List {
+    /// One row of the account's transaction list, built outside `body` so the
+    /// view expression stays within the type checker's budget.
+    private func transactionRow(_ transaction: Transaction, showDate: Bool = true) -> some View {
+        TransactionListRow(
+            transaction: transaction,
+            showAccount: false,
+            showDate: showDate,
+            isSelectionMode: $isSelecting,
+            isSelected: selectedTransactionIds.contains(transaction.id),
+            editing: $editingTransaction,
+            onToggleSelect: {
+                selectedTransactionIds.formSymmetricDifference([transaction.id])
+            }
+        )
+    }
+
+    @ViewBuilder private var balanceSection: some View {
+        Section {
+            // Tapping the balance reveals the cleared/uncleared/reconciled
+            // split (GH #134), so the reconciled figure can be checked
+            // against a bank statement without starting a reconciliation.
+            Button {
+                withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+            } label: {
+                HStack {
+                    Text(String(localized: "Current Balance"))
+                    Spacer()
+                    Text(budgetStore.displayBalance(currentBalance))
+                        .fontWeight(.semibold)
+                        .animatedAmount(budgetStore.displayBalance(currentBalance)) 
+                    if breakdown != nil {
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
+            .accessibilityHint(showingBreakdown
+                ? String(localized: "Hides the balance breakdown")
+                : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+
+            // Headroom on a tracked card with a limit set — the figure a
+            // card's balance is actually judged against, so it stays visible
+            // rather than hiding behind the disclosure.
+            if let headroom = creditHeadroom {
+                breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
+            }
+
+            if showingBreakdown, let breakdown {
+                breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
+                breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
+                breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
+                if let headroom = creditHeadroom {
+                    breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var billingCycleSection: some View {
+        if let cycle = budgetStore.activeCreditCardCycle(for: account.id), searchQuery == nil {
             Section {
-                // Tapping the balance reveals the cleared/uncleared/reconciled
-                // split (GH #134), so the reconciled figure can be checked
-                // against a bank statement without starting a reconciliation.
+                let range = cycle.cycleRange()
+                let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
+                let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
+                let dueSummary = cycle.dueSummary(dueDate: statementDue?.dueDate)
+
+                // Collapsed by default like the balance breakdown above, but
+                // the due date rides on the header row rather than hiding —
+                // it's the part of this section worth acting on.
                 Button {
-                    withAnimation(AppAnimation.disclosure) { showingBreakdown.toggle() }
+                    withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
                 } label: {
                     HStack {
-                        Text(String(localized: "Current Balance"))
+                        Text(String(localized: "Billing Cycle"))
                         Spacer()
-                        Text(budgetStore.displayBalance(currentBalance))
+                        Text(dueSummary)
                             .fontWeight(.semibold)
-                            .animatedAmount(budgetStore.displayBalance(currentBalance)) 
-                        if breakdown != nil {
-                            Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(showingBreakdown ? 180 : 0))
-                        }
+                        Image(systemName: "chevron.down")
+                            .font(.caption2.weight(.semibold))
+                            .foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(showingBillingCycle ? 180 : 0))
                     }
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(String(format: String(localized: "Current Balance, %@"), budgetStore.displayBalance(currentBalance)))
-                .accessibilityHint(showingBreakdown
-                    ? String(localized: "Hides the balance breakdown")
-                    : String(localized: "Shows cleared, uncleared, and reconciled balances"))
+                .accessibilityLabel(String(format: String(localized: "Billing Cycle, %@"), dueSummary))
+                .accessibilityHint(showingBillingCycle
+                    ? String(localized: "Hides the billing cycle details")
+                    : String(localized: "Shows the current cycle dates and spend"))
 
-                // Headroom on a tracked card with a limit set — the figure a
-                // card's balance is actually judged against, so it stays visible
-                // rather than hiding behind the disclosure.
-                if let headroom = creditHeadroom {
-                    breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
-                }
-
-                if showingBreakdown, let breakdown {
-                    breakdownRow(String(localized: "Cleared"), amount: breakdown.cleared)
-                    breakdownRow(String(localized: "Uncleared"), amount: breakdown.uncleared)
-                    breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
-                    if let headroom = creditHeadroom {
-                        breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
-                    }
-                }
-            }
-
-            if let cycle = budgetStore.activeCreditCardCycle(for: account.id), searchQuery == nil {
-                Section {
-                    let range = cycle.cycleRange()
-                    let startStr = Transaction.formattedDate(from: range.start.yyyymmdd, style: .abbreviated)
-                    let endStr = Transaction.formattedDate(from: range.end.yyyymmdd, style: .abbreviated)
-                    let dueSummary = cycle.dueSummary(dueDate: statementDue?.dueDate)
-
-                    // Collapsed by default like the balance breakdown above, but
-                    // the due date rides on the header row rather than hiding —
-                    // it's the part of this section worth acting on.
-                    Button {
-                        withAnimation(AppAnimation.disclosure) { showingBillingCycle.toggle() }
-                    } label: {
-                        HStack {
-                            Text(String(localized: "Billing Cycle"))
-                            Spacer()
-                            Text(dueSummary)
-                                .fontWeight(.semibold)
-                            Image(systemName: "chevron.down")
-                                .font(.caption2.weight(.semibold))
-                                .foregroundStyle(.tertiary)
-                                .rotationEffect(.degrees(showingBillingCycle ? 180 : 0))
+                if showingBillingCycle {
+                    breakdownRow(String(localized: "Current Cycle"), value: "\(startStr) – \(endStr)")
+                    if let statementDue {
+                        if statementDue.isPaid {
+                            breakdownRow(String(localized: "Statement Due"), value: String(localized: "Paid"))
+                        } else {
+                            breakdownRow(String(localized: "Statement Due"), value: budgetStore.displayBalance(statementDue.remainingDue))
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(String(format: String(localized: "Billing Cycle, %@"), dueSummary))
-                    .accessibilityHint(showingBillingCycle
-                        ? String(localized: "Hides the billing cycle details")
-                        : String(localized: "Shows the current cycle dates and spend"))
+                    breakdownRow(String(localized: "Cycle Spend"), value: budgetStore.displayBalance(cycleSpend))
 
-                    if showingBillingCycle {
-                        breakdownRow(String(localized: "Current Cycle"), value: "\(startStr) – \(endStr)")
-                        if let statementDue {
-                            if statementDue.isPaid {
-                                breakdownRow(String(localized: "Statement Due"), value: String(localized: "Paid"))
-                            } else {
-                                breakdownRow(String(localized: "Statement Due"), value: budgetStore.displayBalance(statementDue.remainingDue))
-                            }
-                        }
-                        breakdownRow(String(localized: "Cycle Spend"), value: budgetStore.displayBalance(cycleSpend))
-
-                        if !recentStatements.isEmpty {
-                            Divider()
-                            ForEach(recentStatements) { statement in
-                                let sStartStr = Transaction.formattedDate(from: statement.startDate.yyyymmdd, style: .abbreviated)
-                                let sEndStr = Transaction.formattedDate(from: statement.endDate.yyyymmdd, style: .abbreviated)
-                                Button {
-                                    selectedStatement = statement
-                                } label: {
-                                    HStack {
-                                        VStack(alignment: .leading, spacing: 2) {
-                                            Text("\(sStartStr) – \(sEndStr)")
-                                                .foregroundStyle(.primary)
-                                            if statement.isPaid {
-                                                Text(String(localized: "Paid"))
-                                                    .font(.caption)
-                                                    .foregroundStyle(.green)
-                                            } else {
-                                                let dueStr = Transaction.formattedDate(from: statement.dueDate.yyyymmdd, style: .abbreviated)
-                                                Text(String(format: String(localized: "Due %@"), dueStr))
-                                                    .font(.caption)
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-                                        Spacer()
-                                        Text(budgetStore.displayBalance(statement.statementBalance))
-                                            .fontWeight(.semibold)
+                    if !recentStatements.isEmpty {
+                        Divider()
+                        ForEach(recentStatements) { statement in
+                            let sStartStr = Transaction.formattedDate(from: statement.startDate.yyyymmdd, style: .abbreviated)
+                            let sEndStr = Transaction.formattedDate(from: statement.endDate.yyyymmdd, style: .abbreviated)
+                            Button {
+                                selectedStatement = statement
+                            } label: {
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("\(sStartStr) – \(sEndStr)")
                                             .foregroundStyle(.primary)
-                                        Image(systemName: "chevron.right")
-                                            .font(.caption2.weight(.semibold))
-                                            .foregroundStyle(.tertiary)
+                                        if statement.isPaid {
+                                            Text(String(localized: "Paid"))
+                                                .font(.caption)
+                                                .foregroundStyle(.green)
+                                        } else {
+                                            let dueStr = Transaction.formattedDate(from: statement.dueDate.yyyymmdd, style: .abbreviated)
+                                            Text(String(format: String(localized: "Due %@"), dueStr))
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                        }
                                     }
-                                    .contentShape(Rectangle())
+                                    Spacer()
+                                    Text(budgetStore.displayBalance(statement.statementBalance))
+                                        .fontWeight(.semibold)
+                                        .foregroundStyle(.primary)
+                                    Image(systemName: "chevron.right")
+                                        .font(.caption2.weight(.semibold))
+                                        .foregroundStyle(.tertiary)
                                 }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel(String(format: String(localized: "Statement %1$@ to %2$@, %3$@"), sStartStr, sEndStr, budgetStore.displayBalance(statement.statementBalance)))
+                                .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(String(format: String(localized: "Statement %1$@ to %2$@, %3$@"), sStartStr, sEndStr, budgetStore.displayBalance(statement.statementBalance)))
                         }
                     }
                 }
             }
+        }
+    }
 
-            if note.supported && searchQuery == nil {
-                noteSection
-            }
+    @ViewBuilder private var notesSection: some View {
+        if note.supported && searchQuery == nil {
+            noteSection
+        }
+    }
 
-            if let pager, !pager.transactions.isEmpty {
-                if budgetStore.transactionDisplayMode == .groupedByDate {
-                    let groups = pager.transactions.groupedByDate()
-                    ForEach(groups) { group in
-                        Section(group.title) {
-                            ForEach(group.transactions) { transaction in
-                                TransactionListRow(
-                                    transaction: transaction,
-                                    showAccount: false,
-                                    showDate: false,
-                                    isSelectionMode: $isSelecting,
-                                    isSelected: selectedTransactionIds.contains(transaction.id),
-                                    editing: $editingTransaction,
-                                    onToggleSelect: {
-                                        selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                    }
-                                )
-                            }
-                            // The sentinel rides in the last date section so
-                            // grouped mode doesn't grow a headerless section
-                            // (and its gap) of its own.
-                            if pager.hasMore, group.id == groups.last?.id {
-                                TransactionPagingSentinel(pager: pager)
-                            }
+    @ViewBuilder private var transactionSection: some View {
+        if let pager, !pager.transactions.isEmpty {
+            if budgetStore.transactionDisplayMode == .groupedByDate {
+                let groups = pager.transactions.groupedByDate()
+                ForEach(groups) { group in
+                    Section(group.title) {
+                        ForEach(group.transactions) { transaction in
+                            transactionRow(transaction, showDate: false)
                         }
-                    }
-                } else {
-                    Section("Recent Transactions") {
-                        ForEach(pager.transactions) { transaction in
-                            TransactionListRow(
-                                transaction: transaction,
-                                showAccount: false,
-                                isSelectionMode: $isSelecting,
-                                isSelected: selectedTransactionIds.contains(transaction.id),
-                                editing: $editingTransaction,
-                                onToggleSelect: {
-                                    selectedTransactionIds.formSymmetricDifference([transaction.id])
-                                }
-                            )
-                        }
-                        if pager.hasMore {
+                        // The sentinel rides in the last date section so
+                        // grouped mode doesn't grow a headerless section
+                        // (and its gap) of its own.
+                        if pager.hasMore, group.id == groups.last?.id {
                             TransactionPagingSentinel(pager: pager)
                         }
                     }
                 }
             } else {
-                // Header stays put while the first page is still loading, so
-                // the screen doesn't reflow once the rows land.
                 Section("Recent Transactions") {
-                    if pager != nil {
-                        Text(searchQuery != nil
-                            ? "No matching transactions"
-                            : budgetStore.hideClearedTransactions
-                            ? "No uncleared transactions"
-                                : budgetStore.hideReconciledTransactions
-                                    ? "No unreconciled transactions"
-                                    : "No transactions")
-                            .foregroundStyle(.secondary)
+                    ForEach(pager.transactions) { transaction in
+                        transactionRow(transaction)
+                    }
+                    if pager.hasMore {
+                        TransactionPagingSentinel(pager: pager)
                     }
                 }
             }
+        } else {
+            // Header stays put while the first page is still loading, so
+            // the screen doesn't reflow once the rows land.
+            Section("Recent Transactions") {
+                if pager != nil {
+                    Text(emptyTransactionsText)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    var body: some View {
+        List {
+            balanceSection
+            billingCycleSection
+            notesSection
+            transactionSection
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
         // The header sections (balance, billing cycle, note) are one or two rows
@@ -417,6 +448,11 @@ struct AccountDetailView: View {
                         Label("Sync from Bank", systemImage: "building.columns")
                     }
                     .disabled(budgetStore.isBankSyncing)
+                }
+            }
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
+                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
                 }
             }
             ToolbarItem(placement: .secondaryAction) {
@@ -529,6 +565,11 @@ struct AccountDetailView: View {
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
+            Task { await reload() }
+        }
+        .onChange(of: budgetStore.transactionStatusFilter) {
+            // The pager's fetch closure reads the chip, so a reload is all a
+            // chip tap needs.
             Task { await reload() }
         }
         .onChange(of: budgetStore.creditCardStatementDays[account.id]) {
