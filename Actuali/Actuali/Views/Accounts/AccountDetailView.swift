@@ -78,6 +78,17 @@ struct AccountDetailView: View {
         return "No transactions"
     }
 
+    /// Pure so the note visibility rule can be covered without constructing a
+    /// view. Search still suppresses the note even when the user preference
+    /// allows it, because account search is scoped to transactions.
+    nonisolated static func showsNote(
+        supported: Bool,
+        hidden: Bool,
+        isSearching: Bool
+    ) -> Bool {
+        supported && !hidden && !isSearching
+    }
+
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time. Rebuilt when the account changes: the closure
@@ -396,7 +407,11 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var notesSection: some View {
-        if note.supported && !hideNotes && searchQuery == nil {
+        if Self.showsNote(
+            supported: note.supported,
+            hidden: hideNotes,
+            isSearching: searchQuery != nil
+        ) {
             noteSection
         }
     }
