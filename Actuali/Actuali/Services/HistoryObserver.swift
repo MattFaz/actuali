@@ -11,6 +11,7 @@ final class HistoryObserver {
     private var consumeTask: Task<Void, Never>?
     private var wasSyncing = false
     private var remoteRefreshPending = false
+    private var baselineGeneration = 0
 
     init(store: BudgetStore) {
         previousBudgetID = store.currentBudgetId
@@ -23,6 +24,7 @@ final class HistoryObserver {
                     self.hasBaseline = false
                     self.previous = [:]
                     self.previousSplitChildren = [:]
+                    self.baselineGeneration += 1
                     return
                 }
                 let isRemote = remoteRefreshPending || store.isBankSyncing
@@ -42,6 +44,7 @@ final class HistoryObserver {
                 self.hasBaseline = false
                 self.previous = [:]
                 self.previousSplitChildren = [:]
+                self.baselineGeneration += 1
             }
             .store(in: &cancellables)
 
@@ -91,6 +94,7 @@ final class HistoryObserver {
         transactions: [Transaction],
         isRemote: Bool
     ) {
+        let generation = baselineGeneration
         let previousTask = consumeTask
         consumeTask = Task { @MainActor [weak self, weak store] in
             _ = await previousTask?.result
@@ -99,7 +103,8 @@ final class HistoryObserver {
                 store,
                 budgetID: budgetID,
                 transactions: transactions,
-                isRemote: isRemote
+                isRemote: isRemote,
+                generation: generation
             )
         }
     }
@@ -108,8 +113,11 @@ final class HistoryObserver {
         _ store: BudgetStore,
         budgetID: String?,
         transactions: [Transaction],
-        isRemote: Bool
+        isRemote: Bool,
+        generation: Int
     ) async {
+        guard generation == baselineGeneration else { return }
+
         guard let budgetID else {
             hasBaseline = false
             previous = [:]
@@ -126,6 +134,7 @@ final class HistoryObserver {
             for: current.values.filter(\.isParent),
             using: store
         )
+        guard generation == baselineGeneration else { return }
         guard budgetID == store.currentBudgetId else { return }
 
         guard hasBaseline else {
@@ -228,6 +237,7 @@ final class HistoryObserver {
                         before.append(oldChild)
                         var tombstoned = oldChild
                         tombstoned.tombstone = true
+                        before.append(oldChild)
                         after.append(tombstoned)
                     }
                 }
