@@ -95,8 +95,10 @@ enum ScheduleDescription {
                     : ReportStrings.localized("Every \(interval) months on \(range)", locale: locale, bundle: bundle)
             }
         case .yearly:
-            let day = Transaction.date(fromYYYYMMDD: config.start.yyyymmdd)
-                .formatted(.dateTime.locale(locale).month(.abbreviated).day(.defaultDigits))
+            let formatter = DateFormatter()
+            formatter.locale = locale
+            formatter.setLocalizedDateFormatFromTemplate("MMMd")
+            let day = formatter.string(from: Transaction.date(fromYYYYMMDD: config.start.yyyymmdd))
             body = interval == 1
                 ? ReportStrings.localized("Every year on \(day)", locale: locale, bundle: bundle)
                 : ReportStrings.localized("Every \(interval) years on \(day)", locale: locale, bundle: bundle)
