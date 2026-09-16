@@ -204,6 +204,19 @@ enum TransactionTextParser {
                     let code = String(text[codeRange])
                     guard normalizeCurrencyCode(code) != nil, isExplicitCurrencyCode(code) else { continue }
                 }
+                // A trailing ISO match can mistake a card suffix or date for the amount.
+                if codeGroup == 2 {
+                    let prefix = String(text[..<amountRange.lowerBound])
+                    let isReferenceNumber = prefix.range(
+                        of: #"\b(?:card|account|a/c|acct|ending|xx|x{2,})\b[^\d]*$"#,
+                        options: [.regularExpression, .caseInsensitive]
+                    ) != nil
+                    let isDate = prefix.range(
+                        of: #"\d{1,4}[-/.]\d{1,4}[-/.]$"#,
+                        options: .regularExpression
+                    ) != nil
+                    if isReferenceNumber || isDate { continue }
+                }
                 if earliest == nil || amountRange.lowerBound < earliest!.start {
                     earliest = (amountRange.lowerBound, amount)
                 }
@@ -251,10 +264,7 @@ enum TransactionTextParser {
             let pattern = #"\b(?:spent|debited|paid|withdrawn)\s+from\s+"# + candidatePattern
             if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
                regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
-                if let merchant = extractMerchant(from: text),
-                   merchant.caseInsensitiveCompare(trimmed) != .orderedSame {
-                    return merchant
-                }
+                return extractMerchant(from: text)
             }
         }
 
@@ -265,8 +275,8 @@ enum TransactionTextParser {
     private static func extractMerchant(from text: String) -> String? {
         // Keyword-based extraction for common bank SMS patterns with word boundaries.
         // Rejects "from" to avoid capturing funding sources (e.g. "paid from Wallet").
-        // Hyphens are only matched between letters, and trailing dates act as delimiters.
-        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)((?:[A-Za-z0-9\s&'.]|(?<=[A-Za-z])-(?=[A-Za-z]))+?)(?:\s+(?:on|using|via|for|with|card|ref|\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}|\.|\,)|$)"#
+        // Trailing dates act as delimiters, so hyphens can remain valid in merchant names.
+        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)([A-Za-z0-9\s&'.-]+?)(?:\s+(?:on|using|via|for|with|card|ref|\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}|\.|\,)|$)"#
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
@@ -276,7 +286,7 @@ enum TransactionTextParser {
             }
         }
 
-        // NLTagger fallback: find the first organization name.
+        // NLTagger fallback: find the first organization outside a debit funding source.
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = text
         var found: String?
@@ -287,6 +297,12 @@ enum TransactionTextParser {
             options: [.omitPunctuation, .omitWhitespace, .joinNames]
         ) { tag, range in
             if tag == .organizationName {
+                let prefix = String(text[..<range.lowerBound])
+                let isDebitFundingSource = prefix.range(
+                    of: #"\b(?:spent|debited|paid|withdrawn)\s+from\s*$"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil
+                if isDebitFundingSource { return true }
                 let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
                 if isValidMerchantCandidate(candidate) {
                     found = candidate

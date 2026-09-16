@@ -44,9 +44,22 @@ struct TransactionTextParserTests {
         #expect(result.payee == "Quick-mart Payments")
     }
 
+    @Test func doesNotTreatCardSuffixAsAmountBeforeCurrencyCode() {
+        let text = "Card ending 4321: USD 25.50 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).amount == 25.50)
+    }
+
+    @Test func doesNotTreatDateAsAmountBeforeCurrencyCode() {
+        let text = "Purchase on 01-01-2026: USD 25.50 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).amount == 25.50)
+    }
+
     @Test func doesNotUseFundingWalletAsPayee() {
         let withoutMerchant = "Rs.500.00 paid from Sample Meal wallet on 01-01-2026"
-        #expect(TransactionTextParser.parseWithFallback(withoutMerchant).payee?.lowercased().hasPrefix("from") != true)
+        #expect(TransactionTextParser.parseWithFallback(withoutMerchant).payee == nil)
+
+        let recognizedWallet = "INR 500.00 paid from Amazon Pay Balance on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(recognizedWallet).payee == nil)
 
         let withMerchant = "Rs.500.00 paid from Sample Meal wallet at Coffee Shop on 01-01-2026"
         #expect(TransactionTextParser.parseWithFallback(withMerchant).payee == "Coffee Shop")
@@ -57,6 +70,11 @@ struct TransactionTextParserTests {
         #expect(TransactionTextParser.parseWithFallback(text).payee == "Amazon")
     }
 
+    @Test func parsesNumericHyphenatedMerchant() {
+        let text = "Paid $4.50 at 7-Eleven"
+        #expect(TransactionTextParser.parseWithFallback(text).payee == "7-Eleven")
+    }
+
     @Test func parsesRefundAsIncomeAndDoesNotCaptureCardAsMerchant() {
         let text = "Refund of $25.00 from Amazon credited to card 5555"
         let result = TransactionTextParser.parseWithFallback(text)
@@ -65,6 +83,7 @@ struct TransactionTextParserTests {
         #expect(result.cardHint == "5555")
         // "card 5555" must NOT be extracted as payee
         #expect(result.payee != "card 5555")
+        #expect(result.payee == "Amazon")
     }
 
     @Test func emptyTextReturnsNils() {
