@@ -103,10 +103,23 @@ struct FormulaEngineTests {
         }
     }
 
-    @Test func textComparisonUsesAllOperators() {
-        let result = FormulaEngine.compute(
-            meta: meta(formula: #"="a"<"b""#), transactions: [], today: today, context: .empty)
-        #expect(result == .text("TRUE"))
+    @Test func textComparisonUsesHyperFormulaCollation() {
+        let formulas = [#"="a"<"b""#, #"="Income"="income""#, #"="résumé"="resume""#]
+        for formula in formulas {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            #expect(result == .text("TRUE"))
+        }
+    }
+
+    @Test func ifUsesHyperFormulaTruthiness() {
+        let formulas = [#"=IF("FALSE",1,2)"#, "=IF(0.0000000000000001,1,2)"]
+        let expected: [FormulaEngine.Result] = [.value(2), .value(1)]
+        for (formula, expected) in zip(formulas, expected) {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            #expect(result == expected)
+        }
     }
 
     @Test func roundSupportsDefaultAndNegativeDigitCounts() {
@@ -134,11 +147,13 @@ struct FormulaEngineTests {
     }
 
     @Test func nonFiniteResultsAreUnsupported() {
-        let result = FormulaEngine.compute(
-            meta: meta(formula: "=ROUND(1,400)"), transactions: [], today: today, context: .empty)
-        guard case .unsupported = result else {
-            Issue.record("expected .unsupported, got \(result)")
-            return
+        for formula in ["=ROUND(1,400)", #"=ROUND(1,400)&"%""#, #"=ROUND(1,400)="""#] {
+            let result = FormulaEngine.compute(
+                meta: meta(formula: formula), transactions: [], today: today, context: .empty)
+            guard case .unsupported = result else {
+                Issue.record("expected .unsupported, got \(result)")
+                continue
+            }
         }
     }
 

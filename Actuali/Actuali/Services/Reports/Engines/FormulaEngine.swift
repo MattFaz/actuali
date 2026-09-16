@@ -129,7 +129,7 @@ enum FormulaEngine {
         case "if":
             guard args.count == 3 else { throw EvalError.invalidArguments }
             let condition = try evaluate(args[0], query: query)
-            return try evaluate(isTruthy(condition) ? args[1] : args[2], query: query)
+            return try evaluate(try isTruthy(condition) ? args[1] : args[2], query: query)
         case "abs":
             guard args.count == 1 else { throw EvalError.invalidArguments }
             return .number(abs(try number(args[0], query: query)))
@@ -138,15 +138,22 @@ enum FormulaEngine {
             let value = try number(args[0], query: query)
             let digits = args.count == 2 ? try number(args[1], query: query) : 0
             let factor = pow(10, digits)
-            return .number((value * factor).rounded() / factor)
+            let result = (value * factor).rounded() / factor
+            guard result.isFinite else { throw EvalError.invalidType }
+            return .number(result)
         default: throw EvalError.invalidArguments
         }
     }
 
-    private static func isTruthy(_ value: Value) -> Bool {
+    private static func isTruthy(_ value: Value) throws -> Bool {
         switch value {
-        case .number(let value): return abs(value) > .ulpOfOne
-        case .text(let value): return !value.isEmpty
+        case .number(let value): return value != 0
+        case .text(let value):
+            switch value.uppercased() {
+            case "TRUE": return true
+            case "FALSE", "": return false
+            default: throw EvalError.invalidType
+            }
         case .boolean(let value): return value
         }
     }
@@ -154,6 +161,21 @@ enum FormulaEngine {
     private static func compare(_ op: String, left: Value, right: Value) throws -> Bool {
         if case .number(let left) = left, case .number(let right) = right {
             return try apply(op, left, right)
+        }
+        if case .text(let left) = left, case .text(let right) = right {
+            let result = left.compare(
+                right,
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en"))
+            switch op {
+            case "=": return result == .orderedSame
+            case "<>": return result != .orderedSame
+            case ">": return result == .orderedDescending
+            case "<": return result == .orderedAscending
+            case ">=": return result != .orderedAscending
+            case "<=": return result != .orderedDescending
+            default: throw EvalError.invalidArguments
+            }
         }
         return try apply(op, stringValue(left), stringValue(right))
     }
