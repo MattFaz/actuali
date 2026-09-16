@@ -237,7 +237,6 @@ final class HistoryObserver {
                         before.append(oldChild)
                         var tombstoned = oldChild
                         tombstoned.tombstone = true
-                        before.append(oldChild)
                         after.append(tombstoned)
                     }
                 }
