@@ -9,7 +9,7 @@ final class ReconciliationUITests: XCTestCase {
     @MainActor
     private func openChaseChecking() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()
 
         app.tabBars.buttons["Accounts"].tap()
@@ -25,7 +25,9 @@ final class ReconciliationUITests: XCTestCase {
 
         // Demo data leaves the newest transactions pending (uncleared).
         let uncleared = app.buttons.matching(
-            NSPredicate(format: "label == 'Uncleared'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Uncleared'"
+            )
         )
         XCTAssertTrue(uncleared.firstMatch.waitForExistence(timeout: 10),
                       "demo data should include pending transactions")
@@ -47,12 +49,16 @@ final class ReconciliationUITests: XCTestCase {
 
         // Wait for the pushed detail screen (rows + toolbar) to settle.
         let cleared = app.buttons.matching(
-            NSPredicate(format: "label == 'Cleared'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Cleared'"
+            )
         )
         XCTAssertTrue(cleared.firstMatch.waitForExistence(timeout: 10),
                       "demo data should include cleared transactions")
         XCTAssertEqual(app.buttons.matching(
-            NSPredicate(format: "label == 'Reconciled'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Reconciled'"
+            )
         ).count, 0, "demo data starts with nothing reconciled")
 
         // Reconcile sits in the toolbar's overflow menu, so open that first.
@@ -73,7 +79,9 @@ final class ReconciliationUITests: XCTestCase {
 
         // Locking marks every cleared transaction reconciled (blue dot).
         let reconciled = app.buttons.matching(
-            NSPredicate(format: "label == 'Reconciled'")
+            NSPredicate(
+                format: "identifier BEGINSWITH 'transaction.status.' AND label == 'Reconciled'"
+            )
         ).firstMatch
         XCTAssertTrue(reconciled.waitForExistence(timeout: 20),
                       "locking should mark cleared transactions as reconciled")

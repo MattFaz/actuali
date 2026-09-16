@@ -445,6 +445,7 @@ struct TransactionRow: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
+                .accessibilityIdentifier("transaction.status.\(transaction.id)")
                 .accessibilityHint(String(localized: TransactionsListLocalization.togglesCleared, locale: locale))
                 .confirmationDialog(
                     "This transaction is reconciled. Unlock it to make changes?",
