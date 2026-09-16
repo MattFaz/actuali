@@ -73,6 +73,41 @@ final class AccountNotesUITests: XCTestCase {
     }
 
     @MainActor
+    func testNoteVisibilityCanBeHiddenShownAndPersistsAcrossRelaunch() throws {
+        let app = openAccount("Chase Checking")
+        let noteRow = app.buttons["accountNoteRow"]
+        let visibilityButton = app.buttons["accountDetails.notesVisibility"]
+
+        XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "note visibility control not shown")
+
+        // Normalize the persisted preference so this test is independent of a
+        // previous run's UserDefaults state.
+        if !noteRow.waitForExistence(timeout: 2) {
+            visibilityButton.tap()
+            XCTAssertTrue(noteRow.waitForExistence(timeout: 10), "notes could not be restored before testing")
+        }
+
+        visibilityButton.tap()
+        XCTAssertTrue(noteRow.waitForNonExistence(timeout: 10), "note row did not hide")
+        XCTAssertTrue(visibilityButton.waitForExistence(timeout: 10), "note visibility control disappeared while notes were hidden")
+
+        app.terminate()
+        app.launch()
+        app.tabBars.buttons["Accounts"].tap()
+        let account = app.staticTexts["Chase Checking"].firstMatch
+        XCTAssertTrue(account.waitForExistence(timeout: 10), "Chase Checking row not found after relaunch")
+        account.tap()
+
+        let relaunchedNoteRow = app.buttons["accountNoteRow"]
+        let relaunchedVisibilityButton = app.buttons["accountDetails.notesVisibility"]
+        XCTAssertTrue(relaunchedVisibilityButton.waitForExistence(timeout: 10), "note visibility control not shown after relaunch")
+        XCTAssertFalse(relaunchedNoteRow.waitForExistence(timeout: 2), "hidden note reappeared after relaunch")
+
+        relaunchedVisibilityButton.tap()
+        XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 10), "Show Notes did not restore the note")
+    }
+
+    @MainActor
     private func attachScreenshot(_ app: XCUIApplication, name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name
