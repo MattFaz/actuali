@@ -85,9 +85,9 @@ final class AccountNotesUITests: XCTestCase {
         defer {
             if !noteRow.exists {
                 toolbarOverflow.tap()
-                let showNotes = app.buttons["Show Notes"]
-                if showNotes.waitForExistence(timeout: 3) {
-                    showNotes.tap()
+                let notesVisibility = app.switches["accountDetails.notesVisibility"]
+                if notesVisibility.waitForExistence(timeout: 3) {
+                    notesVisibility.tap()
                 }
             }
         }
@@ -95,16 +95,16 @@ final class AccountNotesUITests: XCTestCase {
         // Normalize a previous test run to the normal visible state.
         if !noteRow.waitForExistence(timeout: 5) {
             toolbarOverflow.tap()
-            let showNotes = app.buttons["Show Notes"]
-            XCTAssertTrue(showNotes.waitForExistence(timeout: 5), "Show Notes control not shown")
-            showNotes.tap()
+            let notesVisibility = app.switches["accountDetails.notesVisibility"]
+            XCTAssertTrue(notesVisibility.waitForExistence(timeout: 5), "note visibility control not shown")
+            notesVisibility.tap()
             XCTAssertTrue(noteRow.waitForExistence(timeout: 5), "notes could not be restored before testing")
         }
 
         toolbarOverflow.tap()
-        let hideNotes = app.buttons["Hide Notes"]
-        XCTAssertTrue(hideNotes.waitForExistence(timeout: 5), "Hide Notes control not shown")
-        hideNotes.tap()
+        let notesVisibility = app.switches["accountDetails.notesVisibility"]
+        XCTAssertTrue(notesVisibility.waitForExistence(timeout: 5), "note visibility control not shown")
+        notesVisibility.tap()
         XCTAssertTrue(noteRow.waitForNonExistence(timeout: 5), "note row did not hide")
 
         app.terminate()
@@ -118,15 +118,15 @@ final class AccountNotesUITests: XCTestCase {
         let relaunchedToolbarOverflow = app.buttons["OverflowBarButtonItem"]
         XCTAssertTrue(relaunchedToolbarOverflow.waitForExistence(timeout: 5), "toolbar overflow not shown after relaunch")
 
-        // "Show Notes" proves the hidden preference survived relaunch. Once
-        // that action is present, the note section must remain absent.
+        // The visibility control proves the hidden preference survived relaunch.
+        // Once it is present, the note section must remain absent.
         relaunchedToolbarOverflow.tap()
-        let relaunchedShowNotes = app.buttons["Show Notes"]
-        XCTAssertTrue(relaunchedShowNotes.waitForExistence(timeout: 10), "Show Notes control not shown after relaunch")
+        let relaunchedNotesVisibility = app.switches["accountDetails.notesVisibility"]
+        XCTAssertTrue(relaunchedNotesVisibility.waitForExistence(timeout: 10), "note visibility control not shown after relaunch")
         XCTAssertFalse(relaunchedNoteRow.exists, "hidden note reappeared after relaunch")
 
-        relaunchedShowNotes.tap()
-        XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 10), "Show Notes did not restore the note after relaunch")
+        relaunchedNotesVisibility.tap()
+        XCTAssertTrue(relaunchedNoteRow.waitForExistence(timeout: 10), "note visibility control did not restore the note after relaunch")
     }
 
     @MainActor

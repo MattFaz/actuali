@@ -459,7 +459,7 @@ struct AccountDetailView: View {
         List {
             balanceSection
             billingCycleSection
-            notesSection
+            notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
@@ -544,12 +544,10 @@ struct AccountDetailView: View {
 
             if note.supported {
                 ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        withAnimation(AppAnimation.disclosure) { hideNotes.toggle() }
-                    } label: {
+                    Toggle(isOn: $hideNotes) {
                         Label(
-                            String(localized: hideNotes ? "Show Notes" : "Hide Notes"),
-                            systemImage: hideNotes ? "eye" : "eye.slash"
+                            "Hide Notes",
+                            systemImage: hideNotes ? "eye.slash" : "eye"
                         )
                     }
                     .accessibilityIdentifier("accountDetails.notesVisibility")
