@@ -483,29 +483,6 @@ struct AccountDetailView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if budgetStore.showTransactionStatusFilters {
-                TransactionFilterStrip(
-                    selection: $budgetStore.transactionStatusFilter,
-                    // The uncategorized chip requires an on-budget account,
-                    // so it can never match here — drop it instead of
-                    // offering a filter that always comes up empty.
-                    filters: account.offBudget
-                        ? TransactionStatusFilter.allCases.filter { $0 != .uncategorized }
-                        : TransactionStatusFilter.allCases
-                )
-            }
-        }
-        // `.task(id:)` rather than onAppear: the iPad split layout reuses
-        // one instance across selections, so account changes don't re-fire
-        // appear. A filter selected elsewhere that this account can't match
-        // (uncategorized is on-budget-only) must not strand the list.
-        .task(id: account.id) {
-            if account.offBudget,
-               budgetStore.transactionStatusFilter == .uncategorized {
-                budgetStore.transactionStatusFilter = .all
-            }
-        }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
                 TransactionBulkActionBar(

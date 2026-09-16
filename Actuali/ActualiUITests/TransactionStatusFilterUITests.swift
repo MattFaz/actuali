@@ -1,10 +1,74 @@
 import XCTest
+import UIKit
 
 /// End-to-end coverage for the transaction status filter chips (GH #439):
 /// chips filter and reset on All Accounts, the menu toggle hides the strip
 /// without stranding a filter behind it, and an off-budget account — where
 /// the uncategorized chip can never match — never offers it.
 final class TransactionStatusFilterUITests: XCTestCase {
+
+    @MainActor
+    func testFilterStripSurvivesOnBudgetAccountNavigation() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
+        app.launch()
+
+        app.tabBars.buttons["Accounts"].tap()
+        let allAccounts = app.staticTexts["All Accounts"].firstMatch
+        XCTAssertTrue(allAccounts.waitForExistence(timeout: 10))
+        allAccounts.tap()
+        let allChip = app.buttons["transactionFilter-all"]
+        XCTAssertTrue(allChip.waitForExistence(timeout: 10))
+        XCTAssertTrue(allChip.isHittable)
+        try assertSelectedChipIsRendered(allChip)
+
+        app.navigationBars.buttons.firstMatch.tap()
+        let checking = app.staticTexts["Chase Checking"].firstMatch
+        XCTAssertTrue(checking.waitForExistence(timeout: 10))
+        checking.tap()
+        XCTAssertTrue(allChip.waitForExistence(timeout: 10),
+                      "status chips should survive navigation to an on-budget account")
+        XCTAssertTrue(allChip.isHittable,
+                      "status chips should remain visible on an on-budget account")
+        try assertSelectedChipIsRendered(allChip)
+
+        app.navigationBars.buttons.firstMatch.tap()
+        allAccounts.tap()
+        XCTAssertTrue(allChip.waitForExistence(timeout: 10),
+                      "status chips should survive returning to All Accounts")
+        XCTAssertTrue(allChip.isHittable,
+                      "status chips should remain visible after returning to All Accounts")
+        try assertSelectedChipIsRendered(allChip)
+    }
+
+    @MainActor
+    private func assertSelectedChipIsRendered(
+        _ chip: XCUIElement,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let image = try XCTUnwrap(chip.screenshot().image.cgImage, file: file, line: line)
+        var pixel = [UInt8](repeating: 0, count: 4)
+        let context = try XCTUnwrap(CGContext(
+            data: &pixel,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ), file: file, line: line)
+
+        context.draw(image, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let channels = pixel.prefix(3).map(Int.init)
+        XCTAssertGreaterThan(
+            channels.max()! - channels.min()!,
+            30,
+            "selected status chip should contain its tinted fill",
+            file: file,
+            line: line
+        )
+    }
 
     @MainActor
     func testChipsFilterResetAndHideCleanly() throws {

@@ -169,11 +169,6 @@ struct TransactionsListView: View {
                 }
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if budgetStore.showTransactionStatusFilters {
-                TransactionFilterStrip(selection: $budgetStore.transactionStatusFilter)
-            }
-        }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
                 TransactionBulkActionBar(
