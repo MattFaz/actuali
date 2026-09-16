@@ -94,6 +94,9 @@ final class ReconciliationUITests: XCTestCase {
         let balanceToggle = app.buttons["accountBalance.toggle"].firstMatch
         XCTAssertTrue(balanceToggle.waitForExistence(timeout: 10),
                       "On Budget account should expose the balance disclosure")
+        let enabled = NSPredicate(format: "isEnabled == true")
+        expectation(for: enabled, evaluatedWith: balanceToggle)
+        waitForExpectations(timeout: 10)
         XCTAssertTrue(app.staticTexts["Cleared"].exists,
                       "cleared should be visible without expanding the balance")
         XCTAssertTrue(app.staticTexts["Uncleared"].exists,

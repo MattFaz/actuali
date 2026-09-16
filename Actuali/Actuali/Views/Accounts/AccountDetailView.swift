@@ -211,17 +211,13 @@ struct AccountDetailView: View {
         )
     }
 
-    private func columnAmount(_ cents: Int?) -> String {
-        cents.map(budgetStore.displayBalance) ?? "—"
-    }
-
     private func balanceColumn(
         _ title: String,
         cents: Int?,
         alignment: HorizontalAlignment,
         identifier: String
     ) -> some View {
-        let value = columnAmount(cents)
+        let value = cents.map(budgetStore.displayBalance) ?? "—"
         return VStack(alignment: alignment, spacing: 2) {
             Text(title)
                 .font(.caption)
