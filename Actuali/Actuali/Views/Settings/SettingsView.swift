@@ -30,6 +30,21 @@ struct SettingsView: View {
         return items.sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 
+    static var informationItems: [SettingsItem] {
+        [
+            SettingsItem(
+                title: String(localized: "About"),
+                systemImage: "info.circle",
+                destination: { AnyView(AboutSettingsView()) }
+            ),
+            SettingsItem(
+                title: String(localized: "Support"),
+                systemImage: "questionmark.circle",
+                destination: { AnyView(SupportView()) }
+            )
+        ].sorted { Self.titlePrecedes($0.title, $1.title) }
+    }
+
     nonisolated static func titlePrecedes(_ lhs: String, _ rhs: String) -> Bool {
         lhs.localizedCaseInsensitiveCompare(rhs) == .orderedAscending
     }
@@ -69,10 +84,12 @@ struct SettingsView: View {
                     }
                 }
                 Section(String(localized: "Information")) {
-                    NavigationLink {
-                        AboutSettingsView()
-                    } label: {
-                        Label(String(localized: "About"), systemImage: "info.circle")
+                    ForEach(Self.informationItems, id: \.title) { item in
+                        NavigationLink {
+                            item.destination()
+                        } label: {
+                            Label(item.title, systemImage: item.systemImage)
+                        }
                     }
                 }
             }

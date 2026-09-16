@@ -31,6 +31,8 @@ final class SettingsNavigationUITests: XCTestCase {
             content = app.staticTexts["No History Yet"]
         case "About":
             content = app.staticTexts["Version"]
+        case "Support":
+            content = app.descendants(matching: .any)["support.discord"]
         default:
             XCTFail("No representative content assertion for \(destination)")
             return
@@ -57,8 +59,8 @@ final class SettingsNavigationUITests: XCTestCase {
             "Scheduled Transactions",
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
-            "History",
-            "About"
+            "About",
+            "Support"
         ] {
             let row = app.buttons[destination]
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
