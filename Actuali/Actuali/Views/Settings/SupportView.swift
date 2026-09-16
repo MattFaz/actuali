@@ -9,14 +9,22 @@ struct SupportView: View {
     var body: some View {
         Form {
             Section(String(localized: "Help & Links")) {
-                Link(String(localized: "Help & FAQ"), destination: supportSiteURL)
-                    .accessibilityIdentifier("support.website")
-                Link(String(localized: "Discord"), destination: discordURL)
-                    .accessibilityIdentifier("support.discord")
-                Link(String(localized: "GitHub"), destination: githubURL)
-                    .accessibilityIdentifier("support.github")
-                Link(String(localized: "Email"), destination: contactEmailURL)
-                    .accessibilityIdentifier("support.email")
+                Link(destination: supportSiteURL) {
+                    Label(String(localized: "Help & FAQ"), systemImage: "questionmark.circle")
+                }
+                .accessibilityIdentifier("support.website")
+                Link(destination: discordURL) {
+                    Label(String(localized: "Discord"), systemImage: "bubble.left.and.bubble.right")
+                }
+                .accessibilityIdentifier("support.discord")
+                Link(destination: githubURL) {
+                    Label(String(localized: "GitHub"), systemImage: "chevron.left.forwardslash.chevron.right")
+                }
+                .accessibilityIdentifier("support.github")
+                Link(destination: contactEmailURL) {
+                    Label(String(localized: "Email"), systemImage: "envelope")
+                }
+                .accessibilityIdentifier("support.email")
             }
         }
         .readableWidth()
