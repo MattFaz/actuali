@@ -36,4 +36,30 @@ extension XCTestCase {
         XCTAssertTrue(chip.isHittable, "\(filter) filter chip not reachable in the strip")
         chip.tap()
     }
+
+    /// Scroll the budget table up until `element` can be tapped or pressed.
+    ///
+    /// Rows below the fold report `isHittable == false`, so `tap()` and
+    /// `press(forDuration:)` fail on them without a scroll first.
+    @MainActor
+    func scrollUntilHittable(
+        _ element: XCUIElement,
+        in app: XCUIApplication,
+        maxSwipes: Int = 12
+    ) {
+        var swipesLeft = maxSwipes
+        while !element.isHittable && swipesLeft > 0 {
+            app.swipeUp()
+            swipesLeft -= 1
+        }
+    }
+
+    /// The budget month button's label `offset` months from now, e.g.
+    /// "September 2026" — the same "MMMM yyyy" text the app renders.
+    func monthTitle(offset: Int) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM yyyy"
+        let date = Calendar.current.date(byAdding: .month, value: offset, to: Date()) ?? Date()
+        return formatter.string(from: date)
+    }
 }

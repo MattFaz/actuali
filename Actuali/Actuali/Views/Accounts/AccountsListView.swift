@@ -164,10 +164,10 @@ struct AccountsListView: View {
                 }
             }
             .navigationDestination(for: Account.self) { account in
-                AccountDetailView(account: account)
+                AccountTransactionsScreen(account: account)
             }
             .navigationDestination(for: AllAccountsRoute.self) { _ in
-                TransactionsListView()
+                AccountTransactionsScreen()
             }
         }
     }
@@ -249,7 +249,7 @@ struct AccountsListView: View {
                     // balance changes, and degrades gracefully if the account
                     // is closed or removed out from under the selection.
                     if let account = budgetStore.accounts.first(where: { $0.id == id }) {
-                        AccountDetailView(account: account)
+                        AccountTransactionsScreen(account: account)
                     } else {
                         ContentUnavailableView(
                             "Account Unavailable",
@@ -258,7 +258,7 @@ struct AccountsListView: View {
                         )
                     }
                 case .allAccounts:
-                    TransactionsListView()
+                    AccountTransactionsScreen()
                 case nil:
                     ContentUnavailableView(
                         "No Account Selected",
@@ -489,6 +489,40 @@ struct AccountsListView: View {
             selection = .account(account.id)
         } else {
             path = NavigationPath([account])
+        }
+    }
+}
+
+/// One owner for the transaction-screen chrome used by both All Accounts and
+/// individual accounts. Keeping the status strip outside the two content
+/// variants prevents navigation from recycling its rendered scroll content.
+private struct AccountTransactionsScreen: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
+    var account: Account?
+
+    var body: some View {
+        Group {
+            if let account {
+                AccountDetailView(account: account)
+            } else {
+                TransactionsListView()
+            }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if budgetStore.showTransactionStatusFilters {
+                TransactionFilterStrip(
+                    selection: $budgetStore.transactionStatusFilter,
+                    filters: account?.offBudget == true
+                        ? TransactionStatusFilter.allCases.filter { $0 != .uncategorized }
+                        : TransactionStatusFilter.allCases
+                )
+            }
+        }
+        .task(id: account?.id) {
+            if account?.offBudget == true,
+               budgetStore.transactionStatusFilter == .uncategorized {
+                budgetStore.transactionStatusFilter = .all
+            }
         }
     }
 }

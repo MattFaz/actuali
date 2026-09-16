@@ -760,8 +760,12 @@ final class BudgetDatabase: Sendable {
     /// account and/or filtered by a free-text search. `search` applies the
     /// TransactionSearchMatcher semantics (payee, category, notes, and
     /// progressive amount matching) in SQL so it covers full history, not
-    /// just the loaded page. `unclearedOnly` and `hideReconciled` filter in
-    /// SQL for the same reason: pages stay full-sized and cover full history.
+    /// just the loaded page. `statusFilter`, `unclearedOnly`, and
+    /// `hideReconciled` filter in SQL for the same reason: pages stay
+    /// full-sized and cover full history. A status chip other than `.all`
+    /// takes precedence over the two legacy hide flags — an explicit filter
+    /// is its own visibility rule, the same precedent as the Budget tab's
+    /// category chips.
     func fetchTransactions(
         accountId: String? = nil,
         startDate: Int? = nil,
@@ -769,6 +773,7 @@ final class BudgetDatabase: Sendable {
         limit: Int = BudgetDatabase.transactionPageSize,
         offset: Int = 0,
         search: String? = nil,
+        statusFilter: TransactionStatusFilter = .all,
         unclearedOnly: Bool = false,
         hideReconciled: Bool = false
     ) async throws -> [Transaction] {
@@ -815,6 +820,7 @@ final class BudgetDatabase: Sendable {
                     AND (cpa.tombstone = 0 OR cpa.tombstone IS NULL)
                 LEFT JOIN category_mapping cm ON cm.id = t.category
                 LEFT JOIN categories c ON c.id = COALESCE(cm.transferId, t.category)
+                \(statusFilter == .uncategorized ? Self.uncategorizedFilterJoins : "")
                 WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
                   AND (t.isChild = 0 OR t.isChild IS NULL)
                   AND t.date IS NOT NULL
@@ -838,12 +844,30 @@ final class BudgetDatabase: Sendable {
                 arguments.append(endDate)
             }
 
-            if unclearedOnly {
+            switch statusFilter {
+            case .all:
+                // The legacy toggles only shape the unfiltered list; a chip
+                // selection overrides them (GH #439).
+                if unclearedOnly {
+                    sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
+                }
+                if hideReconciled {
+                    sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
+                }
+            case .uncategorized:
+                // The chip also surfaces split parents the dedicated list
+                // excludes: the list renders a split as one collapsed parent
+                // row and drops the children (`isChild = 0`), so a parent
+                // with a live uncategorized child must appear here or the
+                // split is invisible under the filter.
+                sql += " AND (\(Self.uncategorizedConditions)"
+                    + " OR \(Self.uncategorizedSplitParentConditions))"
+            case .uncleared:
                 sql += " AND (t.cleared = 0 OR t.cleared IS NULL)"
-            }
-
-            if hideReconciled {
-                sql += " AND (t.reconciled = 0 OR t.reconciled IS NULL)"
+            case .cleared:
+                sql += " AND t.cleared = 1 AND (t.reconciled = 0 OR t.reconciled IS NULL)"
+            case .reconciled:
+                sql += " AND t.reconciled = 1"
             }
 
             if let search {
@@ -1225,15 +1249,66 @@ final class BudgetDatabase: Sendable {
         LEFT JOIN transactions par ON par.id = t.parent_id
         """
 
+    /// The extra joins `uncategorizedConditions` needs, for callers that
+    /// already join transactions t and payees p themselves. The fuller
+    /// `uncategorizedJoins` keeps the list and count queries working. `a`
+    /// is an inner join like `uncategorizedJoins`: a live transaction whose
+    /// account row is missing is a sync-race orphan the dedicated list
+    /// excludes, so the chip must exclude it too.
+    private static let uncategorizedFilterJoins = """
+        JOIN accounts a ON a.id = t.acct
+        LEFT JOIN accounts ta ON ta.id = p.transfer_acct
+        """
+
+    /// WHERE-body of the uncategorized filter, shared by the Uncategorized
+    /// list/count queries and the transaction lists' uncategorized chip.
+    /// Requires t, p, a, and ta in scope. Split children are excluded here
+    /// (categories live on children); callers that can see children — the
+    /// list query — also check `aliveChildPredicate`.
+    private static let uncategorizedConditions = """
+        t.category IS NULL
+        AND (t.isParent = 0 OR t.isParent IS NULL)
+        AND \(uncategorizedAccountConditions)
+        """
+
+    /// Account-side half of the uncategorized filter: on-budget, live
+    /// account, and not an on-budget transfer — money leaving the budget
+    /// still needs a category.
+    private static let uncategorizedAccountConditions = """
+        (a.offbudget = 0 OR a.offbudget IS NULL)
+        AND (a.tombstone = 0 OR a.tombstone IS NULL)
+        AND (p.transfer_acct IS NULL OR ta.offbudget = 1)
+        """
+
+    /// The transaction lists' uncategorized chip additionally shows split
+    /// parents with a live uncategorized child, which the dedicated
+    /// Uncategorized list intentionally counts through the children instead
+    /// (`uncategorizedWhere` must not use this). Children share the parent's
+    /// account, but their payees can differ, so the transfer check stays in
+    /// the child subquery.
+    private static let uncategorizedSplitParentConditions = """
+        t.isParent = 1
+        AND EXISTS (
+            SELECT 1
+            FROM transactions tc
+            LEFT JOIN payee_mapping tcpm ON tcpm.id = tc.description
+            LEFT JOIN payees tcp ON tcp.id = tcpm.targetId
+            LEFT JOIN accounts tca ON tca.id = tcp.transfer_acct
+            WHERE tc.parent_id = t.id
+              AND tc.isChild = 1
+              AND (tc.tombstone = 0 OR tc.tombstone IS NULL)
+              AND tc.category IS NULL
+              AND (tcp.transfer_acct IS NULL OR tca.offbudget = 1)
+        )
+        AND (a.offbudget = 0 OR a.offbudget IS NULL)
+        AND (a.tombstone = 0 OR a.tombstone IS NULL)
+        """
+
     private static let uncategorizedWhere = """
         WHERE (t.tombstone = 0 OR t.tombstone IS NULL)
           AND t.date IS NOT NULL
-          AND (t.isParent = 0 OR t.isParent IS NULL)
           AND \(aliveChildPredicate(parent: "par"))
-          AND t.category IS NULL
-          AND (a.offbudget = 0 OR a.offbudget IS NULL)
-          AND (a.tombstone = 0 OR a.tombstone IS NULL)
-          AND (p.transfer_acct IS NULL OR ta.offbudget = 1)
+          AND \(uncategorizedConditions)
         """
 
     /// All transactions still needing a category, newest first (GH #26).

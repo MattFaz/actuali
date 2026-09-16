@@ -1035,22 +1035,7 @@ struct BudgetCheckInStrip: View {
                             isTrackingBudget: budget.isTrackingBudget,
                             locale: locale
                         ))
-                            .font(.subheadline.weight(.semibold))
-                            .foregroundStyle(selection == filter ? Color.white : Color.primary)
-                            .padding(.horizontal, 14)
-                            .frame(minHeight: 40)
-                            .background {
-                                Capsule()
-                                    .fill(selection == filter
-                                        ? Color.accentColor
-                                        : Color(.secondarySystemGroupedBackground))
-                            }
-                            .overlay {
-                                if selection != filter {
-                                    Capsule()
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                }
-                            }
+                            .filterChip(isSelected: selection == filter)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(
@@ -1194,16 +1179,6 @@ struct CleanCategoryBudgetRow: View {
             }
         }
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if let onSetHidden {
-                Button {
-                    onSetHidden(!isHidden)
-                } label: {
-                    Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
-                }
-                .tint(isHidden ? .accentColor : .secondary)
-            }
-        }
         .padding(.vertical, 2)
         .modifier(CategoryRowContextMenu(
             category: category,
@@ -1222,7 +1197,8 @@ struct CleanCategoryBudgetRow: View {
 }
 
 /// Shared long-press/right-click menu for all category row styles — the same
-/// actions as the row's tappable cells plus the hide/show swipe action.
+/// actions as the row's tappable cells plus hide/show. Nothing here is a swipe
+/// action: a row swipe would swallow the table's month navigation (GH #425).
 struct CategoryRowContextMenu: ViewModifier {
     @Environment(\.locale) private var locale
     let category: CategoryBudget
@@ -1561,14 +1537,16 @@ struct IncomeCategoryRow: View {
             trailing: 16
         ))
         .opacity(isDimmed ? 0.5 : 1)
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+        // Hide/show lives in the context menu, not a swipe action: a row
+        // swipe swallows the table's horizontal month navigation (GH #425),
+        // and Compact's income row already works this way.
+        .contextMenu {
             if let onSetHidden {
                 Button {
                     onSetHidden(!isHidden)
                 } label: {
                     Label(BudgetCategoryAccessibility.visibility(isHidden: isHidden, locale: locale), systemImage: isHidden ? "eye" : "eye.slash")
                 }
-                .tint(isHidden ? .accentColor : .secondary)
             }
         }
     }
