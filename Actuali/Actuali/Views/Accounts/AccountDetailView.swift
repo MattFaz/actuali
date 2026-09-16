@@ -21,6 +21,7 @@ struct AccountDetailView: View {
     /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
+    @AppStorage("accountsHideNotes") private var hideNotes = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
@@ -395,7 +396,7 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var notesSection: some View {
-        if note.supported && searchQuery == nil {
+        if note.supported && !hideNotes && searchQuery == nil {
             noteSection
         }
     }
@@ -523,6 +524,20 @@ struct AccountDetailView: View {
                         "Hide Reconciled Transactions",
                         systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
                     )
+                }
+            }
+
+            if note.supported {
+                ToolbarItem(placement: .secondaryAction) {
+                    Button {
+                        withAnimation(AppAnimation.disclosure) { hideNotes.toggle() }
+                    } label: {
+                        Label(
+                            String(localized: hideNotes ? "Show Notes" : "Hide Notes"),
+                            systemImage: hideNotes ? "eye" : "eye.slash"
+                        )
+                    }
+                    .accessibilityIdentifier("accountDetails.notesVisibility")
                 }
             }
 
