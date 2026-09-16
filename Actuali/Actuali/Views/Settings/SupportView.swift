@@ -1,6 +1,6 @@
 import SwiftUI
 
-private let discordURL = URL(string: "https://discord.gg/UeAYv9Zu4")!
+private let discordURL = URL(string: "https://discord.gg/PDcJDPYpDG")!
 private let githubURL = URL(string: "https://github.com/MattFaz/actuali")!
 private let contactEmailURL = URL(string: "mailto:actuali@mfazz.com")!
 
