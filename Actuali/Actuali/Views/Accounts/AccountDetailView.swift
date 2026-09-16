@@ -499,7 +499,7 @@ struct AccountDetailView: View {
         // `.task(id:)` rather than onAppear: the iPad split layout reuses
         // one instance across selections, so account changes don't re-fire
         // appear. A filter selected elsewhere that this account can't match
-        // (uncategorized is off-budget-only) must not strand the list.
+        // (uncategorized is on-budget-only) must not strand the list.
         .task(id: account.id) {
             if account.offBudget,
                budgetStore.transactionStatusFilter == .uncategorized {

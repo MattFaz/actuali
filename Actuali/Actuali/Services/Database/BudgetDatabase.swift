@@ -1284,16 +1284,24 @@ final class BudgetDatabase: Sendable {
     /// parents with a live uncategorized child, which the dedicated
     /// Uncategorized list intentionally counts through the children instead
     /// (`uncategorizedWhere` must not use this). Children share the parent's
-    /// account, so the account-side checks on the parent row cover them.
+    /// account, but their payees can differ, so the transfer check stays in
+    /// the child subquery.
     private static let uncategorizedSplitParentConditions = """
         t.isParent = 1
         AND EXISTS (
-            SELECT 1 FROM transactions tc
+            SELECT 1
+            FROM transactions tc
+            LEFT JOIN payee_mapping tcpm ON tcpm.id = tc.description
+            LEFT JOIN payees tcp ON tcp.id = tcpm.targetId
+            LEFT JOIN accounts tca ON tca.id = tcp.transfer_acct
             WHERE tc.parent_id = t.id
+              AND tc.isChild = 1
               AND (tc.tombstone = 0 OR tc.tombstone IS NULL)
               AND tc.category IS NULL
+              AND (tcp.transfer_acct IS NULL OR tca.offbudget = 1)
         )
-        AND \(uncategorizedAccountConditions)
+        AND (a.offbudget = 0 OR a.offbudget IS NULL)
+        AND (a.tombstone = 0 OR a.tombstone IS NULL)
         """
 
     private static let uncategorizedWhere = """
