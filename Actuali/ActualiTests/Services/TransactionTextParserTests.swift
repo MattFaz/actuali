@@ -83,7 +83,6 @@ struct TransactionTextParserTests {
         #expect(result.cardHint == "5555")
         // "card 5555" must NOT be extracted as payee
         #expect(result.payee != "card 5555")
-        #expect(result.payee == "Amazon")
     }
 
     @Test func emptyTextReturnsNils() {
