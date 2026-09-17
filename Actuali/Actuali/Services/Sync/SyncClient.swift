@@ -1780,6 +1780,7 @@ actor SyncClient {
     /// same dedup guard the auto-poster uses and move the schedule on.
     func postScheduleTransaction(_ schedule: ScheduleSummary, today: Bool) async throws {
         guard let accountId = schedule.accountId else { throw ScheduleWriteError.noAccount }
+        guard let database else { throw SyncError.notConfigured }
         let date = today ? DayDate.today() : (schedule.nextDate ?? DayDate.today())
 
         var transaction = Transaction(
@@ -1802,7 +1803,11 @@ actor SyncClient {
             importedPayee: nil)
         transaction.schedule = schedule.id
 
-        try await createTransaction(transaction, applyRules: true)
+        if let transfer = try scheduledTransfer(for: transaction, in: database) {
+            try await createTransfer(source: transfer.source, target: transfer.target)
+        } else {
+            try await createTransaction(transaction, applyRules: true)
+        }
     }
 
     /// Mark a schedule finished, or restart it. Restarting also resets the

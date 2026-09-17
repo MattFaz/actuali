@@ -13,9 +13,42 @@ protocol SchedulePostingActions: Sendable {
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws
 }
 
-private enum SchedulePosterError: Error {
-    case transferAccountsMatch
-    case transferPayeeMissing
+func scheduledTransfer(
+    for transaction: Transaction,
+    in database: BudgetDatabase
+) throws -> (source: Transaction, target: Transaction)? {
+    guard let transferAccountId = try database.transferAccountId(forPayeeId: transaction.payeeId) else {
+        return nil
+    }
+    guard transferAccountId != transaction.accountId else {
+        throw BudgetStoreError.transferAccountsMatch
+    }
+    guard let sourcePayeeId = try database.transferPayeeId(forAccountId: transaction.accountId) else {
+        throw BudgetStoreError.transferPayeeMissing
+    }
+
+    let target = Transaction(
+        id: UUID().uuidString.lowercased(),
+        accountId: transferAccountId,
+        date: transaction.date,
+        amount: -transaction.amount,
+        payeeId: sourcePayeeId,
+        payeeName: nil,
+        categoryId: nil,
+        categoryName: nil,
+        notes: transaction.notes,
+        cleared: false,
+        reconciled: false,
+        transferId: transaction.id,
+        isParent: false,
+        parentId: nil,
+        tombstone: false,
+        sortOrder: nil,
+        importedPayee: nil
+    )
+    var source = transaction
+    source.transferId = target.id
+    return (source: source, target: target)
 }
 
 /// Posts due automatic schedules and advances their next dates.
@@ -131,34 +164,8 @@ actor SchedulePoster {
                     importedPayee: nil
                 )
                 txn.schedule = schedule.id
-                if let transferAccountId = try database.transferAccountId(forPayeeId: schedule.payeeId) {
-                    guard transferAccountId != schedule.accountId else {
-                        throw SchedulePosterError.transferAccountsMatch
-                    }
-                    guard let sourcePayeeId = try database.transferPayeeId(forAccountId: schedule.accountId) else {
-                        throw SchedulePosterError.transferPayeeMissing
-                    }
-                    let partner = Transaction(
-                        id: UUID().uuidString.lowercased(),
-                        accountId: transferAccountId,
-                        date: current.yyyymmdd,
-                        amount: -txn.amount,
-                        payeeId: sourcePayeeId,
-                        payeeName: nil,
-                        categoryId: nil,
-                        categoryName: nil,
-                        notes: nil,
-                        cleared: false,
-                        reconciled: false,
-                        transferId: txn.id,
-                        isParent: false,
-                        parentId: nil,
-                        tombstone: false,
-                        sortOrder: nil,
-                        importedPayee: nil
-                    )
-                    txn.transferId = partner.id
-                    try await actions.createTransfer(source: txn, target: partner)
+                if let transfer = try scheduledTransfer(for: txn, in: database) {
+                    try await actions.createTransfer(source: transfer.source, target: transfer.target)
                 } else {
                     try await actions.createTransaction(txn)
                 }
