@@ -89,6 +89,15 @@ struct AccountDetailView: View {
         supported && !hidden && !isSearching
     }
 
+    /// Pure so the credit-detail visibility rule can be covered without
+    /// constructing a view.
+    nonisolated static func showsCreditHeadroom(
+        showingBreakdown: Bool,
+        hasHeadroom: Bool
+    ) -> Bool {
+        showingBreakdown && hasHeadroom
+    }
+
     /// The pager is created on first use rather than in init because its
     /// fetch closure needs the environment store, which isn't available
     /// until body/task time. Rebuilt when the account changes: the closure
@@ -309,14 +318,13 @@ struct AccountDetailView: View {
                 breakdownRow(String(localized: "Reconciled"), amount: breakdown.reconciled)
             }
 
-            // Headroom on a tracked card with a limit set — the figure a
-            // card's balance is actually judged against, so it stays visible
-            // rather than hiding behind the disclosure.
-            if let headroom = creditHeadroom {
+            let headroom = creditHeadroom
+            if Self.showsCreditHeadroom(
+                showingBreakdown: showingBreakdown,
+                hasHeadroom: headroom != nil
+            ), let headroom {
                 breakdownRow(String(localized: "Available Credit"), amount: headroom.available)
-                if showingBreakdown {
-                    breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
-                }
+                breakdownRow(String(localized: "Credit Limit"), amount: headroom.limit)
             }
         }
     }
