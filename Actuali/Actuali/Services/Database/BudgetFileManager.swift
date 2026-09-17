@@ -135,6 +135,9 @@ final class BudgetFileManager: @unchecked Sendable {
     /// `importBudget` and open in Actual desktop (upstream zips the same two
     /// names, backups.ts:145-148).
     func makeBudgetArchive(dbURL: URL, metadataURL: URL, to destinationURL: URL) throws {
+        guard fileManager.fileExists(atPath: dbURL.path) else { throw BudgetFileError.missingDatabase }
+        guard fileManager.fileExists(atPath: metadataURL.path) else { throw BudgetFileError.missingMetadata }
+
         // Build at a temp path and rename into place: a crash or an iOS
         // suspension mid-write (background backups have no time assertion) can
         // then only leave a *.zip.tmp the sweep removes — never a truncated

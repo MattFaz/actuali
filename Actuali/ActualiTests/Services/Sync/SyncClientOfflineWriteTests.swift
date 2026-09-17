@@ -428,14 +428,14 @@ struct SyncClientOfflineWriteTests {
         }
         #expect(durableRows == 1)
 
-        let messageRows = try database.dbQueueForTesting.read { db in
+        let messageRows = try await database.dbQueueForTesting.read { db in
             try Row.fetchAll(db, sql: """
                 SELECT row, column FROM messages_crdt
                 WHERE dataset = 'transactions'
-                """)
+                """).map { (row: $0["row"] as String, column: $0["column"] as String) }
         }
-        #expect(Set(messageRows.map { $0["row"] as String }) == Set([inserted.id]))
-        #expect(Set(messageRows.map { $0["column"] as String }) == Set(inserted.syncableFields.keys))
+        #expect(Set(messageRows.map(\.row)) == Set([inserted.id]))
+        #expect(Set(messageRows.map(\.column)) == Set(inserted.syncableFields.keys))
         #expect(messageRows.count == inserted.syncableFields.count)
     }
 
@@ -1107,14 +1107,23 @@ struct SyncClientOfflineWriteTests {
             return values
         }
         #expect(storedValues.count == imported.syncableFields.count)
-        let fetchedRow = try database.dbQueueForTesting.read { db in
-            try Row.fetchOne(db, sql: "SELECT * FROM transactions WHERE id = ?", arguments: [imported.id])
+        let repairedColumns = [
+            "isChild", "sort_order", "imported_description", "schedule", "financial_id",
+            "starting_balance_flag",
+        ]
+        let fetchedValues: [String: DatabaseValue]? = try await database.dbQueueForTesting.read { db in
+            guard let row = try Row.fetchOne(
+                db, sql: "SELECT * FROM transactions WHERE id = ?", arguments: [imported.id]
+            ) else { return nil }
+            return Dictionary(uniqueKeysWithValues: repairedColumns.map {
+                ($0, row[$0] as DatabaseValue)
+            })
         }
-        let repairedRow = try #require(fetchedRow)
-        for column in ["isChild", "sort_order", "imported_description", "schedule", "financial_id", "starting_balance_flag"] {
-            #expect(repairedRow[column] == storedValues[column], "Mismatch for \(column)")
+        let repairedValues = try #require(fetchedValues)
+        for column in repairedColumns {
+            #expect(repairedValues[column] == storedValues[column], "Mismatch for \(column)")
         }
-        #expect(repairedRow["sort_order"] == storedValues["sort_order"])
+        #expect(repairedValues["sort_order"] == storedValues["sort_order"])
         #expect(try database.deriveMerkleFromMessageLog().root.hash != MerkleTree().root.hash)
     }
 

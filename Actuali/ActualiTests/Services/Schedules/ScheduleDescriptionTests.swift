@@ -88,7 +88,8 @@ struct ScheduleDescriptionTests {
 
     @Test func yearly() {
         #expect(ScheduleDescription.recurring(
-            config(["frequency": "yearly"])) == "Every year on Aug 13")
+            config(["frequency": "yearly"]),
+            locale: Locale(identifier: "en_US")) == "Every year on Aug 13")
     }
 
     @Test func endModeSuffixes() {

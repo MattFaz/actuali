@@ -8,7 +8,7 @@ final class TransactionSearchUITests: XCTestCase {
     @MainActor
     func testSearchFindsPayeeShowsNoMatchAndRestores() throws {
         let app = XCUIApplication()
-        app.launchArguments = ["-loadDemoData"]
+        app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()
 
         app.tabBars.buttons["Accounts"].tap()
