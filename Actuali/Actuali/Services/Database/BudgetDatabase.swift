@@ -4279,6 +4279,27 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    func transferAccountId(forPayeeId payeeId: String?) throws -> String? {
+        guard let payeeId else { return nil }
+        return try dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT transfer_acct FROM payees
+                WHERE id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [payeeId])
+        }
+    }
+
+    func transferPayeeId(forAccountId accountId: String) throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM payees
+                WHERE transfer_acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY id
+                LIMIT 1
+                """, arguments: [accountId])
+        }
+    }
+
     /// All live rules. Returns [] when the budget file has no `rules` table.
     func fetchRules() throws -> [Rule] {
         try dbQueue.read { db in try Self.liveRules(db) }

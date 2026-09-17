@@ -9,7 +9,13 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "ScheduleP
 /// production conformer is itself an actor).
 protocol SchedulePostingActions: Sendable {
     func createTransaction(_ transaction: Transaction) async throws
+    func createTransfer(source: Transaction, target: Transaction) async throws
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws
+}
+
+private enum SchedulePosterError: Error {
+    case transferAccountsMatch
+    case transferPayeeMissing
 }
 
 /// Posts due automatic schedules and advances their next dates.
@@ -125,7 +131,37 @@ actor SchedulePoster {
                     importedPayee: nil
                 )
                 txn.schedule = schedule.id
-                try await actions.createTransaction(txn)
+                if let transferAccountId = try database.transferAccountId(forPayeeId: schedule.payeeId) {
+                    guard transferAccountId != schedule.accountId else {
+                        throw SchedulePosterError.transferAccountsMatch
+                    }
+                    guard let sourcePayeeId = try database.transferPayeeId(forAccountId: schedule.accountId) else {
+                        throw SchedulePosterError.transferPayeeMissing
+                    }
+                    let partner = Transaction(
+                        id: UUID().uuidString.lowercased(),
+                        accountId: transferAccountId,
+                        date: current.yyyymmdd,
+                        amount: -txn.amount,
+                        payeeId: sourcePayeeId,
+                        payeeName: nil,
+                        categoryId: nil,
+                        categoryName: nil,
+                        notes: nil,
+                        cleared: false,
+                        reconciled: false,
+                        transferId: txn.id,
+                        isParent: false,
+                        parentId: nil,
+                        tombstone: false,
+                        sortOrder: nil,
+                        importedPayee: nil
+                    )
+                    txn.transferId = partner.id
+                    try await actions.createTransfer(source: txn, target: partner)
+                } else {
+                    try await actions.createTransaction(txn)
+                }
                 posted += 1
             }
 
