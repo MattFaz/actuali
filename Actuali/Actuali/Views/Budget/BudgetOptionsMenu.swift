@@ -42,6 +42,7 @@ struct BudgetOptionsMenu: View {
     /// groups to act on.
     var expandAllGroups: (() -> Void)?
     var collapseAllGroups: (() -> Void)?
+    var onCopyPreviousMonthBudget: (() -> Void)?
     var onSetBudgetsToZero: (() -> Void)?
     /// Month-level goal-template actions (GH #371). nil hides the section —
     /// no budget loaded, or the goalTemplatesEnabled flag is off, mirroring
@@ -81,6 +82,15 @@ struct BudgetOptionsMenu: View {
                         Label("Collapse Groups", systemImage: "chevron.right")
                     }
                     .accessibilityLabel("Collapse All Groups")
+                }
+            }
+
+            if let onCopyPreviousMonthBudget {
+                Section {
+                    Button(action: onCopyPreviousMonthBudget) {
+                        Label("Copy last month's budget", systemImage: "doc.on.doc")
+                    }
+                    .accessibilityIdentifier("budget.copyPreviousMonthBudget")
                 }
             }
 
