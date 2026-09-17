@@ -57,4 +57,7 @@ struct Schedule {
     /// let the poster decide, rather than baking the 0 into the model.
     let amount: ScheduledAmount?
     let dateCondition: ScheduleDateCondition
+    /// Actions on the linked rule. The poster applies these after selecting
+    /// the due occurrence and before constructing transfer legs.
+    let actions: [Rule.Action]
 }

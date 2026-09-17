@@ -4419,6 +4419,7 @@ final class BudgetDatabase: Sendable {
                     logger.notice("Skipping schedule \(id, privacy: .public): unparseable rule conditions")
                     return nil
                 }
+                let actionsJSON: String? = row["actions"]
 
                 // Account: required, and must be open.
                 guard let accountId = Self.firstCondition(
@@ -4478,7 +4479,8 @@ final class BudgetDatabase: Sendable {
                     payeeId: payeeId,
                     categoryId: Self.parseCategoryAction(row["actions"]),
                     amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
-                    dateCondition: dateCondition
+                    dateCondition: dateCondition,
+                    actions: ScheduleConditions.actions(from: actionsJSON)
                 )
             }
     }

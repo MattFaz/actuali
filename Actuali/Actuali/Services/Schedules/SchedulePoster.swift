@@ -37,7 +37,7 @@ func scheduledTransfer(
         categoryId: nil,
         categoryName: nil,
         notes: transaction.notes,
-        cleared: false,
+        cleared: transaction.cleared,
         reconciled: false,
         transferId: transaction.id,
         isParent: false,
@@ -164,11 +164,28 @@ actor SchedulePoster {
                     importedPayee: nil
                 )
                 txn.schedule = schedule.id
-                if let transfer = try scheduledTransfer(for: txn, in: database) {
-                    try await actions.createTransfer(source: transfer.source, target: transfer.target)
+                // Ordinary schedules still go through the existing rules
+                // path. Applying their actions here too would run one-off
+                // schedule actions twice in createTransaction.
+                if try database.transferAccountId(forPayeeId: txn.payeeId) != nil {
+                    let result = RulesEngine.apply(
+                        actions: schedule.actions,
+                        to: txn,
+                        ruleId: schedule.id)
+                    if !result.isDeleted {
+                        txn = result.transaction
+                        txn.schedule = schedule.id
+                        if let transfer = try scheduledTransfer(for: txn, in: database) {
+                            try await actions.createTransfer(source: transfer.source, target: transfer.target)
+                        } else {
+                            try await actions.createTransaction(txn)
+                        }
+                    }
                 } else {
                     try await actions.createTransaction(txn)
                 }
+                // Keep the existing schedule semantics: a delete action
+                // consumes this occurrence and still advances the schedule.
                 posted += 1
             }
 

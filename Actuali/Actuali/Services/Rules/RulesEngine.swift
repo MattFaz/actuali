@@ -66,6 +66,34 @@ enum RulesEngine {
         )
     }
 
+    /// Apply a schedule rule's actions directly. The schedule poster already
+    /// selected a due schedule, so its recurring date condition cannot be
+    /// re-evaluated here; the actions still need to shape the posted row.
+    static func apply(
+        actions: [Rule.Action],
+        to transaction: Transaction,
+        ruleId: String
+    ) -> RuleRunResult {
+        var bag = TransactionBag(transaction)
+        let original = bag.snapshot()
+
+        for action in actions {
+            apply(action, bag: &bag, ruleId: ruleId)
+        }
+
+        let changed = bag.changedFields(comparedTo: original)
+        if !changed.isEmpty {
+            logger.info("Schedule actions applied: changed fields \(changed.sorted().joined(separator: ", "), privacy: .public)")
+        }
+
+        return RuleRunResult(
+            transaction: bag.toTransaction(base: transaction),
+            changedFields: changed,
+            pendingPayeeName: bag.pendingPayeeName,
+            isDeleted: bag.isDeleted
+        )
+    }
+
     // MARK: - Condition evaluation
 
     private static func evalConditions(_ rule: Rule, bag: TransactionBag) -> Bool {

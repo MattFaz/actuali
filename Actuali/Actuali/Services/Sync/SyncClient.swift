@@ -1802,9 +1802,20 @@ actor SyncClient {
             sortOrder: nil,
             importedPayee: nil)
         transaction.schedule = schedule.id
+        if try database.transferAccountId(forPayeeId: transaction.payeeId) != nil {
+            let actionResult = RulesEngine.apply(
+                actions: ScheduleConditions.actions(from: schedule.actionsJSON),
+                to: transaction,
+                ruleId: schedule.id)
+            guard !actionResult.isDeleted else { return }
+            transaction = actionResult.transaction
+            transaction.schedule = schedule.id
 
-        if let transfer = try scheduledTransfer(for: transaction, in: database) {
-            try await createTransfer(source: transfer.source, target: transfer.target)
+            if let transfer = try scheduledTransfer(for: transaction, in: database) {
+                try await createTransfer(source: transfer.source, target: transfer.target)
+            } else {
+                try await createTransaction(transaction, applyRules: true)
+            }
         } else {
             try await createTransaction(transaction, applyRules: true)
         }

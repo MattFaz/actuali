@@ -359,7 +359,18 @@ struct ScheduleEditView: View {
             }) else {
                 throw BudgetStoreError.transferPayeeMissing
             }
-            payeeId = transferPayee.id
+            let existingRawPayeeId = ScheduleConditions.parse(editing?.conditionsJSON)
+                .first { condition in
+                    ["payee", "description"].contains(condition["field"] as? String)
+                        && condition["op"] as? String == "is"
+                }?["value"] as? String
+            // Schedule conditions store the payee_mapping id, while the
+            // loaded summary exposes its target payee. Keep the raw mapping
+            // when the destination is unchanged so imported mappings survive
+            // an otherwise unrelated edit.
+            payeeId = editing?.payeeId == transferPayee.id
+                ? (existingRawPayeeId ?? transferPayee.id)
+                : transferPayee.id
         } else {
             let trimmedPayee = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
             payeeId = try await budgetStore.resolvePayeeId(name: trimmedPayee, editing: nil)
