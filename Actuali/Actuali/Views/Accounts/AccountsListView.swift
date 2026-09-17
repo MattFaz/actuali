@@ -303,8 +303,8 @@ struct AccountsListView: View {
         }
     }
 
-    /// Everything both layouts hang off their account list: title, sync
-    /// status, notification routing, pull-to-refresh, loading overlay.
+    /// Everything both layouts hang off their account list: title, notification
+    /// routing, pull-to-refresh, loading overlay.
     /// Shared so the two layouts can't drift apart.
     private func withChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
         Group(content: content)
@@ -375,9 +375,6 @@ struct AccountsListView: View {
                         .accessibilityLabel("Pending imports")
                         .accessibilityValue(String(localized: "\(pendingImportStore.count) pending"))
                     }
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    SyncStatusView(state: budgetStore.syncState)
                 }
             }
             .sheet(isPresented: $showingAddAccount) {
