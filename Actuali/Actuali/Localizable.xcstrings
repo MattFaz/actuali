@@ -41610,6 +41610,17 @@
         }
       }
     },
+    "Copy last month's budget": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Copy last month's budget" } },
+        "fr": { "stringUnit": { "state": "translated", "value": "Copier le budget du mois dernier" } },
+        "es": { "stringUnit": { "state": "translated", "value": "Copiar el presupuesto del mes pasado" } },
+        "pt-BR": { "stringUnit": { "state": "translated", "value": "Copiar o orçamento do mês passado" } },
+        "de": { "stringUnit": { "state": "translated", "value": "Budget des letzten Monats kopieren" } },
+        "it": { "stringUnit": { "state": "translated", "value": "Copia il budget del mese scorso" } },
+        "nl": { "stringUnit": { "state": "translated", "value": "Budget van vorige maand kopiëren" } }
+      }
+    },
     "Cover each occurrence when it occurs": {
       "localizations": {
         "en": {

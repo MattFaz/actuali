@@ -292,6 +292,72 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(amounts == [0, 0])
     }
 
+    @Test func copyingPreviousMonthBudgetCopiesVisibleAmountsAndClearsMissingOnes() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                INSERT INTO categories (id, name, cat_group) VALUES ('cat-dining', 'Dining', 'grp-1');
+                INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
+                INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                    ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
+                    ('202606-cat-hidden', 202606, 'cat-hidden', 400),
+                    ('202607-cat-groceries', 202607, 'cat-groceries', 900),
+                    ('202607-cat-dining', 202607, 'cat-dining', 1200),
+                    ('202607-cat-hidden', 202607, 'cat-hidden', 700);
+                """)
+        }
+        let store = try await makeStore(database: database)
+
+        try await store.copyPreviousMonthBudget(month: "2026-07")
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amounts = try await queue.read { db in
+            try Dictionary(uniqueKeysWithValues: Row.fetchAll(
+                db, sql: "SELECT category, amount FROM zero_budgets WHERE month = 202607"
+            ).map { ($0["category"] as String, $0["amount"] as Int) })
+        }
+        #expect(amounts["cat-groceries"] == 2500)
+        #expect(amounts["cat-dining"] == 0)
+        #expect(amounts["cat-hidden"] == 700)
+        #expect(store.currentBudgetMonth?.month == "2026-07")
+        #expect(store.currentBudgetMonth?.categoryBudgets.first { $0.categoryId == "cat-groceries" }?.budgeted == 2500)
+    }
+
+    @Test func copyingPreviousTrackingMonthIncludesVisibleIncomeBudgets() async throws {
+        let (database, path) = try makeDatabase()
+        defer { cleanup(path) }
+        try await database.dbQueueForTesting.write { db in
+            try db.execute(sql: """
+                CREATE TABLE reflect_budgets (
+                    id TEXT PRIMARY KEY, month INTEGER, category TEXT,
+                    amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
+                    goal INTEGER, long_goal INTEGER
+                );
+                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
+                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+                INSERT INTO reflect_budgets (id, month, category, amount) VALUES
+                    ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
+                    ('202606-cat-income', 202606, 'cat-income', 5000),
+                    ('202607-cat-groceries', 202607, 'cat-groceries', 900),
+                    ('202607-cat-income', 202607, 'cat-income', 1000);
+                """)
+        }
+        let store = try await makeStore(database: database)
+
+        try await store.copyPreviousMonthBudget(month: "2026-07")
+
+        let queue = try DatabaseQueue(path: path.path)
+        let amounts = try await queue.read { db in
+            try Dictionary(uniqueKeysWithValues: Row.fetchAll(
+                db, sql: "SELECT category, amount FROM reflect_budgets WHERE month = 202607"
+            ).map { ($0["category"] as String, $0["amount"] as Int) })
+        }
+        #expect(amounts["cat-groceries"] == 2500)
+        #expect(amounts["cat-income"] == 5000)
+    }
+
     @Test func zeroingAnOlderMonthPreservesTheNewerMonthSelection() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

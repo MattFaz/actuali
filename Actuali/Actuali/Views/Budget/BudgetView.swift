@@ -547,6 +547,7 @@ struct BudgetView: View {
             BudgetOptionsMenu(
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
+                onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
                 onSetBudgetsToZero: hasBudget ? { setBudgetsToZero() } : nil,
                 onTemplateAction: hasBudget && budgetStore.goalTemplatesEnabled
                     ? { runTemplates($0) } : nil,
@@ -554,6 +555,21 @@ struct BudgetView: View {
                     && budgetStore.goalTemplatesEnabled
                     ? { runCleanup() } : nil
             )
+        }
+    }
+
+    private func copyPreviousMonthBudget() {
+        guard !isRunningBudgetAction else { return }
+        isRunningBudgetAction = true
+        Task {
+            do {
+                try await budgetStore.copyPreviousMonthBudget(month: selectedMonth)
+            } catch {
+                templateResult = .init(
+                    title: ReportStrings.text("Error", locale: locale, bundle: .main),
+                    message: error.localizedDescription)
+            }
+            isRunningBudgetAction = false
         }
     }
 

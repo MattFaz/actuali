@@ -6299,6 +6299,23 @@ final class BudgetStore: ObservableObject {
         await fetchBudgetMonth(month)
     }
 
+    /// Copy the visible budgeted amounts from the previous month. Tracking
+    /// budgets also budget income categories; envelope budgets do not.
+    func copyPreviousMonthBudget(month: String) async throws {
+        guard let database, let syncClient else {
+            throw BudgetStoreError.syncNotConfigured
+        }
+        guard let previousMonth = Self.shiftBudgetMonth(month, by: -1) else { return }
+        let previous = try await database.fetchBudgetMonth(month: previousMonth)
+        let budgets = previous.categoryBudgets.map {
+            GoalTemplateEngine.BudgetWrite(category: $0.categoryId, amount: $0.budgeted)
+        } + (previous.isTrackingBudget ? previous.incomeCategories.map {
+            GoalTemplateEngine.BudgetWrite(category: $0.categoryId, amount: $0.budgeted)
+        } : [])
+        try await syncClient.applyGoalTemplateWrites(month: month, budgets: budgets, goals: [])
+        await fetchBudgetMonth(requestedBudgetMonth ?? month)
+    }
+
     /// Match upstream `budget/set-zero`: clear every live category, including
     /// hidden ones, but leave income alone unless this is a tracking budget.
     func setBudgetsToZero(month: String) async throws {
