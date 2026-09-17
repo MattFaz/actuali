@@ -21,6 +21,7 @@ struct AccountDetailView: View {
     /// stays hidden until the read confirms this file can store notes.
     @State private var note: EntityNote = .unsupported
     @State private var editingNote = false
+    @AppStorage("accountsHideNotes") private var hideNotes = false
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
@@ -75,6 +76,17 @@ struct AccountDetailView: View {
         if hideCleared { return "No uncleared transactions" }
         if hideReconciled { return "No unreconciled transactions" }
         return "No transactions"
+    }
+
+    /// Pure so the note visibility rule can be covered without constructing a
+    /// view. Search still suppresses the note even when the user preference
+    /// allows it, because account search is scoped to transactions.
+    nonisolated static func showsNote(
+        supported: Bool,
+        hidden: Bool,
+        isSearching: Bool
+    ) -> Bool {
+        supported && !hidden && !isSearching
     }
 
     /// The pager is created on first use rather than in init because its
@@ -395,7 +407,11 @@ struct AccountDetailView: View {
     }
 
     @ViewBuilder private var notesSection: some View {
-        if note.supported && searchQuery == nil {
+        if Self.showsNote(
+            supported: note.supported,
+            hidden: hideNotes,
+            isSearching: searchQuery != nil
+        ) {
             noteSection
         }
     }
@@ -443,7 +459,7 @@ struct AccountDetailView: View {
         List {
             balanceSection
             billingCycleSection
-            notesSection
+            notesSection.animation(AppAnimation.disclosure, value: hideNotes)
             transactionSection
         }
         .contentMargins(.horizontal, 6, for: .scrollContent)
@@ -523,6 +539,18 @@ struct AccountDetailView: View {
                         "Hide Reconciled Transactions",
                         systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
                     )
+                }
+            }
+
+            if note.supported {
+                ToolbarItem(placement: .secondaryAction) {
+                    Toggle(isOn: $hideNotes) {
+                        Label(
+                            "Hide Notes",
+                            systemImage: hideNotes ? "eye.slash" : "eye"
+                        )
+                    }
+                    .accessibilityIdentifier("accountDetails.notesVisibility")
                 }
             }
 

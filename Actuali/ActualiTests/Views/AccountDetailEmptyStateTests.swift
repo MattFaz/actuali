@@ -34,4 +34,19 @@ struct AccountDetailEmptyStateTests {
             hideCleared: false, hideReconciled: false
         ) == "No transactions")
     }
+
+    @Test func noteSectionHidesWhenHiddenOrSearching() {
+        #expect(AccountDetailView.showsNote(
+            supported: true, hidden: false, isSearching: false
+        ))
+        #expect(!AccountDetailView.showsNote(
+            supported: true, hidden: true, isSearching: false
+        ))
+        #expect(!AccountDetailView.showsNote(
+            supported: true, hidden: false, isSearching: true
+        ))
+        #expect(!AccountDetailView.showsNote(
+            supported: false, hidden: false, isSearching: false
+        ))
+    }
 }

@@ -59,6 +59,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Scheduled Transactions",
             "Rules",
             "Bank Sync (SimpleFIN & Wallet)",
+            "History",
             "About",
             "Support"
         ] {
