@@ -1,8 +1,8 @@
 import SwiftUI
 
 /// Create or edit a schedule (GH #221). Mirrors the web's schedule edit form:
-/// name, payee, account, amount with an operator, a one-off or recurring date,
-/// and the auto-post flag.
+/// name, payee or transfer destination, account, amount with an operator, a
+/// one-off or recurring date, and the auto-post flag.
 struct ScheduleEditView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +13,7 @@ struct ScheduleEditView: View {
     @State private var name: String
     @State private var payeeName: String
     @State private var accountId: String?
+    @State private var transferToAccountId: String?
     @State private var txType: TransactionType
     @State private var amountOp: ScheduleAmountOp
     @State private var amountText: String
@@ -36,13 +37,17 @@ struct ScheduleEditView: View {
     init(editing: ScheduleSummary? = nil, budgetStore: BudgetStore) {
         self.editing = editing
 
-        let payee = editing?.payeeId.flatMap { id in
+        let selectedPayee = editing?.payeeId.flatMap { id in
             budgetStore.payees.first { $0.id == id }?.name
         }
+        let transferAccountId = editing?.payeeId.flatMap { id in
+            budgetStore.payees.first { $0.id == id }?.transferAccountId
+        }
         _name = State(initialValue: editing?.name ?? "")
-        _payeeName = State(initialValue: payee ?? "")
+        _payeeName = State(initialValue: selectedPayee ?? "")
         _accountId = State(initialValue: editing?.accountId
             ?? budgetStore.accounts.first { !$0.closed }?.id)
+        _transferToAccountId = State(initialValue: transferAccountId)
         _postsTransaction = State(initialValue: editing?.postsTransaction ?? false)
         _upcomingLength = State(initialValue: editing?.customUpcomingLength
             ?? Self.defaultUpcomingLength)
@@ -52,7 +57,8 @@ struct ScheduleEditView: View {
         // direction, the same way the transaction form does.
         let amount = editing?.amount
         let isIncome = (editing?.postAmount ?? -1) > 0
-        _txType = State(initialValue: isIncome ? .income : .expense)
+        _txType = State(initialValue: transferAccountId == nil
+            ? (isIncome ? .income : .expense) : .transfer)
         switch amount {
         case .range(let low, let high):
             _amountText = State(initialValue: Self.dollars(min(abs(low), abs(high))))
@@ -118,8 +124,17 @@ struct ScheduleEditView: View {
             }
             Section {
                 TextField(String(localized: "Name"), text: $name)
-                TextField(String(localized: "Payee"), text: $payeeName)
-                    .textInputAutocapitalization(.words)
+                if txType == .transfer {
+                    Picker(String(localized: "Transfer to"), selection: $transferToAccountId) {
+                        Text(String(localized: "Select an account")).tag(String?.none)
+                        ForEach(transferEligibleAccounts) { account in
+                            Text(account.name).tag(String?.some(account.id))
+                        }
+                    }
+                } else {
+                    TextField(String(localized: "Payee"), text: $payeeName)
+                        .textInputAutocapitalization(.words)
+                }
 
                 Picker(String(localized: "Account"), selection: $accountId) {
                     Text(String(localized: "Select an account")).tag(String?.none)
@@ -127,8 +142,15 @@ struct ScheduleEditView: View {
                         Text(account.name).tag(String?.some(account.id))
                     }
                 }
+                .onChange(of: accountId) { _, newValue in
+                    if transferToAccountId == newValue {
+                        transferToAccountId = nil
+                    }
+                }
             } footer: {
-                Text(String(localized: "A schedule needs an account. Leaving the payee blank matches only transactions that have no payee."))
+                if txType != .transfer {
+                    Text(String(localized: "A schedule needs an account. Leaving the payee blank matches only transactions that have no payee."))
+                }
             }
 
             amountSection
@@ -223,6 +245,7 @@ struct ScheduleEditView: View {
             Picker(String(localized: "Type"), selection: $txType) {
                 Text(String(localized: "Expense")).tag(TransactionType.expense)
                 Text(String(localized: "Income")).tag(TransactionType.income)
+                Text(String(localized: "Transfer")).tag(TransactionType.transfer)
             }
             .pickerStyle(.segmented)
 
@@ -288,6 +311,10 @@ struct ScheduleEditView: View {
         budgetStore.accounts.filter { !$0.closed }
     }
 
+    private var transferEligibleAccounts: [Account] {
+        openAccounts.filter { $0.id != accountId }
+    }
+
     private static func dollars(_ cents: Int) -> String {
         cents == 0 ? "" : String(format: "%.2f", Double(cents) / 100.0)
     }
@@ -298,7 +325,8 @@ struct ScheduleEditView: View {
     }
 
     /// Assemble the form into the shape the write path takes, resolving (or
-    /// creating) the payee on the way — same as the transaction form.
+    /// creating) the payee on the way — same as the transaction form. A
+    /// transfer uses the destination account's existing transfer payee.
     private func buildFields() async throws -> ScheduleFormFields {
         let sign = txType == .income ? 1 : -1
 
@@ -320,8 +348,33 @@ struct ScheduleEditView: View {
             : .fixed(DayDate(yyyymmdd: Transaction.yyyymmdd(from: oneOffDate))
                 ?? DayDate.today())
 
-        let trimmedPayee = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let payeeId = try await budgetStore.resolvePayeeId(name: trimmedPayee, editing: nil)
+        let payeeId: String?
+        if txType == .transfer {
+            guard let accountId, let transferToAccountId,
+                  accountId != transferToAccountId else {
+                throw BudgetStoreError.missingTransferDestination
+            }
+            guard let transferPayee = budgetStore.payees.first(where: {
+                $0.transferAccountId == transferToAccountId && !$0.tombstone
+            }) else {
+                throw BudgetStoreError.transferPayeeMissing
+            }
+            let existingRawPayeeId = ScheduleConditions.parse(editing?.conditionsJSON)
+                .first { condition in
+                    ["payee", "description"].contains(condition["field"] as? String)
+                        && condition["op"] as? String == "is"
+                }?["value"] as? String
+            // Schedule conditions store the payee_mapping id, while the
+            // loaded summary exposes its target payee. Keep the raw mapping
+            // when the destination is unchanged so imported mappings survive
+            // an otherwise unrelated edit.
+            payeeId = editing?.payeeId == transferPayee.id
+                ? (existingRawPayeeId ?? transferPayee.id)
+                : transferPayee.id
+        } else {
+            let trimmedPayee = payeeName.trimmingCharacters(in: .whitespacesAndNewlines)
+            payeeId = try await budgetStore.resolvePayeeId(name: trimmedPayee, editing: nil)
+        }
 
         return ScheduleFormFields(
             name: name,

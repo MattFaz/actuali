@@ -44,7 +44,7 @@ struct BalanceForecastEngineTests {
             nextDate: DayDate(yyyymmdd: nextDate)!,
             nextDateRowId: "nd-\(id)", baseNextDateTs: nil,
             accountId: account, payeeId: payee, categoryId: nil,
-            amount: .fixed(amount), dateCondition: dateCondition
+            amount: .fixed(amount), dateCondition: dateCondition, actions: []
         )
     }
 

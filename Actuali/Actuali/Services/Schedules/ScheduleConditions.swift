@@ -282,6 +282,19 @@ enum ScheduleConditions {
         return parsed as? [[String: Any]] ?? []
     }
 
+    /// Parse a linked schedule rule's actions without re-evaluating its date
+    /// condition. Malformed actions are treated as empty, matching the fetch
+    /// path's existing best-effort behavior.
+    static func actions(from json: String?) -> [Rule.Action] {
+        (try? Rule.parse(
+            id: "schedule-actions",
+            stage: nil,
+            conditionsOp: "and",
+            conditionsJSON: "[]",
+            actionsJSON: json
+        ).actions) ?? []
+    }
+
     /// Sorted keys keep the output deterministic, which matters for tests.
     /// Key order inside a JSON object is not significant to any reader; ARRAY
     /// order is, and is preserved.

@@ -4279,6 +4279,27 @@ final class BudgetDatabase: Sendable {
         }
     }
 
+    func transferAccountId(forPayeeId payeeId: String?) throws -> String? {
+        guard let payeeId else { return nil }
+        return try dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT transfer_acct FROM payees
+                WHERE id = ? AND (tombstone = 0 OR tombstone IS NULL)
+                """, arguments: [payeeId])
+        }
+    }
+
+    func transferPayeeId(forAccountId accountId: String) throws -> String? {
+        try dbQueue.read { db in
+            try String.fetchOne(db, sql: """
+                SELECT id FROM payees
+                WHERE transfer_acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+                ORDER BY id
+                LIMIT 1
+                """, arguments: [accountId])
+        }
+    }
+
     /// All live rules. Returns [] when the budget file has no `rules` table.
     func fetchRules() throws -> [Rule] {
         try dbQueue.read { db in try Self.liveRules(db) }
@@ -4398,6 +4419,7 @@ final class BudgetDatabase: Sendable {
                     logger.notice("Skipping schedule \(id, privacy: .public): unparseable rule conditions")
                     return nil
                 }
+                let actionsJSON: String? = row["actions"]
 
                 // Account: required, and must be open.
                 guard let accountId = Self.firstCondition(
@@ -4457,7 +4479,8 @@ final class BudgetDatabase: Sendable {
                     payeeId: payeeId,
                     categoryId: Self.parseCategoryAction(row["actions"]),
                     amount: Self.parseAmountCondition(in: conditions, scheduleId: id),
-                    dateCondition: dateCondition
+                    dateCondition: dateCondition,
+                    actions: ScheduleConditions.actions(from: actionsJSON)
                 )
             }
     }
