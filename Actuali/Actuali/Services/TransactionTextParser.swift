@@ -44,7 +44,7 @@ struct ExtractedTransaction {
     @Guide(description: "The explicit ISO 4217 source currency code, if clearly present; otherwise nil")
     var sourceCurrencyCode: String?
 
-    @Guide(description: "The merchant or payee name")
+    @Guide(description: "The merchant, store, restaurant, or recipient receiving payment (e.g. 'Coffee Shop' in 'spent from meal wallet at Coffee Shop'). Do not use the bank, card issuer, or wallet name.")
     var payee: String
 
     @Guide(description: "Last 4 digits of the card or account number, if mentioned")
@@ -88,7 +88,9 @@ enum TransactionTextParser {
             Extract transaction details from bank notification text. \
             The amount should be a positive number without currency symbols. \
             Preserve an explicit source currency code such as USD, EUR, GBP, or INR when present; use nil when absent or ambiguous. \
-            Identify the merchant or payee name. \
+            Identify the merchant or payee name (the store, service, restaurant, or person receiving payment). \
+            Never use the funding source, wallet provider, card issuer, or bank (e.g., wallet, bank account, card brand) as the merchant. \
+            In phrases like 'spent from [Wallet/Bank] ... at [Merchant]', the merchant is the entity after 'at' or 'to', not the wallet or bank. \
             If a card or account number's last 4 digits are mentioned, extract them. \
             Determine if money was received (income/credit/refund) or spent (debit/payment).
             """)
@@ -98,10 +100,11 @@ enum TransactionTextParser {
         )
         let extracted = response.content
         let date = extractDate(from: text)
+        let payee = resolvePayee(extracted.payee, in: text, isIncome: extracted.isIncome)
         return ParsedMessage(
             amount: extracted.amount,
             sourceCurrencyCode: normalizeCurrencyCode(extracted.sourceCurrencyCode),
-            payee: extracted.payee.isEmpty ? nil : extracted.payee,
+            payee: payee,
             cardHint: extracted.cardHint,
             date: date,
             isIncome: extracted.isIncome,
@@ -179,66 +182,49 @@ enum TransactionTextParser {
     }
 
     /// Extract currency amount. Requires an explicit currency marker (leading or trailing)
-    /// to avoid falsely capturing masked card or account numbers.
+    /// to avoid falsely capturing masked card or account numbers. When multiple amounts exist
+    /// (e.g. transaction amount followed by credit limit or balance), selects the earliest one.
     private static func extractAmount(from text: String) -> Double? {
-        // Pattern 1: Leading currency symbol or legacy marker: "$50.00", "Rs. 500"
-        let leadingPattern = #"(?:[\$€£₹]|\brs\.?)\s*(\d[\d,]*(?:\.\d{1,2})?)"#
-        if let regex = try? NSRegularExpression(pattern: leadingPattern, options: .caseInsensitive),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            return AmountParser.parse(String(text[range]))
-        }
+        // (pattern, amount group, ISO code group when the marker is a code)
+        let patterns: [(String, Int, Int?)] = [
+            (#"(?:[\$€£₹]|\brs\.?)\s*(\d[\d,]*(?:\.\d{1,2})?)"#, 1, nil),
+            (#"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:[\$€£₹]|\brs\b)"#, 1, nil),
+            (#"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(\d[\d,]*(?:\.\d{1,2})?)"#, 2, 1),
+            (#"(\d[\d,]*(?:\.\d{1,2})?)\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#, 1, 2),
+        ]
+        let full = NSRange(text.startIndex..., in: text)
+        var earliest: (start: String.Index, amount: Double)?
 
-        // Pattern 2: Trailing currency symbol or legacy marker: "500.00 Rs", "25.50 €"
-        let trailingPattern = #"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:[\$€£₹]|\brs\b)"#
-        if let regex = try? NSRegularExpression(pattern: trailingPattern, options: .caseInsensitive),
-           let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
-            return AmountParser.parse(String(text[range]))
-        }
-
-        let leadingCodePattern = #"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(\d[\d,]*(?:\.\d{1,2})?)"#
-        if let amount = amountAdjacentToCurrencyCode(
-            in: text,
-            pattern: leadingCodePattern,
-            codeGroup: 1,
-            amountGroup: 2
-        ) {
-            return amount
-        }
-
-        let trailingCodePattern = #"(\d[\d,]*(?:\.\d{1,2})?)\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#
-        if let amount = amountAdjacentToCurrencyCode(
-            in: text,
-            pattern: trailingCodePattern,
-            codeGroup: 2,
-            amountGroup: 1
-        ) {
-            return amount
-        }
-
-        // Pattern 3: Fall back to whole-text parse (only accepts single-number strings)
-        return AmountParser.parse(text).flatMap { $0 > 0 ? $0 : nil }
-    }
-
-    private static func amountAdjacentToCurrencyCode(
-        in text: String,
-        pattern: String,
-        codeGroup: Int,
-        amountGroup: Int
-    ) -> Double? {
-        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
-        for match in regex.matches(in: text, range: NSRange(text.startIndex..., in: text)) {
-            guard let codeRange = Range(match.range(at: codeGroup), in: text),
-                  let amountRange = Range(match.range(at: amountGroup), in: text) else { continue }
-            let candidate = String(text[codeRange])
-            guard normalizeCurrencyCode(candidate) != nil,
-                  isExplicitCurrencyCode(candidate) else { continue }
-            if let amount = AmountParser.parse(String(text[amountRange])) {
-                return amount
+        for (pattern, amountGroup, codeGroup) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else { continue }
+            for match in regex.matches(in: text, range: full) {
+                guard let amountRange = Range(match.range(at: amountGroup), in: text),
+                      let amount = AmountParser.parse(String(text[amountRange])) else { continue }
+                if let codeGroup, let codeRange = Range(match.range(at: codeGroup), in: text) {
+                    let code = String(text[codeRange])
+                    guard normalizeCurrencyCode(code) != nil, isExplicitCurrencyCode(code) else { continue }
+                }
+                // A trailing ISO match can mistake a card suffix or date for the amount.
+                if codeGroup == 2 {
+                    let prefix = String(text[..<amountRange.lowerBound])
+                    let isReferenceNumber = prefix.range(
+                        of: #"\b(?:card|account|a/c|acct|ending|xx|x{2,})\b[^\d]*$"#,
+                        options: [.regularExpression, .caseInsensitive]
+                    ) != nil
+                    let isDate = prefix.range(
+                        of: #"\d{1,4}[-/.]\d{1,4}[-/.]$"#,
+                        options: .regularExpression
+                    ) != nil
+                    if isReferenceNumber || isDate { continue }
+                }
+                if earliest == nil || amountRange.lowerBound < earliest!.start {
+                    earliest = (amountRange.lowerBound, amount)
+                }
             }
         }
-        return nil
+
+        // Fall back to whole-text parse (only accepts single-number strings)
+        return earliest?.amount ?? AmountParser.parse(text).flatMap { $0 > 0 ? $0 : nil }
     }
 
     /// Extract the last 4 digits of a card / account number.
@@ -263,20 +249,44 @@ enum TransactionTextParser {
         return matches.first?.date
     }
 
+    // ponytail: When spending money, "from [Wallet/Bank]" indicates the funding source.
+    // If an extraction mistakenly captures the funding wallet/bank as the payee instead of
+    // the merchant after "at/to", recover the actual merchant from the notification text.
+    private static func resolvePayee(_ candidate: String?, in text: String, isIncome: Bool) -> String? {
+        guard let candidate else { return extractMerchant(from: text) }
+        let trimmed = candidate.trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
+        guard !trimmed.isEmpty else { return extractMerchant(from: text) }
+
+        if !isIncome {
+            let words = trimmed.components(separatedBy: .whitespacesAndNewlines).filter { !$0.isEmpty }
+            let escapedWords = words.map { NSRegularExpression.escapedPattern(for: $0) }
+            let candidatePattern = escapedWords.joined(separator: #"\s+"#)
+            let pattern = #"\b(?:spent|debited|paid|withdrawn)\s+from\s+"# + candidatePattern
+            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+                return extractMerchant(from: text)
+            }
+        }
+
+        return trimmed
+    }
+
     /// Extract a merchant / payee name.
     private static func extractMerchant(from text: String) -> String? {
         // Keyword-based extraction for common bank SMS patterns with word boundaries.
-        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+([A-Za-z0-9\s&'.]+?)(?:\s+(?:on|using|via|for|with|card|ref|\.|\,)|$)"#
+        // Rejects "from" to avoid capturing funding sources (e.g. "paid from Wallet").
+        // Trailing dates act as delimiters, so hyphens can remain valid in merchant names.
+        let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)([A-Za-z0-9\s&'.-]+?)(?:\s+(?:on|using|via|for|with|card|ref|\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}|\.|\,)|$)"#
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
            let range = Range(match.range(at: 1), in: text) {
-            let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+            let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
             if isValidMerchantCandidate(candidate) {
                 return candidate
             }
         }
 
-        // NLTagger fallback: find the first organization name.
+        // NLTagger fallback: find the first organization outside a debit funding source.
         let tagger = NLTagger(tagSchemes: [.nameType])
         tagger.string = text
         var found: String?
@@ -287,7 +297,13 @@ enum TransactionTextParser {
             options: [.omitPunctuation, .omitWhitespace, .joinNames]
         ) { tag, range in
             if tag == .organizationName {
-                let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines)
+                let prefix = String(text[..<range.lowerBound])
+                let isDebitFundingSource = prefix.range(
+                    of: #"\b(?:spent|debited|paid|withdrawn)\s+from\s*$"#,
+                    options: [.regularExpression, .caseInsensitive]
+                ) != nil
+                if isDebitFundingSource { return true }
+                let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
                 if isValidMerchantCandidate(candidate) {
                     found = candidate
                     return false

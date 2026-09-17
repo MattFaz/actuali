@@ -25,6 +25,56 @@ struct TransactionTextParserTests {
         #expect(result.payee == "Starbucks")
     }
 
+    @Test func parsesWalletDebitMessage() {
+        let text = "Rs. 250.00 spent from Sample  Meal wallet, card no.xx1234 on 01-01-2026 12:00:00 at Sample Diner . Avl bal Rs.5000.00. Not you call 18000000000"
+        let result = TransactionTextParser.parseWithFallback(text)
+        #expect(result.amount == 250.00)
+        #expect(result.cardHint == "1234")
+        #expect(result.isIncome == false)
+        #expect(result.payee == "Sample Diner")
+    }
+
+    @Test func parsesCardAlertMessageWithLimitAndBalance() {
+        let text = "ALERT: INR 150.00 is spent on your SampleCard ending 4321 at Quick-mart Payments on 01-01-2026. Available credit limit is Rs 100,000.00, Current outstanding is Rs 150.00. Not you?  Call 18000000 (toll-free)"
+        let result = TransactionTextParser.parseWithFallback(text)
+        #expect(result.amount == 150.00)
+        #expect(result.sourceCurrencyCode == "INR")
+        #expect(result.cardHint == "4321")
+        #expect(result.isIncome == false)
+        #expect(result.payee == "Quick-mart Payments")
+    }
+
+    @Test func doesNotTreatCardSuffixAsAmountBeforeCurrencyCode() {
+        let text = "Card ending 4321: USD 25.50 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).amount == 25.50)
+    }
+
+    @Test func doesNotTreatDateAsAmountBeforeCurrencyCode() {
+        let text = "Purchase on 01-01-2026: USD 25.50 at Store"
+        #expect(TransactionTextParser.parseWithFallback(text).amount == 25.50)
+    }
+
+    @Test func doesNotUseFundingWalletAsPayee() {
+        let withoutMerchant = "Rs.500.00 paid from Sample Meal wallet on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(withoutMerchant).payee == nil)
+
+        let recognizedWallet = "INR 500.00 paid from Amazon Pay Balance on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(recognizedWallet).payee == nil)
+
+        let withMerchant = "Rs.500.00 paid from Sample Meal wallet at Coffee Shop on 01-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(withMerchant).payee == "Coffee Shop")
+    }
+
+    @Test func doesNotIncludeBareTrailingDateInMerchant() {
+        let text = "Paid $18.50 to Amazon 12-01-2026"
+        #expect(TransactionTextParser.parseWithFallback(text).payee == "Amazon")
+    }
+
+    @Test func parsesNumericHyphenatedMerchant() {
+        let text = "Paid $4.50 at 7-Eleven"
+        #expect(TransactionTextParser.parseWithFallback(text).payee == "7-Eleven")
+    }
+
     @Test func parsesRefundAsIncomeAndDoesNotCaptureCardAsMerchant() {
         let text = "Refund of $25.00 from Amazon credited to card 5555"
         let result = TransactionTextParser.parseWithFallback(text)
