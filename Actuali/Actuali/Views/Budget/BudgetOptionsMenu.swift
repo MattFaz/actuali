@@ -90,6 +90,7 @@ struct BudgetOptionsMenu: View {
                     Button(action: onCopyPreviousMonthBudget) {
                         Label("Copy last month's budget", systemImage: "doc.on.doc")
                     }
+                    .accessibilityIdentifier("budget.copyPreviousMonthBudget")
                 }
             }
 
