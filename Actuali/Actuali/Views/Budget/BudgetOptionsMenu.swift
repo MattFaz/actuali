@@ -67,20 +67,18 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
-            if onNewCategory != nil || onNewGroup != nil {
-                Section {
-                    if let onNewCategory {
-                        Button(action: onNewCategory) {
-                            Label("New Category", systemImage: "tag")
-                        }
-                        .disabled(!canAddCategory)
+            Section {
+                if let onNewCategory {
+                    Button(action: onNewCategory) {
+                        Label("New Category", systemImage: "tag")
                     }
-                    if let onNewGroup {
-                        Button(action: onNewGroup) {
-                            Label("New Group", systemImage: "folder")
-                        }
-                        .accessibilityLabel("New Category Group")
+                    .disabled(!canAddCategory)
+                }
+                if let onNewGroup {
+                    Button(action: onNewGroup) {
+                        Label("New Group", systemImage: "folder")
                     }
+                    .accessibilityLabel("New Category Group")
                 }
             }
 
@@ -184,7 +182,7 @@ struct BudgetOptionsMenu: View {
             Image(systemName: "ellipsis.circle")
         }
         .accessibilityLabel("Budget options")
-        .accessibilityHint("Layout, group and amount display options")
+        .accessibilityHint("Create categories and groups, change layout and display options")
     }
 }
 

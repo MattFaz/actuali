@@ -30,9 +30,10 @@ final class CompactBudgetParityUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["All Time"].exists)
         app.navigationBars.buttons["Budget"].tap()
 
-        let add = app.navigationBars["Budget"].buttons["Add"]
-        XCTAssertTrue(add.exists, "Compact keeps the shared category creation menu")
-        add.tap()
+        let optionsMenu = app.buttons["Budget options"]
+        XCTAssertTrue(optionsMenu.waitForExistence(timeout: 10),
+                      "Compact keeps the shared category creation menu")
+        optionsMenu.tap()
         XCTAssertTrue(app.buttons["New Category"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.buttons["New Category Group"].exists)
         app.buttons["New Category Group"].tap()
