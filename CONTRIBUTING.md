@@ -6,6 +6,8 @@ Thanks for your interest in Actuali.
 
 - Xcode with the iOS 26.1+ SDK
 - Open `Actuali/Actuali.xcodeproj`; Swift Package Manager resolves dependencies on first build
+- Install the SwiftFormat pre-commit hook once after cloning: `bash dev/scripts/install-hooks.sh`
+  (requires `brew install swiftformat`; the hook formats staged files automatically on commit)
 
 ```bash
 xcodebuild -project Actuali/Actuali.xcodeproj -scheme Actuali -sdk iphonesimulator build

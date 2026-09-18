@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# SwiftFormat pre-commit hook.
+# Install via: bash dev/scripts/install-hooks.sh
+
+set -euo pipefail
+
+if ! command -v swiftformat &>/dev/null; then
+  echo "⚠️  swiftformat not found — skipping format check. Install with: brew install swiftformat"
+  exit 0
+fi
+
+# Collect staged Swift files (excluding deletions)
+staged=$(git diff --cached --name-only --diff-filter=d | grep '\.swift$' || true)
+
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+echo "SwiftFormat: formatting staged Swift files…"
+echo "$staged" | xargs swiftformat --quiet
+
+# Re-stage formatted files so the commit includes the changes
+echo "$staged" | xargs git add
+
+echo "SwiftFormat: done."

@@ -1,0 +1,35 @@
+# SwiftFormat configuration
+# Options inferred from the existing codebase; see `swiftformat --inferoptions Actuali/Actuali/`
+
+--swiftversion 6.0
+
+# Grouping
+--binary-grouping none
+--decimal-grouping 3,6
+--hex-grouping none
+--octal-grouping none
+
+# Literals
+--hex-literal-case lowercase
+
+# Indentation
+--ifdef no-indent
+
+# Operators
+--no-space-operators ..,..< 
+
+# Patterns
+--pattern-let inline
+
+# Arguments
+--strip-unused-args closure-only
+
+# Commas
+--trailing-commas never
+
+# Self
+# Actors require explicit `self` in string-interpolation closures; don't strip it
+--self init-only
+
+# Exclusions (generated code and SPM build products)
+--exclude Actuali/Actuali/Generated
