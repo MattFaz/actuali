@@ -206,7 +206,6 @@ struct BudgetView: View {
             // below already occupies the centre, and the tab bar says
             // "Budget" anyway.
             .navigationBarTitleDisplayMode(.inline)
-            .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
             .onAppear {
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
@@ -510,32 +509,10 @@ struct BudgetView: View {
                 .accessibilityLabel("Next month")
             }
         }
-        // Creation, unlike everything in the options menu, changes the budget
-        // rather than the view of it — so it gets its own button (GH #284).
-        // Nothing to add to until a budget is open.
-        if budgetStore.currentBudgetMonth != nil {
-            ToolbarItem(placement: .topBarTrailing) {
-                Menu {
-                    Button {
-                        newBudgetItem = .category
-                    } label: {
-                        Label("New Category", systemImage: "tag")
-                    }
-                    // A category needs a group to live in.
-                    .disabled(firstSelectableGroupId == nil)
-                    Button {
-                        newBudgetItem = .group
-                    } label: {
-                        Label("New Group", systemImage: "folder")
-                    }
-                    .accessibilityLabel("New Category Group")
-                } label: {
-                    Image(systemName: "plus")
-                }
-                .accessibilityLabel("Add")
-                .accessibilityHint("Create a category or category group")
-            }
-        }
+        // New Category / New Group now live at the top of the options menu
+        // below (GH #157 follow-up) — creation is one more "how this looks
+        // and what's in it" action rather than its own toolbar button, and
+        // the trailing edge stays down to a single control.
         ToolbarItem(placement: .topBarTrailing) {
             // Every "how should this look" control lives here (GH #157).
             // Whole-table expand/collapse is a menu rather than a long-press
@@ -545,6 +522,9 @@ struct BudgetView: View {
             // closures under Swift 6, so wrap them.
             let hasBudget = budgetStore.currentBudgetMonth != nil
             BudgetOptionsMenu(
+                onNewCategory: hasBudget ? { newBudgetItem = .category } : nil,
+                canAddCategory: firstSelectableGroupId != nil,
+                onNewGroup: hasBudget ? { newBudgetItem = .group } : nil,
                 expandAllGroups: hasBudget ? { expandAllGroups() } : nil,
                 collapseAllGroups: hasBudget ? { collapseAllGroups() } : nil,
                 onCopyPreviousMonthBudget: hasBudget ? { copyPreviousMonthBudget() } : nil,
@@ -989,21 +969,6 @@ struct BudgetView: View {
 
     static func shiftMonth(_ month: String, by offset: Int) -> String {
         BudgetStore.shiftBudgetMonth(month, by: offset) ?? month
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func budgetNavigationBarBackground(
-        isCompact: Bool
-    ) -> some View {
-        if isCompact {
-            self
-                .toolbarBackground(Color(.secondarySystemBackground), for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-        } else {
-            self
-        }
     }
 }
 
