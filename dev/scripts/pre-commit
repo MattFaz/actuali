@@ -1,0 +1,24 @@
+#!/bin/bash
+# Auto-formats staged Swift files with SwiftFormat before each commit.
+#
+# Git does not clone hooks, so each contributor installs this once:
+#   bash dev/scripts/install-hooks.sh
+# Skip it for a single commit with `git commit --no-verify` — CI's SwiftFormat
+# check will still catch anything that slips through.
+
+set -euo pipefail
+
+if ! command -v swiftformat >/dev/null 2>&1; then
+    echo "warning: swiftformat not installed — skipping format (brew install swiftformat)" >&2
+    exit 0
+fi
+
+# Staged Swift files, excluding deletions.
+staged=$(git diff --cached --name-only --diff-filter=d -- '*.swift')
+[ -z "$staged" ] && exit 0
+
+# --quiet prints nothing unless a file fails to parse; xargs handles any filename.
+echo "$staged" | xargs swiftformat --quiet
+
+# Re-stage files the formatter touched so the commit contains formatted code.
+echo "$staged" | xargs git add
