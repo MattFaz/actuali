@@ -1,5 +1,5 @@
-import Foundation
 import BackgroundTasks
+import Foundation
 import os
 
 private let bgLog = Logger(subsystem: "com.mfazz.Actuali", category: "BackgroundRefresh")
@@ -26,7 +26,6 @@ extension BGAppRefreshTask: BackgroundRefreshTask {}
 /// Runs for everyone; the OS-level Background App Refresh switch is the off
 /// button.
 enum BackgroundRefresh {
-
     /// Must stay listed in BGTaskSchedulerPermittedIdentifiers (both Info
     /// plists) — registering an unlisted identifier crashes at launch.
     static let taskIdentifier = "com.mfazz.ActualiOS.refresh"
@@ -51,7 +50,8 @@ enum BackgroundRefresh {
     static func schedule(using scheduler: any BackgroundTaskRequesting = BGTaskScheduler.shared,
                          now: Date = Date(),
                          earliestIn: TimeInterval = minimumInterval,
-                         defaults: UserDefaults = .standard) {
+                         defaults: UserDefaults = .standard)
+    {
         let status = BackgroundRefreshStatus(defaults: defaults)
         status.lastScheduleAttempt = now
         do {
@@ -80,7 +80,8 @@ enum BackgroundRefresh {
                        scheduler: any BackgroundTaskRequesting = BGTaskScheduler.shared,
                        now: Date = Date(),
                        defaults: UserDefaults = .standard,
-                       sync: @escaping @MainActor () async -> Bool = defaultSync) -> Task<Void, Never> {
+                       sync: @escaping @MainActor () async -> Bool = defaultSync) -> Task<Void, Never>
+    {
         // Reschedule first so the chain survives regardless of the outcome.
         schedule(using: scheduler, now: now, defaults: defaults)
         // Recorded at fire time (not completion) — the row in Settings answers
@@ -138,6 +139,8 @@ private final class ExpirableWork: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         self.task = task
-        if cancelled { task.cancel() }
+        if cancelled {
+            task.cancel()
+        }
     }
 }

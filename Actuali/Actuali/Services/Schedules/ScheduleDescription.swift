@@ -3,7 +3,6 @@ import Foundation
 
 /// Human-readable text for a schedule's recurrence and status
 enum ScheduleDescription {
-
     // MARK: - Status
 
     static func statusLabel(
@@ -68,8 +67,12 @@ enum ScheduleDescription {
             : ""
 
         var suffix = ""
-        if !endSuffix.isEmpty { suffix += ReportStrings.localized(", \(endSuffix)", locale: locale, bundle: bundle) }
-        if !weekendSuffix.isEmpty { suffix += " \(weekendSuffix)" }
+        if !endSuffix.isEmpty {
+            suffix += ReportStrings.localized(", \(endSuffix)", locale: locale, bundle: bundle)
+        }
+        if !weekendSuffix.isEmpty {
+            suffix += " \(weekendSuffix)"
+        }
 
         let body: String
         switch config.frequency {
@@ -120,7 +123,9 @@ enum ScheduleDescription {
             .sorted { lhs, rhs in
                 let lhsIsDay = lhs.type == "day" ? 1 : 0
                 let rhsIsDay = rhs.type == "day" ? 1 : 0
-                if lhsIsDay != rhsIsDay { return lhsIsDay < rhsIsDay }
+                if lhsIsDay != rhsIsDay {
+                    return lhsIsDay < rhsIsDay
+                }
                 return lhs.value < rhs.value
             }
         let patterns = sorted + config.patterns.filter { $0.value == -1 }
@@ -144,11 +149,10 @@ enum ScheduleDescription {
             return ordinal(pattern.value, locale: locale) + dayName
         }
 
-        var range: String
-        if parts.count > 2 {
-            range = parts.dropLast().joined(separator: ", ") + ReportStrings.text(", and ", locale: locale, bundle: bundle) + (parts.last ?? "")
+        var range: String = if parts.count > 2 {
+            parts.dropLast().joined(separator: ", ") + ReportStrings.text(", and ", locale: locale, bundle: bundle) + (parts.last ?? "")
         } else {
-            range = parts.joined(separator: ReportStrings.text(" and ", locale: locale, bundle: bundle))
+            parts.joined(separator: ReportStrings.text(" and ", locale: locale, bundle: bundle))
         }
         if isSameDay {
             range += " " + weekdayName(forCode: first.type, locale: locale)

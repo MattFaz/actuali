@@ -2,15 +2,16 @@ import Foundation
 
 struct AgeOfMoneyData: Equatable {
     struct Point: Equatable {
-        var monthLabel: String   // "Jan 2026"
-        var age: Int             // days
+        var monthLabel: String // "Jan 2026"
+        var age: Int // days
     }
+
     enum Trend: Equatable { case up, down, stable }
 
-    var currentAge: Int?         // nil when no expenses in range
+    var currentAge: Int? // nil when no expenses in range
     var points: [Point]
     var trend: Trend
-    var insufficientData: Bool   // expenses exceeded income buckets
+    var insufficientData: Bool // expenses exceeded income buckets
 
     static let empty = AgeOfMoneyData(currentAge: nil, points: [], trend: .stable,
                                       insufficientData: false)
@@ -22,7 +23,8 @@ enum ReportMonthYearFormatting {
         formatter.locale = locale
         formatter.calendar = Calendar(identifier: .gregorian)
         formatter.dateFormat = DateFormatter.dateFormat(
-            fromTemplate: "yMMM", options: 0, locale: locale)
+            fromTemplate: "yMMM", options: 0, locale: locale
+        )
         formatter.timeZone = TimeZone(identifier: "UTC")
         return formatter
     }
@@ -34,7 +36,6 @@ enum ReportMonthYearFormatting {
 /// rounded average of the last 10 ages inside the display range; the graph is
 /// a per-month cumulative rolling average of the same window.
 enum AgeOfMoneyEngine {
-
     private static let cal: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
@@ -71,9 +72,11 @@ enum AgeOfMoneyEngine {
                                                 context: context)
             }
             .sorted { lhs, rhs in
-                if lhs.date != rhs.date { return lhs.date < rhs.date }
+                if lhs.date != rhs.date {
+                    return lhs.date < rhs.date
+                }
                 switch (lhs.sortOrder, rhs.sortOrder) {
-                case let (left?, right?) where left != right: return left > right
+                case (let left?, let right?) where left != right: return left > right
                 case (_?, nil): return true
                 case (nil, _?): return false
                 default: return lhs.id < rhs.id
@@ -91,16 +94,20 @@ enum AgeOfMoneyEngine {
         for expense in pool where expense.amount < 0 {
             var remaining = -expense.amount
             var lastBucketDate: Int?
-            while remaining > 0 && bucketIdx < buckets.count {
+            while remaining > 0, bucketIdx < buckets.count {
                 if buckets[bucketIdx].remaining > 0 {
                     let deduction = min(buckets[bucketIdx].remaining, remaining)
                     buckets[bucketIdx].remaining -= deduction
                     remaining -= deduction
                     lastBucketDate = buckets[bucketIdx].date
                 }
-                if buckets[bucketIdx].remaining <= 0 { bucketIdx += 1 }
+                if buckets[bucketIdx].remaining <= 0 {
+                    bucketIdx += 1
+                }
             }
-            if remaining > 0 { insufficientData = true }
+            if remaining > 0 {
+                insufficientData = true
+            }
             if let lastBucketDate {
                 let days = daysBetween(lastBucketDate, expense.date)
                 ages.append((date: expense.date, age: max(0, days)))
@@ -126,7 +133,7 @@ enum AgeOfMoneyEngine {
         var month = monthStart(of: start)
         let lastMonth = monthStart(of: resolvedEnd)
         while month <= lastMonth {
-            let monthKey = ymdInt(from: month) / 100  // YYYYMM
+            let monthKey = ymdInt(from: month) / 100 // YYYYMM
             agesSoFar.append(contentsOf: displayAges.filter { $0.date / 100 == monthKey }.map(\.age))
             if !agesSoFar.isEmpty {
                 let lastTen = agesSoFar.suffix(10)
@@ -166,9 +173,9 @@ enum AgeOfMoneyEngine {
         guard let f = cal.date(from: DateComponents(year: from / 10000,
                                                     month: (from % 10000) / 100,
                                                     day: from % 100)),
-              let t = cal.date(from: DateComponents(year: to / 10000,
-                                                    month: (to % 10000) / 100,
-                                                    day: to % 100)) else { return 0 }
+            let t = cal.date(from: DateComponents(year: to / 10000,
+                                                  month: (to % 10000) / 100,
+                                                  day: to % 100)) else { return 0 }
         return cal.dateComponents([.day], from: f, to: t).day ?? 0
     }
 }

@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Deleting a payee location must tombstone the local row optimistically and
 /// replicate exactly one tombstone CRDT message (upstream's soft-delete shape).
 struct SyncClientDeletePayeeLocationTests {
-
     /// messages_crdt normally comes from the downloaded budget file, so create
     /// it with the upstream schema; payee_locations comes from our migration.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -15,17 +14,17 @@ struct SyncClientDeletePayeeLocationTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Sync client wired to a real database. The server client is
@@ -46,7 +45,8 @@ struct SyncClientDeletePayeeLocationTests {
         defer { cleanup(path) }
         let location = PayeeLocation(
             id: "loc-1", payeeId: "p1", latitude: -33.85, longitude: 151.21,
-            createdAt: 1_751_760_000_000)
+            createdAt: 1_751_760_000_000
+        )
         try database.insertPayeeLocation(location)
         let syncClient = try await makeSyncClient(database: database)
 

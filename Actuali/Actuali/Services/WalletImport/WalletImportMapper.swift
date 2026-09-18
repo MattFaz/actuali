@@ -7,14 +7,13 @@ struct WalletImportCandidate: Identifiable, Hashable {
     /// FinanceKit transaction UUID, lowercased — stored as `financial_id`
     /// (Actual's imported_id) for dedup across imports.
     let id: String
-    var amountCents: Int   // signed like Transaction.amount (negative = outflow)
+    var amountCents: Int // signed like Transaction.amount (negative = outflow)
     var payeeName: String
     var date: Date
     var cleared: Bool
 }
 
 enum WalletImportMapper {
-
     /// The subset of FinanceKit.TransactionStatus Actuali cares about.
     enum Status {
         case authorized
@@ -36,7 +35,7 @@ enum WalletImportMapper {
         let payee = [
             transaction.merchantName.map(MerchantNormalizer.normalize),
             MerchantNormalizer.normalize(transaction.description)
-        ].compactMap { $0 }.first { !$0.isEmpty } ?? "Unknown"
+        ].compactMap(\.self).first { !$0.isEmpty } ?? "Unknown"
 
         return WalletImportCandidate(
             id: transaction.id,

@@ -1,12 +1,11 @@
 import XCTest
 
 final class ServerConnectionEditingUITests: XCTestCase {
-
     @MainActor
-    func testConnectedServerURLsCanBeEditedWithoutDisconnecting() throws {
+    func testConnectedServerURLsCanBeEditedWithoutDisconnecting() {
         let app = XCUIApplication()
         app.launchArguments = [
-            "-connectedServerSettings", "-initialTab", "4", "-currentBudgetId", "",
+            "-connectedServerSettings", "-initialTab", "4", "-currentBudgetId", ""
         ]
         app.launch()
 

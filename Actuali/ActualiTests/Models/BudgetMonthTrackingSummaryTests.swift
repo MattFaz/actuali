@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The tracking-budget summary figures on `BudgetMonth`. These mirror upstream
 /// loot-core `tracking.ts`: `real-saved` (actual income + actual spent) and
 /// `total-saved` (budgeted income - budgeted expenses).
 struct BudgetMonthTrackingSummaryTests {
-
     @Test func budgetTypeFollowsPresenceOfToBudget() {
         let tracking = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: nil)
         let envelope = BudgetMonth(month: "2026-07", categoryBudgets: [], toBudget: 0)
@@ -77,7 +76,7 @@ struct BudgetMonthTrackingSummaryTests {
             incomeCategories: [income(id: "i", budgeted: 200_000, received: 200_000)]
         )
         // 200,000 received + (-250,000) spent = -50,000
-        #expect(month.savedActual == -50_000)
+        #expect(month.savedActual == -50000)
     }
 
     @Test func projectedSavingsIsNegativeWhenBudgetedExpensesExceedIncome() {

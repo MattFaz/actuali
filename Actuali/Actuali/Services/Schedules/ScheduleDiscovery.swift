@@ -3,7 +3,6 @@ import Foundation
 /// Detects recurring transactions and proposes schedules for them.
 /// Port of loot-core `find-schedules.ts`.
 enum ScheduleDiscovery {
-
     /// A transaction eligible to take part in a pattern.
     struct Candidate: Equatable {
         let id: String
@@ -47,7 +46,8 @@ enum ScheduleDiscovery {
                 amountOp: exactAmount ? .isExactly : .isApprox,
                 date: .recurring(config),
                 postsTransaction: false,
-                customUpcomingLength: nil)
+                customUpcomingLength: nil
+            )
         }
     }
 
@@ -98,7 +98,8 @@ enum ScheduleDiscovery {
                     amount: match.amount,
                     config: match.config,
                     exactDate: match.exactDate,
-                    exactAmount: match.exactAmount)
+                    exactAmount: match.exactAmount
+                )
             }
             .sorted { $0.payeeId < $1.payeeId }
     }
@@ -148,7 +149,7 @@ enum ScheduleDiscovery {
                 RecurConfig(frequency: .monthly, start: start,
                             patterns: [.init(type: weekdayCode, value: 2),
                                        .init(type: weekdayCode, value: 4)])
-            },
+            }
         ]
     }
 
@@ -159,7 +160,8 @@ enum ScheduleDiscovery {
             guard let config = sweep.makeConfig(start) else { continue }
 
             let occurrences = ScheduleRecurrence.upcomingDates(
-                for: config, count: 3, from: start)
+                for: config, count: 3, from: start
+            )
             guard occurrences.count == 3 else { continue }
 
             let window = occurrences.map { date in
@@ -215,7 +217,8 @@ enum ScheduleDiscovery {
                 config: config,
                 // Every occurrence scoring 1 sums to the occurrence count.
                 exactDate: total == Double(occurrences.count),
-                exactAmount: exactAmount))
+                exactAmount: exactAmount
+            ))
         }
         return matches
     }
@@ -233,7 +236,7 @@ enum ScheduleDiscovery {
         }
 
         func near(_ date: DayDate, days: Int) -> [Candidate] {
-            (-days...days).flatMap { byDate[date.adding(days: $0).yyyymmdd] ?? [] }
+            (-days ... days).flatMap { byDate[date.adding(days: $0).yyyymmdd] ?? [] }
         }
     }
 }

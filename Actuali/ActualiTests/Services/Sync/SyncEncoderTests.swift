@@ -1,10 +1,9 @@
+@testable import Actuali
+import CryptoKit
 import Foundation
 import Testing
-import CryptoKit
-@testable import Actuali
 
 struct SyncEncoderTests {
-
     private func sampleMessage() -> CRDTMessage {
         CRDTMessage(
             timestamp: HLCTimestamp.parse("2026-06-24T00:00:00.000Z-0000-0123456789abcdef")!,

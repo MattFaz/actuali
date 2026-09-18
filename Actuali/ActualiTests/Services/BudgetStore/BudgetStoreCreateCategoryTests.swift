@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Category and group creation through the store (GH #284). The database
 /// tests cover what lands in SQLite; this covers what goes out over CRDT —
@@ -9,7 +9,6 @@ import Testing
 /// pushes onto siblings, which is what upstream compatibility hangs on.
 @MainActor
 struct BudgetStoreCreateCategoryTests {
-
     /// The category tables plus the message log the sync layer writes to.
     /// `refreshDataOnly` fetches more than this after a write, but it swallows
     /// its own failures, same as in BudgetStoreCreateAccountTests.
@@ -62,7 +61,7 @@ struct BudgetStoreCreateCategoryTests {
                     ('cat-fuel', 'cat-fuel');
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -130,7 +129,8 @@ struct BudgetStoreCreateCategoryTests {
         // itself — without it the transaction joins resolve to nothing.
         let mapping = try rows(
             path: url,
-            sql: "SELECT column, value FROM messages_crdt WHERE dataset = 'category_mapping' AND row = '\(category.id)'")
+            sql: "SELECT column, value FROM messages_crdt WHERE dataset = 'category_mapping' AND row = '\(category.id)'"
+        )
         #expect(mapping.count == 1)
         #expect(mapping[0]["column"] == "transferId")
         #expect(mapping[0]["value"] == "S:\(category.id)")
@@ -154,10 +154,11 @@ struct BudgetStoreCreateCategoryTests {
         let moved = try rows(
             path: url,
             sql: """
-                SELECT row, value FROM messages_crdt
-                WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
-                ORDER BY row
-                """)
+            SELECT row, value FROM messages_crdt
+            WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
+            ORDER BY row
+            """
+        )
         #expect(moved.map { $0["row"] as String } == ["cat-fuel", "cat-groceries"])
 
         // Each message carries the value actually written to its row, so a
@@ -167,7 +168,8 @@ struct BudgetStoreCreateCategoryTests {
             let value: String = message["value"]
             let stored: Double = try rows(
                 path: url,
-                sql: "SELECT sort_order FROM categories WHERE id = '\(id)'")[0]["sort_order"]
+                sql: "SELECT sort_order FROM categories WHERE id = '\(id)'"
+            )[0]["sort_order"]
             #expect(CRDTValue.deserialize(value) == stored.databaseValue)
         }
     }
@@ -182,9 +184,9 @@ struct BudgetStoreCreateCategoryTests {
         #expect(try count(
             path: url,
             sql: """
-                SELECT COUNT(*) FROM messages_crdt
-                WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
-                """
+            SELECT COUNT(*) FROM messages_crdt
+            WHERE dataset = 'categories' AND column = 'sort_order' AND row != '\(category.id)'
+            """
         ) == 0)
     }
 
@@ -230,8 +232,8 @@ struct BudgetStoreCreateCategoryTests {
         let store = try await makeStore(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE category_groups SET is_income = 1 WHERE id = 'grp-daily'
-                """)
+            UPDATE category_groups SET is_income = 1 WHERE id = 'grp-daily'
+            """)
         }
 
         try await store.renameCategoryGroup(
@@ -258,9 +260,9 @@ struct BudgetStoreCreateCategoryTests {
         let store = try await makeStore(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO category_groups (id, name, sort_order)
-                VALUES ('grp-savings', 'Épargne', 32768.0)
-                """)
+            INSERT INTO category_groups (id, name, sort_order)
+            VALUES ('grp-savings', 'Épargne', 32768.0)
+            """)
         }
 
         await #expect(throws: BudgetDatabase.CategoryWriteError.duplicateGroupName("Épargne")) {

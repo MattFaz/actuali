@@ -1,7 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-
-@testable import Actuali
 
 struct BackupDestinationManagerTests {
     private func makeManager() -> (BackupDestinationManager, UserDefaults, String) {

@@ -1,5 +1,5 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("Budget months accept only YYYY-MM")
@@ -20,14 +20,14 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("Summary reconciles available funds, overspending, budgeted amount, and To Budget")
     func summaryReconciliation() {
         let summary = BudgetStore.makeEnvelopeBudgetSummary(
-            availableFunds: 1_500,
+            availableFunds: 1500,
             lastMonthOverspent: -200,
             budgeted: 800,
             toBudget: 100,
             manualBuffered: 0
         )
 
-        #expect(summary.availableFunds == 1_500)
+        #expect(summary.availableFunds == 1500)
         #expect(summary.lastMonthOverspent == -200)
         #expect(summary.budgeted == 800)
         #expect(summary.toBudget == 100)
@@ -39,7 +39,7 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("Manual buffer suppresses the inferred auto-buffer amount")
     func manualBufferTakesPriority() {
         let summary = BudgetStore.makeEnvelopeBudgetSummary(
-            availableFunds: 1_500,
+            availableFunds: 1500,
             lastMonthOverspent: 0,
             budgeted: 500,
             toBudget: 750,
@@ -84,7 +84,7 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("No manual or automatic buffer exposes move and hold for positive To Budget")
     func positiveToBudgetActions() {
         let summary = BudgetStore.makeEnvelopeBudgetSummary(
-            availableFunds: 1_000,
+            availableFunds: 1000,
             lastMonthOverspent: 0,
             budgeted: 500,
             toBudget: 500,
@@ -108,7 +108,7 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("Automatic buffer can be disabled")
     func automaticBufferCanBeDisabled() {
         let summary = BudgetStore.makeEnvelopeBudgetSummary(
-            availableFunds: 1_500,
+            availableFunds: 1500,
             lastMonthOverspent: 0,
             budgeted: 500,
             toBudget: 500,
@@ -166,7 +166,7 @@ struct BudgetStoreEnvelopeBudgetSummaryTests {
     @Test("Positive To Budget with a manual buffer can hold more or reset")
     func positiveToBudgetWithManualBuffer() {
         let summary = EnvelopeBudgetSummary(
-            availableFunds: 1_500,
+            availableFunds: 1500,
             lastMonthOverspent: 0,
             budgeted: 500,
             forNextMonth: 250,

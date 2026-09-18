@@ -1,33 +1,32 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Pins `setCardAccountMappings()` on `SyncClient`.
 @MainActor
 struct SyncClientCardMappingTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE preferences (
-                    id TEXT PRIMARY KEY,
-                    value TEXT
-                );
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE preferences (
+                id TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(
@@ -69,7 +68,7 @@ struct SyncClientCardMappingTests {
         try await secondClient.setCardAccountMappings(["HSBC": "acct_hsbc"], replacing: [:])
 
         try mergedDatabase.applyMessages(
-            try firstDatabase.getMessagesSince("") + secondDatabase.getMessagesSince("")
+            firstDatabase.getMessagesSince("") + secondDatabase.getMessagesSince("")
         )
         let fetched = try await mergedDatabase.fetchCardAccountMappings()
         #expect(fetched["1234"] == "acct_chase")

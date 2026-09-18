@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The Budget tab's layout preference must default to Clean, restore Compact,
 /// and keep Compact-only options independent from shared Budget preferences.
@@ -10,7 +10,7 @@ struct BudgetStoreDisplayStyleTests {
     private let styleKey = "budgetDisplayStyle"
     private let compactOptionKeys = [
         "showCompactBudgetOverview",
-        "showCompactSpentColumn",
+        "showCompactSpentColumn"
     ]
 
     private func withSavedDefaults(for keys: [String], _ body: () -> Void) {
@@ -65,7 +65,7 @@ struct BudgetStoreDisplayStyleTests {
         let existingStyleKeys = [
             "showBudgetProgressBars",
             "showGroupTotals",
-            "hideZeroBudgetCategories",
+            "hideZeroBudgetCategories"
         ]
         withSavedDefaults(for: compactOptionKeys + existingStyleKeys) {
             UserDefaults.standard.set(true, forKey: "showGroupTotals")

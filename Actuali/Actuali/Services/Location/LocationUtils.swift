@@ -31,7 +31,7 @@ enum LocationUtils {
     /// Upstream coordinate validation (createPayeeLocation / getNearbyPayees).
     static func isValidCoordinate(latitude: Double, longitude: Double) -> Bool {
         latitude.isFinite && longitude.isFinite
-            && (-90...90).contains(latitude)
-            && (-180...180).contains(longitude)
+            && (-90 ... 90).contains(latitude)
+            && (-180 ... 180).contains(longitude)
     }
 }

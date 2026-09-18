@@ -1,8 +1,8 @@
+@testable import Actuali
 import Combine
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Answers the budget download with a canned ZIP and fails every other request,
 /// so `downloadBudget` can run end to end without a server while the sync leg
@@ -10,8 +10,13 @@ import Testing
 private final class BudgetDownloadTransport: URLProtocol {
     nonisolated(unsafe) static var zipData = Data()
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         guard request.url?.path.contains("download-user-file") == true else {
@@ -41,7 +46,6 @@ private final class BudgetDownloadTransport: URLProtocol {
 @Suite(.serialized)
 @MainActor
 struct BudgetStoreInitialSyncTests {
-
     // MARK: - Fixtures
 
     /// A budget ZIP shaped like the one `/sync/download-user-file` returns:
@@ -57,9 +61,9 @@ struct BudgetStoreInitialSyncTests {
             try queue.write { db in
                 try db.execute(sql: Self.upstreamSchema)
                 try db.execute(sql: """
-                    INSERT INTO accounts (id, name, type, sort_order)
-                    VALUES ('acct-1', 'Checking', 'checking', 1.0);
-                    """)
+                INSERT INTO accounts (id, name, type, sort_order)
+                VALUES ('acct-1', 'Checking', 'checking', 1.0);
+                """)
             }
         }
 
@@ -72,9 +76,9 @@ struct BudgetStoreInitialSyncTests {
             lastUploaded: nil,
             encryptKeyId: nil
         )
-        return StoredZip.archive([
-            (name: "db.sqlite", data: try Data(contentsOf: dbURL)),
-            (name: "metadata.json", data: try JSONEncoder().encode(metadata))
+        return try StoredZip.archive([
+            (name: "db.sqlite", data: Data(contentsOf: dbURL)),
+            (name: "metadata.json", data: JSONEncoder().encode(metadata))
         ])
     }
 
@@ -110,7 +114,8 @@ struct BudgetStoreInitialSyncTests {
         UserDefaults.standard.set(savedBudgetId, forKey: "currentBudgetId")
         if let budgetId {
             UserDefaults.standard.removeObject(
-                forKey: "transactionNotificationWatermark.\(budgetId)")
+                forKey: "transactionNotificationWatermark.\(budgetId)"
+            )
         }
     }
 
@@ -127,7 +132,7 @@ struct BudgetStoreInitialSyncTests {
         let root = try makeRootDirectory()
         let budgetId = "test-initial-sync-\(UUID().uuidString)"
         defer { cleanUp(root: root, budgetId: budgetId, savedBudgetId: savedBudgetId) }
-        let store = try await makeStore(zip: try makeBudgetZip(budgetId: budgetId), root: root)
+        let store = try await makeStore(zip: makeBudgetZip(budgetId: budgetId), root: root)
 
         await store.downloadBudget(Self.remoteBudget)
 
@@ -147,7 +152,7 @@ struct BudgetStoreInitialSyncTests {
         let root = try makeRootDirectory()
         let budgetId = "test-initial-sync-\(UUID().uuidString)"
         defer { cleanUp(root: root, budgetId: budgetId, savedBudgetId: savedBudgetId) }
-        let store = try await makeStore(zip: try makeBudgetZip(budgetId: budgetId), root: root)
+        let store = try await makeStore(zip: makeBudgetZip(budgetId: budgetId), root: root)
 
         var observed: [Bool] = []
         let subscription = store.$isInitialSyncing.sink { observed.append($0) }
@@ -188,7 +193,7 @@ struct BudgetStoreInitialSyncTests {
         defer { cleanUp(root: root, budgetId: budgetId, savedBudgetId: savedBudgetId) }
         let key = "transactionNotificationWatermark.\(budgetId)"
         UserDefaults.standard.set(NSNumber(value: Int64(500)), forKey: key)
-        let store = try await makeStore(zip: try makeBudgetZip(budgetId: budgetId), root: root)
+        let store = try await makeStore(zip: makeBudgetZip(budgetId: budgetId), root: root)
 
         await store.downloadBudget(Self.remoteBudget)
 
@@ -206,48 +211,48 @@ struct BudgetStoreInitialSyncTests {
     /// matching the schema an Actual server ships in a budget ZIP. Internal:
     /// BudgetStoreBackupTests seeds the same schema to drive loadLocalBudget.
     nonisolated static let upstreamSchema = """
-        CREATE TABLE accounts (
-            id TEXT PRIMARY KEY, name TEXT, type TEXT, offbudget INTEGER DEFAULT 0,
-            closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0, sort_order REAL,
-            account_id TEXT, balance_current INTEGER, balance_available INTEGER,
-            balance_limit INTEGER, mask TEXT, official_name TEXT, subtype TEXT, bank TEXT
-        );
-        CREATE TABLE transactions (
-            id TEXT PRIMARY KEY, isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
-            acct TEXT, category TEXT, amount INTEGER, description TEXT, notes TEXT,
-            date INTEGER, financial_id TEXT, type TEXT, location TEXT, error TEXT,
-            imported_description TEXT, starting_balance_flag INTEGER DEFAULT 0,
-            transferred_id TEXT, sort_order REAL, tombstone INTEGER DEFAULT 0,
-            cleared INTEGER DEFAULT 0, reconciled INTEGER DEFAULT 0, parent_id TEXT,
-            schedule TEXT
-        );
-        CREATE TABLE categories (
-            id TEXT PRIMARY KEY, name TEXT, is_income INTEGER DEFAULT 0, cat_group TEXT,
-            sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
-        );
-        CREATE TABLE category_groups (
-            id TEXT PRIMARY KEY, name TEXT UNIQUE, is_income INTEGER DEFAULT 0,
-            sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
-        );
-        CREATE TABLE payees (
-            id TEXT PRIMARY KEY, name TEXT, category TEXT, tombstone INTEGER DEFAULT 0,
-            transfer_acct TEXT
-        );
-        CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
-        CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT);
-        CREATE TABLE zero_budgets (
-            id TEXT PRIMARY KEY, month INTEGER, category TEXT, amount INTEGER DEFAULT 0,
-            carryover INTEGER DEFAULT 0
-        );
-        CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-        CREATE TABLE messages_crdt (
-            id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL UNIQUE,
-            dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL
-        );
-        CREATE TABLE messages_clock (id INTEGER PRIMARY KEY, clock TEXT);
-        CREATE TABLE db_version (version TEXT PRIMARY KEY);
-        CREATE TABLE __migrations__ (id INT PRIMARY KEY NOT NULL);
-        """
+    CREATE TABLE accounts (
+        id TEXT PRIMARY KEY, name TEXT, type TEXT, offbudget INTEGER DEFAULT 0,
+        closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0, sort_order REAL,
+        account_id TEXT, balance_current INTEGER, balance_available INTEGER,
+        balance_limit INTEGER, mask TEXT, official_name TEXT, subtype TEXT, bank TEXT
+    );
+    CREATE TABLE transactions (
+        id TEXT PRIMARY KEY, isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
+        acct TEXT, category TEXT, amount INTEGER, description TEXT, notes TEXT,
+        date INTEGER, financial_id TEXT, type TEXT, location TEXT, error TEXT,
+        imported_description TEXT, starting_balance_flag INTEGER DEFAULT 0,
+        transferred_id TEXT, sort_order REAL, tombstone INTEGER DEFAULT 0,
+        cleared INTEGER DEFAULT 0, reconciled INTEGER DEFAULT 0, parent_id TEXT,
+        schedule TEXT
+    );
+    CREATE TABLE categories (
+        id TEXT PRIMARY KEY, name TEXT, is_income INTEGER DEFAULT 0, cat_group TEXT,
+        sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
+    );
+    CREATE TABLE category_groups (
+        id TEXT PRIMARY KEY, name TEXT UNIQUE, is_income INTEGER DEFAULT 0,
+        sort_order REAL, tombstone INTEGER DEFAULT 0, hidden BOOLEAN NOT NULL DEFAULT 0
+    );
+    CREATE TABLE payees (
+        id TEXT PRIMARY KEY, name TEXT, category TEXT, tombstone INTEGER DEFAULT 0,
+        transfer_acct TEXT
+    );
+    CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
+    CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT);
+    CREATE TABLE zero_budgets (
+        id TEXT PRIMARY KEY, month INTEGER, category TEXT, amount INTEGER DEFAULT 0,
+        carryover INTEGER DEFAULT 0
+    );
+    CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+    CREATE TABLE messages_crdt (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, timestamp TEXT NOT NULL UNIQUE,
+        dataset TEXT NOT NULL, row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL
+    );
+    CREATE TABLE messages_clock (id INTEGER PRIMARY KEY, clock TEXT);
+    CREATE TABLE db_version (version TEXT PRIMARY KEY);
+    CREATE TABLE __migrations__ (id INT PRIMARY KEY NOT NULL);
+    """
 }
 
 /// Builds an uncompressed ZIP in memory. Hand-rolled because ZIPFoundation is
@@ -264,36 +269,36 @@ private enum StoredZip {
             let size = UInt32(entry.data.count)
             let offset = UInt32(payload.count)
 
-            payload += le32(0x0403_4b50)      // local file header
-            payload += le16(20)               // version needed
-            payload += le16(0)                // flags
-            payload += le16(0)                // method: stored
-            payload += le16(0)                // mod time
-            payload += le16(0x21)             // mod date: 1980-01-01
+            payload += le32(0x04034b50) // local file header
+            payload += le16(20) // version needed
+            payload += le16(0) // flags
+            payload += le16(0) // method: stored
+            payload += le16(0) // mod time
+            payload += le16(0x21) // mod date: 1980-01-01
             payload += le32(crc)
-            payload += le32(size)             // compressed size
-            payload += le32(size)             // uncompressed size
+            payload += le32(size) // compressed size
+            payload += le32(size) // uncompressed size
             payload += le16(UInt16(name.count))
-            payload += le16(0)                // extra field length
+            payload += le16(0) // extra field length
             payload += name
             payload += entry.data
 
-            central += le32(0x0201_4b50)      // central directory header
-            central += le16(20)               // version made by
-            central += le16(20)               // version needed
-            central += le16(0)                // flags
-            central += le16(0)                // method: stored
-            central += le16(0)                // mod time
-            central += le16(0x21)             // mod date
+            central += le32(0x02014b50) // central directory header
+            central += le16(20) // version made by
+            central += le16(20) // version needed
+            central += le16(0) // flags
+            central += le16(0) // method: stored
+            central += le16(0) // mod time
+            central += le16(0x21) // mod date
             central += le32(crc)
             central += le32(size)
             central += le32(size)
             central += le16(UInt16(name.count))
-            central += le16(0)                // extra field length
-            central += le16(0)                // comment length
-            central += le16(0)                // disk number start
-            central += le16(0)                // internal attributes
-            central += le32(0)                // external attributes
+            central += le16(0) // extra field length
+            central += le16(0) // comment length
+            central += le16(0) // disk number start
+            central += le16(0) // internal attributes
+            central += le32(0) // external attributes
             central += le32(offset)
             central += name
         }
@@ -301,14 +306,14 @@ private enum StoredZip {
         let centralOffset = UInt32(payload.count)
         var output = payload
         output += central
-        output += le32(0x0605_4b50)           // end of central directory
-        output += le16(0)                     // this disk
-        output += le16(0)                     // disk with central directory
+        output += le32(0x06054b50) // end of central directory
+        output += le16(0) // this disk
+        output += le16(0) // disk with central directory
         output += le16(UInt16(entries.count))
         output += le16(UInt16(entries.count))
         output += le32(UInt32(central.count))
         output += le32(centralOffset)
-        output += le16(0)                     // comment length
+        output += le16(0) // comment length
         return output
     }
 
@@ -326,14 +331,14 @@ private enum StoredZip {
     }
 
     private static func crc32(_ data: Data) -> UInt32 {
-        var crc: UInt32 = 0xFFFF_FFFF
+        var crc: UInt32 = 0xffffffff
         for byte in data {
             crc ^= UInt32(byte)
             for _ in 0..<8 {
                 // Branch-free: subtract the low bit from zero to get the mask.
-                crc = (crc >> 1) ^ (0xEDB8_8320 & (0 &- (crc & 1)))
+                crc = (crc >> 1) ^ (0xedb88320 & (0 &- (crc & 1)))
             }
         }
-        return crc ^ 0xFFFF_FFFF
+        return crc ^ 0xffffffff
     }
 }

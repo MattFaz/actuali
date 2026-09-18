@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreCreditCardStatementDueTests {
-
     private func makeStore() throws -> (BudgetStore, BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-due-\(UUID().uuidString).sqlite")
@@ -74,7 +73,7 @@ struct BudgetStoreCreditCardStatementDueTests {
         store.creditCardConfigs["card_closed"] = CreditCardConfig(statementDay: 15, dueOffsetDays: 15, limit: nil)
 
         let today = DayDate(year: 2026, month: 2, day: 20)
-        let cycle = store.activeCreditCardCycle(for: "card_open")!
+        let cycle = try #require(store.activeCreditCardCycle(for: "card_open"))
         let pending = cycle.upcomingStatementDate(for: today)
 
         // Insert a charge on pending statement closing, and a payment after
@@ -141,7 +140,7 @@ struct BudgetStoreCreditCardStatementDueTests {
         #expect(dues?.first { $0.dueDate == newer.dueDate }?.remainingDue == 30000)
     }
 
-    @Test func loadCreditCardStatementDuesClearsOnMissingDatabase() async throws {
+    @Test func loadCreditCardStatementDuesClearsOnMissingDatabase() async {
         let store = BudgetStore.previewInstance()
         store.creditCardStatementDues = [
             "card1": [CreditCardCycle.StatementDue(

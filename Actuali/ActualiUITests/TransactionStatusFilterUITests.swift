@@ -1,12 +1,11 @@
-import XCTest
 import UIKit
+import XCTest
 
 /// End-to-end coverage for the transaction status filter chips (GH #439):
 /// chips filter and reset on All Accounts, the menu toggle hides the strip
 /// without stranding a filter behind it, and an off-budget account — where
 /// the uncategorized chip can never match — never offers it.
 final class TransactionStatusFilterUITests: XCTestCase {
-
     @MainActor
     func testFilterStripSurvivesOnBudgetAccountNavigation() throws {
         let app = XCUIApplication()
@@ -71,7 +70,7 @@ final class TransactionStatusFilterUITests: XCTestCase {
     }
 
     @MainActor
-    func testChipsFilterResetAndHideCleanly() throws {
+    func testChipsFilterResetAndHideCleanly() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()
@@ -128,7 +127,7 @@ final class TransactionStatusFilterUITests: XCTestCase {
     }
 
     @MainActor
-    func testOffBudgetAccountDropsUncategorizedChipAndCarriesSelection() throws {
+    func testOffBudgetAccountDropsUncategorizedChipAndCarriesSelection() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()

@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct CategoryFundingAutomationIntegrationTests {
@@ -107,7 +107,7 @@ struct CategoryFundingAutomationIntegrationTests {
                 INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-income', 202607, 'cat-income', 2000);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -190,7 +190,7 @@ struct CategoryFundingAutomationIntegrationTests {
         let transaction = Transaction(
             id: id,
             accountId: accountId,
-            date: 20260725,
+            date: 20_260_725,
             amount: amount,
             payeeId: nil,
             payeeName: "Restaurant",
@@ -222,7 +222,7 @@ struct CategoryFundingAutomationIntegrationTests {
         let transaction = try insertTransaction(in: database)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.toBudget, defaults: defaults)
 
@@ -263,7 +263,7 @@ struct CategoryFundingAutomationIntegrationTests {
         let transaction = try insertTransaction(in: database)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.category("cat-emergency"), defaults: defaults)
 
@@ -293,7 +293,7 @@ struct CategoryFundingAutomationIntegrationTests {
         store.accounts[0].closed = true
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.toBudget, defaults: defaults)
 
@@ -318,7 +318,7 @@ struct CategoryFundingAutomationIntegrationTests {
         store.accounts[0].offBudget = true
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.toBudget, defaults: defaults)
 
@@ -342,7 +342,7 @@ struct CategoryFundingAutomationIntegrationTests {
         _ = try insertTransaction(in: database)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.category("missing-category"), defaults: defaults)
 
@@ -363,7 +363,7 @@ struct CategoryFundingAutomationIntegrationTests {
         _ = try insertTransaction(in: database, amount: -500)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.category("missing-category"), defaults: defaults)
 
@@ -384,7 +384,7 @@ struct CategoryFundingAutomationIntegrationTests {
         _ = try insertTransaction(in: database)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.category("cat-dining"), defaults: defaults)
 
@@ -408,7 +408,7 @@ struct CategoryFundingAutomationIntegrationTests {
         _ = try insertTransaction(in: database)
 
         let suiteName = "CategoryFundingAutomationIntegrationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
         saveConfiguration(.category("cat-income"), defaults: defaults)
 

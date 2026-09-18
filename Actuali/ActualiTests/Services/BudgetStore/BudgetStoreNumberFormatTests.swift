@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Number formatting is a synced budget preference, so BudgetStore must load
 /// it from the budget database and keep a user's in-flight selection from

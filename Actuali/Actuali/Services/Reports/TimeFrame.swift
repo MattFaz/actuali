@@ -3,7 +3,6 @@ import Foundation
 /// Resolves a widget's `WidgetTimeFrame` to a concrete `(start, end)` date range.
 /// Uses UTC to match upstream behavior.
 enum TimeFrame {
-
     private static var calendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -41,7 +40,8 @@ enum TimeFrame {
     /// month and the stored end month and shift both by that amount.
     private static func slidingWindow(_ tf: WidgetTimeFrame, asOf today: Date) -> (Date, Date) {
         guard let storedStart = parseMonth(tf.start),
-              let storedEnd = parseMonth(tf.end) else {
+              let storedEnd = parseMonth(tf.end)
+        else {
             return currentMonth(asOf: today)
         }
 
@@ -49,7 +49,8 @@ enum TimeFrame {
         let monthsDiff = calendar.dateComponents([.month], from: storedEnd, to: todayMonth).month ?? 0
 
         guard let newStart = calendar.date(byAdding: .month, value: monthsDiff, to: storedStart),
-              let newEnd = calendar.date(byAdding: .month, value: monthsDiff, to: storedEnd) else {
+              let newEnd = calendar.date(byAdding: .month, value: monthsDiff, to: storedEnd)
+        else {
             return currentMonth(asOf: today)
         }
 
@@ -143,7 +144,9 @@ enum TimeFrame {
     /// is used as-is.
     private static func parseRangeEnd(_ s: String?) -> Date? {
         guard let s, let d = CanonicalDateParser.parseMonthOrDay(s) else { return nil }
-        if s.count == 7 { return endOfMonth(d) }
+        if s.count == 7 {
+            return endOfMonth(d)
+        }
         return d
     }
 }

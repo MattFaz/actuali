@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The "hide closed accounts" toggle (GH #277) must default to off, persist
 /// like the other display settings, and drop only closed accounts — open ones
 /// stay visible whatever the toggle says.
 @MainActor
 struct BudgetStoreHideClosedAccountsTests {
-
     private func makeAccounts() -> [Account] {
         [
             Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 5000),

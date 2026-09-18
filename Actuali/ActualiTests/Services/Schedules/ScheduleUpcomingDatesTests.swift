@@ -1,51 +1,54 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pins the editor's occurrence preview. The termination rules matter most:
 /// a bounded recurrence must stop rather than repeat its final date, which is
 /// how `nextOccurrence` reports exhaustion.
 struct ScheduleUpcomingDatesTests {
-
-    private static let today = DayDate(yyyymmdd: 20260813)!
+    private static let today = DayDate(yyyymmdd: 20_260_813)!
 
     private func config(_ json: [String: Any]) -> RecurConfig {
         var merged: [String: Any] = ["frequency": "monthly", "start": "2026-01-15"]
         merged.merge(json) { _, new in new }
         return RecurConfig(json: merged)!
     }
-    
+
     private func pattern(_ type: String, _ value: Int) -> [String: Any] {
         ["type": type, "value": value]
     }
 
     @Test func listsSuccessiveMonthlyOccurrences() {
         let dates = ScheduleRecurrence.upcomingDates(
-            for: config([:]), count: 4, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20260815, 20260915, 20261015, 20261115])
+            for: config([:]), count: 4, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_260_815, 20_260_915, 20_261_015, 20_261_115])
     }
 
     @Test func respectsAnInterval() {
         let dates = ScheduleRecurrence.upcomingDates(
-            for: config(["interval": 3]), count: 3, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20261015, 20270115, 20270415])
+            for: config(["interval": 3]), count: 3, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_261_015, 20_270_115, 20_270_415])
     }
 
     @Test func stopsAtAnEndDateInsteadOfRepeating() {
         let dates = ScheduleRecurrence.upcomingDates(
             for: config(["endMode": "on_date", "endDate": "2026-10-20"]),
-            count: 5, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20260815, 20260915, 20261015])
+            count: 5, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_260_815, 20_260_915, 20_261_015])
     }
 
     @Test func stopsAfterTheOccurrenceCount() {
         // Ten monthly occurrences from 2026-01-15 end at 2026-10-15.
         let dates = ScheduleRecurrence.upcomingDates(
             for: config(["endMode": "after_n_occurrences", "endOccurrences": 10]),
-            count: 5, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20260815, 20260915, 20261015])
+            count: 5, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_260_815, 20_260_915, 20_261_015])
     }
-    
+
     /// Once a bounded recurrence is exhausted `nextOccurrence` reports it by
     /// returning the LAST occurrence. On the first iteration there is no
     /// previous date to catch that, so an ended schedule would otherwise
@@ -53,14 +56,16 @@ struct ScheduleUpcomingDatesTests {
     @Test func anEndedRecurrenceHasNoUpcomingDates() {
         let ended = config(["endMode": "on_date", "endDate": "2026-03-20"])
         #expect(ScheduleRecurrence.upcomingDates(
-            for: ended, count: 4, from: Self.today).isEmpty)
+            for: ended, count: 4, from: Self.today
+        ).isEmpty)
     }
 
     @Test func aRecurrenceOutOfOccurrencesHasNoUpcomingDates() {
         // Two monthly occurrences from 2026-01-15 end at 2026-02-15.
         let ended = config(["endMode": "after_n_occurrences", "endOccurrences": 2])
         #expect(ScheduleRecurrence.upcomingDates(
-            for: ended, count: 4, from: Self.today).isEmpty)
+            for: ended, count: 4, from: Self.today
+        ).isEmpty)
     }
 
     /// The two-day slack that allows for weekend solving must not swallow a
@@ -69,18 +74,20 @@ struct ScheduleUpcomingDatesTests {
         // 2026-08-15 is a Saturday; solving "before" moves it to Friday the 14th.
         let solved = config(["skipWeekend": true, "weekendSolveMode": "before"])
         let dates = ScheduleRecurrence.upcomingDates(
-            for: solved, count: 1, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20260814])
+            for: solved, count: 1, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_260_814])
     }
 
     @Test func multiplePatternsProduceMultipleDatesPerMonth() {
         let dates = ScheduleRecurrence.upcomingDates(
             for: config(["patterns": [
                 ["type": "day", "value": 1],
-                ["type": "day", "value": 15],
+                ["type": "day", "value": 15]
             ]]),
-            count: 4, from: Self.today)
-        #expect(dates.map(\.yyyymmdd) == [20260815, 20260901, 20260915, 20261001])
+            count: 4, from: Self.today
+        )
+        #expect(dates.map(\.yyyymmdd) == [20_260_815, 20_260_901, 20_260_915, 20_261_001])
     }
 
     @Test func draftRoundTripsThroughRecurConfig() {
@@ -103,7 +110,7 @@ struct ScheduleUpcomingDatesTests {
 
     @Test func draftDropsPatternsOnNonMonthlyFrequencies() {
         var draft = RecurrenceDraft(config: config([
-            "patterns": [["type": "day", "value": 5]],
+            "patterns": [["type": "day", "value": 5]]
         ]))
         draft.frequency = .weekly
         #expect(draft.config.patterns.isEmpty)

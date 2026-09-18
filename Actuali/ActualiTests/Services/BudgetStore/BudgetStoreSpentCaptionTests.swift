@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// A category that only received money must not read like spending: the
 /// clean row's Spent caption keeps a leading "+" on a net inflow instead of
 /// collapsing it into the same positive amount as real spending (GH #102).
 @MainActor
 struct BudgetStoreSpentCaptionTests {
-
     private func makeStore() -> BudgetStore {
         let store = BudgetStore.previewInstance()
         store.hideBalances = false

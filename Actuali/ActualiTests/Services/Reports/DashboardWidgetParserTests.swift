@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct DashboardWidgetParserTests {
-
-    @Test func parsesSummaryCard() throws {
+    @Test func parsesSummaryCard() {
         let widget = DashboardWidget.parse(
             id: "w1",
             type: "summary-card",
@@ -19,7 +18,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesNetWorthCard() throws {
+    @Test func parsesNetWorthCard() {
         let widget = DashboardWidget.parse(
             id: "w2",
             type: "net-worth-card",
@@ -34,7 +33,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesCashFlowCard() throws {
+    @Test func parsesCashFlowCard() {
         let widget = DashboardWidget.parse(
             id: "w3",
             type: "cash-flow-card",
@@ -48,7 +47,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesSpendingCard() throws {
+    @Test func parsesSpendingCard() {
         let widget = DashboardWidget.parse(
             id: "w4",
             type: "spending-card",
@@ -62,7 +61,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesMarkdownCard() throws {
+    @Test func parsesMarkdownCard() {
         let widget = DashboardWidget.parse(
             id: "w5",
             type: "markdown-card",
@@ -76,7 +75,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func unknownTypeBecomesUnsupported() throws {
+    @Test func unknownTypeBecomesUnsupported() {
         let widget = DashboardWidget.parse(
             id: "w6",
             type: "future-card",
@@ -90,7 +89,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesCalendarCard() throws {
+    @Test func parsesCalendarCard() {
         let widget = DashboardWidget.parse(
             id: "w10", type: "calendar-card",
             metaJSON: #"{"name":"Calendar","timeFrame":{"mode":"sliding-window","start":"2026-04","end":"2026-05"}}"#
@@ -104,7 +103,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesCrossoverCard() throws {
+    @Test func parsesCrossoverCard() {
         let widget = DashboardWidget.parse(
             id: "w11", type: "crossover-card",
             metaJSON: #"{"name":"FI","safeWithdrawalRate":0.04,"projectionType":"hampel"}"#
@@ -117,7 +116,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesBudgetAnalysisCard() throws {
+    @Test func parsesBudgetAnalysisCard() {
         let widget = DashboardWidget.parse(
             id: "w12", type: "budget-analysis-card",
             metaJSON: #"{"name":"Budget vs Actual","graphType":"Bar","showBalance":true}"#
@@ -130,7 +129,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesSankeyCard() throws {
+    @Test func parsesSankeyCard() {
         let widget = DashboardWidget.parse(
             id: "w13", type: "sankey-card",
             metaJSON: #"{"name":"Money Flow","mode":"spent","topNcategories":5}"#
@@ -143,7 +142,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesBalanceForecastCard() throws {
+    @Test func parsesBalanceForecastCard() {
         let widget = DashboardWidget.parse(
             id: "w14", type: "balance-forecast-card",
             metaJSON: #"{"name":"Forecast","granularity":"Monthly","source":"tracking-budget"}"#
@@ -156,7 +155,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesMonteCarloCard() throws {
+    @Test func parsesMonteCarloCard() {
         let widget = DashboardWidget.parse(
             id: "w15", type: "monte-carlo-card",
             metaJSON: #"{"name":"Retirement","currentAge":40,"targetAge":90,"simulationCount":1000}"#
@@ -169,7 +168,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func malformedJsonForKnownTypeBecomesUnsupported() throws {
+    @Test func malformedJsonForKnownTypeBecomesUnsupported() {
         // Note: for non-markdown types, a malformed/missing JSON yields .summary(meta: nil),
         // not .unsupported, because their meta is optional. Only markdown REQUIRES content
         // and thus falls through to .unsupported when JSON is bad.
@@ -186,7 +185,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func nilMetaIsAllowedForOptionalMetaTypes() throws {
+    @Test func nilMetaIsAllowedForOptionalMetaTypes() {
         let widget = DashboardWidget.parse(
             id: "w8",
             type: "summary-card",
@@ -200,7 +199,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func markdownWithNilMetaIsUnsupported() throws {
+    @Test func markdownWithNilMetaIsUnsupported() {
         let widget = DashboardWidget.parse(
             id: "w9",
             type: "markdown-card",
@@ -214,7 +213,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func displayNameUsesMetaNameWhenSet() throws {
+    @Test func displayNameUsesMetaNameWhenSet() {
         let widget = DashboardWidget.parse(
             id: "w10",
             type: "summary-card",
@@ -223,7 +222,7 @@ struct DashboardWidgetParserTests {
         #expect(widget.displayName == "My Summary")
     }
 
-    @Test func displayNameFallsBackToTypeLabel() throws {
+    @Test func displayNameFallsBackToTypeLabel() {
         let widget = DashboardWidget.parse(
             id: "w11",
             type: "summary-card",
@@ -232,7 +231,7 @@ struct DashboardWidgetParserTests {
         #expect(widget.displayName == "Summary")
     }
 
-    @Test func parsesAgeOfMoneyCard() throws {
+    @Test func parsesAgeOfMoneyCard() {
         let meta = """
         {"conditions":[{"field":"account","op":"onBudget","value":null,"type":"id"}],
          "conditionsOp":"and",
@@ -251,7 +250,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesFormulaCard() throws {
+    @Test func parsesFormulaCard() {
         let meta = """
         {"name":"Saved This Month","fontSize":41.9,
          "formula":"=query(\\"expenses\\")+query(\\"income\\")",
@@ -269,7 +268,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func parsesCustomReportCard() throws {
+    @Test func parsesCustomReportCard() {
         let widget = DashboardWidget.parse(
             id: "w3",
             type: "custom-report",
@@ -283,7 +282,7 @@ struct DashboardWidgetParserTests {
         }
     }
 
-    @Test func widgetIdReturnsCorrectIdForAllCases() throws {
+    @Test func widgetIdReturnsCorrectIdForAllCases() {
         #expect(DashboardWidget.summary(id: "a", meta: nil).id == "a")
         #expect(DashboardWidget.netWorth(id: "b", meta: nil).id == "b")
         #expect(DashboardWidget.cashFlow(id: "c", meta: nil).id == "c")

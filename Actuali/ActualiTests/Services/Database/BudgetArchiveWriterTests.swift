@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
 import ZIPFoundation
-
-@testable import Actuali
 
 struct BudgetArchiveWriterTests {
     private func makeTempDir() throws -> URL {
@@ -30,8 +29,8 @@ struct BudgetArchiveWriterTests {
         return (dbURL, metadataURL)
     }
 
-    // The interop guarantee: an Actuali-made archive round-trips through the
-    // same import path a server download uses.
+    /// The interop guarantee: an Actuali-made archive round-trips through the
+    /// same import path a server download uses.
     @Test func archiveRoundTripsThroughImportBudget() async throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -101,9 +100,9 @@ struct BudgetArchiveWriterTests {
         }
     }
 
-    // fflate (upstream) can only write regular files; ZIPFoundation would
-    // materialize a symlink entry as a real symlink, so extraction must
-    // reject them outright.
+    /// fflate (upstream) can only write regular files; ZIPFoundation would
+    /// materialize a symlink entry as a real symlink, so extraction must
+    /// reject them outright.
     @Test func extractionRejectsSymlinkEntries() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }
@@ -141,10 +140,10 @@ struct BudgetArchiveWriterTests {
             _ = try manager.extractBudgetArchive(at: archiveURL)
         }
     }
-    
-    // A backup interrupted mid-write (the app suspended during a background backup) must never replace or
-    // corrupt an existing archive: makeBudgetArchive builds at a temp path and only renames into place once
-    // both entries are written.
+
+    /// A backup interrupted mid-write (the app suspended during a background backup) must never replace or
+    /// corrupt an existing archive: makeBudgetArchive builds at a temp path and only renames into place once
+    /// both entries are written.
     @Test func interruptedArchiveDoesNotReplaceExistingBackup() throws {
         let dir = try makeTempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

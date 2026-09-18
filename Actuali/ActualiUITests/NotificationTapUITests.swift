@@ -9,9 +9,8 @@ import XCTest
 /// system-delivered notification response — and verifies the app survives
 /// and shows the prefilled add-transaction sheet.
 final class NotificationTapUITests: XCTestCase {
-
     @MainActor
-    func testTappingFailureNotificationOpensPrefillWithoutCrashing() throws {
+    func testTappingFailureNotificationOpensPrefillWithoutCrashing() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-postFailureNotification"]
         app.launch()
@@ -29,7 +28,8 @@ final class NotificationTapUITests: XCTestCase {
         for _ in 0..<30 {
             let alert = springboard.alerts.firstMatch
             if alert.exists,
-               let allowButton = alert.buttons.allElementsBoundByIndex.first(where: { $0.label == "Allow" }) {
+               let allowButton = alert.buttons.allElementsBoundByIndex.first(where: { $0.label == "Allow" })
+            {
                 allowButton.tap()
             }
             if bannerQuery.exists {
@@ -60,7 +60,7 @@ final class NotificationTapUITests: XCTestCase {
     /// Tapping the "Logged transaction" success notification should land on
     /// the All Accounts transaction list.
     @MainActor
-    func testTappingSuccessNotificationOpensAllAccounts() throws {
+    func testTappingSuccessNotificationOpensAllAccounts() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-postSuccessNotification"]
         app.launch()
@@ -74,7 +74,8 @@ final class NotificationTapUITests: XCTestCase {
         for _ in 0..<30 {
             let alert = springboard.alerts.firstMatch
             if alert.exists,
-               let allowButton = alert.buttons.allElementsBoundByIndex.first(where: { $0.label == "Allow" }) {
+               let allowButton = alert.buttons.allElementsBoundByIndex.first(where: { $0.label == "Allow" })
+            {
                 allowButton.tap()
             }
             if bannerQuery.exists {

@@ -1,105 +1,104 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreDuplicationTests {
-
     private func makeDatabase(seedSQL: String = "") throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-dup-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT,
-                    schedule TEXT
-                );
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT,
+                schedule TEXT
+            );
 
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            );
 
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    cat_group TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                cat_group TEXT,
+                is_income INTEGER DEFAULT 0,
+                sort_order REAL,
+                hidden INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE category_groups (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    is_income INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE category_groups (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                is_income INTEGER DEFAULT 0,
+                sort_order REAL,
+                hidden INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            );
 
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
 
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
-                    ('acct-1', 'Checking', 0, 0, 1, 0),
-                    ('acct-2', 'Savings', 0, 0, 2, 0);
+            INSERT INTO accounts (id, name, offbudget, closed, sort_order, tombstone) VALUES
+                ('acct-1', 'Checking', 0, 0, 1, 0),
+                ('acct-2', 'Savings', 0, 0, 2, 0);
 
-                INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES
-                    ('payee-transfer-1', 'Transfer: Checking', 'acct-1', 0),
-                    ('payee-transfer-2', 'Transfer: Savings', 'acct-2', 0);
+            INSERT INTO payees (id, name, transfer_acct, tombstone) VALUES
+                ('payee-transfer-1', 'Transfer: Checking', 'acct-1', 0),
+                ('payee-transfer-2', 'Transfer: Savings', 'acct-2', 0);
 
-                INSERT INTO payee_mapping (id, targetId) VALUES
-                    ('payee-transfer-1', 'payee-transfer-1'),
-                    ('payee-transfer-2', 'payee-transfer-2');
-                """ + seedSQL)
+            INSERT INTO payee_mapping (id, targetId) VALUES
+                ('payee-transfer-1', 'payee-transfer-1'),
+                ('payee-transfer-2', 'payee-transfer-2');
+            """ + seedSQL)
         }
 
         let database = try BudgetDatabase(path: tempURL)
@@ -113,11 +112,11 @@ struct BudgetStoreDuplicationTests {
         store.configureForTesting(database: database, syncClient: syncClient)
         store.accounts = [
             Account(id: "acct-1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
-            Account(id: "acct-2", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0),
+            Account(id: "acct-2", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0)
         ]
         store.payees = [
             Payee(id: "payee-transfer-1", name: "Transfer: Checking", transferAccountId: "acct-1", tombstone: false),
-            Payee(id: "payee-transfer-2", name: "Transfer: Savings", transferAccountId: "acct-2", tombstone: false),
+            Payee(id: "payee-transfer-2", name: "Transfer: Savings", transferAccountId: "acct-2", tombstone: false)
         ]
         return (store, syncClient)
     }
@@ -131,7 +130,7 @@ struct BudgetStoreDuplicationTests {
         let tx = Transaction(
             id: "tx-orig",
             accountId: "acct-1",
-            date: 20260810,
+            date: 20_260_810,
             amount: -1500,
             payeeId: "payee-1",
             payeeName: "Coffee Shop",
@@ -168,13 +167,13 @@ struct BudgetStoreDuplicationTests {
         let (store, _) = try await makeStore(database: database)
 
         let tx1 = Transaction(
-            id: "tx-1", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "tx-1", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: nil, payeeName: "Item 1", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
         )
         let tx2 = Transaction(
-            id: "tx-2", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "tx-2", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: nil, payeeName: "Item 2", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 200
@@ -201,7 +200,7 @@ struct BudgetStoreDuplicationTests {
 
         try await store.createTransfer(
             fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
-            date: 20260810, notes: "Transfer funds", cleared: true
+            date: 20_260_810, notes: "Transfer funds", cleared: true
         )
 
         let initialTxs = try await database.fetchTransactions(limit: 1000)
@@ -232,19 +231,19 @@ struct BudgetStoreDuplicationTests {
         let (store, syncClient) = try await makeStore(database: database)
 
         let parent = Transaction(
-            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            id: "parent-1", accountId: "acct-1", date: 20_260_810, amount: -3000,
             payeeId: "payee-1", payeeName: "Store", categoryId: nil, categoryName: nil,
             notes: "Split purchase", cleared: true, reconciled: false, transferId: nil,
             isParent: true, parentId: nil, tombstone: false, sortOrder: 100
         )
         let child1 = Transaction(
-            id: "child-1", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "child-1", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: "payee-1", payeeName: "Store", categoryId: "cat-1", categoryName: "Groceries",
             notes: "Food", cleared: true, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 100
         )
         let child2 = Transaction(
-            id: "child-2", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "child-2", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: "payee-1", payeeName: "Store", categoryId: "cat-2", categoryName: "Household",
             notes: "Cleaning", cleared: true, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 100
@@ -255,7 +254,7 @@ struct BudgetStoreDuplicationTests {
         await store.duplicateTransaction(parent)
 
         let allTxs = try await database.fetchTransactions(limit: 1000)
-        let parents = allTxs.filter { $0.isParent }
+        let parents = allTxs.filter(\.isParent)
         #expect(parents.count == 2)
 
         let duplicatedParent = parents.first { $0.id != "parent-1" }
@@ -275,13 +274,13 @@ struct BudgetStoreDuplicationTests {
         let (store, _) = try await makeStore(database: database)
 
         let tx1 = Transaction(
-            id: "tx-1", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "tx-1", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: nil, payeeName: "Item 1", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
         )
         let tx2 = Transaction(
-            id: "tx-2", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "tx-2", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: nil, payeeName: "Item 2", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 200
@@ -308,7 +307,7 @@ struct BudgetStoreDuplicationTests {
 
         try await store.createTransfer(
             fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
-            date: 20260810, notes: "Transfer funds", cleared: true
+            date: 20_260_810, notes: "Transfer funds", cleared: true
         )
 
         let initialTxs = try await database.fetchTransactions(limit: 1000)
@@ -338,13 +337,13 @@ struct BudgetStoreDuplicationTests {
         // A one-way link: leg A points at B, B points at nothing (upstream
         // files can contain these). Selecting both must not copy B twice.
         let legA = Transaction(
-            id: "tx-a", accountId: "acct-1", date: 20260810, amount: -5000,
+            id: "tx-a", accountId: "acct-1", date: 20_260_810, amount: -5000,
             payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: "tx-b",
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
         )
         let legB = Transaction(
-            id: "tx-b", accountId: "acct-2", date: 20260810, amount: 5000,
+            id: "tx-b", accountId: "acct-2", date: 20_260_810, amount: 5000,
             payeeId: "payee-transfer-1", payeeName: nil, categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
@@ -367,7 +366,7 @@ struct BudgetStoreDuplicationTests {
 
         try await store.createTransfer(
             fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
-            date: 20260810, notes: "Transfer funds", cleared: true
+            date: 20_260_810, notes: "Transfer funds", cleared: true
         )
 
         let initialTxs = try await database.fetchTransactions(limit: 1000)
@@ -390,7 +389,7 @@ struct BudgetStoreDuplicationTests {
 
         try await store.createTransfer(
             fromAccountId: "acct-1", toAccountId: "acct-2", amountCents: 5000,
-            date: 20260810, notes: "Transfer funds", cleared: true
+            date: 20_260_810, notes: "Transfer funds", cleared: true
         )
 
         let initialTxs = try await database.fetchTransactions(limit: 1000)
@@ -411,19 +410,19 @@ struct BudgetStoreDuplicationTests {
         let (store, syncClient) = try await makeStore(database: database)
 
         let parent = Transaction(
-            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            id: "parent-1", accountId: "acct-1", date: 20_260_810, amount: -3000,
             payeeId: "payee-1", payeeName: "Store", categoryId: nil, categoryName: nil,
             notes: "Split purchase", cleared: false, reconciled: false, transferId: nil,
             isParent: true, parentId: nil, tombstone: false, sortOrder: 100
         )
         let child1 = Transaction(
-            id: "child-1", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "child-1", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: "payee-1", payeeName: "Store", categoryId: "cat-1", categoryName: "Groceries",
             notes: "Food", cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
         )
         let child2 = Transaction(
-            id: "child-2", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "child-2", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: "payee-1", payeeName: "Store", categoryId: "cat-2", categoryName: "Household",
             notes: "Cleaning", cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 98
@@ -455,13 +454,13 @@ struct BudgetStoreDuplicationTests {
         let (store, _) = try await makeStore(database: database)
 
         let reconciledTx = Transaction(
-            id: "tx-locked", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "tx-locked", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: nil, payeeName: "Locked", categoryId: nil, categoryName: nil,
             notes: nil, cleared: true, reconciled: true, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
         )
         let plainTx = Transaction(
-            id: "tx-plain", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "tx-plain", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: nil, payeeName: "Plain", categoryId: nil, categoryName: nil,
             notes: nil, cleared: true, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 200
@@ -487,7 +486,7 @@ struct BudgetStoreDuplicationTests {
         // A transfer payee with no partner leg (transferId nil), as upstream
         // files can contain.
         let orphan = Transaction(
-            id: "tx-orphan", accountId: "acct-1", date: 20260810, amount: -5000,
+            id: "tx-orphan", accountId: "acct-1", date: 20_260_810, amount: -5000,
             payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
@@ -498,7 +497,7 @@ struct BudgetStoreDuplicationTests {
         // list rows have it.
         let fetched = try await database.fetchTransaction(id: "tx-orphan")
         #expect(fetched?.transferAcct == "acct-2")
-        await store.duplicateTransaction(fetched!)
+        try await store.duplicateTransaction(#require(fetched))
 
         let all = try await database.fetchTransactions(limit: 1000)
         #expect(all.count == 2)
@@ -513,7 +512,7 @@ struct BudgetStoreDuplicationTests {
         let (store, syncClient) = try await makeStore(database: database)
 
         let parent = Transaction(
-            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            id: "parent-1", accountId: "acct-1", date: 20_260_810, amount: -3000,
             payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: true, parentId: nil, tombstone: false, sortOrder: 100
@@ -521,13 +520,13 @@ struct BudgetStoreDuplicationTests {
         // A child that is a transfer leg — its copy loses the partner, so it
         // must lose the transfer payee too.
         let transferChild = Transaction(
-            id: "child-1", accountId: "acct-1", date: 20260810, amount: -2000,
+            id: "child-1", accountId: "acct-1", date: 20_260_810, amount: -2000,
             payeeId: "payee-transfer-2", payeeName: nil, categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
         )
         let plainChild = Transaction(
-            id: "child-2", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "child-2", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: nil, payeeName: "Plain", categoryId: "cat-1", categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 98
@@ -550,25 +549,25 @@ struct BudgetStoreDuplicationTests {
         // able to silently swallow (or rewrite) the copy.
         let (database, tempURL) = try makeDatabase(seedSQL: """
 
-            CREATE TABLE rules (
-                id TEXT PRIMARY KEY,
-                stage TEXT,
-                conditions_op TEXT DEFAULT 'and',
-                conditions TEXT,
-                actions TEXT,
-                tombstone INTEGER DEFAULT 0
-            );
+        CREATE TABLE rules (
+            id TEXT PRIMARY KEY,
+            stage TEXT,
+            conditions_op TEXT DEFAULT 'and',
+            conditions TEXT,
+            actions TEXT,
+            tombstone INTEGER DEFAULT 0
+        );
 
-            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
-                ('rule-1', NULL, 'and',
-                 '[{"op":"contains","field":"imported_description","value":"spam"}]',
-                 '[{"op":"delete-transaction","value":null}]', 0);
-            """)
+        INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone) VALUES
+            ('rule-1', NULL, 'and',
+             '[{"op":"contains","field":"imported_description","value":"spam"}]',
+             '[{"op":"delete-transaction","value":null}]', 0);
+        """)
         defer { try? FileManager.default.removeItem(at: tempURL) }
         let (store, syncClient) = try await makeStore(database: database)
 
         var tx = Transaction(
-            id: "tx-ruled", accountId: "acct-1", date: 20260810, amount: -1000,
+            id: "tx-ruled", accountId: "acct-1", date: 20_260_810, amount: -1000,
             payeeId: nil, payeeName: "Spam Co", categoryId: nil, categoryName: nil,
             notes: "keep me", cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: nil, tombstone: false, sortOrder: 100
@@ -592,13 +591,13 @@ struct BudgetStoreDuplicationTests {
         let (store, syncClient) = try await makeStore(database: database)
 
         let parent = Transaction(
-            id: "parent-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            id: "parent-1", accountId: "acct-1", date: 20_260_810, amount: -3000,
             payeeId: nil, payeeName: "Store", categoryId: nil, categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: true, parentId: nil, tombstone: false, sortOrder: 100
         )
         let child = Transaction(
-            id: "child-1", accountId: "acct-1", date: 20260810, amount: -3000,
+            id: "child-1", accountId: "acct-1", date: 20_260_810, amount: -3000,
             payeeId: nil, payeeName: "Store", categoryId: "cat-1", categoryName: nil,
             notes: nil, cleared: false, reconciled: false, transferId: nil,
             isParent: false, parentId: "parent-1", tombstone: false, sortOrder: 99
@@ -620,9 +619,9 @@ struct BudgetStoreDuplicationTests {
         let (store, _) = try await makeStore(database: database)
 
         var originalTxs: [Transaction] = []
-        for i in 1...5 {
+        for i in 1 ... 5 {
             let tx = Transaction(
-                id: "tx-\(i)", accountId: "acct-1", date: 20260810, amount: -1000 * i,
+                id: "tx-\(i)", accountId: "acct-1", date: 20_260_810, amount: -1000 * i,
                 payeeId: nil, payeeName: "Item \(i)", categoryId: nil, categoryName: nil,
                 notes: nil, cleared: false, reconciled: false, transferId: nil,
                 isParent: false, parentId: nil, tombstone: false, sortOrder: Double(i * 100)

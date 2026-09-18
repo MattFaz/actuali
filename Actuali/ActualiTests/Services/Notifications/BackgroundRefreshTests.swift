@@ -1,16 +1,16 @@
+@testable import Actuali
+import BackgroundTasks
 import Foundation
 import Testing
-import BackgroundTasks
-@testable import Actuali
 
 struct BackgroundRefreshTests {
-
     /// Registering a BGTask identifier that is not listed in
     /// BGTaskSchedulerPermittedIdentifiers crashes at launch, so guard the
     /// Info.plist against drifting from the code constant.
     @Test func taskIdentifierIsPermittedByInfoPlist() {
         let permitted = Bundle.main.object(
-            forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
+            forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers"
+        ) as? [String]
         #expect(permitted?.contains(BackgroundRefresh.taskIdentifier) == true)
     }
 
@@ -41,7 +41,7 @@ struct BackgroundRefreshTests {
 
         #expect(BackgroundRefresh.pendingWriteFlushInterval < BackgroundRefresh.minimumInterval)
         #expect(spy.submitted.first?.earliestBeginDate
-                == now.addingTimeInterval(BackgroundRefresh.pendingWriteFlushInterval))
+            == now.addingTimeInterval(BackgroundRefresh.pendingWriteFlushInterval))
     }
 
     @Test func scheduleSubmitsOneRequestWithTaskIdentifier() {
@@ -118,11 +118,14 @@ struct BackgroundRefreshTests {
 
         let work = BackgroundRefresh.handle(task, scheduler: SubmitSpy(),
                                             now: Date(timeIntervalSince1970: 0),
-                                            defaults: defaults) {
+                                            defaults: defaults)
+        {
             // The expiration handler must already be wired when sync starts;
             // spin until its cancellation reaches us.
             #expect(task.expirationHandler != nil)
-            while !Task.isCancelled { await Task.yield() }
+            while !Task.isCancelled {
+                await Task.yield()
+            }
             return false
         }
         task.expirationHandler?()
@@ -143,7 +146,9 @@ private final class SubmitSpy: BackgroundTaskRequesting {
     var error: (any Error)?
 
     func submit(_ taskRequest: BGTaskRequest) throws {
-        if let error { throw error }
+        if let error {
+            throw error
+        }
         submitted.append(taskRequest)
     }
 }
@@ -152,5 +157,7 @@ private final class TaskSpy: BackgroundRefreshTask {
     var expirationHandler: (() -> Void)?
     var completions: [Bool] = []
 
-    func setTaskCompleted(success: Bool) { completions.append(success) }
+    func setTaskCompleted(success: Bool) {
+        completions.append(success)
+    }
 }

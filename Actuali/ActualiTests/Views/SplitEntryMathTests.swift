@@ -1,5 +1,5 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct SplitEntryMathTests {
     @Test func blankLinesCountAsZero() {

@@ -7,24 +7,26 @@ enum StartTab: String, CaseIterable, Identifiable {
     case addTransaction
     case reports
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Tag of the matching tab in MainTabView.
     var tabTag: Int {
         switch self {
-        case .accounts: return 0
-        case .budget: return 1
-        case .addTransaction: return 2
-        case .reports: return 3
+        case .accounts: 0
+        case .budget: 1
+        case .addTransaction: 2
+        case .reports: 3
         }
     }
 
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .accounts: return ReportStrings.text("Accounts", locale: locale, bundle: bundle)
-        case .budget: return ReportStrings.text("Budget", locale: locale, bundle: bundle)
-        case .addTransaction: return ReportStrings.text("Add Transaction", locale: locale, bundle: bundle)
-        case .reports: return ReportStrings.text("Reports", locale: locale, bundle: bundle)
+        case .accounts: ReportStrings.text("Accounts", locale: locale, bundle: bundle)
+        case .budget: ReportStrings.text("Budget", locale: locale, bundle: bundle)
+        case .addTransaction: ReportStrings.text("Add Transaction", locale: locale, bundle: bundle)
+        case .reports: ReportStrings.text("Reports", locale: locale, bundle: bundle)
         }
     }
 

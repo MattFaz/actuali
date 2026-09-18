@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct DisplaySettingsViewTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func settingsLabelsUseRequestedLocale() {

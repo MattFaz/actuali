@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Rule validation, mirroring upstream `rule-validate` (loot-core
 /// server/rules/app.ts): a rule the editor accepts must be one the engine can
 /// actually run.
 @MainActor
 struct BudgetStoreRulesTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     private func rule(
@@ -35,7 +34,8 @@ struct BudgetStoreRulesTests {
         #expect(throws: BudgetStoreError.ruleNeedsAction) {
             try BudgetStore.validate(rule(
                 conditions: [.init(op: "is", field: "payee", value: .string("p"), options: nil)],
-                actions: []))
+                actions: []
+            ))
         }
     }
 
@@ -127,7 +127,8 @@ struct BudgetStoreRulesTests {
         #expect(throws: BudgetStoreError.ruleEmptyValue(field: "account")) {
             try BudgetStore.validate(rule(
                 conditions: [.init(op: "is", field: "payee", value: .string("p"), options: nil)],
-                actions: [.init(op: "set", field: "account", value: .null, options: nil)]))
+                actions: [.init(op: "set", field: "account", value: .null, options: nil)]
+            ))
         }
     }
 }

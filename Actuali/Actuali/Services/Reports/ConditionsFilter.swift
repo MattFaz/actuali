@@ -1,14 +1,13 @@
 import Foundation
 
 enum ConditionsFilter {
-
     /// Budget-level context some conditions need: `onBudget`/`offBudget` ops
     /// and account-name matching can't be answered from the transaction alone.
     struct Context {
         var offBudgetAccountIds: Set<String> = []
-        var accountNames: [String: String] = [:]  // account id -> name
-        var categoryGroupIds: [String: String] = [:]  // category id -> group id
-        var categoryGroupNames: [String: String] = [:]  // group id -> name
+        var accountNames: [String: String] = [:] // account id -> name
+        var categoryGroupIds: [String: String] = [:] // category id -> group id
+        var categoryGroupNames: [String: String] = [:] // group id -> name
 
         static let empty = Context()
     }
@@ -47,14 +46,14 @@ enum ConditionsFilter {
 
     private static func fieldType(_ field: String) -> FieldType? {
         switch field {
-        case "category", "category_group", "account", "payee", "description": return .id
-        case "notes", "imported_payee": return .string
-        case "amount", "amount-inflow", "amount-outflow": return .number
-        case "date": return .date
-        case "cleared", "reconciled": return .boolean
-        case "transfer": return .transfer
-        case "parent": return .parent
-        default: return nil
+        case "category", "category_group", "account", "payee", "description": .id
+        case "notes", "imported_payee": .string
+        case "amount", "amount-inflow", "amount-outflow": .number
+        case "date": .date
+        case "cleared", "reconciled": .boolean
+        case "transfer": .transfer
+        case "parent": .parent
+        default: nil
         }
     }
 
@@ -94,8 +93,12 @@ enum ConditionsFilter {
     private static func matchNumber(_ tx: Transaction, _ c: WidgetRuleCondition) -> Bool {
         var options = decodeAmountOptions(c.options)
         // Legacy serialized field names carry the direction in the field itself.
-        if c.field == "amount-inflow" { options.inflow = true }
-        if c.field == "amount-outflow" { options.outflow = true }
+        if c.field == "amount-inflow" {
+            options.inflow = true
+        }
+        if c.field == "amount-outflow" {
+            options.outflow = true
+        }
 
         // "isbetween" ignores inflow/outflow and compares the raw amount,
         // matching upstream (it bypasses the option-aware `apply` helper).
@@ -107,9 +110,9 @@ enum ConditionsFilter {
 
         guard let value = decodeNumber(c.value) else { return true }
 
-        // Directional filters gate on sign and compare the magnitude:
-        // outflow negates the (negative) amount so the user-entered positive
-        // value lines up.
+        /// Directional filters gate on sign and compare the magnitude:
+        /// outflow negates the (negative) amount so the user-entered positive
+        /// value lines up.
         func apply(_ cmp: (Double, Double) -> Bool) -> Bool {
             if options.outflow == true {
                 return tx.amount < 0 && cmp(Double(-tx.amount), value)
@@ -148,13 +151,12 @@ enum ConditionsFilter {
     // MARK: - Id conditions (category / account / payee)
 
     private static func matchId(_ tx: Transaction, _ c: WidgetRuleCondition, context: Context) -> Bool {
-        let txId: String?
-        switch c.field {
-        case "category": txId = tx.categoryId
+        let txId: String? = switch c.field {
+        case "category": tx.categoryId
         // Upstream rewrites category_group to category.group (transaction-rules.ts).
-        case "category_group": txId = tx.categoryId.flatMap { context.categoryGroupIds[$0] }
-        case "account": txId = tx.accountId
-        default: txId = tx.payeeId  // "payee" / legacy "description"
+        case "category_group": tx.categoryId.flatMap { context.categoryGroupIds[$0] }
+        case "account": tx.accountId
+        default: tx.payeeId // "payee" / legacy "description"
         }
 
         switch c.op {
@@ -185,16 +187,15 @@ enum ConditionsFilter {
             return list.contains(txId)
         case "notOneOf":
             guard let list = decodeStringArray(c.value), !list.isEmpty else { return false }
-            guard let txId, !txId.isEmpty else { return true }  // NULL passes $ne
+            guard let txId, !txId.isEmpty else { return true } // NULL passes $ne
             return !list.contains(txId)
         case "contains", "doesNotContain", "matches":
             // Id fields match against the referenced row's *name*.
-            let name: String?
-            switch c.field {
-            case "category": name = tx.categoryName
-            case "category_group": name = txId.flatMap { context.categoryGroupNames[$0] }
-            case "account": name = context.accountNames[tx.accountId]
-            default: name = tx.payeeName
+            let name: String? = switch c.field {
+            case "category": tx.categoryName
+            case "category_group": txId.flatMap { context.categoryGroupNames[$0] }
+            case "account": context.accountNames[tx.accountId]
+            default: tx.payeeName
             }
             return matchText(name, op: c.op, value: decodeString(c.value))
         case "onBudget":
@@ -291,8 +292,12 @@ enum ConditionsFilter {
 
     private static func decodeStringArray(_ value: AnyCodable?) -> [String]? {
         guard let value else { return nil }
-        if let arr = try? JSONDecoder().decode([String].self, from: value.raw) { return arr }
-        if let arr = try? JSONDecoder().decode([Int].self, from: value.raw) { return arr.map(String.init) }
+        if let arr = try? JSONDecoder().decode([String].self, from: value.raw) {
+            return arr
+        }
+        if let arr = try? JSONDecoder().decode([Int].self, from: value.raw) {
+            return arr.map(String.init)
+        }
         return nil
     }
 
@@ -304,7 +309,8 @@ enum ConditionsFilter {
 
     private static func decodeAmountOptions(_ value: AnyCodable?) -> AmountOptions {
         guard let value,
-              let opts = try? JSONDecoder().decode(AmountOptions.self, from: value.raw) else {
+              let opts = try? JSONDecoder().decode(AmountOptions.self, from: value.raw)
+        else {
             return AmountOptions(inflow: nil, outflow: nil)
         }
         return opts

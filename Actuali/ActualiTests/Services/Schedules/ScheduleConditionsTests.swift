@@ -1,16 +1,15 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pins the condition build/merge logic. This is the code that decides what a
 /// schedule looks like on the server, so the cases that matter most are the
 /// ones about NOT destroying data the phone can't display.
 struct ScheduleConditionsTests {
+    private let fixedDate = ScheduleDateCondition.fixed(DayDate(yyyymmdd: 20_260_813)!)
 
-    private let fixedDate = ScheduleDateCondition.fixed(DayDate(yyyymmdd: 20260813)!)
-
-    @Test func amountOperatorLabelUsesRequestedLocale() {
-        let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+    @Test func amountOperatorLabelUsesRequestedLocale() throws {
+        let bundle = try #require(Bundle(identifier: "com.mfazz.ActualiOS"))
         #expect(ScheduleAmountOp.isExactly.label(
             locale: Locale(identifier: "fr_FR"), bundle: bundle
         ) == "est exactement")
@@ -24,7 +23,8 @@ struct ScheduleConditionsTests {
     ) -> ScheduleFormFields {
         ScheduleFormFields(
             name: "Rent", payeeId: payee, accountId: account,
-            amount: amount, amountOp: amountOp, date: fixedDate)
+            amount: amount, amountOp: amountOp, date: fixedDate
+        )
     }
 
     // MARK: - extract
@@ -35,7 +35,7 @@ struct ScheduleConditionsTests {
             ["op": "contains", "field": "notes", "value": "x"],
             ["op": "is", "field": "payee", "value": "payee-1"],
             ["op": "isapprox", "field": "date", "value": "2026-08-13"],
-            ["op": "isbetween", "field": "amount", "value": ["num1": 1, "num2": 2]],
+            ["op": "isbetween", "field": "amount", "value": ["num1": 1, "num2": 2]]
         ]
         let indices = ScheduleConditions.extract(conditions)
         #expect(indices.account == 0)
@@ -47,7 +47,7 @@ struct ScheduleConditionsTests {
     @Test func extractFallsBackToInternalFieldNames() {
         let conditions: [[String: Any]] = [
             ["op": "is", "field": "acct", "value": "acct-1"],
-            ["op": "is", "field": "description", "value": "payee-1"],
+            ["op": "is", "field": "description", "value": "payee-1"]
         ]
         let indices = ScheduleConditions.extract(conditions)
         #expect(indices.account == 0)
@@ -57,7 +57,7 @@ struct ScheduleConditionsTests {
     @Test func publicFieldNamesWinOverInternalOnes() {
         let conditions: [[String: Any]] = [
             ["op": "is", "field": "acct", "value": "old"],
-            ["op": "is", "field": "account", "value": "new"],
+            ["op": "is", "field": "account", "value": "new"]
         ]
         #expect(ScheduleConditions.extract(conditions).account == 1)
     }
@@ -87,7 +87,7 @@ struct ScheduleConditionsTests {
     /// on the web must not silently become approximate after a phone edit.
     @Test func buildPreservesAnExistingOperator() throws {
         let existing: [[String: Any]] = [
-            ["op": "is", "field": "date", "value": "2026-01-01"],
+            ["op": "is", "field": "date", "value": "2026-01-01"]
         ]
         let built = try ScheduleConditions.build(fields: fields(), existing: existing)
         let date = try #require(built.first { $0["field"] as? String == "date" })
@@ -98,10 +98,11 @@ struct ScheduleConditionsTests {
     /// Amount is the exception: the form owns the operator, so it is rewritten.
     @Test func buildOverwritesTheAmountOperator() throws {
         let existing: [[String: Any]] = [
-            ["op": "isbetween", "field": "amount", "value": ["num1": 1, "num2": 2]],
+            ["op": "isbetween", "field": "amount", "value": ["num1": 1, "num2": 2]]
         ]
         let built = try ScheduleConditions.build(
-            fields: fields(amountOp: .isExactly), existing: existing)
+            fields: fields(amountOp: .isExactly), existing: existing
+        )
         let amount = try #require(built.first { $0["field"] as? String == "amount" })
         #expect(amount["op"] as? String == "is")
         #expect((amount["value"] as? NSNumber)?.intValue == -1250)
@@ -129,12 +130,14 @@ struct ScheduleConditionsTests {
         let existing: [[String: Any]] = [
             ["op": "is", "field": "account", "value": "old-acct"],
             ["op": "contains", "field": "notes", "value": "keep me"],
-            ["op": "is", "field": "amount", "value": -1],
+            ["op": "is", "field": "amount", "value": -1]
         ]
         let scheduleConditions = try ScheduleConditions.build(
-            fields: fields(), existing: existing)
+            fields: fields(), existing: existing
+        )
         let merged = ScheduleConditions.merge(
-            existing: existing, scheduleConditions: scheduleConditions)
+            existing: existing, scheduleConditions: scheduleConditions
+        )
 
         // The custom condition kept both its content and its position.
         #expect(merged[1]["field"] as? String == "notes")
@@ -147,7 +150,7 @@ struct ScheduleConditionsTests {
 
     @Test func mergeAppendsConditionsThatHadNoCounterpart() throws {
         let existing: [[String: Any]] = [
-            ["op": "is", "field": "amount", "value": -1],
+            ["op": "is", "field": "amount", "value": -1]
         ]
         let built = try ScheduleConditions.build(fields: fields(), existing: existing)
         let merged = ScheduleConditions.merge(existing: existing, scheduleConditions: built)
@@ -159,11 +162,11 @@ struct ScheduleConditionsTests {
 
     @Test func syncedActionsRewritesAPlainSetAmountAction() {
         let conditions: [[String: Any]] = [
-            ["op": "is", "field": "amount", "value": -500],
+            ["op": "is", "field": "amount", "value": -500]
         ]
         let actions: [[String: Any]] = [
             ["op": "link-schedule", "value": "sched-1"],
-            ["op": "set", "field": "amount", "value": -100],
+            ["op": "set", "field": "amount", "value": -100]
         ]
         let updated = ScheduleConditions.syncedActions(conditions: conditions, actions: actions)
         #expect((updated?[1]["value"] as? NSNumber)?.intValue == -500)
@@ -173,7 +176,7 @@ struct ScheduleConditionsTests {
         let conditions: [[String: Any]] = [["op": "is", "field": "amount", "value": -500]]
         let actions: [[String: Any]] = [
             ["op": "set", "field": "amount", "value": -100,
-             "options": ["template": "{{foo}}"]],
+             "options": ["template": "{{foo}}"]]
         ]
         #expect(ScheduleConditions.syncedActions(conditions: conditions, actions: actions) == nil)
     }
@@ -186,7 +189,7 @@ struct ScheduleConditionsTests {
 
     @Test func syncedActionsUsesTheAverageOfARange() {
         let conditions: [[String: Any]] = [
-            ["op": "isbetween", "field": "amount", "value": ["num1": -300, "num2": -100]],
+            ["op": "isbetween", "field": "amount", "value": ["num1": -300, "num2": -100]]
         ]
         let actions: [[String: Any]] = [["op": "set", "field": "amount", "value": 0]]
         let updated = ScheduleConditions.syncedActions(conditions: conditions, actions: actions)
@@ -201,7 +204,7 @@ struct ScheduleConditionsTests {
             ["op": "is", "field": "payee", "value": "p"],
             ["op": "is", "field": "account", "value": "a"],
             ["op": "is", "field": "date", "value": "2026-08-13"],
-            ["op": "is", "field": "amount", "value": -1],
+            ["op": "is", "field": "amount", "value": -1]
         ]
         let paths = ScheduleConditions.jsonPaths(for: conditions)
         #expect(paths.payee == "$[1]")
@@ -212,7 +215,7 @@ struct ScheduleConditionsTests {
 
     @Test func missingConditionsHaveNoPath() {
         let paths = ScheduleConditions.jsonPaths(for: [
-            ["op": "is", "field": "amount", "value": -1],
+            ["op": "is", "field": "amount", "value": -1]
         ])
         #expect(paths.amount == "$[0]")
         #expect(paths.payee == nil)
@@ -222,18 +225,20 @@ struct ScheduleConditionsTests {
 
     // MARK: - next date
 
-    @Test func oneOffDatesAreReturnedEvenWhenPast() {
-        let past = DayDate(yyyymmdd: 20200101)!
-        #expect(ScheduleConditions.nextDate(
-            for: .fixed(past), from: DayDate(yyyymmdd: 20260813)!) == past)
+    @Test func oneOffDatesAreReturnedEvenWhenPast() throws {
+        let past = try #require(DayDate(yyyymmdd: 20_200_101))
+        #expect(try ScheduleConditions.nextDate(
+            for: .fixed(past), from: #require(DayDate(yyyymmdd: 20_260_813))
+        ) == past)
     }
 
     @Test func recurringDatesAdvanceToTheNextOccurrence() throws {
         let config = try #require(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-15", "interval": 1,
+            "frequency": "monthly", "start": "2026-01-15", "interval": 1
         ]))
-        let next = ScheduleConditions.nextDate(
-            for: .recurring(config), from: DayDate(yyyymmdd: 20260813)!)
-        #expect(next == DayDate(yyyymmdd: 20260815))
+        let next = try ScheduleConditions.nextDate(
+            for: .recurring(config), from: #require(DayDate(yyyymmdd: 20_260_813))
+        )
+        #expect(next == DayDate(yyyymmdd: 20_260_815))
     }
 }

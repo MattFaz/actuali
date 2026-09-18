@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The transaction status filter chips (GH #439) default to All with the
 /// strip visible, persist their selection, and hide the strip without

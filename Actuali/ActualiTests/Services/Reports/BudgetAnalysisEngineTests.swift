@@ -1,18 +1,17 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetAnalysisEngineTests {
-
     private var asOf: Date {
         var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 14
         c.timeZone = TimeZone(identifier: "UTC")
         return Calendar(identifier: .gregorian).date(from: c)!
     }
 
-    // Fixture mirrors upstream budgetDataQuery.test.ts / budget-analysis-spreadsheet.test.ts:
-    // expense categories across two groups, plus a hidden expense and income categories.
+    /// Fixture mirrors upstream budgetDataQuery.test.ts / budget-analysis-spreadsheet.test.ts:
+    /// expense categories across two groups, plus a hidden expense and income categories.
     private let groups = [
         CategoryGroup(id: "gr-food", name: "Food", isIncome: false, hidden: false, sortOrder: 0, categories: []),
         CategoryGroup(id: "gr-fun", name: "Fun Money", isIncome: false, hidden: false, sortOrder: 1, categories: [])
@@ -23,7 +22,9 @@ struct BudgetAnalysisEngineTests {
     private let hiddenExpense = Actuali.Category(id: "c-hidden", name: "Car Fund", groupId: "gr-fun", isIncome: false, hidden: true, sortOrder: 2)
     private let income = Actuali.Category(id: "c-income", name: "Salary", groupId: "gr-food", isIncome: true, hidden: false, sortOrder: 3)
 
-    private var allCategories: [Actuali.Category] { [groceries, fun, hiddenExpense, income] }
+    private var allCategories: [Actuali.Category] {
+        [groceries, fun, hiddenExpense, income]
+    }
 
     private func tx(date: Int, amount: Int, category: String?, account: String = "a1") -> Transaction {
         Transaction(
@@ -83,35 +84,35 @@ struct BudgetAnalysisEngineTests {
         let result = compute(
             meta(),
             transactions: [
-                tx(date: 20260110, amount: -30000, category: "c-groceries"),
-                tx(date: 20260210, amount: -60000, category: "c-groceries"),
-                tx(date: 20260310, amount: -20000, category: "c-groceries")
+                tx(date: 20_260_110, amount: -30000, category: "c-groceries"),
+                tx(date: 20_260_210, amount: -60000, category: "c-groceries"),
+                tx(date: 20_260_310, amount: -20000, category: "c-groceries")
             ],
             budgets: [
-                budget(202601, "c-groceries", 50000),
-                budget(202602, "c-groceries", 50000),
-                budget(202603, "c-groceries", 50000)
+                budget(202_601, "c-groceries", 50000),
+                budget(202_602, "c-groceries", 50000),
+                budget(202_603, "c-groceries", 50000)
             ]
         )
 
-        #expect(result.intervalData.map(\.month) == [202601, 202602, 202603])
+        #expect(result.intervalData.map(\.month) == [202_601, 202_602, 202_603])
         #expect(result.intervalData.map(\.budgetedCents) == [50000, 50000, 50000])
         // Spent stays negative, mirroring upstream's sum-amount cells.
         #expect(result.intervalData.map(\.spentCents) == [-30000, -60000, -20000])
         // Positive leftovers carry forward: 20000 into Feb, 10000 into Mar.
         #expect(result.intervalData.map(\.balanceCents) == [20000, 10000, 40000])
         #expect(result.intervalData.map(\.overspendingAdjustmentCents) == [0, 0, 0])
-        #expect(result.totalBudgetedCents == 150000)
-        #expect(result.totalSpentCents == -110000)
+        #expect(result.totalBudgetedCents == 150_000)
+        #expect(result.totalSpentCents == -110_000)
     }
 
     @Test func overspendingZeroesOutAndSurfacesNextMonth() {
         let result = compute(
             meta(start: "2026-01", end: "2026-02"),
-            transactions: [tx(date: 20260105, amount: -15000, category: "c-groceries")],
+            transactions: [tx(date: 20_260_105, amount: -15000, category: "c-groceries")],
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202602, "c-groceries", 10000)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_602, "c-groceries", 10000)
             ]
         )
 
@@ -128,10 +129,10 @@ struct BudgetAnalysisEngineTests {
         let result = compute(
             meta(start: "2026-02", end: "2026-02"),
             transactions: [
-                tx(date: 20260110, amount: -4000, category: "c-groceries"),
-                tx(date: 20260112, amount: -3000, category: "c-fun")
+                tx(date: 20_260_110, amount: -4000, category: "c-groceries"),
+                tx(date: 20_260_112, amount: -3000, category: "c-fun")
             ],
-            budgets: [budget(202601, "c-groceries", 10000)]
+            budgets: [budget(202_601, "c-groceries", 10000)]
         )
 
         #expect(result.intervalData.count == 1)
@@ -148,12 +149,12 @@ struct BudgetAnalysisEngineTests {
             meta(conditions: [cond("category", "is", json: "\"c-groceries\"")],
                  start: "2026-01", end: "2026-01"),
             transactions: [
-                tx(date: 20260105, amount: -5000, category: "c-groceries"),
-                tx(date: 20260106, amount: -7000, category: "c-fun")
+                tx(date: 20_260_105, amount: -5000, category: "c-groceries"),
+                tx(date: 20_260_106, amount: -7000, category: "c-fun")
             ],
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 99900)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 99900)
             ]
         )
 
@@ -166,12 +167,12 @@ struct BudgetAnalysisEngineTests {
             meta(conditions: [cond("category_group", "is", json: "\"gr-food\"")],
                  start: "2026-01", end: "2026-01"),
             transactions: [
-                tx(date: 20260105, amount: -5000, category: "c-groceries"),
-                tx(date: 20260106, amount: -7000, category: "c-fun")
+                tx(date: 20_260_105, amount: -5000, category: "c-groceries"),
+                tx(date: 20_260_106, amount: -7000, category: "c-fun")
             ],
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 99900)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 99900)
             ]
         )
 
@@ -185,8 +186,8 @@ struct BudgetAnalysisEngineTests {
             meta(conditions: [cond("category_group", "oneOf", json: "[\"gr-fun\"]")],
                  start: "2026-01", end: "2026-01"),
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 20000)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 20000)
             ]
         )
         #expect(oneOf.intervalData.map(\.budgetedCents) == [20000])
@@ -198,8 +199,8 @@ struct BudgetAnalysisEngineTests {
                 cond("category", "is", json: "\"c-groceries\"")
             ], start: "2026-01", end: "2026-01"),
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 20000)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 20000)
             ]
         )
         #expect(combined.intervalData.map(\.budgetedCents) == [10000])
@@ -211,8 +212,8 @@ struct BudgetAnalysisEngineTests {
             meta(conditions: [cond("category_group", "contains", json: "\"fun\"")],
                  start: "2026-01", end: "2026-01"),
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 20000)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 20000)
             ]
         )
         #expect(result.intervalData.map(\.budgetedCents) == [20000])
@@ -228,16 +229,16 @@ struct BudgetAnalysisEngineTests {
                 cond("category", "gt", json: "\"x\"")
             ], start: "2026-01", end: "2026-01"),
             transactions: [
-                tx(date: 20260105, amount: -5000, category: "c-groceries"),
-                tx(date: 20260106, amount: -7000, category: "c-fun")
+                tx(date: 20_260_105, amount: -5000, category: "c-groceries"),
+                tx(date: 20_260_106, amount: -7000, category: "c-fun")
             ],
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 99900)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 99900)
             ]
         )
 
-        #expect(result.intervalData.map(\.budgetedCents) == [109900])
+        #expect(result.intervalData.map(\.budgetedCents) == [109_900])
         #expect(result.intervalData.map(\.spentCents) == [-12000])
     }
 
@@ -246,8 +247,8 @@ struct BudgetAnalysisEngineTests {
             meta(conditions: [cond("amount", "gt", json: "100")],
                  start: "2026-01", end: "2026-01"),
             budgets: [
-                budget(202601, "c-groceries", 10000),
-                budget(202601, "c-fun", 20000)
+                budget(202_601, "c-groceries", 10000),
+                budget(202_601, "c-fun", 20000)
             ]
         )
         #expect(result.intervalData.map(\.budgetedCents) == [30000])
@@ -257,12 +258,12 @@ struct BudgetAnalysisEngineTests {
 
     @Test func hiddenCategoriesExcludedUnlessRequested() {
         let transactions = [
-            tx(date: 20260105, amount: -5000, category: "c-groceries"),
-            tx(date: 20260106, amount: -1000, category: "c-hidden")
+            tx(date: 20_260_105, amount: -5000, category: "c-groceries"),
+            tx(date: 20_260_106, amount: -1000, category: "c-hidden")
         ]
         let budgets = [
-            budget(202601, "c-groceries", 10000),
-            budget(202601, "c-hidden", 20000)
+            budget(202_601, "c-groceries", 10000),
+            budget(202_601, "c-hidden", 20000)
         ]
 
         let withoutHidden = compute(meta(start: "2026-01", end: "2026-01"),
@@ -279,8 +280,8 @@ struct BudgetAnalysisEngineTests {
     @Test func incomeCategoriesAlwaysExcluded() {
         let result = compute(
             meta(start: "2026-01", end: "2026-01", showHiddenCategories: true),
-            transactions: [tx(date: 20260105, amount: 100000, category: "c-income")],
-            budgets: [budget(202601, "c-income", 50000)]
+            transactions: [tx(date: 20_260_105, amount: 100_000, category: "c-income")],
+            budgets: [budget(202_601, "c-income", 50000)]
         )
         #expect(result.intervalData.map(\.budgetedCents) == [0])
         #expect(result.intervalData.map(\.spentCents) == [0])
@@ -290,8 +291,8 @@ struct BudgetAnalysisEngineTests {
         let result = compute(
             meta(start: "2026-01", end: "2026-01"),
             transactions: [
-                tx(date: 20260105, amount: -5000, category: "c-groceries"),
-                tx(date: 20260106, amount: -9000, category: "c-groceries", account: "a-off")
+                tx(date: 20_260_105, amount: -5000, category: "c-groceries"),
+                tx(date: 20_260_106, amount: -9000, category: "c-groceries", account: "a-off")
             ],
             context: ConditionsFilter.Context(offBudgetAccountIds: ["a-off"], accountNames: [:])
         )
@@ -302,7 +303,7 @@ struct BudgetAnalysisEngineTests {
 
     @Test func defaultTimeFrameIsTrailingSixMonthsAndDisplayDefaultsMatchUpstream() {
         let result = compute(nil)
-        #expect(result.intervalData.map(\.month) == [202512, 202601, 202602, 202603, 202604, 202605])
+        #expect(result.intervalData.map(\.month) == [202_512, 202_601, 202_602, 202_603, 202_604, 202_605])
         #expect(result.graphType == .bar)
         #expect(result.showBalance == true)
         #expect(result.balanceOnly == false)

@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Answers /sync/sync either with a valid in-sync response or with a network
 /// failure, so the headless write path can be exercised against a reachable
@@ -19,13 +19,19 @@ private final class SyncOutcomeTransport: URLProtocol {
         absorbed = []
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         if Self.failWithOffline {
             client?.urlProtocol(self, didFailWithError: NSError(
-                domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet))
+                domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet
+            ))
             return
         }
 
@@ -84,82 +90,81 @@ private final class SyncOutcomeTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct TransactionLoggerSyncOutcomeTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                )
-                """)
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
-                """)
+            CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
+            """)
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
-                    actions TEXT, tombstone INTEGER DEFAULT 0,
-                    conditions_op TEXT DEFAULT 'and'
-                )
-                """)
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
+                actions TEXT, tombstone INTEGER DEFAULT 0,
+                conditions_op TEXT DEFAULT 'and'
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase, serverReachable: Bool) async throws -> BudgetStore {
@@ -215,7 +220,7 @@ struct TransactionLoggerSyncOutcomeTests {
         _ = try database.insertMessages([unrelated])
 
         #expect(await store.hasPendingLocalWrites())
-        #expect(!(await store.hasPendingLocalWrites(
+        #expect(await !(store.hasPendingLocalWrites(
             dataset: Transaction.datasetName,
             row: result.transaction.id
         )))
@@ -229,9 +234,9 @@ struct TransactionLoggerSyncOutcomeTests {
         let financialId = "actuali-pending-import:partial"
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
-                VALUES (?, 'acct-1', 20260811, -820, ?, 0)
-                """, arguments: [transactionId, financialId])
+            INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+            VALUES (?, 'acct-1', 20260811, -820, ?, 0)
+            """, arguments: [transactionId, financialId])
         }
         let partial = CRDTMessage(
             timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
@@ -266,11 +271,11 @@ struct TransactionLoggerSyncOutcomeTests {
         let store = try await makeStore(database: database, serverReachable: true)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-                VALUES ('set-category', NULL, 'and',
-                    '[{"op":"contains","field":"imported_description","value":"BLUE"}]',
-                    '[{"op":"set","field":"category","value":"cat-rule","type":"id"}]', 0)
-                """)
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES ('set-category', NULL, 'and',
+                '[{"op":"contains","field":"imported_description","value":"BLUE"}]',
+                '[{"op":"set","field":"category","value":"cat-rule","type":"id"}]', 0)
+            """)
         }
 
         let result = try await log(to: store)

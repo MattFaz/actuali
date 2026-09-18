@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the row set of `fetchUncategorizedTransactions()` /
 /// `fetchUncategorizedCount()` to the WebUI's "uncategorized" pseudo-account
@@ -13,7 +13,6 @@ import GRDB
 ///   tombstoned split parents never appear (GH #26).
 @MainActor
 struct BudgetDatabaseUncategorizedTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

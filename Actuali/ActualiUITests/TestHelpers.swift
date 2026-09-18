@@ -31,8 +31,12 @@ extension XCTestCase {
             return
         }
         let strip = app.scrollViews.firstMatch
-        for _ in 0..<5 where !chip.isHittable { strip.swipeLeft() }
-        for _ in 0..<10 where !chip.isHittable { strip.swipeRight() }
+        for _ in 0..<5 where !chip.isHittable {
+            strip.swipeLeft()
+        }
+        for _ in 0..<10 where !chip.isHittable {
+            strip.swipeRight()
+        }
         XCTAssertTrue(chip.isHittable, "\(filter) filter chip not reachable in the strip")
         chip.tap()
     }
@@ -48,7 +52,7 @@ extension XCTestCase {
         maxSwipes: Int = 12
     ) {
         var swipesLeft = maxSwipes
-        while !element.isHittable && swipesLeft > 0 {
+        while !element.isHittable, swipesLeft > 0 {
             app.swipeUp()
             swipesLeft -= 1
         }

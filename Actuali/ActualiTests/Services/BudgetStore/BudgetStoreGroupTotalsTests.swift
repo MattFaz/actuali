@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The Budget menu's group-totals switch defaults to on and writes through to
 /// UserDefaults, like the other display settings.
@@ -11,7 +11,6 @@ import Testing
 /// settings suites.
 @MainActor
 struct BudgetStoreGroupTotalsTests {
-
     @Test func groupTotalsShowByDefault() {
         #expect(BudgetStore.previewInstance().showGroupTotals)
     }

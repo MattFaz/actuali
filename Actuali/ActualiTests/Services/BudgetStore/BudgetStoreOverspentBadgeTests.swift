@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The Budget tab badge count must respect the "Overspent Badge" display
 /// setting: the real overspent count when enabled, always 0 when disabled.
 @MainActor
 struct BudgetStoreOverspentBadgeTests {
-
     private func makeMonth(availables: [Int]) -> BudgetMonth {
         BudgetMonth(
             month: "2026-07",

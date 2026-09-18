@@ -1,7 +1,6 @@
 import Foundation
 
 enum CanonicalDateParser {
-
     private static var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!
@@ -11,19 +10,19 @@ enum CanonicalDateParser {
     static func parse(_ string: String) -> Date? {
         let bytes = Array(string.utf8)
         guard bytes.count == 4 || bytes.count == 7 || bytes.count == 10,
-              bytes[0...3].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
+              bytes[0 ... 3].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
         if bytes.count >= 7 {
             guard bytes[4] == 45,
-                  bytes[5...6].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
+                  bytes[5 ... 6].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
         }
         if bytes.count == 10 {
             guard bytes[7] == 45,
-                  bytes[8...9].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
+                  bytes[8 ... 9].allSatisfy({ $0 >= 48 && $0 <= 57 }) else { return nil }
         }
 
-        let year = Int(String(decoding: bytes[0...3], as: UTF8.self))!
-        let month = bytes.count == 4 ? nil : Int(String(decoding: bytes[5...6], as: UTF8.self))
-        let day = bytes.count == 10 ? Int(String(decoding: bytes[8...9], as: UTF8.self)) : nil
+        let year = Int(String(decoding: bytes[0 ... 3], as: UTF8.self))!
+        let month = bytes.count == 4 ? nil : Int(String(decoding: bytes[5 ... 6], as: UTF8.self))
+        let day = bytes.count == 10 ? Int(String(decoding: bytes[8 ... 9], as: UTF8.self)) : nil
         let components = DateComponents(year: year, month: month, day: day ?? 1)
         guard let date = calendar.date(from: components) else { return nil }
         let parsed = calendar.dateComponents([.year, .month, .day], from: date)

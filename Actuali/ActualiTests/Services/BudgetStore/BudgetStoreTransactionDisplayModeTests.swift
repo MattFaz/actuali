@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The transaction list's flat/grouped switch defaults to flat and writes
 /// through to UserDefaults, like the other display settings.
@@ -11,7 +11,6 @@ import Testing
 /// settings suites.
 @MainActor
 struct BudgetStoreTransactionDisplayModeTests {
-
     @Test func listsAreFlatByDefault() {
         #expect(BudgetStore.previewInstance().transactionDisplayMode == .flat)
     }

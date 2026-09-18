@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 struct BudgetDatabaseEnvelopeBufferTests {
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -9,32 +9,32 @@ struct BudgetDatabaseEnvelopeBufferTests {
             .appendingPathComponent("buffer-\(UUID().uuidString).sqlite")
         try DatabaseQueue(path: url.path).write { db in
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE zero_budget_months (
-                    id TEXT PRIMARY KEY,
-                    buffered INTEGER NOT NULL DEFAULT 0
-                )
-                """)
+            CREATE TABLE zero_budget_months (
+                id TEXT PRIMARY KEY,
+                buffered INTEGER NOT NULL DEFAULT 0
+            )
+            """)
         }
-        return (try BudgetDatabase(path: url), url)
+        return try (BudgetDatabase(path: url), url)
     }
 
     private func message(amount: Int, millis: Int64) -> CRDTMessage {
@@ -62,9 +62,9 @@ struct BudgetDatabaseEnvelopeBufferTests {
             try Int.fetchOne(
                 db,
                 sql: """
-                    SELECT COUNT(*) FROM messages_crdt
-                    WHERE dataset = ? AND row = ? AND column = ?
-                    """,
+                SELECT COUNT(*) FROM messages_crdt
+                WHERE dataset = ? AND row = ? AND column = ?
+                """,
                 arguments: ["zero_budget_months", "2026-09", "buffered"]
             ) ?? 0
         }

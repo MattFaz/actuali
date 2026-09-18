@@ -1,7 +1,6 @@
+@testable import Actuali
 import SwiftUI
 import Testing
-
-@testable import Actuali
 
 /// The Credit Cards list orders by urgency rather than by name, and colors each
 /// row off the same day count. Both are pure functions so they can be pinned to
@@ -54,7 +53,7 @@ struct CreditCardsSettingsViewTests {
         let cards = [
             (account: account("Zeta"), cycle: cycle),
             (account: account("Alpha"), cycle: cycle),
-            (account: account("Mid"), cycle: cycle),
+            (account: account("Mid"), cycle: cycle)
         ]
         #expect(CreditCardsSettingsView.sortedCards(cards, today: today).map(\.account.name)
             == ["Alpha", "Mid", "Zeta"])
@@ -86,7 +85,7 @@ struct CreditCardsSettingsViewTests {
             (account: paidSoon, cycle: soon),
             (account: unpaidLater, cycle: later),
             (account: unpaidSoon, cycle: soon),
-            (account: paidLater, cycle: later),
+            (account: paidLater, cycle: later)
         ]
 
         let sorted = CreditCardsSettingsView.sortedCards(cards, today: today)

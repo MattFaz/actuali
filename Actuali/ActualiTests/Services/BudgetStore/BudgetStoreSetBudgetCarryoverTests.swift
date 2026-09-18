@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreSetBudgetCarryoverTests {
-
     /// Full schema fetchBudgetMonth needs (matches BudgetStoreSetBudgetAmountTests)
     /// plus messages_crdt for the sync write path.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -92,7 +91,7 @@ struct BudgetStoreSetBudgetCarryoverTests {
                     VALUES ('txn-1', 'acct-1', 'cat-groceries', -3000, 20260710);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -148,7 +147,7 @@ struct BudgetStoreSetBudgetCarryoverTests {
         #expect(july.amount == 1000)
         #expect(july.carryover == 1)
         #expect(rows.count == 15) // 2026-07 through 2027-09
-        #expect(rows.last?.month == 202709)
+        #expect(rows.last?.month == 202_709)
         #expect(rows.dropFirst().allSatisfy { $0.carryover == 1 })
         #expect(rows.dropFirst().first?.id == "202608-cat-groceries")
 

@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct CategoryGroupTotalsTests {
-
     private func makeCategory(
         id: String,
         budgeted: Int,

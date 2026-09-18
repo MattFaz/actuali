@@ -1,13 +1,12 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Income categories surfaced on BudgetMonth for the Budget tab's Income
 /// section (mirrors the Income group in the Actual web UI's budget table).
 @MainActor
 struct BudgetDatabaseIncomeTests {
-
     private func makeDatabase(envelope: Bool = true) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -103,9 +102,9 @@ struct BudgetDatabaseIncomeTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES (?, 'acct-1', ?, ?, ?, 0)
-                """, arguments: [UUID().uuidString, category, amount, date])
+            INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+            VALUES (?, 'acct-1', ?, ?, ?, 0)
+            """, arguments: [UUID().uuidString, category, amount, date])
         }
     }
 
@@ -119,19 +118,19 @@ struct BudgetDatabaseIncomeTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
-        try insertTransaction(db, date: 20260615, category: "cat-salary", amount: 50_000)
-        try insertTransaction(db, date: 20260620, category: "cat-bonus", amount: 25_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
+        try insertTransaction(db, date: 20_260_615, category: "cat-salary", amount: 50000)
+        try insertTransaction(db, date: 20_260_620, category: "cat-bonus", amount: 25000)
         // Different month: must not leak into June.
-        try insertTransaction(db, date: 20260501, category: "cat-salary", amount: 999_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 999_000)
         // Expense activity must not appear as income.
-        try insertTransaction(db, date: 20260610, category: "cat-groceries", amount: -30_000)
+        try insertTransaction(db, date: 20_260_610, category: "cat-groceries", amount: -30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
 
         #expect(june.incomeCategories.map(\.categoryId) == ["cat-salary", "cat-bonus"])
         #expect(june.incomeCategories.first?.received == 150_000)
-        #expect(june.incomeCategories.last?.received == 25_000)
+        #expect(june.incomeCategories.last?.received == 25000)
         #expect(june.totalIncome == 175_000)
         #expect(june.incomeCategories.first?.groupName == "Income")
         // Income categories stay out of the expense list.
@@ -142,7 +141,7 @@ struct BudgetDatabaseIncomeTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let bonus = june.incomeCategories.first { $0.categoryId == "cat-bonus" }
@@ -154,7 +153,7 @@ struct BudgetDatabaseIncomeTests {
         defer { cleanup(url) }
 
         try execSQL(db, "UPDATE categories SET hidden = 1 WHERE id = 'cat-bonus'")
-        try insertTransaction(db, date: 20260601, category: "cat-bonus", amount: 25_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-bonus", amount: 25000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         #expect(june.incomeCategories.map(\.categoryId) == ["cat-salary"])
@@ -180,7 +179,7 @@ struct BudgetDatabaseIncomeTests {
         defer { cleanup(url) }
 
         try execSQL(db, "UPDATE categories SET hidden = 1 WHERE id = 'cat-groceries'")
-        try insertTransaction(db, date: 20260501, category: "cat-groceries", amount: -25_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-groceries", amount: -25000)
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let category = try #require(june.hiddenCategoryBudgets.first {
             $0.categoryId == "cat-groceries"
@@ -194,7 +193,7 @@ struct BudgetDatabaseIncomeTests {
         let history = await store.budgetHistory(for: category, monthCount: 1)
 
         #expect(history.count == 1)
-        #expect(history[0].spent == -25_000)
+        #expect(history[0].spent == -25000)
     }
 
     @Test func transactionsOnADeletedAccountAreExcluded() async throws {
@@ -206,20 +205,20 @@ struct BudgetDatabaseIncomeTests {
         defer { cleanup(url) }
 
         try execSQL(db, """
-            INSERT INTO accounts (id, name, offbudget, sort_order, tombstone)
-            VALUES ('acct-dead', 'Deleted', 0, 2.0, 1);
+        INSERT INTO accounts (id, name, offbudget, sort_order, tombstone)
+        VALUES ('acct-dead', 'Deleted', 0, 2.0, 1);
 
-            INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
-                ('ghost-income', 'acct-dead', 'cat-salary',    77000, 20260601, 0),
-                ('ghost-spend',  'acct-dead', 'cat-groceries', -8000, 20260602, 0);
-            """)
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
-        try insertTransaction(db, date: 20260602, category: "cat-groceries", amount: -30_000)
+        INSERT INTO transactions (id, acct, category, amount, date, tombstone) VALUES
+            ('ghost-income', 'acct-dead', 'cat-salary',    77000, 20260601, 0),
+            ('ghost-spend',  'acct-dead', 'cat-groceries', -8000, 20260602, 0);
+        """)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
+        try insertTransaction(db, date: 20_260_602, category: "cat-groceries", amount: -30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
 
         #expect(june.totalIncome == 100_000)
-        #expect(june.totalSpent == -30_000)
+        #expect(june.totalSpent == -30000)
     }
 
     @Test func trackingBudgetIncludesBudgetedIncome() async throws {
@@ -227,10 +226,10 @@ struct BudgetDatabaseIncomeTests {
         defer { cleanup(url) }
 
         try execSQL(db, """
-            INSERT INTO reflect_budgets (id, month, category, amount)
-            VALUES ('b-1', 202606, 'cat-salary', 120000)
-            """)
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
+        INSERT INTO reflect_budgets (id, month, category, amount)
+        VALUES ('b-1', 202606, 'cat-salary', 120000)
+        """)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let salary = june.incomeCategories.first { $0.categoryId == "cat-salary" }

@@ -21,7 +21,6 @@ enum CategoryFundingDecision: Equatable {
 }
 
 enum CategoryFundingAutomation {
-
     /// Existing overspending is intentionally preserved. The calculation only
     /// considers positive money that was available before the new expense.
     static func shortfall(transactionAmount: Int, availableAfterTransaction: Int) -> Int {
@@ -101,11 +100,12 @@ enum CategoryFundingAutomation {
         let processingBudgetId = budgetStore.currentBudgetId
         guard let processingBudgetId,
               let configuration = loadConfiguration(
-            for: processingBudgetId,
-            defaults: defaults
-        ), configuration.isEnabled,
+                  for: processingBudgetId,
+                  defaults: defaults
+              ), configuration.isEnabled,
               let selectedAccountId = configuration.accountId,
-              let database = budgetStore.databaseForLogger else {
+              let database = budgetStore.databaseForLogger
+        else {
             return
         }
 
@@ -129,7 +129,8 @@ enum CategoryFundingAutomation {
 
         guard let targetCategory = budgetStore.categoryGroups
             .flatMap(\.categories)
-            .first(where: { $0.id == transaction.categoryId }) else {
+            .first(where: { $0.id == transaction.categoryId })
+        else {
             return
         }
 
@@ -226,7 +227,8 @@ enum CategoryFundingAutomation {
         defaults: UserDefaults = .standard
     ) -> CategoryFundingAutomationConfiguration? {
         guard let budgetId,
-              let data = defaults.data(forKey: key(for: budgetId)) else {
+              let data = defaults.data(forKey: key(for: budgetId))
+        else {
             return nil
         }
         return try? JSONDecoder().decode(CategoryFundingAutomationConfiguration.self, from: data)

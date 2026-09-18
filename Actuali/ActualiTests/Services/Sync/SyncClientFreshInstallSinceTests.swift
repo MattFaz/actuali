@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Captures the body POSTed to /sync/sync and answers with a canned, valid
 /// sync response (no messages, empty merkle), so fullSync's request can be
@@ -9,8 +9,13 @@ import Testing
 private final class SyncCaptureTransport: URLProtocol {
     nonisolated(unsafe) static var capturedBodies: [Data] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         // URLSession delivers POST bodies to URLProtocol as a stream, not httpBody.
@@ -57,7 +62,6 @@ private final class SyncCaptureTransport: URLProtocol {
 /// for everything after the snapshot's newest CRDT message.
 @Suite(.serialized)
 struct SyncClientFreshInstallSinceTests {
-
     /// Mirrors a freshly downloaded budget file: messages_crdt populated up to
     /// the snapshot time, no messages_clock table at all.
     private func makeDatabase(snapshotTimestamps: [String]) throws -> (BudgetDatabase, URL) {
@@ -66,15 +70,15 @@ struct SyncClientFreshInstallSinceTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             for timestamp in snapshotTimestamps {
                 try db.execute(
                     sql: "INSERT INTO messages_crdt (timestamp, dataset, row, column, value) VALUES (?, 'transactions', 'row-1', 'amount', 'N:1')",
@@ -82,7 +86,7 @@ struct SyncClientFreshInstallSinceTests {
                 )
             }
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
@@ -113,7 +117,7 @@ struct SyncClientFreshInstallSinceTests {
         let snapshotHighWaterMark = "2026-07-22T10:00:00.000Z-0000-a1b2c3d4e5f60718"
         let (database, path) = try makeDatabase(snapshotTimestamps: [
             "2026-07-01T09:00:00.000Z-0000-a1b2c3d4e5f60718",
-            snapshotHighWaterMark,
+            snapshotHighWaterMark
         ])
         defer { cleanup(path) }
         let syncClient = try await makeSyncClient(database: database)

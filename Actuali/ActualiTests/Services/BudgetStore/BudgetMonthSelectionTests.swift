@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetMonthSelectionTests {
@@ -16,7 +16,8 @@ struct BudgetMonthSelectionTests {
 
     private func seedBudget(_ id: String, in manager: BudgetFileManager) throws {
         try FileManager.default.createDirectory(
-            at: manager.budgetDirectory(for: id), withIntermediateDirectories: true)
+            at: manager.budgetDirectory(for: id), withIntermediateDirectories: true
+        )
         let queue = try DatabaseQueue(path: manager.databasePath(for: id).path)
         try queue.write { try $0.execute(sql: BudgetStoreInitialSyncTests.upstreamSchema) }
         try JSONEncoder().encode(BudgetMetadata(

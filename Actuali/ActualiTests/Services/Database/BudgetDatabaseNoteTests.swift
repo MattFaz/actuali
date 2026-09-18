@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Reading notes out of Actual's `notes` table — categories (GH #131) and
 /// accounts (GH #198). The table is keyed by the annotated row's own id, so a
 /// note lives at `notes.id = <that row's id>` whatever kind of row it is.
 struct BudgetDatabaseNoteTests {
-
     /// A budget file with (or deliberately without) the `notes` table.
     /// `seedSQL` inserts rows once the schema is in place.
     private func makeDatabase(
@@ -25,7 +24,7 @@ struct BudgetDatabaseNoteTests {
                 try db.execute(sql: seedSQL)
             }
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func cleanup(_ url: URL) {
@@ -34,8 +33,8 @@ struct BudgetDatabaseNoteTests {
 
     @Test func readsStoredNote() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Cap at $400/mo');
+        """)
         defer { cleanup(path) }
 
         let note = try await database.fetchNote(id: "cat-groceries")
@@ -49,9 +48,9 @@ struct BudgetDatabaseNoteTests {
     /// survive the round trip untouched.
     @Test func preservesMultilineNoteText() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Line one
-            Line two');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-groceries', 'Line one
+        Line two');
+        """)
         defer { cleanup(path) }
 
         let note = try await database.fetchNote(id: "cat-groceries")
@@ -76,8 +75,8 @@ struct BudgetDatabaseNoteTests {
     /// non-optional `text`.
     @Test func nullNoteReadsAsEmpty() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id) VALUES ('cat-groceries');
-            """)
+        INSERT INTO notes (id) VALUES ('cat-groceries');
+        """)
         defer { cleanup(path) }
 
         let note = try await database.fetchNote(id: "cat-groceries")
@@ -90,8 +89,8 @@ struct BudgetDatabaseNoteTests {
     /// category's.
     @Test func doesNotReadAnotherEntitysNote() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-            INSERT INTO notes (id, note) VALUES ('cat-fuel', 'Fuel note');
-            """)
+        INSERT INTO notes (id, note) VALUES ('cat-fuel', 'Fuel note');
+        """)
         defer { cleanup(path) }
 
         let note = try await database.fetchNote(id: "cat-groceries")

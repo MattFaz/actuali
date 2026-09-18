@@ -6,7 +6,8 @@ enum SchedulesListLocalization {
     ) -> String {
         String(localized: LocalizedStringResource(
             String.LocalizationValue("\(count) completed schedules hidden."),
-            locale: locale, bundle: bundle))
+            locale: locale, bundle: bundle
+        ))
     }
 }
 
@@ -22,7 +23,7 @@ struct SchedulesListView: View {
     @State private var searchText = ""
     @State private var showCompleted = false
     @State private var isAddingSchedule = false
-    
+
     @State private var pendingDelete: ScheduleSummary?
     @State private var actionError: String?
 
@@ -50,7 +51,8 @@ struct SchedulesListView: View {
                                     schedule: schedule,
                                     status: budgetStore.scheduleStatuses[schedule.id] ?? .scheduled,
                                     accountName: accountName(schedule),
-                                    payeeName: payeeName(schedule))
+                                    payeeName: payeeName(schedule)
+                                )
                             }
                             .swipeActions(edge: .trailing) {
                                 Button(role: .destructive) {
@@ -96,7 +98,8 @@ struct SchedulesListView: View {
 
                                 Button {
                                     run { try await budgetStore.setScheduleCompleted(
-                                        schedule, completed: !schedule.completed) }
+                                        schedule, completed: !schedule.completed
+                                    ) }
                                 } label: {
                                     schedule.completed
                                         ? Label(ReportStrings.text("Restart", locale: locale), systemImage: "arrow.clockwise")
@@ -111,9 +114,10 @@ struct SchedulesListView: View {
                             }
                         }
                     } footer: {
-                        if completedCount > 0 && !showCompleted {
+                        if completedCount > 0, !showCompleted {
                             Text(SchedulesListLocalization.completedFooter(
-                                count: completedCount, locale: locale))
+                                count: completedCount, locale: locale
+                            ))
                         }
                     }
                 }
@@ -168,7 +172,12 @@ struct SchedulesListView: View {
             pendingDelete.map { _ in ReportStrings.text("Delete this schedule?", locale: locale) } ?? "",
             isPresented: Binding(
                 get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }),
+                set: {
+                    if !$0 {
+                        pendingDelete = nil
+                    }
+                }
+            ),
             titleVisibility: .visible
         ) {
             Button(ReportStrings.text("Delete Schedule", locale: locale), role: .destructive) {
@@ -180,8 +189,12 @@ struct SchedulesListView: View {
         }
         .alert(ReportStrings.text("Action Failed", locale: locale), isPresented: Binding(
             get: { actionError != nil },
-            set: { if !$0 { actionError = nil } })
-        ) {
+            set: {
+                if !$0 {
+                    actionError = nil
+                }
+            }
+        )) {
             Button(ReportStrings.text("OK", locale: locale)) {}
         } message: {
             Text(actionError ?? "")
@@ -223,9 +236,9 @@ struct SchedulesListView: View {
             schedule.name,
             payeeName(schedule),
             accountName(schedule),
-            ScheduleDescription.dateSummary(schedule.dateCondition, locale: locale, bundle: .main),
+            ScheduleDescription.dateSummary(schedule.dateCondition, locale: locale, bundle: .main)
         ]
-        .compactMap { $0 }
+        .compactMap(\.self)
         .joined(separator: " ")
         return haystack.localizedCaseInsensitiveContains(searchText)
     }
@@ -293,8 +306,12 @@ struct ScheduleRow: View {
     /// A schedule need not have a name; fall back to the payee, then the
     /// account, so the row is never blank.
     private var title: String {
-        if let name = schedule.name, !name.isEmpty { return name }
-        if let payeeName, !payeeName.isEmpty { return payeeName }
+        if let name = schedule.name, !name.isEmpty {
+            return name
+        }
+        if let payeeName, !payeeName.isEmpty {
+            return payeeName
+        }
         return accountName ?? ReportStrings.text("Schedule", locale: locale)
     }
 
@@ -314,7 +331,8 @@ struct ScheduleRow: View {
             return "\(budgetStore.displayBalance(ordered.0)) – \(budgetStore.displayBalance(ordered.1))"
         default:
             return Self.formattedAmount(
-                budgetStore.displayBalance(schedule.postAmount), amountOp: schedule.amountOp)
+                budgetStore.displayBalance(schedule.postAmount), amountOp: schedule.amountOp
+            )
         }
     }
 
@@ -331,16 +349,18 @@ struct ScheduleRowUITestFixture: View {
         baseNextDateTs: nil, accountId: nil, payeeId: nil,
         amount: .fixed(-120_000), amountOp: .isApprox, dateOp: nil,
         dateCondition: .recurring(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-09-03",
+            "frequency": "monthly", "start": "2026-09-03"
         ])!), postsTransaction: false, completed: false,
         customUpcomingLength: nil, sortOrder: nil, isCustom: false,
-        conditionsJSON: nil, actionsJSON: nil, categoryId: nil)
+        conditionsJSON: nil, actionsJSON: nil, categoryId: nil
+    )
 
     var body: some View {
         ScheduleRow(
             schedule: schedule, status: .upcoming,
-            accountName: "Checking", payeeName: "Landlord")
-            .padding()
+            accountName: "Checking", payeeName: "Landlord"
+        )
+        .padding()
     }
 }
 #endif

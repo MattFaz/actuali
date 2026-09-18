@@ -1,7 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-
-@testable import Actuali
 
 @Suite("Card account mappings suggestions")
 struct CardAccountMappingsViewTests {

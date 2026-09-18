@@ -14,22 +14,22 @@ final class HistoryObserver {
     private var baselineGeneration = 0
 
     init(store: BudgetStore) {
-        previousBudgetID = store.currentBudgetId
+        self.previousBudgetID = store.currentBudgetId
 
         store.$currentBudgetId
             .sink { [weak self, weak store] budgetID in
                 guard let self, let store else { return }
-                if budgetID != self.previousBudgetID {
+                if budgetID != previousBudgetID {
                     self.previousBudgetID = budgetID
                     self.hasBaseline = false
                     self.previous = [:]
                     self.previousSplitChildren = [:]
-                    self.baselineGeneration += 1
+                    baselineGeneration += 1
                     return
                 }
                 let isRemote = remoteRefreshPending || store.isBankSyncing
-                remoteRefreshPending = false
-                self.enqueueConsume(
+                self.remoteRefreshPending = false
+                enqueueConsume(
                     store: store,
                     budgetID: budgetID,
                     transactions: store.transactions,
@@ -44,14 +44,14 @@ final class HistoryObserver {
                 self.hasBaseline = false
                 self.previous = [:]
                 self.previousSplitChildren = [:]
-                self.baselineGeneration += 1
+                baselineGeneration += 1
             }
             .store(in: &cancellables)
 
         store.$syncState
             .sink { [weak self] state in
                 guard let self else { return }
-                if Self.shouldMarkRemoteRefresh(wasSyncing: self.wasSyncing, state: state) {
+                if Self.shouldMarkRemoteRefresh(wasSyncing: wasSyncing, state: state) {
                     self.remoteRefreshPending = true
                 }
                 self.wasSyncing = state == .syncing
@@ -61,9 +61,9 @@ final class HistoryObserver {
         store.$transactions
             .sink { [weak self, weak store] transactions in
                 guard let self, let store else { return }
-                let isRemote = self.remoteRefreshPending || store.isBankSyncing
+                let isRemote = remoteRefreshPending || store.isBankSyncing
                 self.remoteRefreshPending = false
-                self.enqueueConsume(
+                enqueueConsume(
                     store: store,
                     budgetID: store.currentBudgetId,
                     transactions: transactions,
@@ -150,10 +150,11 @@ final class HistoryObserver {
             previousSplitChildren = currentSplitChildren
             if pendingUndo.budgetID == budgetID,
                Self.matchesPendingUndo(
-                    pendingUndo,
-                    current: current,
-                    splitChildren: currentSplitChildren
-               ) {
+                   pendingUndo,
+                   current: current,
+                   splitChildren: currentSplitChildren
+               )
+            {
                 HistoryStore.finishUndoRecording()
             }
             return
@@ -183,11 +184,10 @@ final class HistoryObserver {
             let oldChildren = previousSplitChildren[parentID] ?? [:]
             let newChildren = currentSplitChildren[parentID] ?? [:]
 
-            let rootChanged: Bool
-            if let oldRoot, let newRoot {
-                rootChanged = !Self.samePersistedState(oldRoot, newRoot)
+            let rootChanged: Bool = if let oldRoot, let newRoot {
+                !Self.samePersistedState(oldRoot, newRoot)
             } else {
-                rootChanged = oldRoot != nil || newRoot != nil
+                oldRoot != nil || newRoot != nil
             }
             let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
 
@@ -197,7 +197,7 @@ final class HistoryObserver {
             if oldRoot == nil, let newRoot {
                 let after = [newRoot]
                     + newChildren.values
-                        .sorted { Self.isBefore($0, $1) }
+                    .sorted { Self.isBefore($0, $1) }
                 HistoryStore.shared.recordSnapshots(
                     budgetID: budgetID,
                     kind: .created,
@@ -207,7 +207,7 @@ final class HistoryObserver {
             } else if let oldRoot, newRoot == nil {
                 let before = [oldRoot]
                     + oldChildren.values
-                        .sorted { Self.isBefore($0, $1) }
+                    .sorted { Self.isBefore($0, $1) }
                 let after = before.map { snapshot in
                     var tombstoned = snapshot
                     tombstoned.tombstone = true
@@ -364,7 +364,9 @@ final class HistoryObserver {
     private static func isBefore(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         let lhsSort = lhs.sortOrder ?? 0
         let rhsSort = rhs.sortOrder ?? 0
-        if lhsSort != rhsSort { return lhsSort < rhsSort }
+        if lhsSort != rhsSort {
+            return lhsSort < rhsSort
+        }
         return lhs.id < rhs.id
     }
 }

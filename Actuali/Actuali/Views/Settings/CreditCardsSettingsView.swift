@@ -14,6 +14,7 @@ struct CreditCardsSettingsView: View {
             }
         }
     }
+
     @State private var showingAddSheet = false
     @State private var editingAccountId: String?
     @State private var selectedAccountId = ""
@@ -132,7 +133,6 @@ struct CreditCardsSettingsView: View {
                     }
                 }
             }
-
         }
         .navigationTitle(String(localized: "Credit Cards"))
         .navigationBarTitleDisplayMode(.inline)
@@ -141,13 +141,16 @@ struct CreditCardsSettingsView: View {
         }
         .sheet(isPresented: Binding(
             get: { editingAccountId != nil },
-            set: { if !$0 { editingAccountId = nil } }
+            set: {
+                if !$0 {
+                    editingAccountId = nil
+                }
+            }
         )) {
             cardSheet(isEditing: true)
         }
     }
 
-    @ViewBuilder
     private func cardSheet(isEditing: Bool) -> some View {
         NavigationStack {
             Form {
@@ -165,7 +168,7 @@ struct CreditCardsSettingsView: View {
                     }
 
                     Picker(String(localized: "Statement Closing Day"), selection: $selectedStatementDay) {
-                        ForEach(1...31, id: \.self) { day in
+                        ForEach(1 ... 31, id: \.self) { day in
                             Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                         }
                     }
@@ -179,13 +182,13 @@ struct CreditCardsSettingsView: View {
 
                     if selectedDueMode == .daysAfter {
                         Picker(String(localized: "Payment Due After"), selection: $selectedDueOffset) {
-                            ForEach(1...CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
+                            ForEach(1 ... CreditCardCycle.maxDueOffsetDays, id: \.self) { days in
                                 Text(days == 1 ? String(localized: "1 Day") : String(format: String(localized: "%lld days"), Int64(days))).tag(days)
                             }
                         }
                     } else {
                         Picker(String(localized: "Payment Due Day"), selection: $selectedDueDay) {
-                            ForEach(1...31, id: \.self) { day in
+                            ForEach(1 ... 31, id: \.self) { day in
                                 Text(ScheduleDescription.ordinal(day, locale: locale)).tag(day)
                             }
                         }
@@ -265,7 +268,6 @@ struct CreditCardsSettingsView: View {
         guard let cents = budgetStore.creditCardLimits[accountId], cents != 0 else { return "" }
         return String(format: "%.2f", Double(cents) / 100.0)
     }
-
 }
 
 /// Compact card row: name + balance on top, spend + due pill on bottom.
@@ -287,8 +289,12 @@ struct CreditCardCycleRow: View {
     /// pill — the pill's own text stays `.primary`, because system yellow on a
     /// light background is about 1.4:1 and unreadable at caption size.
     nonisolated static func urgencyColor(days: Int) -> Color {
-        if days <= 3 { return .red }
-        if days <= 7 { return .orange }
+        if days <= 3 {
+            return .red
+        }
+        if days <= 7 {
+            return .orange
+        }
         return .yellow
     }
 
@@ -303,7 +309,9 @@ struct CreditCardCycleRow: View {
             ?? dues.first { today <= $0.dueDate }
     }
 
-    private var isPaid: Bool { statementDue?.isPaid ?? false }
+    private var isPaid: Bool {
+        statementDue?.isPaid ?? false
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {

@@ -1,8 +1,7 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct SettingsViewTests {
-
     @Test @MainActor func sectionsAreSortedAndRulesAreConditional() {
         #expect(SettingsView.preferencesItems.map(\.title) == [
             "Budget View", "Display", "Privacy", "Transactions & Automation"

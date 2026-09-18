@@ -21,8 +21,8 @@ struct CreditCardCycle: Equatable, Hashable {
     /// or `defaultDueOffsetDays` when using a fixed day of the month.
     var dueOffsetDays: Int {
         switch paymentDue {
-        case .daysAfter(let days): return days
-        case .dayOfMonth: return Self.defaultDueOffsetDays
+        case .daysAfter(let days): days
+        case .dayOfMonth: Self.defaultDueOffsetDays
         }
     }
 
@@ -94,7 +94,7 @@ struct CreditCardCycle: Equatable, Hashable {
     func upcomingStatementDate(for today: DayDate = .today()) -> DayDate {
         var pendingStatement = cycleRange(for: today).end
         var statement = previousStatementDate(for: today)
-        for _ in 0...(dueOffsetDays / 28 + 1) {
+        for _ in 0 ... (dueOffsetDays / 28 + 1) {
             let statementDue = dueDate(forStatement: statement)
             guard today <= statementDue else { break }
             pendingStatement = statement
@@ -135,12 +135,17 @@ struct CreditCardCycle: Equatable, Hashable {
         let dueDate: DayDate
 
         /// Whether this statement has been fully paid off.
-        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+        var isPaid: Bool {
+            remainingDue == 0 && statementBalance > 0
+        }
     }
 
     /// Record of a closed credit card billing statement with spend, due, and transaction metrics.
     struct StatementRecord: Identifiable, Equatable, Hashable, Sendable {
-        var id: Int { endDate.yyyymmdd }
+        var id: Int {
+            endDate.yyyymmdd
+        }
+
         let startDate: DayDate
         let endDate: DayDate
         let dueDate: DayDate
@@ -154,7 +159,9 @@ struct CreditCardCycle: Equatable, Hashable {
         let totalSpend: Int
 
         /// Whether this statement has been fully paid off.
-        var isPaid: Bool { remainingDue == 0 && statementBalance > 0 }
+        var isPaid: Bool {
+            remainingDue == 0 && statementBalance > 0
+        }
     }
 
     /// Computes the statement payment status given raw balances and payments.
@@ -193,8 +200,12 @@ struct CreditCardCycle: Equatable, Hashable {
     func dueSummary(for today: DayDate = .today(), dueDate: DayDate? = nil) -> String {
         let dueDate = dueDate ?? upcomingDueDate(for: today)
         let days = daysUntilDue(for: today, dueDate: dueDate)
-        if days == 0 { return String(localized: "Due today") }
-        if days == 1 { return String(localized: "Due tomorrow") }
+        if days == 0 {
+            return String(localized: "Due today")
+        }
+        if days == 1 {
+            return String(localized: "Due tomorrow")
+        }
         let dueStr = Transaction.formattedDate(from: dueDate.yyyymmdd, style: .abbreviated)
         return String(format: String(localized: "Due %@ (%lldd)"), dueStr, Int64(days))
     }

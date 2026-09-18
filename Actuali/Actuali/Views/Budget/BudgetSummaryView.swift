@@ -87,10 +87,10 @@ struct BudgetBufferCompactSummaryStat: View {
 
     private var resultColor: Color {
         switch CompactBalanceTone(amount: stat.amount, isMasked: budgetStore.hideBalances) {
-        case .negative: return .red
-        case .zero: return .secondary
-        case .positive: return .green
-        case .masked: return .primary
+        case .negative: .red
+        case .zero: .secondary
+        case .positive: .green
+        case .masked: .primary
         }
     }
 }
@@ -117,7 +117,8 @@ struct BudgetSummarySheet: View {
     private var previousMonthTitle: String {
         guard let previousMonth = BudgetStore.shiftBudgetMonth(month, by: -1),
               let monthNumber = Int(previousMonth.split(separator: "-").last ?? "0"),
-              (1...12).contains(monthNumber) else {
+              (1 ... 12).contains(monthNumber)
+        else {
             return String(localized: "Overspent", locale: locale)
         }
         let formatter = DateFormatter()
@@ -137,7 +138,7 @@ struct BudgetSummarySheet: View {
                 .padding(.horizontal, 24)
                 .frame(maxWidth: 390)
                 .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .onTapGesture { }
+                .onTapGesture {}
         }
         .presentationBackground(.clear)
         .task(id: month) { await loadSummary() }
@@ -145,7 +146,11 @@ struct BudgetSummarySheet: View {
             String(localized: "Unable to update buffer"),
             isPresented: Binding(
                 get: { bufferErrorMessage != nil },
-                set: { if !$0 { bufferErrorMessage = nil } }
+                set: {
+                    if !$0 {
+                        bufferErrorMessage = nil
+                    }
+                }
             )
         ) {
             Button(String(localized: "OK"), role: .cancel) { bufferErrorMessage = nil }
@@ -183,7 +188,7 @@ struct BudgetSummarySheet: View {
                     }
                 }
 
-                Button(String(localized: "Cancel"), role: .cancel) { }
+                Button(String(localized: "Cancel"), role: .cancel) {}
             }
         }
         .sheet(
@@ -204,7 +209,6 @@ struct BudgetSummarySheet: View {
         }
     }
 
-    @ViewBuilder
     private var glassCard: some View {
         VStack(spacing: 0) {
             HStack {
@@ -280,7 +284,6 @@ struct BudgetSummarySheet: View {
         .modifier(BudgetSummaryGlassModifier())
     }
 
-    @ViewBuilder
     private func summaryRow(
         _ title: String,
         _ amount: Int,
@@ -324,7 +327,6 @@ struct BudgetSummarySheet: View {
 }
 
 private struct BudgetSummaryGlassModifier: ViewModifier {
-    @ViewBuilder
     func body(content: Content) -> some View {
         if #available(iOS 26.0, *) {
             content.glassEffect(.regular, in: .rect(cornerRadius: 28))

@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct CalendarEngineTests {
-
     private var asOf: Date {
         var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 14
         c.timeZone = TimeZone(identifier: "UTC")
@@ -40,9 +39,9 @@ struct CalendarEngineTests {
 
     @Test func bucketsIncomeAndExpensePerDay() {
         let transactions = [
-            tx(date: 20260510, amount: 5000),
-            tx(date: 20260510, amount: -3000),
-            tx(date: 20260512, amount: -1000)
+            tx(date: 20_260_510, amount: 5000),
+            tx(date: 20_260_510, amount: -3000),
+            tx(date: 20_260_512, amount: -1000)
         ]
         let result = CalendarEngine.compute(meta: meta(timeFrame: mayTimeFrame),
                                             transactions: transactions,
@@ -59,11 +58,11 @@ struct CalendarEngineTests {
         #expect(cell(result, month: 0, day: 12)?.expenseSize == 25)
     }
 
-    @Test func staticTimeFrameExcludesOutsideRange() {
+    @Test func staticTimeFrameExcludesOutsideRange() throws {
         let transactions = [
-            tx(date: 20260430, amount: -9999),   // April — outside
-            tx(date: 20260501, amount: -100),
-            tx(date: 20260601, amount: -9999)    // June — outside
+            tx(date: 20_260_430, amount: -9999), // April — outside
+            tx(date: 20_260_501, amount: -100),
+            tx(date: 20_260_601, amount: -9999) // June — outside
         ]
         let result = CalendarEngine.compute(meta: meta(timeFrame: mayTimeFrame),
                                             transactions: transactions,
@@ -71,16 +70,16 @@ struct CalendarEngineTests {
         #expect(result.months.count == 1)
         #expect(result.months[0].totalExpenseCents == 100)
         var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
+        cal.timeZone = try #require(TimeZone(identifier: "UTC"))
         let comps = cal.dateComponents([.year, .month, .day], from: result.months[0].monthStart)
         #expect(comps.year == 2026 && comps.month == 5 && comps.day == 1)
     }
 
     @Test func multiMonthRangeSumsOverallTotals() {
         let transactions = [
-            tx(date: 20260410, amount: -1000),
-            tx(date: 20260510, amount: -2000),
-            tx(date: 20260511, amount: 500)
+            tx(date: 20_260_410, amount: -1000),
+            tx(date: 20_260_510, amount: -2000),
+            tx(date: 20_260_511, amount: 500)
         ]
         let tf = WidgetTimeFrame(start: "2026-04", end: "2026-05", mode: .static)
         let result = CalendarEngine.compute(meta: meta(timeFrame: tf),
@@ -98,8 +97,8 @@ struct CalendarEngineTests {
             options: nil, customName: nil
         )
         let transactions = [
-            tx(date: 20260510, amount: -3000, categoryId: "c1"),
-            tx(date: 20260511, amount: -7000, categoryId: "c2")
+            tx(date: 20_260_510, amount: -3000, categoryId: "c1"),
+            tx(date: 20_260_511, amount: -7000, categoryId: "c2")
         ]
         let result = CalendarEngine.compute(meta: meta(conditions: [condition], conditionsOp: "and", timeFrame: mayTimeFrame),
                                             transactions: transactions,
@@ -110,8 +109,8 @@ struct CalendarEngineTests {
 
     @Test func tombstonedTransactionsExcluded() {
         let transactions = [
-            tx(date: 20260510, amount: -3000, tombstone: true),
-            tx(date: 20260511, amount: -1000)
+            tx(date: 20_260_510, amount: -3000, tombstone: true),
+            tx(date: 20_260_511, amount: -1000)
         ]
         let result = CalendarEngine.compute(meta: meta(timeFrame: mayTimeFrame),
                                             transactions: transactions,
@@ -119,8 +118,8 @@ struct CalendarEngineTests {
         #expect(result.months[0].totalExpenseCents == 1000)
     }
 
-    // May 2026 starts on a Friday: Sunday-start grids need 5 leading padding
-    // cells (42 total), Monday-start grids need 4 (35 total).
+    /// May 2026 starts on a Friday: Sunday-start grids need 5 leading padding
+    /// cells (42 total), Monday-start grids need 4 (35 total).
     @Test func gridAlignsToFirstDayOfWeek() {
         let sunday = CalendarEngine.compute(meta: meta(timeFrame: mayTimeFrame),
                                             transactions: [], today: asOf, firstDayOfWeekIdx: 0)
@@ -143,8 +142,8 @@ struct CalendarEngineTests {
 
     @Test func nilTimeFrameDefaultsToCurrentMonth() {
         let transactions = [
-            tx(date: 20260520, amount: -1500),   // later in the current month still counts
-            tx(date: 20260410, amount: -9999)    // prior month excluded
+            tx(date: 20_260_520, amount: -1500), // later in the current month still counts
+            tx(date: 20_260_410, amount: -9999) // prior month excluded
         ]
         let result = CalendarEngine.compute(meta: nil, transactions: transactions,
                                             today: asOf, firstDayOfWeekIdx: 0)

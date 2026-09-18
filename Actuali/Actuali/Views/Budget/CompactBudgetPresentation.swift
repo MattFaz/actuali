@@ -17,12 +17,11 @@ enum CompactBudgetColumn: String, Equatable {
 
 enum CompactBudgetAccessibility {
     static func balanceStatus(_ tone: CompactBalanceTone, locale: Locale, bundle: Bundle = .main) -> String {
-        let key: String
-        switch tone {
-        case .negative: key = "budget.balanceStatus.negative"
-        case .zero: key = "budget.balanceStatus.zero"
-        case .positive: key = "budget.balanceStatus.positive"
-        case .masked: key = "budget.balanceStatus.hidden"
+        let key = switch tone {
+        case .negative: "budget.balanceStatus.negative"
+        case .zero: "budget.balanceStatus.zero"
+        case .positive: "budget.balanceStatus.positive"
+        case .masked: "budget.balanceStatus.hidden"
         }
         return ReportStrings.text(key, locale: locale, bundle: bundle)
     }
@@ -134,10 +133,10 @@ struct CompactBudgetTableLayout: Equatable {
     let incomeColumns: [CompactBudgetColumn?]
 
     init(isTrackingBudget: Bool, showsSpent: Bool) {
-        expenseColumns = showsSpent
+        self.expenseColumns = showsSpent
             ? [.budgeted, .spent, .balance]
             : [.budgeted, .balance]
-        incomeColumns = expenseColumns.map { column in
+        self.incomeColumns = expenseColumns.map { column in
             switch column {
             case .budgeted: isTrackingBudget ? .budgeted : nil
             case .spent: nil
@@ -158,12 +157,12 @@ struct CompactBudgetGroupHeaderPresentation: Equatable {
 
     init(totals: CategoryGroupTotals?, showsSpent: Bool) {
         guard let totals else {
-            columns = []
+            self.columns = []
             return
         }
 
         let layout = CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: showsSpent)
-        columns = layout.expenseColumns.compactMap { column in
+        self.columns = layout.expenseColumns.compactMap { column in
             switch column {
             case .budgeted: Column(type: column, amount: totals.budgeted)
             case .spent: Column(type: column, amount: totals.spent)
@@ -211,9 +210,9 @@ struct CompactBudgetOverview: Equatable {
 
     init(budget: BudgetMonth, showsSpent: Bool, currentMonth: String) {
         if let toBudget = budget.toBudget {
-            leading = Stat(kind: .toBudget, amount: toBudget)
+            self.leading = Stat(kind: .toBudget, amount: toBudget)
         } else {
-            leading = Stat(kind: .income, amount: budget.totalIncome)
+            self.leading = Stat(kind: .income, amount: budget.totalIncome)
         }
 
         var columns = [Stat(kind: .budgeted, amount: budget.totalBudgeted)]

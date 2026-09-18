@@ -1,8 +1,7 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct MerchantNormalizerTests {
-
     @Test func stripsSquarePrefix() {
         #expect(MerchantNormalizer.normalize("SQ *BLUE BOTTLE") == "Blue Bottle")
         #expect(MerchantNormalizer.normalize("sq *blue bottle") == "Blue Bottle")

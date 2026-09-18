@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct CanonicalDateParserTests {
     private var calendar: Calendar {

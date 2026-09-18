@@ -9,19 +9,18 @@ import XCTest
 /// opens it without a real server. Demo data has no recorded locations, so the
 /// screen lands on its empty state.
 final class PayeeLocationsUITests: XCTestCase {
-
     /// Scroll a SwiftUI Form until an off-screen row is created.
     @MainActor
     private func scrollTo(_ element: XCUIElement, in app: XCUIApplication) {
         var swipes = 0
-        while !element.exists && swipes < 8 {
+        while !element.exists, swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
     }
 
     @MainActor
-    func testScreenIsReachableFromSettingsWhenServerSupportsLocations() throws {
+    func testScreenIsReachableFromSettingsWhenServerSupportsLocations() {
         let app = XCUIApplication()
         // Demo data leaves serverURL empty, so the cache key has an empty suffix.
         app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
@@ -49,7 +48,7 @@ final class PayeeLocationsUITests: XCTestCase {
     /// The reported problem: locations recorded in the wrong place must be
     /// removable from anywhere — one at a time, or all at once.
     @MainActor
-    func testClearsOneLocationThenTheRest() throws {
+    func testClearsOneLocationThenTheRest() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4", "-serverURL", "",
                                "-payeeLocationWritesEnabled_", "1",
@@ -108,11 +107,11 @@ final class PayeeLocationsUITests: XCTestCase {
     /// hidden — clearing would write CRDT messages the server drops, so the
     /// screen must not offer it.
     @MainActor
-    func testScreenIsHiddenWhenServerLacksLocationSupport() throws {
+    func testScreenIsHiddenWhenServerLacksLocationSupport() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-initialTab", "4", "-serverURL", "",
-            "-payeeLocationWritesEnabled_", "0",
+            "-payeeLocationWritesEnabled_", "0"
         ]
         app.launch()
 

@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct HistoryStoreTests {
@@ -13,7 +13,7 @@ struct HistoryStoreTests {
         Transaction(
             id: id,
             accountId: "account",
-            date: 20260906,
+            date: 20_260_906,
             amount: amount,
             payeeId: "payee",
             payeeName: "Groceries",
@@ -31,9 +31,9 @@ struct HistoryStoreTests {
         )
     }
 
-    @Test func retainsNewest10Actions() {
+    @Test func retainsNewest10Actions() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
@@ -53,9 +53,9 @@ struct HistoryStoreTests {
         #expect(store.actions.contains { $0.after.first?.id == "10" })
     }
 
-    @Test func actionsPersistAndReload() {
+    @Test func actionsPersistAndReload() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let first = HistoryStore(defaults: defaults)
@@ -72,9 +72,9 @@ struct HistoryStoreTests {
         #expect(second.actions.first?.after.first?.id == "persisted")
     }
 
-    @Test func historyIsIsolatedPerBudget() {
+    @Test func historyIsIsolatedPerBudget() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
@@ -108,9 +108,9 @@ struct HistoryStoreTests {
         #expect(reloaded.actions[0].after.first?.id == "b")
     }
 
-    @Test func actionsWithWrongBudgetAreDiscardedOnLoad() {
+    @Test func actionsWithWrongBudgetAreDiscardedOnLoad() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let wrongBudget = HistoryAction(
@@ -131,7 +131,7 @@ struct HistoryStoreTests {
             after: [transaction(id: "a")],
             status: .applied
         )
-        defaults.set(try! JSONEncoder().encode([wrongBudget, rightBudget]), forKey: "history.actions.budget-a")
+        try defaults.set(JSONEncoder().encode([wrongBudget, rightBudget]), forKey: "history.actions.budget-a")
 
         let store = HistoryStore(defaults: defaults)
         store.load(budgetID: "budget-a")
@@ -140,9 +140,9 @@ struct HistoryStoreTests {
         #expect(store.actions[0].after.first?.id == "a")
     }
 
-    @Test func recordsFullSplitSnapshots() {
+    @Test func recordsFullSplitSnapshots() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
@@ -214,9 +214,9 @@ struct HistoryStoreTests {
         #expect(action.before[0].tombstone == false)
     }
 
-    @Test func undoneActionsCannotBeUndone() {
+    @Test func undoneActionsCannotBeUndone() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let action = HistoryAction(
@@ -278,9 +278,9 @@ struct HistoryStoreTests {
         }
     }
 
-    @Test func coalescesSplitEditPublicationsForSameParent() {
+    @Test func coalescesSplitEditPublicationsForSameParent() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
@@ -347,9 +347,9 @@ struct HistoryStoreTests {
         #expect(deletedSplit.title == "Deleted split transaction")
     }
 
-    @Test func coalescesTransferLegsIntoOneHistoryAction() {
+    @Test func coalescesTransferLegsIntoOneHistoryAction() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 
@@ -380,9 +380,9 @@ struct HistoryStoreTests {
         #expect(store.actions[0].title == "Created transfer")
     }
 
-    @Test func doesNotCoalesceUnrelatedTransferLegs() {
+    @Test func doesNotCoalesceUnrelatedTransferLegs() throws {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suite)!
+        let defaults = try #require(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
         let store = HistoryStore(defaults: defaults)
 

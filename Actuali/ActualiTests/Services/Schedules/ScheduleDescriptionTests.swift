@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pins the recurrence wording against loot-core `getRecurringDescription`.
 /// The monthly-pattern ordering rules are the fragile part: weekday patterns
 /// sort ahead of day-of-month ones, "last" always lands at the end, and a
 /// single repeated weekday is factored out of the list.
 struct ScheduleDescriptionTests {
-
     private var appBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS") ?? .main
     }
@@ -17,7 +16,7 @@ struct ScheduleDescriptionTests {
         merged.merge(json) { _, new in new }
         return RecurConfig(json: merged)!
     }
-    
+
     private func pattern(_ type: String, _ value: Int) -> [String: Any] {
         ["type": type, "value": value]
     }
@@ -25,15 +24,18 @@ struct ScheduleDescriptionTests {
     @Test func daily() {
         #expect(ScheduleDescription.recurring(config(["frequency": "daily"])) == "Every day")
         #expect(ScheduleDescription.recurring(
-            config(["frequency": "daily", "interval": 3])) == "Every 3 days")
+            config(["frequency": "daily", "interval": 3])
+        ) == "Every 3 days")
     }
 
     @Test func weekly() {
         // 2026-08-13 is a Thursday.
         #expect(ScheduleDescription.recurring(
-            config(["frequency": "weekly"])) == "Every week on Thursday")
+            config(["frequency": "weekly"])
+        ) == "Every week on Thursday")
         #expect(ScheduleDescription.recurring(
-            config(["frequency": "weekly", "interval": 2])) == "Every 2 weeks on Thursday")
+            config(["frequency": "weekly", "interval": 2])
+        ) == "Every 2 weeks on Thursday")
     }
 
     @Test func monthlyWithoutPatternsUsesTheStartDay() {
@@ -80,7 +82,7 @@ struct ScheduleDescriptionTests {
             "patterns": [
                 ["type": "day", "value": 1],
                 ["type": "day", "value": 10],
-                ["type": "day", "value": 20],
+                ["type": "day", "value": 20]
             ]
         ]))
         #expect(text == "Every month on 1st, 10th, and 20th")
@@ -89,7 +91,8 @@ struct ScheduleDescriptionTests {
     @Test func yearly() {
         #expect(ScheduleDescription.recurring(
             config(["frequency": "yearly"]),
-            locale: Locale(identifier: "en_US")) == "Every year on Aug 13")
+            locale: Locale(identifier: "en_US")
+        ) == "Every year on Aug 13")
     }
 
     @Test func endModeSuffixes() {

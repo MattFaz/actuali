@@ -17,8 +17,13 @@ struct BackupListView: View {
         return formatter
     }()
 
-    private var hasLatest: Bool { budgetStore.backups.contains(where: \.isLatest) }
-    private var archives: [Backup] { budgetStore.backups.filter { !$0.isLatest } }
+    private var hasLatest: Bool {
+        budgetStore.backups.contains(where: \.isLatest)
+    }
+
+    private var archives: [Backup] {
+        budgetStore.backups.filter { !$0.isLatest }
+    }
 
     var body: some View {
         List {
@@ -132,7 +137,7 @@ struct BackupListView: View {
                     Text(String(localized: "Available Backups"))
                 }
             } footer: {
-                if !hasLatest && !archives.isEmpty {
+                if !hasLatest, !archives.isEmpty {
                     Text(String(localized: "Backups are stored in Actuali's private app storage on this device. Tap Export to save to Files, iCloud Drive, or AirDrop. Tapping a backup restores it (your current data is saved first so you can revert)."))
                 }
             }
@@ -146,7 +151,11 @@ struct BackupListView: View {
             "Restore this backup?",
             isPresented: Binding(
                 get: { pendingRestore != nil },
-                set: { if !$0 { pendingRestore = nil } }
+                set: {
+                    if !$0 {
+                        pendingRestore = nil
+                    }
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -209,7 +218,11 @@ struct BackupListView: View {
             String(localized: "Couldn't Set Backup Folder"),
             isPresented: Binding(
                 get: { destinationErrorMessage != nil },
-                set: { if !$0 { destinationErrorMessage = nil } }
+                set: {
+                    if !$0 {
+                        destinationErrorMessage = nil
+                    }
+                }
             )
         ) {
             Button("OK", role: .cancel) { destinationErrorMessage = nil }

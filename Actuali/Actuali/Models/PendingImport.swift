@@ -56,7 +56,7 @@ enum PendingImportReviewRequirement: Hashable {
                 locale: locale,
                 bundle: bundle
             )
-        case let .confirmActiveBudgetCurrency(source, budget):
+        case .confirmActiveBudgetCurrency(let source, let budget):
             if let source {
                 return ReportStrings.format(
                     "I confirm that the numeric amount is in the active budget currency (%@); no conversion from %@ will be performed.",

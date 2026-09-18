@@ -1,12 +1,11 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins `fetchCardAccountMappings()` against the SQLite `preferences` table.
 @MainActor
 struct BudgetDatabaseCardMappingTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -65,6 +64,5 @@ struct BudgetDatabaseCardMappingTests {
         }
         let nullValue = try await db.fetchCardAccountMappings()
         #expect(nullValue.isEmpty)
-
     }
 }

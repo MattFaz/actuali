@@ -1,11 +1,10 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 @MainActor
 struct BudgetDatabaseCreditCardStatementTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -97,7 +96,7 @@ struct BudgetDatabaseCreditCardStatementTests {
         let resultsBefore = try await db.fetchCreditCardStatementDues(for: [
             (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -70000)
         ])
-        let dueBeforePayment = resultsBefore["card1"]!.first!
+        let dueBeforePayment = try #require(resultsBefore["card1"]?.first)
         #expect(dueBeforePayment.statementBalance == 50000)
         #expect(dueBeforePayment.paymentsSince == 0)
         #expect(dueBeforePayment.remainingDue == 50000)
@@ -114,7 +113,7 @@ struct BudgetDatabaseCreditCardStatementTests {
         let resultsAfter = try await db.fetchCreditCardStatementDues(for: [
             (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -20000)
         ])
-        let dueAfterPayment = resultsAfter["card1"]!.first!
+        let dueAfterPayment = try #require(resultsAfter["card1"]?.first)
         #expect(dueAfterPayment.statementBalance == 50000)
         #expect(dueAfterPayment.paymentsSince == 50000)
         #expect(dueAfterPayment.remainingDue == 0)
@@ -209,8 +208,8 @@ struct BudgetDatabaseCreditCardStatementTests {
 
         let txs = try await db.fetchTransactions(
             accountId: "card1",
-            startDate: 20260616,
-            endDate: 20260715
+            startDate: 20_260_616,
+            endDate: 20_260_715
         )
 
         #expect(txs.count == 3)

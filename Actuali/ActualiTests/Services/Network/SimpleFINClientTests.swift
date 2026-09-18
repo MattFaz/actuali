@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct SimpleFINAccessKeyTests {
-
     @Test func parsesTheProtocolsAccessKeyForm() throws {
         let key = try SimpleFINAccessKey.parse("https://user123:pass456@bridge.simplefin.org/simplefin")
 
@@ -32,8 +31,8 @@ struct SimpleFINAccessKeyTests {
     @Test(arguments: [
         "",
         "not-a-url",
-        "https://bridge.example.com/simplefin",       // no credentials
-        "https://user@bridge.example.com/simplefin",  // no password
+        "https://bridge.example.com/simplefin", // no credentials
+        "https://user@bridge.example.com/simplefin", // no password
         "https://:pass@bridge.example.com/simplefin", // no username
         // Cleartext is refused outright: the key travels in an Authorization
         // header and iOS would block the request anyway.
@@ -71,8 +70,8 @@ struct SimpleFINAccessKeyTests {
         "",
         "definitely not base64 ****",
         // Valid base64, but not a URL we'd ever POST to.
-        "aGVsbG8gd29ybGQ=",                                     // "hello world"
-        "aHR0cDovL2JyaWRnZS5leGFtcGxlLmNvbS9jbGFpbQ=="          // http:// claim URL
+        "aGVsbG8gd29ybGQ=", // "hello world"
+        "aHR0cDovL2JyaWRnZS5leGFtcGxlLmNvbS9jbGFpbQ==" // http:// claim URL
     ])
     func rejectsSetupTokensThatArentClaimURLs(_ token: String) {
         #expect(throws: SimpleFINError.invalidSetupToken) {
@@ -82,7 +81,6 @@ struct SimpleFINAccessKeyTests {
 }
 
 struct SimpleFINAmountTests {
-
     @Test(arguments: [
         ("0", 0),
         ("12", 1200),
@@ -111,21 +109,20 @@ struct SimpleFINAmountTests {
     /// same day as the same one imported by the web UI.
     @Test func datesAreTakenInUTC() {
         // 2024-03-01T00:30:00Z — the previous day anywhere west of Greenwich.
-        #expect(SimpleFINAmount.day(fromTimestamp: 1_709_253_000) == 20240301)
+        #expect(SimpleFINAmount.day(fromTimestamp: 1_709_253_000) == 20_240_301)
         // 2019-06-03T16:40:53Z, the protocol documentation's own example time.
-        #expect(SimpleFINAmount.day(fromTimestamp: 1_559_580_053) == 20190603)
+        #expect(SimpleFINAmount.day(fromTimestamp: 1_559_580_053) == 20_190_603)
     }
 
     @Test func startDatesConvertBackToMidnightUTC() {
-        let timestamp = SimpleFINAmount.timestamp(fromDay: 20240301)
+        let timestamp = SimpleFINAmount.timestamp(fromDay: 20_240_301)
 
         #expect(timestamp == 1_709_251_200)
-        #expect(SimpleFINAmount.day(fromTimestamp: timestamp) == 20240301)
+        #expect(SimpleFINAmount.day(fromTimestamp: timestamp) == 20_240_301)
     }
 }
 
 struct SimpleFINDecodingTests {
-
     /// The shape from the protocol documentation's example response.
     private let sample = """
     {
@@ -245,8 +242,13 @@ private final class SimpleFINTransport: URLProtocol {
         return URLSession(configuration: configuration)
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         Self.requestedURLs.append(request.url!)
@@ -310,7 +312,7 @@ struct SimpleFINClientTests {
         SimpleFINTransport.reset(body: #"{"errors":[],"accounts":[]}"#)
 
         _ = try await makeClient().fetchAccounts(
-            accessKey: accessKey, accountIds: ["a1", "a2"], startDate: 20240301
+            accessKey: accessKey, accountIds: ["a1", "a2"], startDate: 20_240_301
         )
 
         let url = try #require(SimpleFINTransport.requestedURLs.first)

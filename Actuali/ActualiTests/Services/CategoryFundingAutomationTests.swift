@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct CategoryFundingAutomationTests {
     @Test("Sufficient category funds require no funding")
@@ -246,9 +246,9 @@ struct CategoryFundingAutomationTests {
     }
 
     @Test("Configuration can be saved and loaded with injected UserDefaults")
-    func configurationPersistence() {
+    func configurationPersistence() throws {
         let suiteName = "CategoryFundingAutomationTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         let configuration = CategoryFundingAutomationConfiguration(
@@ -286,7 +286,7 @@ struct CategoryFundingAutomationTests {
         Transaction(
             id: UUID().uuidString,
             accountId: accountId,
-            date: 20260825,
+            date: 20_260_825,
             amount: amount,
             payeeId: nil,
             payeeName: nil,

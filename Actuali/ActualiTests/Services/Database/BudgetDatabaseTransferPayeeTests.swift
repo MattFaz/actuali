@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins payee-name resolution in `fetchTransactions()`: a transfer's payee row
 /// carries no name (only `transfer_acct`), so its display name must come from
@@ -10,7 +10,6 @@ import GRDB
 /// Regression for GH #7: transfers rendered with an empty payee.
 @MainActor
 struct BudgetDatabaseTransferPayeeTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

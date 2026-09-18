@@ -32,7 +32,9 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
     }
 
     static func wrapping(_ error: any Error) -> Self {
-        if let error = error as? Self { return error }
+        if let error = error as? Self {
+            return error
+        }
         guard let loggerError = error as? TransactionLogger.LoggerError else {
             return .writeFailed(underlying: error.localizedDescription)
         }
@@ -63,13 +65,16 @@ enum LogTransactionError: Error, LocalizedError, CustomLocalizedStringResourceCo
             return LocalizedStringResource("intent.error.noAmountReceived", locale: locale, bundle: bundle)
         case .transactionAlreadyExists:
             return LocalizedStringResource(
-                "This transaction was already saved.", locale: locale, bundle: bundle)
+                "This transaction was already saved.", locale: locale, bundle: bundle
+            )
         case .transactionSuppressedByRule:
             return LocalizedStringResource(
-                "A transaction rule suppressed this transaction.", locale: locale, bundle: bundle)
+                "A transaction rule suppressed this transaction.", locale: locale, bundle: bundle
+            )
         case .transactionNeedsRecovery:
             return LocalizedStringResource(
-                "This import needs review before it can be approved.", locale: locale, bundle: bundle)
+                "This import needs review before it can be approved.", locale: locale, bundle: bundle
+            )
         case .writeFailed(let underlying):
             return LocalizedStringResource("intent.error.writeFailed \(String(describing: underlying))", locale: locale, bundle: bundle)
         }
@@ -105,14 +110,13 @@ enum GetBalanceError: Error, LocalizedError, CustomLocalizedStringResourceConver
     ) -> LocalizedStringResource {
         switch error {
         case .accountNotFound:
-            return LocalizedStringResource("intent.error.accountNotFound", locale: locale, bundle: bundle)
+            LocalizedStringResource("intent.error.accountNotFound", locale: locale, bundle: bundle)
         case .categoryNotFound:
-            return LocalizedStringResource("intent.error.categoryNotFound", locale: locale, bundle: bundle)
+            LocalizedStringResource("intent.error.categoryNotFound", locale: locale, bundle: bundle)
         case .noBudgetLoaded:
-            return LocalizedStringResource("intent.error.noBudgetLoaded", locale: locale, bundle: bundle)
+            LocalizedStringResource("intent.error.noBudgetLoaded", locale: locale, bundle: bundle)
         case .noAccountSelected:
-            return LocalizedStringResource("intent.error.noAccountSelected", locale: locale, bundle: bundle)
+            LocalizedStringResource("intent.error.noAccountSelected", locale: locale, bundle: bundle)
         }
     }
 }
-

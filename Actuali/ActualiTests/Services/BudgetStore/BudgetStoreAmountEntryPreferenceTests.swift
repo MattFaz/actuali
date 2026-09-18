@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The "Conventional Amount Entry" setting must survive app launches, so the
 /// setter has to reach UserDefaults under the key `init()` reads back.

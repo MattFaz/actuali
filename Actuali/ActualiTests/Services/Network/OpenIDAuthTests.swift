@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct OpenIDAuthTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -37,33 +36,33 @@ struct OpenIDAuthTests {
     // MARK: - Callback token extraction
 
     @Test func extractsTokenFromCallbackURL() throws {
-        let url = URL(string: "actuali://localhost/openid-cb?token=abc123")!
+        let url = try #require(URL(string: "actuali://localhost/openid-cb?token=abc123"))
         let token = try OpenIDAuthenticator.extractToken(from: url)
         #expect(token == "abc123")
     }
 
     @Test func extractsTokenIgnoringOtherQueryItems() throws {
-        let url = URL(string: "actuali://localhost/openid-cb?foo=bar&token=xyz&baz=1")!
+        let url = try #require(URL(string: "actuali://localhost/openid-cb?foo=bar&token=xyz&baz=1"))
         let token = try OpenIDAuthenticator.extractToken(from: url)
         #expect(token == "xyz")
     }
 
-    @Test func throwsServerErrorWhenCallbackHasError() {
-        let url = URL(string: "actuali://localhost/openid-cb?error=access_denied")!
+    @Test func throwsServerErrorWhenCallbackHasError() throws {
+        let url = try #require(URL(string: "actuali://localhost/openid-cb?error=access_denied"))
         #expect(throws: OpenIDAuthError.self) {
             try OpenIDAuthenticator.extractToken(from: url)
         }
     }
 
-    @Test func throwsMissingTokenWhenAbsent() {
-        let url = URL(string: "actuali://localhost/openid-cb")!
+    @Test func throwsMissingTokenWhenAbsent() throws {
+        let url = try #require(URL(string: "actuali://localhost/openid-cb"))
         #expect(throws: OpenIDAuthError.self) {
             try OpenIDAuthenticator.extractToken(from: url)
         }
     }
 
-    @Test func throwsMissingTokenWhenEmpty() {
-        let url = URL(string: "actuali://localhost/openid-cb?token=")!
+    @Test func throwsMissingTokenWhenEmpty() throws {
+        let url = try #require(URL(string: "actuali://localhost/openid-cb?token="))
         #expect(throws: OpenIDAuthError.self) {
             try OpenIDAuthenticator.extractToken(from: url)
         }
@@ -89,7 +88,7 @@ struct OpenIDAuthTests {
         let decoded = try JSONDecoder().decode(LoginMethodsResponse.self, from: json)
         #expect(decoded.methods?.count == 2)
         #expect(decoded.methods?.first?.method == "password")
-        #expect(decoded.methods?.allSatisfy { $0.isActive } == true)
+        #expect(decoded.methods?.allSatisfy(\.isActive) == true)
     }
 
     @Test func inactiveLoginMethodReportsNotActive() throws {

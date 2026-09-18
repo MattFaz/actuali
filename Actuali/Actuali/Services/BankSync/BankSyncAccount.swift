@@ -3,10 +3,10 @@ import Foundation
 /// The provider an account's transactions are downloaded from. Synced links
 /// use `accounts.account_sync_source`; FinanceKit links stay device-local.
 enum BankSyncSource: String, Sendable, Equatable {
-    case simpleFin = "simpleFin"
+    case simpleFin
     /// Apple Card / Apple Cash / Savings via FinanceKit. Ours alone because
     /// the identifiers and data only exist in this device's Wallet.
-    case financeKit = "financeKit"
+    case financeKit
 }
 
 struct ExpectedBankSyncLink: Sendable, Equatable {
@@ -30,7 +30,9 @@ struct BankSyncAccount: Sendable, Equatable, Identifiable {
     let offBudget: Bool
     let closed: Bool
 
-    var source: BankSyncSource? { BankSyncSource(rawValue: syncSource) }
+    var source: BankSyncSource? {
+        BankSyncSource(rawValue: syncSource)
+    }
 }
 
 /// A provider-side account offered for linking, whichever provider it came
@@ -73,7 +75,9 @@ struct Bank: Identifiable, Hashable, Sendable {
 }
 
 extension Bank: CRDTSyncable {
-    static var datasetName: String { "banks" }
+    static var datasetName: String {
+        "banks"
+    }
 
     var syncableFields: [String: Any?] {
         [

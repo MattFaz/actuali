@@ -110,15 +110,32 @@ struct AddTransactionView: View {
         _cleared = State(initialValue: editing.cleared)
     }
 
-    private var isEditing: Bool { editing != nil }
-    private var isPendingImportReview: Bool { !reviewRequirements.isEmpty }
+    private var isEditing: Bool {
+        editing != nil
+    }
+
+    private var isPendingImportReview: Bool {
+        !reviewRequirements.isEmpty
+    }
+
     /// Presented flows (edit, account-detail "+", notification prefill) can
     /// close themselves; the tab-hosted add flow can't. Cancel, post-save
     /// behavior, and the header all branch on this.
-    private var canDismiss: Bool { isEditing || isPresented }
-    private var isTransfer: Bool { txType == .transfer }
-    private var isEditingSplitParent: Bool { editing?.isParent == true }
-    private var isEditingTransfer: Bool { editing?.transferId != nil }
+    private var canDismiss: Bool {
+        isEditing || isPresented
+    }
+
+    private var isTransfer: Bool {
+        txType == .transfer
+    }
+
+    private var isEditingSplitParent: Bool {
+        editing?.isParent == true
+    }
+
+    private var isEditingTransfer: Bool {
+        editing?.transferId != nil
+    }
 
     private struct AutomaticCategoryInput: Equatable {
         var accountId: String
@@ -160,7 +177,10 @@ struct AddTransactionView: View {
         guard let editing else { return false }
         return editing.transferId == nil && !editing.isParent && editing.parentId == nil
     }
-    private var isConvertingToTransfer: Bool { isTransfer && canConvertToTransfer }
+
+    private var isConvertingToTransfer: Bool {
+        isTransfer && canConvertToTransfer
+    }
 
     /// A transfer leg takes a category only when it sits in an on-budget
     /// account and the other side is off-budget — money leaving the budget
@@ -175,12 +195,16 @@ struct AddTransactionView: View {
         let legAccountId = openedOnDestinationLeg ? transferToAccountId : selectedAccountId
         let otherAccountId = openedOnDestinationLeg ? selectedAccountId : transferToAccountId
         guard let leg = budgetStore.accounts.first(where: { $0.id == legAccountId }),
-              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId }) else {
+              let other = budgetStore.accounts.first(where: { $0.id == otherAccountId })
+        else {
             return false
         }
         return !leg.offBudget && other.offBudget
     }
-    private var isSplitting: Bool { !splitLines.isEmpty && !unsplitRequested }
+
+    private var isSplitting: Bool {
+        !splitLines.isEmpty && !unsplitRequested
+    }
 
     /// Whether the form can offer the split option: a plain transaction in
     /// either flow, or an existing parent mid-"Remove Split" (as an undo).
@@ -212,7 +236,9 @@ struct AddTransactionView: View {
         budgetStore.accounts
             .filter { !$0.closed }
             .sorted { lhs, rhs in
-                if lhs.offBudget != rhs.offBudget { return !lhs.offBudget }
+                if lhs.offBudget != rhs.offBudget {
+                    return !lhs.offBudget
+                }
                 return lhs.sortOrder < rhs.sortOrder
             }
     }
@@ -301,12 +327,14 @@ struct AddTransactionView: View {
                 status = await provider.requestPermission()
             }
             guard status == .granted,
-                  let position = try? await provider.currentPosition() else {
+                  let position = try? await provider.currentPosition()
+            else {
                 nearbyPayees = []
                 return
             }
             nearbyPayees = await budgetStore.fetchNearbyPayees(
-                latitude: position.latitude, longitude: position.longitude)
+                latitude: position.latitude, longitude: position.longitude
+            )
         }
     }
 
@@ -341,7 +369,7 @@ struct AddTransactionView: View {
                         Picker("Type", selection: $txType) {
                             Text("Expense").tag(TransactionType.expense)
                             Text("Income").tag(TransactionType.income)
-                            if !isPendingImportReview && (!isEditing || isEditingTransfer || canConvertToTransfer) {
+                            if !isPendingImportReview, !isEditing || isEditingTransfer || canConvertToTransfer {
                                 Text("Transfer").tag(TransactionType.transfer)
                             }
                         }
@@ -445,7 +473,7 @@ struct AddTransactionView: View {
                         }
                     }
 
-                    if isEditingSplitParent && !isSplitting && !unsplitRequested {
+                    if isEditingSplitParent, !isSplitting, !unsplitRequested {
                         // Placeholder while the children load into the
                         // editable split lines below.
                         HStack {
@@ -454,7 +482,7 @@ struct AddTransactionView: View {
                             Text("Split")
                                 .foregroundStyle(.secondary)
                         }
-                    } else if showsStandardCategoryFields && !isSplitting {
+                    } else if showsStandardCategoryFields, !isSplitting {
                         NavigationLink {
                             CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
                                 userPickedCategory = true
@@ -467,7 +495,7 @@ struct AddTransactionView: View {
                                     .foregroundStyle(.secondary)
                             }
                         }
-                            if canSplitIntoCategories && !isPendingImportReview {
+                        if canSplitIntoCategories, !isPendingImportReview {
                             Button {
                                 startSplit()
                             } label: {
@@ -479,7 +507,7 @@ struct AddTransactionView: View {
                     DatePicker("Date", selection: $date, displayedComponents: .date)
                 }
 
-                if isSplitting && !isTransfer && showsStandardCategoryFields {
+                if isSplitting, !isTransfer, showsStandardCategoryFields {
                     splitEntrySection
                 }
 
@@ -488,7 +516,7 @@ struct AddTransactionView: View {
                     // box only pushes Cleared and the save button off screen —
                     // growing as the text needs it, up to six.
                     TextField("Notes", text: $notes, axis: .vertical)
-                        .lineLimit(1...6)
+                        .lineLimit(1 ... 6)
                     // Links in the note stay openable while the text is a
                     // TextField (GH #190) — this form doubles as the only
                     // full view of a transaction's note.
@@ -500,9 +528,10 @@ struct AddTransactionView: View {
                     // Only the paths that record locations (adds and split
                     // edits) get the per-save opt-out; standard edits never
                     // record, so the toggle would be a no-op there.
-                    if (!isEditing || isEditingSplitParent) && !isTransfer
-                        && budgetStore.payeeLocationWritesEnabled
-                        && budgetStore.recordPayeeLocations {
+                    if !isEditing || isEditingSplitParent, !isTransfer,
+                       budgetStore.payeeLocationWritesEnabled,
+                       budgetStore.recordPayeeLocations
+                    {
                         Toggle("Save Location", isOn: $saveLocation)
                     }
                 }
@@ -705,7 +734,7 @@ struct AddTransactionView: View {
             if let remaining = splitRemainingCents, remaining != 0 {
                 Text("\(budgetStore.formatCurrency(remaining)) left to assign")
                     .foregroundStyle(.red)
-            } else if splitRemainingCents == 0 && hasBlankSplitLine {
+            } else if splitRemainingCents == 0, hasBlankSplitLine {
                 // Nothing left to assign but a line is still blank — say why
                 // Save stays disabled instead of leaving it a mystery.
                 Text("Fill in or remove the empty line")
@@ -743,17 +772,17 @@ struct AddTransactionView: View {
 
     private var amountSignSymbol: String {
         switch txType {
-        case .expense: return "-"
-        case .income: return "+"
-        case .transfer: return "→"
+        case .expense: "-"
+        case .income: "+"
+        case .transfer: "→"
         }
     }
 
     private var amountSignColor: Color {
         switch txType {
-        case .expense: return .red
-        case .income: return .green
-        case .transfer: return .blue
+        case .expense: .red
+        case .income: .green
+        case .transfer: .blue
         }
     }
 
@@ -767,14 +796,24 @@ struct AddTransactionView: View {
     }
 
     private var saveDisabled: Bool {
-        if isLoading || amount.isEmpty { return true }
-        if !reviewRequirements.isEmpty
-            && !confirmedReviewRequirements.isSuperset(of: reviewRequirements) { return true }
-        if isTransfer && transferToAccountId == nil { return true }
+        if isLoading || amount.isEmpty {
+            return true
+        }
+        if !reviewRequirements.isEmpty,
+           !confirmedReviewRequirements.isSuperset(of: reviewRequirements)
+        {
+            return true
+        }
+        if isTransfer, transferToAccountId == nil {
+            return true
+        }
         // A blank line reads as zero for the remainder display, but the store
         // rejects zero-amount children — keep save blocked until it's filled.
-        if isSplitting && !isTransfer && showsStandardCategoryFields
-            && (splitRemainingCents != 0 || hasBlankSplitLine) { return true }
+        if isSplitting, !isTransfer, showsStandardCategoryFields,
+           splitRemainingCents != 0 || hasBlankSplitLine
+        {
+            return true
+        }
         return false
     }
 
@@ -811,7 +850,8 @@ struct AddTransactionView: View {
             }
         } catch {
             errorMessage = PendingImportApprover.localizedErrorMessage(
-                for: error, locale: locale)
+                for: error, locale: locale
+            )
         }
     }
 
@@ -960,7 +1000,7 @@ private struct SplitLineRow: View {
                     conventionalAmountEntry: budgetStore.conventionalAmountEntry,
                     onToggleSign: { line.isOpposite.toggle() }
                 )
-                    .frame(width: 110)
+                .frame(width: 110)
             }
             // No fill offer on a flipped line: the remainder is stated in the
             // transaction's direction, and filling it here would double the
@@ -983,8 +1023,8 @@ private struct SplitLineRow: View {
                 showPayeePicker = true
             } label: {
                 Text(line.payeeName.isEmpty
-                     ? String(localized: AddTransactionLocalization.optionalPayee, locale: locale)
-                     : line.payeeName)
+                    ? String(localized: AddTransactionLocalization.optionalPayee, locale: locale)
+                    : line.payeeName)
                     .foregroundStyle(line.payeeName.isEmpty ? Color.secondary : Color.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
@@ -999,7 +1039,8 @@ private struct SplitLineRow: View {
                     onSelect: { payee in
                         line.payeeId = payee.id
                         line.payeeName = PayeePickerView.displayName(
-                            for: payee, accounts: budgetStore.accounts)
+                            for: payee, accounts: budgetStore.accounts
+                        )
                         showPayeePicker = false
                     },
                     onCommit: { name in
@@ -1068,7 +1109,7 @@ struct AmountInputField: UIViewRepresentable {
     var autofocus = false
     /// Shows the ± toolbar button and delegates it here instead of signing
     /// the text — for callers whose sign is separate state.
-    var onToggleSign: (() -> Void)? = nil
+    var onToggleSign: (() -> Void)?
 
     /// becomeFirstResponder is a no-op until the view joins a window, and
     /// during a sheet presentation that happens well after makeUIView —
@@ -1131,7 +1172,11 @@ struct AmountInputField: UIViewRepresentable {
         }
         items.append(UIBarButtonItem(barButtonSystemItem: .flexibleSpace, target: nil, action: nil))
         // `.prominent` is iOS 26+; `.done` is the pre-26 equivalent emphasis.
-        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) { .prominent } else { .done }
+        let doneStyle: UIBarButtonItem.Style = if #available(iOS 26, *) {
+            .prominent
+        } else {
+            .done
+        }
         items.append(UIBarButtonItem(
             title: "Done", style: doneStyle,
             target: field, action: #selector(UIResponder.resignFirstResponder)
@@ -1193,39 +1238,39 @@ struct AmountInputField: UIViewRepresentable {
 
             var symbolName: String {
                 switch self {
-                case .add: return "plus"
-                case .subtract: return "minus"
-                case .multiply: return "multiply"
-                case .divide: return "divide"
+                case .add: "plus"
+                case .subtract: "minus"
+                case .multiply: "multiply"
+                case .divide: "divide"
                 }
             }
 
             var accessibilityLabel: String {
                 switch self {
-                case .add: return String(localized: "Add")
-                case .subtract: return String(localized: "Subtract")
-                case .multiply: return String(localized: "Multiply")
-                case .divide: return String(localized: "Divide")
+                case .add: String(localized: "Add")
+                case .subtract: String(localized: "Subtract")
+                case .multiply: String(localized: "Multiply")
+                case .divide: String(localized: "Divide")
                 }
             }
 
             var selector: Selector {
                 switch self {
-                case .add: return #selector(Coordinator.addTapped)
-                case .subtract: return #selector(Coordinator.subtractTapped)
-                case .multiply: return #selector(Coordinator.multiplyTapped)
-                case .divide: return #selector(Coordinator.divideTapped)
+                case .add: #selector(Coordinator.addTapped)
+                case .subtract: #selector(Coordinator.subtractTapped)
+                case .multiply: #selector(Coordinator.multiplyTapped)
+                case .divide: #selector(Coordinator.divideTapped)
                 }
             }
 
             func apply(_ lhs: Double, _ rhs: Double) -> Double {
                 switch self {
-                case .add: return lhs + rhs
-                case .subtract: return lhs - rhs
-                case .multiply: return lhs * rhs
+                case .add: lhs + rhs
+                case .subtract: lhs - rhs
+                case .multiply: lhs * rhs
                 // Dividing by zero has no sensible amount to show, so the
                 // operator is dropped and the running total stands.
-                case .divide: return rhs == 0 ? lhs : lhs / rhs
+                case .divide: rhs == 0 ? lhs : lhs / rhs
                 }
             }
         }
@@ -1308,7 +1353,8 @@ struct AmountInputField: UIViewRepresentable {
                     string,
                     numberFormat: numberFormat
                 ) ?? AmountParser.parse(string),
-                Transaction.cents(fromDollars: pastedValue) != nil else {
+                    Transaction.cents(fromDollars: pastedValue) != nil
+                else {
                     return false
                 }
 
@@ -1351,10 +1397,21 @@ struct AmountInputField: UIViewRepresentable {
             }
         }
 
-        @objc func addTapped() { pushOperator(.add) }
-        @objc func subtractTapped() { pushOperator(.subtract) }
-        @objc func multiplyTapped() { pushOperator(.multiply) }
-        @objc func divideTapped() { pushOperator(.divide) }
+        @objc func addTapped() {
+            pushOperator(.add)
+        }
+
+        @objc func subtractTapped() {
+            pushOperator(.subtract)
+        }
+
+        @objc func multiplyTapped() {
+            pushOperator(.multiply)
+        }
+
+        @objc func divideTapped() {
+            pushOperator(.divide)
+        }
 
         /// Folds the operand just typed into the running total and arms the
         /// next operator. Tapping a second operator without typing anything
@@ -1482,7 +1539,7 @@ struct AmountInputField: UIViewRepresentable {
         /// front of it.
         private func computeOperandDisplay() -> String {
             let sign = isNegative ? "-" : ""
-            if !hasDecimalPoint && integerDigits.isEmpty {
+            if !hasDecimalPoint, integerDigits.isEmpty {
                 // A bare "-" so a sign toggled before any digits stays visible.
                 return sign
             }
@@ -1596,7 +1653,7 @@ struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
-    var onPick: (() -> Void)? = nil
+    var onPick: (() -> Void)?
     @State private var searchText = ""
 
     var body: some View {
@@ -1655,7 +1712,7 @@ struct CategoryPickerView: View {
             let matches = group.categories.filter { category in
                 !category.hidden &&
                     (category.name.localizedCaseInsensitiveContains(trimmed) ||
-                     group.name.localizedCaseInsensitiveContains(trimmed))
+                        group.name.localizedCaseInsensitiveContains(trimmed))
             }
             guard !matches.isEmpty else { return nil }
             var copy = group

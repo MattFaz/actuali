@@ -1,11 +1,10 @@
-import Testing
 @testable import Actuali
+import Testing
 
 /// Pins `SortOrder.shove` to upstream `shoveSortOrders`
 /// (packages/loot-core/src/server/db/sort.ts), which decides where a new
 /// category lands and which siblings have to move for it.
 struct SortOrderTests {
-
     private func position(_ id: String, _ sortOrder: Double) -> SortOrder.Position {
         SortOrder.Position(id: id, sortOrder: sortOrder)
     }

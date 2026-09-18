@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Split transaction behavior at the database layer (GH #47):
 /// - the transaction list resolves a payee for split parents whose payee
@@ -10,7 +10,6 @@ import GRDB
 /// - `insertSplit` writes parent + children + CRDT messages atomically
 @MainActor
 struct BudgetDatabaseSplitTests {
-
     /// Sendable projection of the transaction columns under test, decoded inside
     /// the `read` closure so no non-Sendable `Row` crosses the actor boundary.
     private struct SplitRow: FetchableRecord {
@@ -23,13 +22,13 @@ struct BudgetDatabaseSplitTests {
         let sortOrder: Double
 
         init(row: Row) {
-            id = row["id"]
-            isParent = row["isParent"]
-            isChild = row["isChild"]
-            parentId = row["parent_id"]
-            category = row["category"]
-            amount = row["amount"]
-            sortOrder = row["sort_order"]
+            self.id = row["id"]
+            self.isParent = row["isParent"]
+            self.isChild = row["isChild"]
+            self.parentId = row["parent_id"]
+            self.category = row["category"]
+            self.amount = row["amount"]
+            self.sortOrder = row["sort_order"]
         }
     }
 
@@ -334,7 +333,7 @@ struct BudgetDatabaseSplitTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260610,
+            date: 20_260_610,
             amount: amount,
             payeeId: payeeId,
             payeeName: nil,
@@ -387,9 +386,9 @@ struct BudgetDatabaseSplitTests {
         let queue = try DatabaseQueue(path: url.path)
         let rows = try await queue.read { conn in
             try SplitRow.fetchAll(conn, sql: """
-                SELECT id, isParent, isChild, parent_id, category, amount, sort_order
-                FROM transactions ORDER BY sort_order DESC
-                """)
+            SELECT id, isParent, isChild, parent_id, category, amount, sort_order
+            FROM transactions ORDER BY sort_order DESC
+            """)
         }
         #expect(rows.count == 3)
         #expect(rows[0].id == "parent")
@@ -427,8 +426,8 @@ struct BudgetDatabaseSplitTests {
 
         let queue = try DatabaseQueue(path: url.path)
         let counts = try await queue.read { conn in
-            (try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
-             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
+            try (Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
+                 Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
         }
         #expect(counts == (0, 0))
     }

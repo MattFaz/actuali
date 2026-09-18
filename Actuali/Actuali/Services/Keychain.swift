@@ -1,6 +1,6 @@
 import Foundation
-import Security
 import os
+import Security
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Keychain")
 
@@ -29,7 +29,7 @@ enum Keychain {
             kSecAttrAccount as String: key
         ]
         let deleteStatus = SecItemDelete(deleteQuery as CFDictionary)
-        if deleteStatus != errSecSuccess && deleteStatus != errSecItemNotFound {
+        if deleteStatus != errSecSuccess, deleteStatus != errSecItemNotFound {
             throw KeychainError.unhandled(deleteStatus)
         }
 
@@ -83,7 +83,7 @@ enum Keychain {
             kSecAttrAccount as String: key
         ]
         let status = SecItemDelete(query as CFDictionary)
-        if status != errSecSuccess && status != errSecItemNotFound {
+        if status != errSecSuccess, status != errSecItemNotFound {
             throw KeychainError.unhandled(status)
         }
     }

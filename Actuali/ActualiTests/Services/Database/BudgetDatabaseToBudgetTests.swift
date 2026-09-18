@@ -1,14 +1,13 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Envelope "To Budget" (unallocated funds), mirroring loot-core envelope.ts:
 ///   to-budget = income + prior to-budget + prior buffered
 ///               + last-month-overspent - budgeted - buffered
 @MainActor
 struct BudgetDatabaseToBudgetTests {
-
     private func makeDatabase(
         envelope: Bool = true,
         withBufferTable: Bool = true,
@@ -130,8 +129,8 @@ struct BudgetDatabaseToBudgetTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO \(table) (id, month, category, amount, carryover) VALUES (?, ?, ?, ?, ?)
-                """, arguments: [UUID().uuidString, month, category, amount, carryover ? 1 : 0])
+            INSERT INTO \(table) (id, month, category, amount, carryover) VALUES (?, ?, ?, ?, ?)
+            """, arguments: [UUID().uuidString, month, category, amount, carryover ? 1 : 0])
         }
     }
 
@@ -143,28 +142,28 @@ struct BudgetDatabaseToBudgetTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, tombstone)
-                VALUES (?, 'acct-1', ?, ?, ?, 0)
-                """, arguments: [UUID().uuidString, category, amount, date])
+            INSERT INTO transactions (id, acct, category, amount, date, tombstone)
+            VALUES (?, 'acct-1', ?, ?, ?, 0)
+            """, arguments: [UUID().uuidString, category, amount, date])
         }
     }
 
     private func insertBuffer(_ db: BudgetDatabase, month: String, amount: Int) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO zero_budget_months (id, buffered) VALUES (?, ?)
-                """, arguments: [month, amount])
+            INSERT INTO zero_budget_months (id, buffered) VALUES (?, ?)
+            """, arguments: [month, amount])
         }
     }
 
     private func insertHiddenCategory(_ db: BudgetDatabase, id: String) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO categories (id, name, cat_group, hidden) VALUES (?, 'Hidden', 'grp-1', 1)
-                """, arguments: [id])
+            INSERT INTO categories (id, name, cat_group, hidden) VALUES (?, 'Hidden', 'grp-1', 1)
+            """, arguments: [id])
             try conn.execute(sql: """
-                INSERT INTO category_mapping (id, transferId) VALUES (?, ?)
-                """, arguments: [id, id])
+            INSERT INTO category_mapping (id, transferId) VALUES (?, ?)
+            """, arguments: [id, id])
         }
     }
 
@@ -174,11 +173,11 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
-        try insertBudget(db, month: 202606, category: "cat-groceries", amount: 30_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
+        try insertBudget(db, month: 202_606, category: "cat-groceries", amount: 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 70_000)
+        #expect(june.toBudget == 70000)
     }
 
     @Test func unbudgetedIncomeAccumulatesAcrossMonths() async throws {
@@ -187,15 +186,15 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260501, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, month: 202605, category: "cat-groceries", amount: 20_000)
-        try insertBudget(db, month: 202606, category: "cat-groceries", amount: 10_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
+        try insertBudget(db, month: 202_605, category: "cat-groceries", amount: 20000)
+        try insertBudget(db, month: 202_606, category: "cat-groceries", amount: 10000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
-        #expect(may.toBudget == 30_000)
+        #expect(may.toBudget == 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 20_000)
+        #expect(june.toBudget == 20000)
     }
 
     @Test func overspendingReducesNextMonthToBudget() async throws {
@@ -205,15 +204,15 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260501, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, month: 202605, category: "cat-groceries", amount: 20_000)
-        try insertTransaction(db, date: 20260510, category: "cat-groceries", amount: -30_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
+        try insertBudget(db, month: 202_605, category: "cat-groceries", amount: 20000)
+        try insertTransaction(db, date: 20_260_510, category: "cat-groceries", amount: -30000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
-        #expect(may.toBudget == 30_000)
+        #expect(may.toBudget == 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 20_000)
+        #expect(june.toBudget == 20000)
     }
 
     @Test func overspendingWithCarryoverFlagStaysInCategory() async throws {
@@ -222,12 +221,12 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260501, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, month: 202605, category: "cat-groceries", amount: 20_000, carryover: true)
-        try insertTransaction(db, date: 20260510, category: "cat-groceries", amount: -30_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
+        try insertBudget(db, month: 202_605, category: "cat-groceries", amount: 20000, carryover: true)
+        try insertTransaction(db, date: 20_260_510, category: "cat-groceries", amount: -30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 30_000)
+        #expect(june.toBudget == 30000)
     }
 
     @Test func bufferedHoldSubtractsAndCarriesForward() async throws {
@@ -236,14 +235,14 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260501, category: "cat-salary", amount: 50_000)
-        try insertBuffer(db, month: "2026-05", amount: 20_000)
+        try insertTransaction(db, date: 20_260_501, category: "cat-salary", amount: 50000)
+        try insertBuffer(db, month: "2026-05", amount: 20000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
-        #expect(may.toBudget == 30_000)
+        #expect(may.toBudget == 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 50_000)
+        #expect(june.toBudget == 50000)
     }
 
     @Test func hiddenCategoryBudgetStillCounts() async throws {
@@ -253,14 +252,14 @@ struct BudgetDatabaseToBudgetTests {
         defer { cleanup(url) }
 
         try insertHiddenCategory(db, id: "cat-hidden")
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, month: 202606, category: "cat-hidden", amount: 10_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 50000)
+        try insertBudget(db, month: 202_606, category: "cat-hidden", amount: 10000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         #expect(june.categoryBudgets.first { $0.categoryId == "cat-hidden" } == nil)
         #expect(june.hiddenCategoryBudgets.contains { $0.categoryId == "cat-hidden" })
         #expect(june.totalBudgeted == 0)
-        #expect(june.toBudget == 40_000)
+        #expect(june.toBudget == 40000)
     }
 
     @Test func trackingBudgetHasNoToBudget() async throws {
@@ -268,8 +267,8 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase(envelope: false, withBufferTable: false)
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, table: "reflect_budgets", month: 202606, category: "cat-groceries", amount: 10_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 50000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_606, category: "cat-groceries", amount: 10000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         #expect(june.toBudget == nil)
@@ -286,11 +285,11 @@ struct BudgetDatabaseToBudgetTests {
         )
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "reflect_budgets", month: 202606, category: "cat-groceries", amount: 30_000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_606, category: "cat-groceries", amount: 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
-        #expect(groceries.budgeted == 30_000)
+        #expect(groceries.budgeted == 30000)
         #expect(june.toBudget == nil)
     }
 
@@ -303,11 +302,11 @@ struct BudgetDatabaseToBudgetTests {
         )
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "reflect_budgets", month: 202606, category: "cat-groceries", amount: 30_000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_606, category: "cat-groceries", amount: 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
-        #expect(groceries.budgeted == 30_000)
+        #expect(groceries.budgeted == 30000)
         #expect(june.toBudget == nil)
     }
 
@@ -320,13 +319,13 @@ struct BudgetDatabaseToBudgetTests {
         )
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 100_000)
-        try insertBudget(db, month: 202606, category: "cat-groceries", amount: 30_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 100_000)
+        try insertBudget(db, month: 202_606, category: "cat-groceries", amount: 30000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let groceries = try #require(june.categoryBudgets.first { $0.categoryId == "cat-groceries" })
-        #expect(groceries.budgeted == 30_000)
-        #expect(june.toBudget == 70_000)
+        #expect(groceries.budgeted == 30000)
+        #expect(june.toBudget == 70000)
     }
 
     @Test func missingBufferTableIsTolerated() async throws {
@@ -334,10 +333,10 @@ struct BudgetDatabaseToBudgetTests {
         let (db, url) = try makeDatabase(withBufferTable: false)
         defer { cleanup(url) }
 
-        try insertTransaction(db, date: 20260601, category: "cat-salary", amount: 50_000)
-        try insertBudget(db, month: 202606, category: "cat-groceries", amount: 10_000)
+        try insertTransaction(db, date: 20_260_601, category: "cat-salary", amount: 50000)
+        try insertBudget(db, month: 202_606, category: "cat-groceries", amount: 10000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
-        #expect(june.toBudget == 40_000)
+        #expect(june.toBudget == 40000)
     }
 }

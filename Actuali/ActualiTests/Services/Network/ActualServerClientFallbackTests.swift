@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 private final class FallbackTransport: URLProtocol {
     private struct State {
@@ -10,7 +10,7 @@ private final class FallbackTransport: URLProtocol {
     }
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var state = State()
+    private nonisolated(unsafe) static var state = State()
 
     static var requestedURLs: [URL] {
         lock.withLock { state.requestedURLs }
@@ -34,8 +34,13 @@ private final class FallbackTransport: URLProtocol {
         }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let host = request.url?.host ?? ""
@@ -76,7 +81,8 @@ struct ActualServerClientFallbackTests {
     }
 
     private func makeClient(fallbackServerURL: String = "https://fallback.example.com") async throws
-        -> ActualServerClient {
+        -> ActualServerClient
+    {
         let client = ActualServerClient(session: makeSession())
         try await client.configure(
             serverURL: "https://primary.example.com",
@@ -176,7 +182,7 @@ struct ActualServerClientFallbackTests {
         let client = try await makeClient()
         FallbackTransport.failures = [
             "primary.example.com": URLError(.secureConnectionFailed),
-            "fallback.example.com": URLError(.cannotFindHost),
+            "fallback.example.com": URLError(.cannotFindHost)
         ]
 
         do {
@@ -184,7 +190,8 @@ struct ActualServerClientFallbackTests {
             Issue.record("Expected the request to fail")
         } catch let error as ActualServerError {
             guard case .networkError(let underlying) = error,
-                  let urlError = underlying as? URLError else {
+                  let urlError = underlying as? URLError
+            else {
                 Issue.record("Expected a networkError, got \(error)")
                 return
             }

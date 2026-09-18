@@ -1,8 +1,7 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct TransactionTextParserTests {
-
     // MARK: - Deterministic Fallback Parser Tests
 
     @Test func parsesIndianUPIMessage() {

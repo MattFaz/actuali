@@ -7,7 +7,9 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
     case approachingLimit
     case onTrack
 
-    var id: Self { self }
+    var id: Self {
+        self
+    }
 
     func includes(_ category: CategoryBudget) -> Bool {
         switch self {

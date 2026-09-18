@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetDatabaseGoalTemplateTests {
-
     /// Fixture mirrors a downloaded budget file that predates the goal
     /// migrations — no goal/long_goal/goal_def columns — so opening it also
     /// exercises the migration path.
@@ -99,10 +98,10 @@ struct BudgetDatabaseGoalTemplateTests {
 
         let queue = try DatabaseQueue(path: path.path)
         try queue.read { db in
-            let budgetColumns = Set(try db.columns(in: "zero_budgets").map(\.name))
+            let budgetColumns = try Set(db.columns(in: "zero_budgets").map(\.name))
             #expect(budgetColumns.contains("goal"))
             #expect(budgetColumns.contains("long_goal"))
-            let categoryColumns = Set(try db.columns(in: "categories").map(\.name))
+            let categoryColumns = try Set(db.columns(in: "categories").map(\.name))
             #expect(categoryColumns.contains("goal_def"))
             #expect(categoryColumns.contains("template_settings"))
         }
@@ -114,9 +113,9 @@ struct BudgetDatabaseGoalTemplateTests {
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount, goal, long_goal)
-                VALUES ('202401-cat-groceries', 202401, 'cat-groceries', 40000, 50000, 1)
-                """)
+            INSERT INTO zero_budgets (id, month, category, amount, goal, long_goal)
+            VALUES ('202401-cat-groceries', 202401, 'cat-groceries', 40000, 50000, 1)
+            """)
         }
 
         let month = try await database.fetchBudgetMonth(month: "2024-01")
@@ -132,12 +131,12 @@ struct BudgetDatabaseGoalTemplateTests {
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount, carryover, goal)
-                VALUES ('202312-cat-groceries', 202312, 'cat-groceries', 10000, 1, 7000);
-                INSERT INTO transactions (id, acct, category, amount, date) VALUES
-                    ('t-1', 'acct-1', 'cat-groceries', -4000, 20231215),
-                    ('t-2', 'acct-1', 'cat-salary', 50000, 20231220);
-                """)
+            INSERT INTO zero_budgets (id, month, category, amount, carryover, goal)
+            VALUES ('202312-cat-groceries', 202312, 'cat-groceries', 10000, 1, 7000);
+            INSERT INTO transactions (id, acct, category, amount, date) VALUES
+                ('t-1', 'acct-1', 'cat-groceries', -4000, 20231215),
+                ('t-2', 'acct-1', 'cat-salary', 50000, 20231220);
+            """)
         }
 
         let sheet = try await database.fetchGoalTemplateSheet(month: "2024-01")
@@ -148,7 +147,7 @@ struct BudgetDatabaseGoalTemplateTests {
         #expect(sheet.carryover(month: "2023-12", category: "cat-groceries"))
         #expect(sheet.goal(month: "2023-12", category: "cat-groceries") == 7000)
         #expect(sheet.totalIncome(month: "2023-12") == 50000)
-        #expect(sheet.firstActivityMonth["cat-groceries"] == 202312)
+        #expect(sheet.firstActivityMonth["cat-groceries"] == 202_312)
         // to-budget at 2024-01: December income (50000) minus budgeted (10000).
         #expect(sheet.availableStart == 40000)
     }
@@ -159,11 +158,11 @@ struct BudgetDatabaseGoalTemplateTests {
 
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO notes (id, note) VALUES ('cat-groceries', '#template 50');
-                UPDATE categories SET template_settings = '{"source": "ui"}',
-                    goal_def = '[{"type":"simple","directive":"template","priority":0,"monthly":75}]'
-                    WHERE id = 'cat-salary'
-                """)
+            INSERT INTO notes (id, note) VALUES ('cat-groceries', '#template 50');
+            UPDATE categories SET template_settings = '{"source": "ui"}',
+                goal_def = '[{"type":"simple","directive":"template","priority":0,"monthly":75}]'
+                WHERE id = 'cat-salary'
+            """)
         }
 
         let rows = try await database.fetchGoalTemplateCategories()

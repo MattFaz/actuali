@@ -1,15 +1,15 @@
+@testable import Actuali
 import Foundation
 import Testing
 import UserNotifications
-@testable import Actuali
 
 struct NewTransactionNotifierTests {
-
     private func makeTransaction(id: String, payeeName: String? = nil,
                                  categoryId: String? = nil, amount: Int = -1250,
                                  transferId: String? = nil,
-                                 transferAcct: String? = nil) -> Transaction {
-        Transaction(id: id, accountId: "acct1", date: 20260707, amount: amount,
+                                 transferAcct: String? = nil) -> Transaction
+    {
+        Transaction(id: id, accountId: "acct1", date: 20_260_707, amount: amount,
                     payeeId: nil, payeeName: payeeName, categoryId: categoryId,
                     categoryName: nil, notes: nil, cleared: false, reconciled: false,
                     transferId: transferId, isParent: false, parentId: nil, tombstone: false,
@@ -23,7 +23,8 @@ struct NewTransactionNotifierTests {
     @Test func singleTransactionShowsAmountAndPayee() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
-            currencyCode: "USD")
+            currencyCode: "USD"
+        )
 
         #expect(content?.title == "1 new transaction")
         #expect(content?.body.contains("12.50") == true)
@@ -38,7 +39,8 @@ struct NewTransactionNotifierTests {
     @Test func expenseLineShowsNegativeAmount() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food", amount: -1250)],
-            currencyCode: "USD", narrowSymbol: true)
+            currencyCode: "USD", narrowSymbol: true
+        )
 
         #expect(content?.body.contains("-$12.50") == true)
     }
@@ -46,7 +48,8 @@ struct NewTransactionNotifierTests {
     @Test func incomeLineShowsPositiveAmount() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Employer", categoryId: "income", amount: 1250)],
-            currencyCode: "USD", narrowSymbol: true)
+            currencyCode: "USD", narrowSymbol: true
+        )
 
         #expect(content?.body.contains("-") == false)
         #expect(content?.body.contains("$12.50") == true)
@@ -55,7 +58,8 @@ struct NewTransactionNotifierTests {
     @Test func singleUncategorizedTransactionAsksForCategory() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks")],
-            currencyCode: "USD")
+            currencyCode: "USD"
+        )
 
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }
@@ -66,7 +70,8 @@ struct NewTransactionNotifierTests {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Savings",
                                   transferId: "leg-2", transferAcct: "acct2")],
-            currencyCode: "USD")
+            currencyCode: "USD"
+        )
 
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
     }
@@ -75,7 +80,8 @@ struct NewTransactionNotifierTests {
     @Test func offBudgetTransactionDoesNotAskForCategory() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Broker")],
-            currencyCode: "USD", offBudgetAccountIds: ["acct1"])
+            currencyCode: "USD", offBudgetAccountIds: ["acct1"]
+        )
 
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == false)
     }
@@ -87,7 +93,8 @@ struct NewTransactionNotifierTests {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Brokerage",
                                   transferId: "leg-2", transferAcct: "acct2")],
-            currencyCode: "USD", offBudgetAccountIds: ["acct2"])
+            currencyCode: "USD", offBudgetAccountIds: ["acct2"]
+        )
 
         #expect(content?.body.localizedCaseInsensitiveContains("needs a category") == true)
     }
@@ -95,7 +102,8 @@ struct NewTransactionNotifierTests {
     @Test func singleTransactionShowsAccountWhenKnown() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
-            currencyCode: "USD", accountNames: ["acct1": "Checking"])
+            currencyCode: "USD", accountNames: ["acct1": "Checking"]
+        )
 
         #expect(content?.body.contains("on Checking") == true)
     }
@@ -105,7 +113,8 @@ struct NewTransactionNotifierTests {
     @Test func narrowSymbolDropsCurrencyPrefixFromLines() {
         let content = NewTransactionNotifier.makeContent(
             for: [makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food")],
-            currencyCode: "NZD", narrowSymbol: true)
+            currencyCode: "NZD", narrowSymbol: true
+        )
 
         #expect(content?.body.contains("NZ") == false)
         #expect(content?.body.contains("$") == true)
@@ -116,11 +125,12 @@ struct NewTransactionNotifierTests {
     @Test func multipleTransactionsListDetailLines() {
         let batch = [
             makeTransaction(id: "t1", payeeName: "Starbucks", categoryId: "food", amount: -500),
-            makeTransaction(id: "t2", payeeName: "Shell", amount: -4200),
+            makeTransaction(id: "t2", payeeName: "Shell", amount: -4200)
         ]
 
         let content = NewTransactionNotifier.makeContent(
-            for: batch, currencyCode: "USD", accountNames: ["acct1": "Checking"])
+            for: batch, currencyCode: "USD", accountNames: ["acct1": "Checking"]
+        )
 
         #expect(content?.title == "2 new transactions")
         let lines = content?.body.components(separatedBy: "\n")
@@ -133,13 +143,13 @@ struct NewTransactionNotifierTests {
         #expect(lines?.last?.contains("Shell") == true)
         #expect(lines?.last?.localizedCaseInsensitiveContains("needs a category") == true)
         #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String]
-                == ["t1", "t2"])
+            == ["t1", "t2"])
     }
 
     /// Detail lines are capped so a big sync doesn't produce a wall of text;
     /// the overflow is summarized and tap-through still carries every id.
     @Test func longBatchCapsDetailLinesWithOverflowCount() {
-        let batch = (1...6).map { makeTransaction(id: "t\($0)", categoryId: "food") }
+        let batch = (1 ... 6).map { makeTransaction(id: "t\($0)", categoryId: "food") }
 
         let content = NewTransactionNotifier.makeContent(for: batch, currencyCode: "USD")
 
@@ -152,7 +162,8 @@ struct NewTransactionNotifierTests {
 
     @Test func contentCarriesRoutingMetadata() {
         let content = NewTransactionNotifier.makeContent(
-            for: [makeTransaction(id: "t1")], currencyCode: "USD")
+            for: [makeTransaction(id: "t1")], currencyCode: "USD"
+        )
 
         #expect(content?.userInfo[NewTransactionNotifier.transactionIdsKey] as? [String] == ["t1"])
         #expect(content?.categoryIdentifier == NewTransactionNotifier.categoryIdentifier)
@@ -163,9 +174,11 @@ struct NewTransactionNotifierTests {
     /// one instead of stacking up in Notification Center.
     @Test func requestIdentifierIsStableAcrossBatches() {
         let first = NewTransactionNotifier.makeRequest(
-            for: [makeTransaction(id: "t1")], currencyCode: "USD")
+            for: [makeTransaction(id: "t1")], currencyCode: "USD"
+        )
         let second = NewTransactionNotifier.makeRequest(
-            for: [makeTransaction(id: "t2")], currencyCode: "USD")
+            for: [makeTransaction(id: "t2")], currencyCode: "USD"
+        )
 
         #expect(first?.identifier != nil)
         #expect(first?.identifier == second?.identifier)
@@ -188,7 +201,8 @@ struct NewTransactionNotifierTests {
 
         await NewTransactionNotifier.notify(
             about: [makeTransaction(id: "t1")], currencyCode: "USD",
-            settings: makeSettings(enabled: false), center: center)
+            settings: makeSettings(enabled: false), center: center
+        )
 
         #expect(center.authorizationRequested == false)
         #expect(center.added.isEmpty)
@@ -199,7 +213,8 @@ struct NewTransactionNotifierTests {
 
         await NewTransactionNotifier.notify(
             about: [makeTransaction(id: "t1")], currencyCode: "USD",
-            settings: makeSettings(enabled: true), center: center)
+            settings: makeSettings(enabled: true), center: center
+        )
 
         #expect(center.added.map(\.identifier) == [NewTransactionNotifier.requestIdentifier])
     }

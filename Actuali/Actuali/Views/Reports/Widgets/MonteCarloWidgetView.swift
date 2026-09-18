@@ -1,10 +1,11 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 enum MonteCarloWidgetFormatting {
     static func percentage(_ value: Double, locale: Locale) -> String {
         (value / 100).formatted(
-            .percent.locale(locale).precision(.fractionLength(0...1)))
+            .percent.locale(locale).precision(.fractionLength(0 ... 1))
+        )
     }
 }
 
@@ -37,11 +38,11 @@ struct MonteCarloWidgetView: View {
                         .monospacedDigit()
                     Text(ReportStrings.format(
                         "Success rate to age %@",
-                        endAge.formatted(.number.locale(locale).precision(.fractionLength(0...1))),
+                        endAge.formatted(.number.locale(locale).precision(.fractionLength(0 ... 1))),
                         locale: locale
                     ))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
                 }
             }
 
@@ -68,7 +69,7 @@ struct MonteCarloWidgetView: View {
                 .interpolationMethod(.monotone)
                 .foregroundStyle(.purple)
             }
-            .chartXScale(domain: data.currentAge...endAge)
+            .chartXScale(domain: data.currentAge ... endAge)
             .chartXAxis(.hidden)
             .chartYAxis(.hidden)
             .frame(height: 140)

@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct CreditCardCycleTests {
-
     // MARK: - Cycle Date Calculations
 
     @Test func cycleRangeWhenTodayIsAfterStatementDay() {
@@ -469,7 +468,7 @@ struct CreditCardCycleTests {
         try await withStore { store in
             store.accounts = [
                 account(id: "acct_open", name: "Open Card"),
-                account(id: "acct_closed", name: "Closed Card", closed: true),
+                account(id: "acct_closed", name: "Closed Card", closed: true)
             ]
             await store.setCreditCard(accountId: "acct_open", statementDay: 15, limit: nil)
             await store.setCreditCard(accountId: "acct_closed", statementDay: 20, limit: nil)
@@ -481,7 +480,7 @@ struct CreditCardCycleTests {
             // Reopening the account restores its cycle rather than losing it.
             store.accounts = [
                 account(id: "acct_open", name: "Open Card"),
-                account(id: "acct_closed", name: "Closed Card"),
+                account(id: "acct_closed", name: "Closed Card")
             ]
             #expect(store.activeCreditCardStatementDays.count == 2)
         }
@@ -495,7 +494,7 @@ struct CreditCardCycleTests {
             store.accounts = [
                 account(id: "acct_open", name: "Open Card"),
                 account(id: "acct_closed", name: "Closed Card", closed: true),
-                account(id: "acct_untracked", name: "Everyday Checking", type: .checking),
+                account(id: "acct_untracked", name: "Everyday Checking", type: .checking)
             ]
             await store.setCreditCard(accountId: "acct_open", statementDay: 15, paymentDue: .daysAfter(25), limit: nil)
             await store.setCreditCard(accountId: "acct_closed", statementDay: 20, limit: nil)

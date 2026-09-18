@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreTransferBudgetTests {
-
     /// Full schema fetchBudgetMonth needs (matches BudgetStoreSetBudgetAmountTests)
     /// plus messages_crdt for the sync write path, and two expense categories
     /// so there's something to move money between.
@@ -89,7 +88,7 @@ struct BudgetStoreTransferBudgetTests {
                 INSERT INTO zero_budgets (id, month, category, amount) VALUES ('202607-cat-dining', 202607, 'cat-dining', 1000);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {

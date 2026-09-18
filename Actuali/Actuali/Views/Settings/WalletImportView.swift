@@ -199,7 +199,6 @@ struct WalletImportView: View {
         }
         alreadyImportedIds = budgetStore.walletFinancialIds(accountId: accountId)
     }
-
 }
 
 #Preview {

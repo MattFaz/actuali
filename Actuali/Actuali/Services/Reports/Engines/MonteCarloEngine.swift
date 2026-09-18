@@ -115,24 +115,24 @@ struct MonteCarloMeta: Codable, Equatable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decodeIfPresent(String.self, forKey: .name)
-        pots = try container.decodeIfPresent([MonteCarloPotMeta].self, forKey: .pots)
-        withdrawalStrategy = try container.decodeIfPresent(String.self, forKey: .withdrawalStrategy)
-        returnModel = try container.decodeIfPresent(String.self, forKey: .returnModel)
-        withdrawalRule = try container.decodeIfPresent(MonteCarloWithdrawalRuleMeta.self, forKey: .withdrawalRule)
-        minimumWithdrawal = try container.decodeIfPresent(Double.self, forKey: .minimumWithdrawal)
-        spendingPhases = try container.decodeIfPresent([MonteCarloSpendingPhaseMeta].self, forKey: .spendingPhases)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name)
+        self.pots = try container.decodeIfPresent([MonteCarloPotMeta].self, forKey: .pots)
+        self.withdrawalStrategy = try container.decodeIfPresent(String.self, forKey: .withdrawalStrategy)
+        self.returnModel = try container.decodeIfPresent(String.self, forKey: .returnModel)
+        self.withdrawalRule = try container.decodeIfPresent(MonteCarloWithdrawalRuleMeta.self, forKey: .withdrawalRule)
+        self.minimumWithdrawal = try container.decodeIfPresent(Double.self, forKey: .minimumWithdrawal)
+        self.spendingPhases = try container.decodeIfPresent([MonteCarloSpendingPhaseMeta].self, forKey: .spendingPhases)
         if container.contains(.inflationMean) {
-            inflationMean = .some(try container.decodeIfPresent(Double.self, forKey: .inflationMean))
+            self.inflationMean = try .some(container.decodeIfPresent(Double.self, forKey: .inflationMean))
         } else {
-            inflationMean = nil
+            self.inflationMean = nil
         }
-        inflationStdDev = try container.decodeIfPresent(Double.self, forKey: .inflationStdDev)
-        taxModel = try container.decodeIfPresent(String.self, forKey: .taxModel)
-        taxBands = try container.decodeIfPresent([MonteCarloTaxBandMeta].self, forKey: .taxBands)
-        currentAge = try container.decodeIfPresent(Double.self, forKey: .currentAge)
-        targetAge = try container.decodeIfPresent(Double.self, forKey: .targetAge)
-        simulationCount = try container.decodeIfPresent(Double.self, forKey: .simulationCount)
+        self.inflationStdDev = try container.decodeIfPresent(Double.self, forKey: .inflationStdDev)
+        self.taxModel = try container.decodeIfPresent(String.self, forKey: .taxModel)
+        self.taxBands = try container.decodeIfPresent([MonteCarloTaxBandMeta].self, forKey: .taxBands)
+        self.currentAge = try container.decodeIfPresent(Double.self, forKey: .currentAge)
+        self.targetAge = try container.decodeIfPresent(Double.self, forKey: .targetAge)
+        self.simulationCount = try container.decodeIfPresent(Double.self, forKey: .simulationCount)
     }
 
     func encode(to encoder: any Encoder) throws {
@@ -200,12 +200,12 @@ enum MonteCarloAllocationPreset: String {
     /// (upstream PRESET_ASSET_WEIGHTS).
     var assetWeights: (stocks: Double, bonds: Double, cash: Double)? {
         switch self {
-        case .equity100: return (1, 0, 0)
-        case .equity80: return (0.8, 0.2, 0)
-        case .equity60: return (0.6, 0.4, 0)
-        case .equity40: return (0.4, 0.6, 0)
-        case .cash: return (0, 0, 1)
-        case .custom: return nil
+        case .equity100: (1, 0, 0)
+        case .equity80: (0.8, 0.2, 0)
+        case .equity60: (0.6, 0.4, 0)
+        case .equity40: (0.4, 0.6, 0)
+        case .cash: (0, 0, 1)
+        case .custom: nil
         }
     }
 }
@@ -388,7 +388,7 @@ struct MonteCarloHistoricalReturn: Equatable {
         MonteCarloHistoricalReturn(year: 2022, stocks: -0.1804, bonds: -0.1783, cash: 0.0209),
         MonteCarloHistoricalReturn(year: 2023, stocks: 0.2606, bonds: 0.0388, cash: 0.0528),
         MonteCarloHistoricalReturn(year: 2024, stocks: 0.2488, bonds: -0.0164, cash: 0.0518),
-        MonteCarloHistoricalReturn(year: 2025, stocks: 0.1778, bonds: 0.078, cash: 0.0421),
+        MonteCarloHistoricalReturn(year: 2025, stocks: 0.1778, bonds: 0.078, cash: 0.0421)
     ]
 }
 
@@ -424,15 +424,15 @@ struct MonteCarloRandom {
     private var state: UInt32
 
     init(seed: UInt32) {
-        state = seed
+        self.state = seed
     }
 
     /// Uniform in [0, 1) (upstream mulberry32).
     mutating func next() -> Double {
-        state = state &+ 0x6D2B79F5
+        state = state &+ 0x6d2b79f5
         var mixed = (state ^ (state >> 15)) &* (state | 1)
         mixed = (mixed &+ ((mixed ^ (mixed >> 7)) &* (mixed | 61))) ^ mixed
-        return Double(mixed ^ (mixed >> 14)) / 4294967296
+        return Double(mixed ^ (mixed >> 14)) / 4_294_967_296
     }
 
     /// Standard normal draw via the Box-Muller transform (upstream
@@ -456,7 +456,6 @@ struct MonteCarloRandom {
 /// upstream useResolvedMonteCarloConfig. Pots without a match keep their
 /// stored starting balance.
 enum MonteCarloEngine {
-
     /// 1e14 minor units; keeps compounded results formatter-safe (upstream MAX_AMOUNT).
     static let maxAmount: Double = 100_000_000_000_000
     static let minSimulationCount = 1000.0
@@ -588,7 +587,7 @@ enum MonteCarloEngine {
         let pots = config.pots.isEmpty ? [MonteCarloPot(id: "pot-1")] : config.pots
         let potCount = pots.count
         let potStartBalances = pots.map { clamp($0.startingBalance, 0, maxAmount) }
-        let potMeans = pots.map { $0.expectedReturnMean }
+        let potMeans = pots.map(\.expectedReturnMean)
         let potStdDevs = pots.map { Swift.max(0, $0.returnStdDev) }
         let isSequential = config.withdrawalStrategy == .sequential
         let isBestPerformer = config.withdrawalStrategy == .bestPerformer
@@ -628,7 +627,7 @@ enum MonteCarloEngine {
 
         // --- Fees -----------------------------------------------------------
         let potFeeFixed = pots.map { clamp($0.annualFeeFixed, 0, maxAmount) }
-        let potFeeAdjusts = pots.map { $0.feeAdjustsWithInflation }
+        let potFeeAdjusts = pots.map(\.feeAdjustsWithInflation)
         let potFeeRates = pots.map { clamp($0.annualFeeRate, 0, maxAnnualFeeRate) }
         let hasFees = potFeeFixed.contains { $0 > 0 } || potFeeRates.contains { $0 > 0 }
 
@@ -639,7 +638,7 @@ enum MonteCarloEngine {
             : potTaxRates.reduce(0, Swift.max)
         let minNetFactor = 1 - maxTaxRate
 
-        // Progressive tax on an annual taxable income, in today's money
+        /// Progressive tax on an annual taxable income, in today's money
         func bandTax(_ taxableIncome: Double) -> Double {
             var tax = 0.0
             for bandIndex in 0..<taxBands.count {
@@ -652,9 +651,9 @@ enum MonteCarloEngine {
             return tax
         }
 
-        // Tax due on the takes currently in potTakes. Band thresholds are in
-        // today's money, so taxable income is deflated by the replay's
-        // inflation path before banding
+        /// Tax due on the takes currently in potTakes. Band thresholds are in
+        /// today's money, so taxable income is deflated by the replay's
+        /// inflation path before banding
         func taxForTakes(_ cumulativeInflationNow: Double) -> Double {
             if !hasTax {
                 return 0
@@ -675,8 +674,8 @@ enum MonteCarloEngine {
 
         var potBalances = [Double](repeating: 0, count: potCount)
 
-        // Split a gross withdrawal across pots per the configured strategy,
-        // writing each pot's take into potTakes (upstream computeTakes)
+        /// Split a gross withdrawal across pots per the configured strategy,
+        /// writing each pot's take into potTakes (upstream computeTakes)
         func computeTakes(_ grossTotal: Double, _ year: Int, _ accessibleTotal: Double, _ lastAccessibleIndex: Int) {
             for potIndex in 0..<potCount {
                 potTakes[potIndex] = 0
@@ -798,7 +797,7 @@ enum MonteCarloEngine {
             .sorted { ($0.element.fromAge ?? -.infinity, $0.offset) < ($1.element.fromAge ?? -.infinity, $1.offset) }
             .map(\.element)
         var plannedTodayByYear = [Double](repeating: 0, count: horizonYears + 1)
-        for year in 1...horizonYears {
+        for year in 1 ... horizonYears {
             let age = config.currentAge + Double(year - 1)
             var amount = clamp(spendingPhases[0].annualWithdrawal, 0, maxAmount)
             for phase in spendingPhases {
@@ -830,7 +829,7 @@ enum MonteCarloEngine {
 
         // Keep every emitted amount formatter-safe; absurd configs flat-line
         // at the cap instead of overflowing (upstream toSafeAmount)
-        let maxEmitted = Double(1 << 50)  // 2^50, upstream maxEmitted
+        let maxEmitted = Double(1 << 50) // 2^50, upstream maxEmitted
         func toSafeAmount(_ value: Double) -> Double {
             clamp(value, -maxEmitted, maxEmitted)
         }
@@ -838,7 +837,7 @@ enum MonteCarloEngine {
         // Starting wealth accessible in each simulated year: withdrawal rules
         // measure rates against pots that can actually fund spending
         var accessibleStartByYear = [Double](repeating: 0, count: horizonYears + 1)
-        for year in 1...horizonYears {
+        for year in 1 ... horizonYears {
             var accessibleStart = 0.0
             for potIndex in 0..<potCount where year >= potAccessFromYear[potIndex] {
                 accessibleStart += potStartBalances[potIndex]
@@ -864,7 +863,7 @@ enum MonteCarloEngine {
 
             balancesByYear[0][simulationIndex] = toSafeAmount(total)
 
-            for year in 1...horizonYears {
+            for year in 1 ... horizonYears {
                 if depleted {
                     // Post-depletion years stay at zero
                     continue
@@ -893,7 +892,7 @@ enum MonteCarloEngine {
                         planned * (1 + rule.ceilingPct)
                     )
                 } else {
-                    if year > 1 && rule.type != .none && accessibleTotal > 0 && accessibleStartByYear[year] > 0 {
+                    if year > 1, rule.type != .none, accessibleTotal > 0, accessibleStartByYear[year] > 0 {
                         let currentRate = (planned * adjustmentFactor) / accessibleTotal
                         switch rule.type {
                         case .guardrails:
@@ -997,11 +996,10 @@ enum MonteCarloEngine {
                     total = 0
                     for potIndex in 0..<potCount {
                         if potBalances[potIndex] > 0 {
-                            let yearReturn: Double
-                            if let blended = potHistoricalReturns[potIndex], historyIndex >= 0 {
-                                yearReturn = blended[historyIndex]
+                            let yearReturn: Double = if let blended = potHistoricalReturns[potIndex], historyIndex >= 0 {
+                                blended[historyIndex]
                             } else {
-                                yearReturn = potMeans[potIndex] + potStdDevs[potIndex] * marketShock
+                                potMeans[potIndex] + potStdDevs[potIndex] * marketShock
                             }
                             previousReturns[potIndex] = yearReturn
                             potBalances[potIndex] *= 1 + yearReturn
@@ -1070,7 +1068,7 @@ enum MonteCarloEngine {
         }
 
         var percentileBands: [MonteCarloPercentileBand] = []
-        for year in 0...horizonYears {
+        for year in 0 ... horizonYears {
             let sorted = balancesByYear[year].sorted()
             func p(_ percentile: Double) -> Int {
                 Int(percentileOfSorted(sorted, percentile).rounded())

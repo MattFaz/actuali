@@ -1,6 +1,6 @@
 import Foundation
-import UserNotifications
 import os
+import UserNotifications
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "TransactionLogNotifier")
 
@@ -9,7 +9,9 @@ private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "Transac
 enum TransactionLoggedMarker {
     static let kind = "com.mfazz.Actuali.transactionLogged"
 
-    static var userInfo: [AnyHashable: Any] { ["kind": kind] }
+    static var userInfo: [AnyHashable: Any] {
+        ["kind": kind]
+    }
 
     static func isPresent(in userInfo: [AnyHashable: Any]) -> Bool {
         userInfo["kind"] as? String == kind
@@ -18,13 +20,13 @@ enum TransactionLoggedMarker {
 
 @MainActor
 enum TransactionLogNotifier {
-
     /// - Parameter synced: false when the row is written locally but hasn't
     ///   reached the server yet, which the banner says outright — otherwise the
     ///   transaction looks logged while the budget on the server is unchanged.
     static func notifySuccess(payee: String, amountCents: Int, currencyCode: String,
                               narrowSymbol: Bool = false, synced: Bool = true,
-                              numberFormat: ActualNumberFormat = .commaDot) async {
+                              numberFormat: ActualNumberFormat = .commaDot) async
+    {
         let center = UNUserNotificationCenter.current()
 
         let granted: Bool
@@ -62,7 +64,8 @@ enum TransactionLogNotifier {
     static func notifyFailure(message: String, payee: String?, amountCents: Int?,
                               currencyCode: String, narrowSymbol: Bool = false,
                               prefill: TransactionPrefill? = nil,
-                              numberFormat: ActualNumberFormat = .commaDot) async {
+                              numberFormat: ActualNumberFormat = .commaDot) async
+    {
         let center = UNUserNotificationCenter.current()
 
         // Request permission lazily on first call. Quietly ignore denial — without
@@ -91,7 +94,7 @@ enum TransactionLogNotifier {
         let request = UNNotificationRequest(
             identifier: "com.mfazz.Actuali.logTransactionFailure.\(UUID().uuidString)",
             content: content,
-            trigger: nil   // deliver immediately
+            trigger: nil // deliver immediately
         )
 
         do {
@@ -104,7 +107,8 @@ enum TransactionLogNotifier {
     static func composeBody(message: String, payee: String?, amountCents: Int?,
                             currencyCode: String, narrowSymbol: Bool = false,
                             locale: Locale = .autoupdatingCurrent,
-                            numberFormat: ActualNumberFormat = .commaDot) -> String {
+                            numberFormat: ActualNumberFormat = .commaDot) -> String
+    {
         var parts: [String] = []
         if let amountCents {
             let amountString = CurrencyAmountFormat.string(cents: amountCents,
@@ -126,7 +130,8 @@ enum TransactionLogNotifier {
     static func composeSuccessBody(payee: String, amountCents: Int, currencyCode: String,
                                    narrowSymbol: Bool, synced: Bool = true,
                                    locale: Locale = .autoupdatingCurrent,
-                                   numberFormat: ActualNumberFormat = .commaDot) -> String {
+                                   numberFormat: ActualNumberFormat = .commaDot) -> String
+    {
         let amountString = CurrencyAmountFormat.string(cents: amountCents,
                                                        currencyCode: currencyCode,
                                                        narrowSymbol: narrowSymbol,

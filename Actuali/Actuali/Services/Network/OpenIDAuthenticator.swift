@@ -1,5 +1,5 @@
-import Foundation
 import AuthenticationServices
+import Foundation
 import UIKit
 
 enum OpenIDAuthError: LocalizedError {
@@ -28,19 +28,19 @@ enum OpenIDAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return Self.localizedString("Sign-in was cancelled")
+            Self.localizedString("Sign-in was cancelled")
         case .missingToken:
-            return Self.localizedString("The server did not return a sign-in token")
+            Self.localizedString("The server did not return a sign-in token")
         case .noWindow:
-            return Self.localizedString("Sign-in needs an open window. Try again with the app in the foreground.")
+            Self.localizedString("Sign-in needs an open window. Try again with the app in the foreground.")
         case .server(let reason):
-            return String(
+            String(
                 format: Self.localizedString("Sign-in failed: %@"),
                 locale: .current,
                 reason
             )
         case .sessionFailed(let error):
-            return String(
+            String(
                 format: Self.localizedString("Sign-in failed: %@"),
                 locale: .current,
                 error.localizedDescription
@@ -86,7 +86,8 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
         // Prefer the key window; during launch there may not be one yet, and any
         // window in any connected scene anchors the sheet just as well.
         guard let anchor = scenes.flatMap(\.windows).first(where: \.isKeyWindow)
-            ?? scenes.first.map(ASPresentationAnchor.init(windowScene:)) else {
+            ?? scenes.first.map(ASPresentationAnchor.init(windowScene:))
+        else {
             return nil
         }
         return OpenIDAuthenticator(anchor: anchor)
@@ -103,7 +104,8 @@ final class OpenIDAuthenticator: NSObject, ASWebAuthenticationPresentationContex
             ) { callbackURL, error in
                 if let error {
                     if let authError = error as? ASWebAuthenticationSessionError,
-                       authError.code == .canceledLogin {
+                       authError.code == .canceledLogin
+                    {
                         continuation.resume(throwing: OpenIDAuthError.cancelled)
                     } else {
                         continuation.resume(throwing: OpenIDAuthError.sessionFailed(error))

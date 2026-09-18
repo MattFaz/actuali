@@ -8,7 +8,6 @@ import Foundation
 /// not sync). A transaction counts as new when its first CRDT message landed
 /// after the watermark and was authored by another device.
 struct NewTransactionDetector {
-
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -31,12 +30,14 @@ struct NewTransactionDetector {
 
     func detectNewTransactions(in database: BudgetDatabase,
                                budgetId: String,
-                               localNode: String) async throws -> [Transaction] {
+                               localNode: String) async throws -> [Transaction]
+    {
         let key = Self.watermarkKey(budgetId: budgetId)
         let maxId = try await database.fetchMaxMessageId()
 
         guard let watermark = (defaults.object(forKey: key) as? NSNumber)?.int64Value,
-              watermark <= maxId else {
+              watermark <= maxId
+        else {
             // First run, or the watermark is ahead of the database because the
             // budget file was re-downloaded (message ids reset). Baseline
             // silently rather than notifying about history.
@@ -47,7 +48,8 @@ struct NewTransactionDetector {
         guard maxId > watermark else { return [] }
 
         let created = try await database.fetchTransactionsCreated(
-            afterMessageId: watermark, excludingNode: localNode)
+            afterMessageId: watermark, excludingNode: localNode
+        )
         defaults.set(NSNumber(value: maxId), forKey: key)
         return created
     }

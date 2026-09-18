@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct BudgetAnalysisWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -12,7 +12,9 @@ struct BudgetAnalysisWidgetView: View {
         let series: String
         let amount: Double
 
-        var id: String { "\(series)-\(month.timeIntervalSinceReferenceDate)" }
+        var id: String {
+            "\(series)-\(month.timeIntervalSinceReferenceDate)"
+        }
     }
 
     private static func monthDate(_ yyyymm: Int) -> Date {
@@ -21,8 +23,8 @@ struct BudgetAnalysisWidgetView: View {
         return cal.date(from: DateComponents(year: yyyymm / 100, month: yyyymm % 100, day: 1)) ?? Date()
     }
 
-    // Budgeted / spent / overspending, matching upstream's graph series.
-    // Spent stays negative, as upstream plots it.
+    /// Budgeted / spent / overspending, matching upstream's graph series.
+    /// Spent stays negative, as upstream plots it.
     private var valueMarks: [Mark] {
         data.intervalData.flatMap { p in
             [
@@ -64,9 +66,9 @@ struct BudgetAnalysisWidgetView: View {
         return seriesDomain.compactMap { colors[$0] }
     }
 
-    // Resolve the bar/line choice into a single erased type. Using an if/else
-    // directly inside the Chart builder yields _ConditionalContent, whose
-    // ChartContent conformance is iOS 27+ only.
+    /// Resolve the bar/line choice into a single erased type. Using an if/else
+    /// directly inside the Chart builder yields _ConditionalContent, whose
+    /// ChartContent conformance is iOS 27+ only.
     private func valueMark(_ mark: Mark) -> AnyChartContent {
         if data.graphType == .bar {
             AnyChartContent(
@@ -133,7 +135,8 @@ struct BudgetAnalysisWidgetView: View {
                     currencyCode: budgetStore.currencyCode,
                     narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                     locale: locale,
-                    hidden: budgetStore.hideBalances))
+                    hidden: budgetStore.hideBalances
+                ))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

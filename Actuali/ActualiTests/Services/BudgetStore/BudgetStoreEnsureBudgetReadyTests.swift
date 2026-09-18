@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Regression coverage for actios-tq4w: the Log Transaction Shortcut failed
 /// with "Couldn't save transaction (Open Actuali and select a budget first)"
@@ -13,7 +13,6 @@ import GRDB
 /// though the file on disk opens fine.
 @MainActor
 struct BudgetStoreEnsureBudgetReadyTests {
-
     /// Creates a real on-disk budget in the app-support Budgets directory so
     /// `ensureBudgetReady()`'s `budgetExists` guard and `loadLocalBudget`'s
     /// open run against production paths. Unique id per test: suites run in
@@ -84,7 +83,7 @@ struct BudgetStoreEnsureBudgetReadyTests {
 
     /// No budget selected: the retry path must not spin or crash — there is
     /// genuinely nothing to load.
-    @Test func doesNothingWhenNoBudgetIsSelected() async throws {
+    @Test func doesNothingWhenNoBudgetIsSelected() async {
         let savedDefault = UserDefaults.standard.string(forKey: "currentBudgetId")
         defer { UserDefaults.standard.set(savedDefault, forKey: "currentBudgetId") }
 

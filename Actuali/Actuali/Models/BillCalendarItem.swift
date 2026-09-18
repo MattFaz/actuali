@@ -23,12 +23,16 @@ struct BillCalendarItem: Identifiable, Equatable, Sendable {
     let relativeDueText: String
 
     var isCreditCard: Bool {
-        if case .creditCard = kind { return true }
+        if case .creditCard = kind {
+            return true
+        }
         return false
     }
 
     var scheduleSummary: ScheduleSummary? {
-        if case .schedule(let summary) = kind { return summary }
+        if case .schedule(let summary) = kind {
+            return summary
+        }
         return nil
     }
 
@@ -44,7 +48,7 @@ struct BillCalendarItem: Identifiable, Equatable, Sendable {
 
     /// Three-letter uppercase month abbreviation, e.g. "SEP".
     var monthAbbreviation: String {
-        guard (1...12).contains(date.month) else { return "" }
+        guard (1 ... 12).contains(date.month) else { return "" }
         let symbols = DateFormatter().shortStandaloneMonthSymbols ?? []
         return symbols.indices.contains(date.month - 1)
             ? symbols[date.month - 1].uppercased()

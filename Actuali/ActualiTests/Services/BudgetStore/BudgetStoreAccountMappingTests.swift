@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreAccountMappingTests {
-
     /// Runs `body` with a store whose budget is `test-budget`, then restores
     /// the UserDefaults state the store's `currentBudgetId.didSet` persists.
     private func withMappingStore(_ body: @MainActor (BudgetStore) async -> Void) async {
@@ -348,7 +347,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "1234",
             accounts: [account("acct1", "HSBC", closed: true), account("acct2", "Cash")],
-            cardMappings: ["1234": "acct1"])
+            cardMappings: ["1234": "acct1"]
+        )
         #expect(resolved == nil)
     }
 
@@ -356,7 +356,8 @@ struct BudgetStoreAccountMappingTests {
         let resolved = BudgetStore.resolveAccountId(
             hint: "  ",
             accounts: [account("acct1", "Cash")],
-            cardMappings: [:])
+            cardMappings: [:]
+        )
         #expect(resolved == nil)
     }
 }

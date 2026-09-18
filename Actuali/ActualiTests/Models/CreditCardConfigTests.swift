@@ -1,14 +1,13 @@
-import Testing
-import Foundation
 @testable import Actuali
+import Foundation
+import Testing
 
 struct CreditCardConfigTests {
-
     @Test func encodesAndDecodesJSON() throws {
         let config = CreditCardConfig(
             statementDay: 18,
             dueOffsetDays: 25,
-            limit: 500000
+            limit: 500_000
         )
 
         let data = try JSONEncoder().encode(config)
@@ -16,7 +15,7 @@ struct CreditCardConfigTests {
 
         #expect(decoded.statementDay == 18)
         #expect(decoded.dueOffsetDays == 25)
-        #expect(decoded.limit == 500000)
+        #expect(decoded.limit == 500_000)
     }
 
     @Test func decodesWithDefaultDueOffsetAndNoLimit() throws {

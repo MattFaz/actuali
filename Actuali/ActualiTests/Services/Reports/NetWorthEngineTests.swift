@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct NetWorthEngineTests {
-
     private var asOf: Date {
         var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 14
         c.timeZone = TimeZone(identifier: "UTC")
@@ -32,9 +31,9 @@ struct NetWorthEngineTests {
 
     @Test func cumulativeBalanceAcrossMonths() {
         let transactions = [
-            tx(date: 20260115, amount: 10000),
-            tx(date: 20260215, amount: 10000),
-            tx(date: 20260315, amount: 10000)
+            tx(date: 20_260_115, amount: 10000),
+            tx(date: 20_260_215, amount: 10000),
+            tx(date: 20_260_315, amount: 10000)
         ]
         let meta = NetWorthMeta(name: nil,
                                 timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
@@ -47,8 +46,8 @@ struct NetWorthEngineTests {
 
     @Test func tombstonedTransactionsExcluded() {
         let transactions = [
-            tx(date: 20260115, amount: 10000),
-            tx(date: 20260215, amount: 10000, tombstone: true)
+            tx(date: 20_260_115, amount: 10000),
+            tx(date: 20_260_215, amount: 10000, tombstone: true)
         ]
         // Use yearToDate so Jan/Feb transactions are in range; nil timeFrame
         // now defaults to current month.

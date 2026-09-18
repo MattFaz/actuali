@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Account creation (PR #199): the store must mirror the PWA's own
 /// `createAccount` — an accounts row, the account's transfer payee (the
@@ -10,7 +10,6 @@ import Testing
 /// category for on-budget accounts.
 @MainActor
 struct BudgetStoreCreateAccountTests {
-
     /// Upstream schema, matching BudgetStoreWalletImportTests plus the
     /// accounts table createAccount writes.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -19,64 +18,64 @@ struct BudgetStoreCreateAccountTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                type TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                )
-                """)
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -129,7 +128,8 @@ struct BudgetStoreCreateAccountTests {
         let store = try await makeStore(database: database)
 
         let account = try await store.createAccount(
-            name: "  Savings  ", offBudget: false, startingBalanceCents: 12345)
+            name: "  Savings  ", offBudget: false, startingBalanceCents: 12345
+        )
 
         let accountRows = try rows(path: url, sql: "SELECT * FROM accounts")
         #expect(accountRows.count == 1)
@@ -142,7 +142,8 @@ struct BudgetStoreCreateAccountTests {
         // The transfer payee: empty name, carries transfer_acct, and has the
         // self-mapping row the transaction joins resolve through.
         let transferPayees = try rows(
-            path: url, sql: "SELECT * FROM payees WHERE transfer_acct IS NOT NULL")
+            path: url, sql: "SELECT * FROM payees WHERE transfer_acct IS NOT NULL"
+        )
         #expect(transferPayees.count == 1)
         #expect(transferPayees[0]["name"] == "")
         #expect(transferPayees[0]["transfer_acct"] == account.id)
@@ -175,10 +176,12 @@ struct BudgetStoreCreateAccountTests {
         let store = try await makeStore(database: database)
 
         let account = try await store.createAccount(
-            name: "Checking", offBudget: false, startingBalanceCents: 500)
+            name: "Checking", offBudget: false, startingBalanceCents: 500
+        )
 
         let transferPayeeId: String = try rows(
-            path: url, sql: "SELECT id FROM payees WHERE transfer_acct IS NOT NULL")[0]["id"]
+            path: url, sql: "SELECT id FROM payees WHERE transfer_acct IS NOT NULL"
+        )[0]["id"]
 
         // One message per synced column, same shape as every other write.
         #expect(try count(
@@ -206,7 +209,8 @@ struct BudgetStoreCreateAccountTests {
         store.categoryGroups = incomeGroups()
 
         try await store.createAccount(
-            name: "Checking", offBudget: false, startingBalanceCents: 1000)
+            name: "Checking", offBudget: false, startingBalanceCents: 1000
+        )
 
         let txnRows = try rows(path: url, sql: "SELECT category FROM transactions")
         #expect(txnRows.count == 1)
@@ -222,7 +226,8 @@ struct BudgetStoreCreateAccountTests {
         store.categoryGroups = groups
 
         try await store.createAccount(
-            name: "Checking", offBudget: false, startingBalanceCents: 1000)
+            name: "Checking", offBudget: false, startingBalanceCents: 1000
+        )
 
         let txnRows = try rows(path: url, sql: "SELECT category FROM transactions")
         #expect(txnRows.count == 1)
@@ -236,7 +241,8 @@ struct BudgetStoreCreateAccountTests {
         store.categoryGroups = incomeGroups()
 
         try await store.createAccount(
-            name: "Brokerage", offBudget: true, startingBalanceCents: 99900)
+            name: "Brokerage", offBudget: true, startingBalanceCents: 99900
+        )
 
         let txnRows = try rows(path: url, sql: "SELECT category, amount FROM transactions")
         #expect(txnRows.count == 1)
@@ -251,7 +257,8 @@ struct BudgetStoreCreateAccountTests {
         let store = try await makeStore(database: database)
 
         try await store.createAccount(
-            name: "Empty", offBudget: false, startingBalanceCents: 0)
+            name: "Empty", offBudget: false, startingBalanceCents: 0
+        )
 
         // No transaction and no "Starting Balance" payee — only the account
         // and its transfer payee, exactly like the PWA.
@@ -271,7 +278,8 @@ struct BudgetStoreCreateAccountTests {
 
         await #expect(throws: BudgetStoreError.invalidAccountName) {
             try await store.createAccount(
-                name: "   ", offBudget: false, startingBalanceCents: 100)
+                name: "   ", offBudget: false, startingBalanceCents: 100
+            )
         }
 
         #expect(try count(path: url, sql: "SELECT COUNT(*) FROM accounts") == 0)
@@ -290,18 +298,21 @@ struct BudgetStoreCreateAccountTests {
         try await queue.write { db in
             try db.execute(
                 sql: "INSERT INTO transactions (id) VALUES (?)",
-                arguments: [collidingId])
+                arguments: [collidingId]
+            )
         }
 
         let account = Account(
             id: UUID().uuidString, name: "Doomed", type: .checking,
-            offBudget: false, closed: false, sortOrder: 1, balance: 100)
+            offBudget: false, closed: false, sortOrder: 1, balance: 100
+        )
         let transferPayee = Payee(
-            id: UUID().uuidString, name: "", transferAccountId: account.id, tombstone: false)
+            id: UUID().uuidString, name: "", transferAccountId: account.id, tombstone: false
+        )
         let openingBalance = Transaction(
             id: collidingId,
             accountId: account.id,
-            date: 20260812,
+            date: 20_260_812,
             amount: 100,
             payeeId: nil,
             payeeName: nil,
@@ -322,7 +333,8 @@ struct BudgetStoreCreateAccountTests {
         #expect(throws: (any Error).self) {
             try database.insertAccount(
                 account, transferPayee: transferPayee,
-                startingBalanceTransaction: openingBalance)
+                startingBalanceTransaction: openingBalance
+            )
         }
 
         // Atomicity: the account and payee rolled back with the transaction.

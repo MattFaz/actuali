@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The "hide spent categories" toggle must default to off, persist like the
 /// other display settings, and hide exactly the zero-available categories —
 /// overspent (negative) ones stay visible so problems are never masked.
 @MainActor
 struct BudgetStoreHideSpentCategoriesTests {
-
     private func makeCategories(availables: [Int]) -> [CategoryBudget] {
         availables.enumerated().map { index, available in
             CategoryBudget(

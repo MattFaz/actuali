@@ -7,7 +7,7 @@ extension XCTestCase {
     func setBudget(_ app: XCUIApplication, category: String, centsKeystrokes: String) {
         let editButton = app.buttons["Edit budgeted amount for \(category)"]
         var scrollsLeft = 8
-        while !editButton.isHittable && scrollsLeft > 0 {
+        while !editButton.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -51,7 +51,7 @@ extension XCTestCase {
     private func clearAmount(_ app: XCUIApplication, field: XCUIElement) {
         let deleteKey = app.keys["Delete"]
         var deletesLeft = 12
-        while !digits(of: field).allSatisfy({ $0 == "0" }) && deletesLeft > 0 {
+        while !digits(of: field).allSatisfy({ $0 == "0" }), deletesLeft > 0 {
             deleteKey.tap()
             deletesLeft -= 1
         }
@@ -66,10 +66,13 @@ extension XCTestCase {
 
     @MainActor
     private func waitForDigits(_ expected: String, in field: XCUIElement,
-                               timeout: TimeInterval = 3) -> Bool {
+                               timeout: TimeInterval = 3) -> Bool
+    {
         let deadline = Date().addingTimeInterval(timeout)
         repeat {
-            if digits(of: field) == expected { return true }
+            if digits(of: field) == expected {
+                return true
+            }
             RunLoop.current.run(until: Date().addingTimeInterval(0.25))
         } while Date() < deadline
         return false

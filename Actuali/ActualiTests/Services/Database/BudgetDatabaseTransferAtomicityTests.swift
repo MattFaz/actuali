@@ -1,10 +1,9 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 struct BudgetDatabaseTransferAtomicityTests {
-
     /// transactions and messages_crdt normally come from the downloaded budget
     /// file, so create them with the upstream schema (id PRIMARY KEY drives
     /// the failure-injection test; timestamp UNIQUE drives message dedup).
@@ -14,39 +13,39 @@ struct BudgetDatabaseTransferAtomicityTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func transaction(
@@ -58,7 +57,7 @@ struct BudgetDatabaseTransferAtomicityTests {
         Transaction(
             id: id,
             accountId: accountId,
-            date: 20260610,
+            date: 20_260_610,
             amount: amount,
             payeeId: "payee-\(accountId)",
             payeeName: nil,
@@ -143,7 +142,8 @@ struct BudgetDatabaseTransferAtomicityTests {
         let crdtMessages = messages(for: [leg, partner])
 
         let inserted = try database.convertToTransfer(
-            leg: leg, partner: partner, messages: crdtMessages)
+            leg: leg, partner: partner, messages: crdtMessages
+        )
 
         #expect(inserted.count == crdtMessages.count)
         let queue = try DatabaseQueue(path: path.path)
@@ -171,7 +171,8 @@ struct BudgetDatabaseTransferAtomicityTests {
 
         #expect(throws: (any Error).self) {
             try database.convertToTransfer(
-                leg: leg, partner: partner, messages: self.messages(for: [leg, partner]))
+                leg: leg, partner: partner, messages: self.messages(for: [leg, partner])
+            )
         }
 
         // Atomicity: the edited row keeps no dangling link and no CRDT message

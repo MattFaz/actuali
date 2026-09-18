@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The Symbol Only setting must flow through the store's formatters and
 /// persist like the other display settings (GH #83).
 @MainActor
 struct BudgetStoreCurrencySymbolTests {
-
     @Test func standardSymbolsByDefault() {
         let store = BudgetStore.previewInstance()
         #expect(!store.useNarrowCurrencySymbol)

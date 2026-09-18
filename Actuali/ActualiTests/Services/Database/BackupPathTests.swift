@@ -1,7 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-
-@testable import Actuali
 
 struct BackupPathTests {
     private func makeManager() -> (BudgetFileManager, URL) {
@@ -53,7 +52,7 @@ struct BackupPathTests {
         #expect(restored.cloudFileId == "live-cf")
         #expect(restored.encryptKeyId == "live-k")
         #expect(restored.id == "b")
-        #expect(restored.budgetName == "n")   // archived name wins — it's the restored state
+        #expect(restored.budgetName == "n") // archived name wins — it's the restored state
         #expect(restored.resetClock == true)
 
         // No live metadata (corrupt/missing file): fall back to the archive's.

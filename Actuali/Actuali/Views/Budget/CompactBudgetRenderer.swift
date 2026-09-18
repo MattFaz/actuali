@@ -33,7 +33,7 @@ struct CompactBudgetSummary: View {
                     }
                     ForEach(Array(overview.columns.enumerated()), id: \.offset) { _, stat in
                         HStack {
-                                Text(stat.label(locale: locale, bundle: .main))
+                            Text(stat.label(locale: locale, bundle: .main))
                                 .foregroundStyle(.secondary)
                             Spacer()
                             CompactOverviewAmount(stat: stat, isResult: isResult(stat))
@@ -120,8 +120,7 @@ private extension View {
     @ViewBuilder
     func balancePill(_ color: Color, isMasked: Bool, active: Bool) -> some View {
         if active {
-            self
-                .padding(.horizontal, 5)
+            padding(.horizontal, 5)
                 .padding(.vertical, 2)
                 .background {
                     RoundedRectangle(cornerRadius: 9, style: .continuous)
@@ -161,8 +160,7 @@ private struct CompactOverviewAmount: View {
                 budgetStore.displayBalance(stat.amount),
                 locale: locale,
                 bundle: .main
-            )
-        )
+            ))
     }
 
     private var resultColor: Color {
@@ -184,8 +182,8 @@ struct CompactBudgetGroupHeader: View {
     let name: String
     let isCollapsed: Bool
     var isHidden = false
-    var onSetHidden: ((Bool) -> Void)? = nil
-    var onRename: (() -> Void)? = nil
+    var onSetHidden: ((Bool) -> Void)?
+    var onRename: (() -> Void)?
     let totals: CategoryGroupTotals?
     let showsSpent: Bool
     let onToggleCollapse: () -> Void
@@ -247,7 +245,7 @@ struct CompactBudgetGroupHeader: View {
         .listRowInsets(EdgeInsets())
     }
 
-    @ViewBuilder private var headerContent: some View {
+    private var headerContent: some View {
         HStack(spacing: 0) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
@@ -338,7 +336,7 @@ struct CompactCategoryBudgetRow: View {
     let category: CategoryBudget
     var isHidden = false
     var isDimmed = false
-    var onSetHidden: ((Bool) -> Void)? = nil
+    var onSetHidden: ((Bool) -> Void)?
     let showsSpent: Bool
     let showsProgressBars: Bool
     let showsStatusDots: Bool
@@ -415,7 +413,7 @@ struct CompactCategoryBudgetRow: View {
                         isBalance: true,
                         balanceColor: categoryBalanceColor
                     )
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
                 .buttonStyle(.borderless)
                 .disabled(category.available == 0)
@@ -564,8 +562,8 @@ struct CompactIncomeGroupHeader: View {
     let name: String
     var isCollapsed = false
     var isHidden = false
-    var onSetHidden: ((Bool) -> Void)? = nil
-    var onRename: (() -> Void)? = nil
+    var onSetHidden: ((Bool) -> Void)?
+    var onRename: (() -> Void)?
     let totalBudgeted: Int
     let totalReceived: Int
     let showsBudgeted: Bool
@@ -631,7 +629,7 @@ struct CompactIncomeGroupHeader: View {
         .listRowInsets(EdgeInsets())
     }
 
-    @ViewBuilder private var headerContent: some View {
+    private var headerContent: some View {
         HStack(spacing: 0) {
             Group {
                 if dynamicTypeSize.isAccessibilitySize {
@@ -692,7 +690,7 @@ struct CompactIncomeGroupHeader: View {
     }
 
     private var accessibilityLabel: String {
-        return CompactBudgetAccessibility.incomeHeader(
+        CompactBudgetAccessibility.incomeHeader(
             name: name,
             state: isCollapsed ? String(localized: "collapsed", bundle: .main, locale: locale) : String(localized: "expanded", bundle: .main, locale: locale),
             budgeted: showsBudgeted ? budgetStore.displayBalance(totalBudgeted) : nil,
@@ -715,7 +713,7 @@ struct CompactIncomeCategoryRow: View {
     let income: IncomeCategory
     var isHidden = false
     var isDimmed = false
-    var onSetHidden: ((Bool) -> Void)? = nil
+    var onSetHidden: ((Bool) -> Void)?
     let showsBudgeted: Bool
     let showsSpent: Bool
     var onShowTransactions: (IncomeCategory, String?) -> Void = { _, _ in }
@@ -859,7 +857,7 @@ private struct CompactAmountText: View {
 
     let amount: Int
     var isBalance = false
-    var balanceColor: Color? = nil
+    var balanceColor: Color?
 
     var body: some View {
         Text(budgetStore.displayBudgetCell(amount))
@@ -882,8 +880,12 @@ private struct CompactAmountText: View {
         guard isBalance else {
             return amount == 0 ? .secondary : .primary
         }
-        if budgetStore.hideBalances { return .primary }
-        if let balanceColor { return balanceColor }
+        if budgetStore.hideBalances {
+            return .primary
+        }
+        if let balanceColor {
+            return balanceColor
+        }
         switch CompactBalanceTone(amount: amount, isMasked: budgetStore.hideBalances) {
         case .negative: return .red
         case .zero: return .secondary

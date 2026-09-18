@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct BankSyncReconcilerTests {
-
     private func candidate(
         importedId: String = "sf-1",
-        date: Int = 20240310,
+        date: Int = 20_240_310,
         amount: Int = -1250,
         payeeName: String = "Blue Bottle",
         payeeId: String? = nil,
@@ -21,7 +20,7 @@ struct BankSyncReconcilerTests {
 
     private func existing(
         id: String = "tx-1",
-        date: Int = 20240310,
+        date: Int = 20_240_310,
         amount: Int = -1250,
         payeeId: String? = nil,
         importedId: String? = nil,
@@ -102,12 +101,12 @@ struct BankSyncReconcilerTests {
 
     /// The id match beats the fuzzy window even when the window has a nearer
     /// row: it's the only match the provider actually vouched for.
-    @Test func theIdMatchWinsOverACloserDate() throws {
+    @Test func theIdMatchWinsOverACloserDate() {
         let plan = BankSyncReconciler.plan(
-            candidates: [candidate(importedId: "sf-1", date: 20240310)],
+            candidates: [candidate(importedId: "sf-1", date: 20_240_310)],
             existing: [
-                existing(id: "tx-near", date: 20240310),
-                existing(id: "tx-far", date: 20240313, importedId: "sf-1")
+                existing(id: "tx-near", date: 20_240_310),
+                existing(id: "tx-far", date: 20_240_313, importedId: "sf-1")
             ]
         )
 
@@ -120,8 +119,8 @@ struct BankSyncReconcilerTests {
     /// before the bank posted it.
     @Test func aHandEnteredTransactionIsAdoptedRatherThanDuplicated() throws {
         let plan = BankSyncReconciler.plan(
-            candidates: [candidate(importedId: "sf-1", date: 20240310, notes: "Coffee")],
-            existing: [existing(id: "tx-manual", date: 20240308, payeeId: "payee-1")]
+            candidates: [candidate(importedId: "sf-1", date: 20_240_310, notes: "Coffee")],
+            existing: [existing(id: "tx-manual", date: 20_240_308, payeeId: "payee-1")]
         )
 
         #expect(plan.inserts.isEmpty)
@@ -136,12 +135,12 @@ struct BankSyncReconcilerTests {
 
     @Test func matchingLooksSevenDaysEitherSideAndNoFurther() {
         let inWindow = BankSyncReconciler.plan(
-            candidates: [candidate(date: 20240310)],
-            existing: [existing(date: 20240303)]
+            candidates: [candidate(date: 20_240_310)],
+            existing: [existing(date: 20_240_303)]
         )
         let outOfWindow = BankSyncReconciler.plan(
-            candidates: [candidate(date: 20240310)],
-            existing: [existing(date: 20240302)]
+            candidates: [candidate(date: 20_240_310)],
+            existing: [existing(date: 20_240_302)]
         )
 
         #expect(inWindow.updates.count == 1)
@@ -163,10 +162,10 @@ struct BankSyncReconcilerTests {
     @Test func aSamePayeeMatchOutranksAnEarlierVaguerOne() throws {
         let plan = BankSyncReconciler.plan(
             candidates: [
-                candidate(importedId: "sf-1", date: 20240310, payeeName: "Other", payeeId: "payee-2"),
-                candidate(importedId: "sf-2", date: 20240310, payeeName: "Blue Bottle", payeeId: "payee-1")
+                candidate(importedId: "sf-1", date: 20_240_310, payeeName: "Other", payeeId: "payee-2"),
+                candidate(importedId: "sf-2", date: 20_240_310, payeeName: "Blue Bottle", payeeId: "payee-1")
             ],
-            existing: [existing(id: "tx-1", date: 20240310, payeeId: "payee-1")]
+            existing: [existing(id: "tx-1", date: 20_240_310, payeeId: "payee-1")]
         )
 
         #expect(plan.updates.count == 1)
@@ -180,10 +179,10 @@ struct BankSyncReconcilerTests {
     @Test func oneLocalRowIsClaimedByAtMostOneDownload() {
         let plan = BankSyncReconciler.plan(
             candidates: [
-                candidate(importedId: "sf-1", date: 20240310),
-                candidate(importedId: "sf-2", date: 20240310)
+                candidate(importedId: "sf-1", date: 20_240_310),
+                candidate(importedId: "sf-2", date: 20_240_310)
             ],
-            existing: [existing(id: "tx-1", date: 20240310)]
+            existing: [existing(id: "tx-1", date: 20_240_310)]
         )
 
         #expect(plan.updates.count == 1)
@@ -283,10 +282,10 @@ struct BankSyncReconcilerTests {
 
     @Test func theNearestDateInTheWindowIsMatchedFirst() throws {
         let plan = BankSyncReconciler.plan(
-            candidates: [candidate(date: 20240310)],
+            candidates: [candidate(date: 20_240_310)],
             existing: [
-                existing(id: "tx-far", date: 20240305),
-                existing(id: "tx-near", date: 20240311)
+                existing(id: "tx-far", date: 20_240_305),
+                existing(id: "tx-near", date: 20_240_311)
             ]
         )
 
@@ -295,10 +294,10 @@ struct BankSyncReconcilerTests {
 
     @Test func equallyNearMatchesUseTheLowestExistingId() throws {
         let plan = BankSyncReconciler.plan(
-            candidates: [candidate(date: 20240310)],
+            candidates: [candidate(date: 20_240_310)],
             existing: [
-                existing(id: "tx-z", date: 20240309),
-                existing(id: "tx-a", date: 20240311)
+                existing(id: "tx-z", date: 20_240_309),
+                existing(id: "tx-a", date: 20_240_311)
             ]
         )
 
@@ -310,8 +309,8 @@ struct BankSyncReconcilerTests {
     /// rows that already carry a different one.
     @Test func aRowWithADifferentProviderIdCanStillMatch() throws {
         let plan = BankSyncReconciler.plan(
-            candidates: [candidate(importedId: "sf-new", date: 20240310)],
-            existing: [existing(id: "tx-1", date: 20240310, importedId: "sf-old")]
+            candidates: [candidate(importedId: "sf-new", date: 20_240_310)],
+            existing: [existing(id: "tx-1", date: 20_240_310, importedId: "sf-old")]
         )
 
         #expect(plan.inserts.isEmpty)
@@ -333,9 +332,9 @@ struct BankSyncReconcilerTests {
     // MARK: - Day arithmetic
 
     @Test(arguments: [
-        (20240301, 20240229, 1),
-        (20250101, 20240101, 366),
-        (20240310, 20231212, 89)
+        (20_240_301, 20_240_229, 1),
+        (20_250_101, 20_240_101, 366),
+        (20_240_310, 20_231_212, 89)
     ])
     func dayDistanceMeasuresAcrossMonthAndYearBoundaries(
         _ from: Int, _ to: Int, _ expected: Int
@@ -345,7 +344,6 @@ struct BankSyncReconcilerTests {
 }
 
 struct BankSyncCandidateNormalizationTests {
-
     private func transaction(_ json: String) throws -> SimpleFINTransaction {
         try JSONDecoder().decode(SimpleFINTransaction.self, from: Data(json.utf8))
     }
@@ -357,7 +355,7 @@ struct BankSyncCandidateNormalizationTests {
         """)))
 
         #expect(candidate.importedId == "sf-1")
-        #expect(candidate.date == 20240301)
+        #expect(candidate.date == 20_240_301)
         #expect(candidate.amount == -3345)
         #expect(candidate.payeeName == "Uncle Frank")
         #expect(candidate.notes == "Uncle Frank's Bait Shop")
@@ -392,7 +390,7 @@ struct BankSyncCandidateNormalizationTests {
         """)))
 
         #expect(!candidate.cleared)
-        #expect(candidate.date == 20240301)
+        #expect(candidate.date == 20_240_301)
     }
 
     @Test func transactionsWithAnUnreadableAmountAreSkipped() throws {

@@ -12,13 +12,13 @@ struct CreditCardConfig: Codable, Equatable, Hashable, Sendable {
 extension CreditCardConfig {
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        statementDay = try container.decode(Int.self, forKey: .statementDay)
-        dueOffsetDays = try container.decodeIfPresent(Int.self, forKey: .dueOffsetDays) ?? CreditCardCycle.defaultDueOffsetDays
-        dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
-        if let dueDay, !(1...31).contains(dueDay) {
+        self.statementDay = try container.decode(Int.self, forKey: .statementDay)
+        self.dueOffsetDays = try container.decodeIfPresent(Int.self, forKey: .dueOffsetDays) ?? CreditCardCycle.defaultDueOffsetDays
+        self.dueDay = try container.decodeIfPresent(Int.self, forKey: .dueDay)
+        if let dueDay, !(1 ... 31).contains(dueDay) {
             throw DecodingError.dataCorruptedError(forKey: .dueDay, in: container, debugDescription: "dueDay must be between 1 and 31")
         }
-        limit = try container.decodeIfPresent(Int.self, forKey: .limit)
+        self.limit = try container.decodeIfPresent(Int.self, forKey: .limit)
     }
 
     var paymentDue: CreditCardCycle.PaymentDue {

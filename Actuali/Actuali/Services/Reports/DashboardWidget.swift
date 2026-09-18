@@ -33,34 +33,36 @@ struct WidgetRuleCondition: Codable, Equatable {
 /// Untyped Codable wrapper for nested JSON values. Stores the original
 /// JSON-encoded data so the value can be re-emitted unchanged.
 struct AnyCodable: Codable, Equatable {
-    let raw: Data  // original JSON bytes (e.g. "\"groceries\"", "42", "true", "null", arrays, objects)
+    let raw: Data // original JSON bytes (e.g. "\"groceries\"", "42", "true", "null", arrays, objects)
 
-    init(rawJSON: Data) { self.raw = rawJSON }
+    init(rawJSON: Data) {
+        self.raw = rawJSON
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.singleValueContainer()
         if container.decodeNil() {
-            raw = Data("null".utf8)
+            self.raw = Data("null".utf8)
         } else if let s = try? container.decode(String.self) {
-            raw = try JSONEncoder().encode(s)
+            self.raw = try JSONEncoder().encode(s)
         } else if let b = try? container.decode(Bool.self) {
-            raw = try JSONEncoder().encode(b)
+            self.raw = try JSONEncoder().encode(b)
         } else if let i = try? container.decode(Int.self) {
-            raw = try JSONEncoder().encode(i)
+            self.raw = try JSONEncoder().encode(i)
         } else if let d = try? container.decode(Double.self) {
-            raw = try JSONEncoder().encode(d)
+            self.raw = try JSONEncoder().encode(d)
         } else if let arr = try? container.decode([AnyCodable].self) {
             let encoded = "[" + arr.map { String(data: $0.raw, encoding: .utf8) ?? "null" }.joined(separator: ",") + "]"
-            raw = Data(encoded.utf8)
+            self.raw = Data(encoded.utf8)
         } else if let dict = try? container.decode([String: AnyCodable].self) {
             let pairs = dict.map { key, value -> String in
                 let v = String(data: value.raw, encoding: .utf8) ?? "null"
                 let escapedKey = (try? String(data: JSONEncoder().encode(key), encoding: .utf8)) ?? "\"\(key)\""
                 return "\(escapedKey):\(v)"
             }
-            raw = Data(("{" + pairs.joined(separator: ",") + "}").utf8)
+            self.raw = Data(("{" + pairs.joined(separator: ",") + "}").utf8)
         } else {
-            raw = Data("null".utf8)
+            self.raw = Data("null".utf8)
         }
     }
 
@@ -110,17 +112,18 @@ struct SummaryMeta: Codable, Equatable {
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        name = try container.decodeIfPresent(String.self, forKey: .name)
-        timeFrame = try container.decodeIfPresent(WidgetTimeFrame.self, forKey: .timeFrame)
-        conditions = try container.decodeIfPresent([WidgetRuleCondition].self, forKey: .conditions)
-        conditionsOp = try container.decodeIfPresent(String.self, forKey: .conditionsOp)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name)
+        self.timeFrame = try container.decodeIfPresent(WidgetTimeFrame.self, forKey: .timeFrame)
+        self.conditions = try container.decodeIfPresent([WidgetRuleCondition].self, forKey: .conditions)
+        self.conditionsOp = try container.decodeIfPresent(String.self, forKey: .conditionsOp)
         // Upstream double-encodes content as a JSON string
         // ("{\"type\":\"sum\"}"); tolerate an inline object as well.
         if let string = try? container.decode(String.self, forKey: .content),
-           let data = string.data(using: .utf8) {
-            content = try? JSONDecoder().decode(SummaryContent.self, from: data)
+           let data = string.data(using: .utf8)
+        {
+            self.content = try? JSONDecoder().decode(SummaryContent.self, from: data)
         } else {
-            content = try? container.decodeIfPresent(SummaryContent.self, forKey: .content)
+            self.content = try? container.decodeIfPresent(SummaryContent.self, forKey: .content)
         }
     }
 
@@ -132,7 +135,8 @@ struct SummaryMeta: Codable, Equatable {
         try container.encodeIfPresent(conditionsOp, forKey: .conditionsOp)
         if let content,
            let data = try? JSONEncoder().encode(content),
-           let string = String(data: data, encoding: .utf8) {
+           let string = String(data: data, encoding: .utf8)
+        {
             try container.encode(string, forKey: .content)
         }
     }
@@ -220,7 +224,7 @@ struct AgeOfMoneyMeta: Codable, Equatable {
     let timeFrame: WidgetTimeFrame?
     let conditions: [WidgetRuleCondition]?
     let conditionsOp: String?
-    let granularity: String?  // "daily" | "weekly" | "monthly"; nil = monthly
+    let granularity: String? // "daily" | "weekly" | "monthly"; nil = monthly
 }
 
 struct FormulaQueryMeta: Codable, Equatable {
@@ -287,47 +291,47 @@ enum DashboardWidget: Equatable {
              .balanceForecast(let id, _),
              .monteCarlo(let id, _),
              .unsupported(let id, _):
-            return id
+            id
         }
     }
 
     var typeLabel: String {
         switch self {
-        case .summary: return String(localized: "Summary")
-        case .netWorth: return String(localized: "Net Worth")
-        case .cashFlow: return String(localized: "Cash Flow")
-        case .spending: return String(localized: "Spending")
-        case .markdown: return String(localized: "Notes")
-        case .ageOfMoney: return String(localized: "Age of Money")
-        case .formula: return String(localized: "Formula")
-        case .customReport: return String(localized: "Custom Report")
-        case .calendar: return String(localized: "Calendar")
-        case .crossover: return String(localized: "Crossover")
-        case .budgetAnalysis: return String(localized: "Budget Analysis")
-        case .sankey: return String(localized: "Sankey")
-        case .balanceForecast: return String(localized: "Balance Forecast")
-        case .monteCarlo: return String(localized: "Monte Carlo")
-        case .unsupported(_, let type): return type
+        case .summary: String(localized: "Summary")
+        case .netWorth: String(localized: "Net Worth")
+        case .cashFlow: String(localized: "Cash Flow")
+        case .spending: String(localized: "Spending")
+        case .markdown: String(localized: "Notes")
+        case .ageOfMoney: String(localized: "Age of Money")
+        case .formula: String(localized: "Formula")
+        case .customReport: String(localized: "Custom Report")
+        case .calendar: String(localized: "Calendar")
+        case .crossover: String(localized: "Crossover")
+        case .budgetAnalysis: String(localized: "Budget Analysis")
+        case .sankey: String(localized: "Sankey")
+        case .balanceForecast: String(localized: "Balance Forecast")
+        case .monteCarlo: String(localized: "Monte Carlo")
+        case .unsupported(_, let type): type
         }
     }
 
     var displayName: String {
         switch self {
-        case .summary(_, let meta): return meta?.name ?? typeLabel
-        case .netWorth(_, let meta): return meta?.name ?? typeLabel
-        case .cashFlow(_, let meta): return meta?.name ?? typeLabel
-        case .spending(_, let meta): return meta?.name ?? typeLabel
-        case .markdown: return typeLabel
-        case .ageOfMoney(_, let meta): return meta?.name ?? typeLabel
-        case .formula(_, let meta): return meta?.name ?? typeLabel
-        case .customReport(_, let meta): return meta?.name ?? typeLabel
-        case .calendar(_, let meta): return meta?.name ?? typeLabel
-        case .crossover(_, let meta): return meta?.name ?? typeLabel
-        case .budgetAnalysis(_, let meta): return meta?.name ?? typeLabel
-        case .sankey(_, let meta): return meta?.name ?? typeLabel
-        case .balanceForecast(_, let meta): return meta?.name ?? typeLabel
-        case .monteCarlo(_, let meta): return meta?.name ?? typeLabel
-        case .unsupported: return typeLabel
+        case .summary(_, let meta): meta?.name ?? typeLabel
+        case .netWorth(_, let meta): meta?.name ?? typeLabel
+        case .cashFlow(_, let meta): meta?.name ?? typeLabel
+        case .spending(_, let meta): meta?.name ?? typeLabel
+        case .markdown: typeLabel
+        case .ageOfMoney(_, let meta): meta?.name ?? typeLabel
+        case .formula(_, let meta): meta?.name ?? typeLabel
+        case .customReport(_, let meta): meta?.name ?? typeLabel
+        case .calendar(_, let meta): meta?.name ?? typeLabel
+        case .crossover(_, let meta): meta?.name ?? typeLabel
+        case .budgetAnalysis(_, let meta): meta?.name ?? typeLabel
+        case .sankey(_, let meta): meta?.name ?? typeLabel
+        case .balanceForecast(_, let meta): meta?.name ?? typeLabel
+        case .monteCarlo(_, let meta): meta?.name ?? typeLabel
+        case .unsupported: typeLabel
         }
     }
 

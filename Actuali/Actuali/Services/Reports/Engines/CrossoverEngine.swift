@@ -7,10 +7,10 @@ struct CrossoverMeta: Codable, Equatable {
     let expenseCategoryIds: [String]?
     let incomeAccountIds: [String]?
     let timeFrame: WidgetTimeFrame?
-    let safeWithdrawalRate: Double?      // annual, default 0.04
-    let estimatedReturn: Double?         // annual, nil = derive from history
-    let expectedContribution: Double?    // monthly cents, default 0
-    let projectionType: ProjectionType?  // default .hampel
+    let safeWithdrawalRate: Double? // annual, default 0.04
+    let estimatedReturn: Double? // annual, nil = derive from history
+    let expectedContribution: Double? // monthly cents, default 0
+    let projectionType: ProjectionType? // default .hampel
     let showHiddenCategories: Bool?
     let expenseAdjustmentFactor: Double? // default 1.0
 
@@ -20,21 +20,21 @@ struct CrossoverMeta: Codable, Equatable {
 }
 
 struct CrossoverPoint: Equatable {
-    let month: Date                       // first of month, UTC
-    let investmentIncomeCents: Int        // balance * monthly SWR
+    let month: Date // first of month, UTC
+    let investmentIncomeCents: Int // balance * monthly SWR
     let expensesCents: Int
     let nestEggCents: Int
-    let adjustedExpensesCents: Int?       // projection points only
+    let adjustedExpensesCents: Int? // projection points only
     let isProjection: Bool
 }
 
 struct CrossoverData: Equatable {
     let points: [CrossoverPoint]
-    let crossoverMonth: Date?             // projected month income first covers adjusted expenses
+    let crossoverMonth: Date? // projected month income first covers adjusted expenses
     let lastKnownBalanceCents: Int
     let lastKnownMonthlyIncomeCents: Int
     let lastKnownMonthlyExpensesCents: Int
-    let historicalReturn: Double?         // annualized CAGR of the selected accounts
+    let historicalReturn: Double? // annualized CAGR of the selected accounts
     let yearsToRetire: Double?
     let targetMonthlyIncomeCents: Int?
     let targetNestEggCents: Int?
@@ -51,7 +51,6 @@ struct CrossoverData: Equatable {
 /// Port of upstream crossover-spreadsheet.ts + the date-range resolution in
 /// CrossoverCard.tsx, computed over in-memory transactions.
 enum CrossoverEngine {
-
     /// - Parameters:
     ///   - categories: all live categories — used to default the expense set
     ///     to every non-income category and to honor `showHiddenCategories`.
@@ -78,7 +77,9 @@ enum CrossoverEngine {
             live.map { monthIndex(ofYMD: $0.date) }.min() ?? latestMonth,
             latestMonth
         )
-        func clamp(_ m: Int) -> Int { min(max(m, earliestMonth), latestMonth) }
+        func clamp(_ m: Int) -> Int {
+            min(max(m, earliestMonth), latestMonth)
+        }
 
         let tf = meta?.timeFrame
         var start: Int
@@ -112,8 +113,10 @@ enum CrossoverEngine {
             start = clamp(parseMonthIndex(tf?.start) ?? currentMonth - 120)
             end = clamp(parseMonthIndex(tf?.end) ?? currentMonth - 1)
         }
-        if end < start { end = start }
-        let months = Array(start...end)
+        if end < start {
+            end = start
+        }
+        let months = Array(start ... end)
 
         // Expense category set: stored ids, or every non-income category,
         // then filter hidden unless showHiddenCategories.
@@ -153,7 +156,9 @@ enum CrossoverEngine {
         var historicalBalances = [Int]()
         var running = startingBalance
         for i in months.indices {
-            if i > 0 { running += deltas[i] }
+            if i > 0 {
+                running += deltas[i]
+            }
             historicalBalances.append(running)
         }
 
@@ -193,11 +198,10 @@ enum CrossoverEngine {
             }
         }
 
-        let monthlyReturn: Double?
-        if let annualReturn = meta?.estimatedReturn {
-            monthlyReturn = pow(1 + annualReturn, 1.0 / 12) - 1
+        let monthlyReturn: Double? = if let annualReturn = meta?.estimatedReturn {
+            pow(1 + annualReturn, 1.0 / 12) - 1
         } else {
-            monthlyReturn = defaultMonthlyReturn
+            defaultMonthlyReturn
         }
         let monthlyContribution = meta?.expectedContribution ?? 0
         let adjustmentFactor = meta?.expenseAdjustmentFactor ?? 1.0
@@ -206,16 +210,15 @@ enum CrossoverEngine {
         // by contribution then return, up to 600 months or crossover.
         var crossoverIndex: Int?
         let y = months.map { Double(expenseByMonth[$0] ?? 0) }
-        let flatExpense: Double
-        switch meta?.projectionType ?? .hampel {
-        case .hampel: flatExpense = hampelFilteredMedian(y)
-        case .median: flatExpense = median(y)
-        case .mean: flatExpense = mean(y)
+        let flatExpense: Double = switch meta?.projectionType ?? .hampel {
+        case .hampel: hampelFilteredMedian(y)
+        case .median: median(y)
+        case .mean: mean(y)
         }
 
         var projectedBalance = Double(lastBalance)
         var cursor = end
-        for i in 1...600 {
+        for i in 1 ... 600 {
             cursor += 1
             // Upstream adds the contribution BEFORE applying growth.
             projectedBalance += monthlyContribution
@@ -275,8 +278,12 @@ enum CrossoverEngine {
     // MARK: - Statistics (upstream Hampel identifier utilities)
 
     static func median(_ values: [Double]) -> Double {
-        if values.isEmpty { return 0 }
-        if values.count == 1 { return values[0] }
+        if values.isEmpty {
+            return 0
+        }
+        if values.count == 1 {
+            return values[0]
+        }
         let sorted = values.sorted()
         let mid = sorted.count / 2
         return sorted.count % 2 == 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid]
@@ -288,8 +295,12 @@ enum CrossoverEngine {
 
     /// Median after rejecting outliers beyond median ± 3 * 1.4826 * MAD.
     static func hampelFilteredMedian(_ expenses: [Double]) -> Double {
-        if expenses.isEmpty { return 0 }
-        if expenses.count == 1 { return expenses[0] }
+        if expenses.isEmpty {
+            return 0
+        }
+        if expenses.count == 1 {
+            return expenses[0]
+        }
         let med = median(expenses)
         let mad = median(expenses.map { abs($0 - med) })
         let threshold = 3.0

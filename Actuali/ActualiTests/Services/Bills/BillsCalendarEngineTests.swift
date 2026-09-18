@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct BillsCalendarEngineTests {
-
     @Test func leadingEmptyDaysAndMonthDayCount() {
         // September 1, 2026 is Tuesday.
         // On a Monday-first grid: Monday is 0 offset, Tuesday is 1 offset.
@@ -12,8 +11,8 @@ struct BillsCalendarEngineTests {
 
         let days = BillsCalendarEngine.daysInMonth(year: 2026, month: 9)
         #expect(days.count == 30)
-        #expect(days.first?.yyyymmdd == 20260901)
-        #expect(days.last?.yyyymmdd == 20260930)
+        #expect(days.first?.yyyymmdd == 20_260_901)
+        #expect(days.last?.yyyymmdd == 20_260_930)
     }
 
     @Test func relativeDueTextFormatting() {
@@ -82,7 +81,6 @@ struct BillsCalendarEngineTests {
     }
 
     @Test func computesSummaryTotalsAndFilter() {
-
         let item1 = BillCalendarItem(
             id: "1",
             date: DayDate(year: 2026, month: 9, day: 7),
@@ -441,7 +439,7 @@ struct BillsCalendarEngineTests {
             id: "sch-salary",
             name: "Monthly Salary",
             nextDate: DayDate(year: 2026, month: 9, day: 1),
-            amount: .fixed(500000),
+            amount: .fixed(500_000),
             amountOp: .isApprox,
             dateOp: "isapprox",
             dateCondition: .recurring(config),
@@ -507,12 +505,14 @@ struct BillsCalendarEngineTests {
         let schedule = ScheduleSummary(
             id: "sch-skipped", nextDate: DayDate(year: 2026, month: 10, day: 1),
             amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: false,
-            completed: false, isCustom: false)
+            completed: false, isCustom: false
+        )
 
         let items = BillsCalendarEngine.itemsForSchedules(
             schedules: [schedule], statuses: [schedule.id: .scheduled],
             accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
-            today: DayDate(year: 2026, month: 9, day: 9))
+            today: DayDate(year: 2026, month: 9, day: 9)
+        )
 
         #expect(items.map(\.status) == [.missed])
     }
@@ -522,13 +522,15 @@ struct BillsCalendarEngineTests {
         let schedule = ScheduleSummary(
             id: "sch-weekly", nextDate: DayDate(year: 2026, month: 9, day: 14),
             amountOp: .isExactly, dateCondition: .recurring(config), postsTransaction: true,
-            completed: false, isCustom: false)
+            completed: false, isCustom: false
+        )
 
         let items = BillsCalendarEngine.itemsForSchedules(
             schedules: [schedule], statuses: [schedule.id: .upcoming],
             paymentDates: [schedule.id: [DayDate(year: 2026, month: 9, day: 12)]],
             accounts: [], payees: [], categoryGroups: [], year: 2026, month: 9,
-            today: DayDate(year: 2026, month: 9, day: 13))
+            today: DayDate(year: 2026, month: 9, day: 13)
+        )
 
         #expect(items[0].date == DayDate(year: 2026, month: 9, day: 7))
         #expect(items[0].status == .paid)

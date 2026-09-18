@@ -13,7 +13,8 @@ extension BudgetStore {
     func fetchEnvelopeBudgetSummary(_ month: String) async -> EnvelopeBudgetSummary? {
         guard Self.isValidBudgetMonth(month) else { return nil }
         guard let database = databaseForLogger,
-              let data = try? await database.fetchEnvelopeBudgetSummary(month: month) else {
+              let data = try? await database.fetchEnvelopeBudgetSummary(month: month)
+        else {
             return nil
         }
         return Self.makeEnvelopeBudgetSummary(
@@ -54,8 +55,7 @@ extension BudgetStore {
               let year = Int(parts[0]),
               let monthNumber = Int(parts[1]),
               year > 0,
-              (1...12).contains(monthNumber) else { return false }
+              (1 ... 12).contains(monthNumber) else { return false }
         return true
     }
-
 }

@@ -22,7 +22,8 @@ enum ReportStrings {
         ]
         for identifier in identifiers {
             if let path = bundle.path(forResource: identifier, ofType: "lproj"),
-               let localizedBundle = Bundle(path: path) {
+               let localizedBundle = Bundle(path: path)
+            {
                 return localizedBundle
             }
         }

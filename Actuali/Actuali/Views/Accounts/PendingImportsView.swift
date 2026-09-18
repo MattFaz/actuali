@@ -49,7 +49,8 @@ struct PendingImportsView: View {
                                 Button(role: .destructive) {
                                     do { try store.remove(id: item.id) } catch {
                                         errorMessage = PendingImportApprover.localizedErrorMessage(
-                                            for: error, locale: locale)
+                                            for: error, locale: locale
+                                        )
                                     }
                                 } label: {
                                     Label("Dismiss", systemImage: "trash")
@@ -93,7 +94,11 @@ struct PendingImportsView: View {
             }
             .alert("Import Failed", isPresented: Binding(
                 get: { errorMessage != nil },
-                set: { if !$0 { errorMessage = nil } }
+                set: {
+                    if !$0 {
+                        errorMessage = nil
+                    }
+                }
             )) {
                 Button("OK") {}
             } message: {
@@ -126,7 +131,8 @@ struct PendingImportsView: View {
                         editingItem = nil
                         deferredFailureCount = nil
                         errorMessage = PendingImportApprover.localizedErrorMessage(
-                            for: error, locale: locale)
+                            for: error, locale: locale
+                        )
                     }
                 }
             } catch PendingImportApprover.ApproveError.noAccountAvailable {
@@ -169,7 +175,8 @@ struct PendingImportsView: View {
                         editingItem = nil
                         deferredFailureCount = nil
                         errorMessage = PendingImportApprover.localizedErrorMessage(
-                            for: error, locale: locale)
+                            for: error, locale: locale
+                        )
                     }
                 }
             } catch {
@@ -178,7 +185,8 @@ struct PendingImportsView: View {
                     editingItem = nil
                     deferredFailureCount = nil
                     errorMessage = PendingImportApprover.localizedErrorMessage(
-                        for: error, locale: locale)
+                        for: error, locale: locale
+                    )
                 }
             }
         }
@@ -339,7 +347,8 @@ struct PendingImportsView: View {
         bundle: Bundle = .main
     ) -> String? {
         if let originBudgetId = item.originBudgetId,
-           originBudgetId != activeBudgetId {
+           originBudgetId != activeBudgetId
+        {
             return ReportStrings.text(
                 "This import belongs to a different budget. Review and confirm adoption into the active budget before saving.",
                 locale: locale,
@@ -381,7 +390,6 @@ struct PendingImportsView: View {
             defaultAccountId: budgetStore.defaultAccountId
         )
     }
-
 }
 
 // MARK: - Row
@@ -440,7 +448,6 @@ private struct PendingImportRow: View {
         }
         .padding(.vertical, 4)
     }
-
 }
 
 extension PendingImportsView {

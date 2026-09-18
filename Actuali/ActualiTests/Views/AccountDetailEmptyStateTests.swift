@@ -1,6 +1,6 @@
+@testable import Actuali
 import SwiftUI
 import Testing
-@testable import Actuali
 
 /// The account view's empty-state message picks one of four strings; pin the
 /// precedence (chip or search beats the hide toggles) so the branch order

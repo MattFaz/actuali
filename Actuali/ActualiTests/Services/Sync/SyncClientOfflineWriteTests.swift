@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// A server that accepts the connection and then never answers in time — what
 /// an unreachable self-hosted server looks like to URLSession (the request
@@ -13,9 +13,9 @@ private final class StallingSyncTransport: URLProtocol {
     /// open, a caller that awaits the push simply never returns, which the
     /// test's time limit catches no matter how slow the machine is.
     private static let gate = NSCondition()
-    nonisolated(unsafe) private static var isOpen = false
-    nonisolated(unsafe) private static var attempts = 0
-    nonisolated(unsafe) private static var completions = 0
+    private nonisolated(unsafe) static var isOpen = false
+    private nonisolated(unsafe) static var attempts = 0
+    private nonisolated(unsafe) static var completions = 0
 
     /// Safety net so a request left in flight by an earlier test can't hold a
     /// URLSession thread for the life of the suite.
@@ -52,8 +52,13 @@ private final class StallingSyncTransport: URLProtocol {
         return completions
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         Self.gate.lock()
@@ -70,8 +75,13 @@ private final class StallingSyncTransport: URLProtocol {
 }
 
 private final class ImmediateFailureSyncTransport: URLProtocol {
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         client?.urlProtocol(self, didFailWithError: URLError(.cannotConnectToHost))
@@ -86,7 +96,6 @@ private final class ImmediateFailureSyncTransport: URLProtocol {
 /// returns immediately and the sync is deferred to the retry ladder.
 @Suite(.serialized)
 struct SyncClientOfflineWriteTests {
-
     private static let expectedBankSyncLink = ExpectedBankSyncLink(
         accountId: "acct-1", externalAccountId: "external-acct-1", source: "simpleFin"
     )
@@ -99,91 +108,91 @@ struct SyncClientOfflineWriteTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY,
-                    stage TEXT,
-                    conditions TEXT,
-                    actions TEXT,
-                    tombstone INTEGER DEFAULT 0,
-                    conditions_op TEXT DEFAULT 'and'
-                )
-                """)
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY,
+                stage TEXT,
+                conditions TEXT,
+                actions TEXT,
+                tombstone INTEGER DEFAULT 0,
+                conditions_op TEXT DEFAULT 'and'
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                )
-                """)
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    account_id TEXT,
-                    account_sync_source TEXT
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0,
+                account_id TEXT,
+                account_sync_source TEXT
+            )
+            """)
             try db.execute(sql: """
-                INSERT INTO accounts (id, account_id, account_sync_source)
-                VALUES ('acct-1', 'external-acct-1', 'simpleFin')
-                """)
+            INSERT INTO accounts (id, account_id, account_sync_source)
+            VALUES ('acct-1', 'external-acct-1', 'simpleFin')
+            """)
             try db.execute(sql: """
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                )
-                """)
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    cat_group TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                cat_group TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Sync client whose every request stalls, standing in for a server that
@@ -221,7 +230,7 @@ struct SyncClientOfflineWriteTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260811,
+            date: 20_260_811,
             amount: -1234,
             payeeId: "payee-1",
             payeeName: "Coffee",
@@ -346,7 +355,8 @@ struct SyncClientOfflineWriteTests {
 
         await #expect(throws: (any Error).self) {
             try await syncClient.updateTransactions(
-                [firstUpdate, secondUpdate], changedFields: ["amount"])
+                [firstUpdate, secondUpdate], changedFields: ["amount"]
+            )
         }
 
         let amounts = try await database.dbQueueForTesting.read { db in
@@ -409,11 +419,15 @@ struct SyncClientOfflineWriteTests {
 
         #expect(outcomes.count == 2)
         #expect(outcomes.filter {
-            if case .duplicate = $0 { return true }
+            if case .duplicate = $0 {
+                return true
+            }
             return false
         }.count == 1)
         let insertedIds = outcomes.compactMap { outcome in
-            if case let .inserted(id) = outcome { return id }
+            if case .inserted(let id) = outcome {
+                return id
+            }
             return nil
         }
         #expect(insertedIds.count == 1)
@@ -422,17 +436,17 @@ struct SyncClientOfflineWriteTests {
 
         let durableRows = try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(db, sql: """
-                SELECT COUNT(*) FROM transactions
-                WHERE acct = ? AND financial_id = ?
-                """, arguments: [inserted.accountId, inserted.financialId]) ?? 0
+            SELECT COUNT(*) FROM transactions
+            WHERE acct = ? AND financial_id = ?
+            """, arguments: [inserted.accountId, inserted.financialId]) ?? 0
         }
         #expect(durableRows == 1)
 
         let messageRows = try await database.dbQueueForTesting.read { db in
             let rows = try Row.fetchAll(db, sql: """
-                SELECT row, column FROM messages_crdt
-                WHERE dataset = 'transactions'
-                """)
+            SELECT row, column FROM messages_crdt
+            WHERE dataset = 'transactions'
+            """)
             return rows.map { (row: $0["row"] as String, column: $0["column"] as String) }
         }
         #expect(Set(messageRows.map(\.row)) == Set([inserted.id]))
@@ -477,9 +491,9 @@ struct SyncClientOfflineWriteTests {
 
         #expect(try await database.dbQueueForTesting.read { db in
             try Int.fetchOne(db, sql: """
-                SELECT COUNT(*) FROM transactions
-                WHERE acct = ? AND financial_id = ? AND tombstone = 0
-                """, arguments: [first.accountId, first.financialId]) ?? 0
+            SELECT COUNT(*) FROM transactions
+            WHERE acct = ? AND financial_id = ? AND tombstone = 0
+            """, arguments: [first.accountId, first.financialId]) ?? 0
         } == 2)
 
         let generic: Transaction = {
@@ -548,7 +562,7 @@ struct SyncClientOfflineWriteTests {
             switch state {
             case "date":
                 try await database.dbQueueForTesting.write { db in
-                    try db.execute(sql: "UPDATE transactions SET date = ? WHERE id = ?", arguments: [20260812, existing.id])
+                    try db.execute(sql: "UPDATE transactions SET date = ? WHERE id = ?", arguments: [20_260_812, existing.id])
                 }
             case "amount":
                 try await database.dbQueueForTesting.write { db in
@@ -594,7 +608,7 @@ struct SyncClientOfflineWriteTests {
             case "tombstone": return row?["tombstone"] as Int? == 1
             case "starting_balance": return row?["starting_balance_flag"] as Int? == 1
             case "child": return row?["isChild"] as Int? == 1
-            case "date": return row?["date"] as Int? == 20260812
+            case "date": return row?["date"] as Int? == 20_260_812
             case "amount": return row?["amount"] as Int? == -4321
             case "payee": return row?["description"] as String? == "payee-concurrent"
             case "financial_id": return row?["financial_id"] as String? == "financial-concurrent"
@@ -715,9 +729,9 @@ struct SyncClientOfflineWriteTests {
         }
 
         let counts = try await database.dbQueueForTesting.read { db in
-            (
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [importedId]) ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [importedId]) ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(counts == (0, 0))
@@ -729,9 +743,9 @@ struct SyncClientOfflineWriteTests {
         let syncClient = try await makeSyncClient(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO accounts (id, account_id, account_sync_source)
-                VALUES ('acct-2', 'external-acct-2-new', 'simpleFin')
-                """)
+            INSERT INTO accounts (id, account_id, account_sync_source)
+            VALUES ('acct-2', 'external-acct-2-new', 'simpleFin')
+            """)
         }
 
         try await syncClient.recordBankSyncStatus([
@@ -754,17 +768,17 @@ struct SyncClientOfflineWriteTests {
         ])
 
         let state = try await database.dbQueueForTesting.read { db in
-            (
-                validStatus: try String.fetchOne(
+            try (
+                validStatus: String.fetchOne(
                     db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-1'"
                 ),
-                staleStatus: try String.fetchOne(
+                staleStatus: String.fetchOne(
                     db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-2'"
                 ),
-                validMessages: try Int.fetchOne(
+                validMessages: Int.fetchOne(
                     db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-1'"
                 ) ?? 0,
-                staleMessages: try Int.fetchOne(
+                staleMessages: Int.fetchOne(
                     db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-2'"
                 ) ?? 0
             )
@@ -800,14 +814,14 @@ struct SyncClientOfflineWriteTests {
         ])
 
         let state = try await database.dbQueueForTesting.read { db in
-            (
-                status: try String.fetchOne(
+            try (
+                status: String.fetchOne(
                     db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-1'"
                 ),
-                lastSync: try String.fetchOne(
+                lastSync: String.fetchOne(
                     db, sql: "SELECT last_sync FROM accounts WHERE id = 'acct-1'"
                 ),
-                messageCount: try Int.fetchOne(
+                messageCount: Int.fetchOne(
                     db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-1'"
                 ) ?? 0
             )
@@ -833,11 +847,11 @@ struct SyncClientOfflineWriteTests {
         )])
 
         let state = try await database.dbQueueForTesting.read { db in
-            (
-                status: try String.fetchOne(
+            try (
+                status: String.fetchOne(
                     db, sql: "SELECT bank_sync_status FROM accounts WHERE id = 'acct-2'"
                 ),
-                messageCount: try Int.fetchOne(
+                messageCount: Int.fetchOne(
                     db, sql: "SELECT COUNT(*) FROM messages_crdt WHERE dataset = 'accounts' AND row = 'acct-2'"
                 ) ?? 0
             )
@@ -883,10 +897,10 @@ struct SyncClientOfflineWriteTests {
         }
 
         let counts = try await database.dbQueueForTesting.read { db in
-            (
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(counts == (0, 0, 0))
@@ -951,11 +965,11 @@ struct SyncClientOfflineWriteTests {
         let rejectedPayeeName = rejected.payeeName
         let acceptedId = accepted.id
         let counts = try await database.dbQueueForTesting.read { db in
-            (
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees WHERE name = ?", arguments: [rejectedPayeeName]) ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping pm JOIN payees p ON p.id = pm.targetId WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt m JOIN payees p ON p.id = m.row WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [acceptedId]) ?? 0
+            try (
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees WHERE name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping pm JOIN payees p ON p.id = pm.targetId WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt m JOIN payees p ON p.id = m.row WHERE p.name = ?", arguments: [rejectedPayeeName]) ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions WHERE id = ?", arguments: [acceptedId]) ?? 0
             )
         }
         #expect(counts.0 == 0)
@@ -967,7 +981,7 @@ struct SyncClientOfflineWriteTests {
     @Test func bankSyncMaterializationRollsBackConflictingPendingPayeePayload() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        try await database.dbQueueForTesting.write { db in
+        try await database.dbQueueForTesting.write { _ in
         }
         let syncClient = try await makeSyncClient(database: database)
         let preparedRules = try await syncClient.prepareRules()
@@ -1019,11 +1033,11 @@ struct SyncClientOfflineWriteTests {
         }
 
         let counts = try await database.dbQueueForTesting.read { db in
-            (
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping") ?? 0,
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM transactions") ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payees") ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM payee_mapping") ?? 0,
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(counts.0 == 0)
@@ -1038,30 +1052,30 @@ struct SyncClientOfflineWriteTests {
 
         try database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
-                VALUES ('tx-legacy-null-account', NULL, 20260811, -1234, 'financial-null-account', 0)
-                """)
+            INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+            VALUES ('tx-legacy-null-account', NULL, 20260811, -1234, 'financial-null-account', 0)
+            """)
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
-                VALUES ('tx-real-account', 'acct-1', 20260811, -1234, 'financial-null-account', 0)
-                """)
+            INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+            VALUES ('tx-real-account', 'acct-1', 20260811, -1234, 'financial-null-account', 0)
+            """)
         }
 
         let nullAccountMatch = try database.dbQueueForTesting.read { db in
             try String.fetchOne(db, sql: """
-                SELECT id FROM transactions
-                WHERE acct IS NULL AND financial_id = ?
-                    AND (tombstone = 0 OR tombstone IS NULL)
-                LIMIT 1
-                """, arguments: ["financial-null-account"])
+            SELECT id FROM transactions
+            WHERE acct IS NULL AND financial_id = ?
+                AND (tombstone = 0 OR tombstone IS NULL)
+            LIMIT 1
+            """, arguments: ["financial-null-account"])
         }
         let realAccountMatch = try database.dbQueueForTesting.read { db in
             try String.fetchOne(db, sql: """
-                SELECT id FROM transactions
-                WHERE acct IS ? AND financial_id = ?
-                    AND (tombstone = 0 OR tombstone IS NULL)
-                LIMIT 1
-                """, arguments: ["acct-1", "financial-null-account"])
+            SELECT id FROM transactions
+            WHERE acct IS ? AND financial_id = ?
+                AND (tombstone = 0 OR tombstone IS NULL)
+            LIMIT 1
+            """, arguments: ["acct-1", "financial-null-account"])
         }
 
         #expect(nullAccountMatch == "tx-legacy-null-account")
@@ -1082,14 +1096,14 @@ struct SyncClientOfflineWriteTests {
         try database.insertTransaction(imported)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE transactions
-                SET isChild = 1,
-                    sort_order = 123.0,
-                    imported_description = 'stale imported description',
-                    schedule = 'stale schedule',
-                    starting_balance_flag = 0
-                WHERE id = ?
-                """, arguments: [imported.id])
+            UPDATE transactions
+            SET isChild = 1,
+                sort_order = 123.0,
+                imported_description = 'stale imported description',
+                schedule = 'stale schedule',
+                starting_balance_flag = 0
+            WHERE id = ?
+            """, arguments: [imported.id])
         }
 
         let syncClient = try await makeSyncClient(database: database)
@@ -1098,9 +1112,9 @@ struct SyncClientOfflineWriteTests {
         #expect(result == .inserted("tx-zero-message"))
         let storedValues = try await database.dbQueueForTesting.read { db in
             let messages = try Row.fetchAll(db, sql: """
-                SELECT column, value FROM messages_crdt
-                WHERE dataset = 'transactions' AND row = ?
-                """, arguments: [imported.id])
+            SELECT column, value FROM messages_crdt
+            WHERE dataset = 'transactions' AND row = ?
+            """, arguments: [imported.id])
             var values: [String: DatabaseValue] = [:]
             for message in messages {
                 values[message["column"]] = CRDTValue.deserialize(message["value"])
@@ -1132,11 +1146,11 @@ struct SyncClientOfflineWriteTests {
         let syncClient = try await makeSyncClient(database: database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('set-rule-note',
-                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"set","field":"notes","value":"Rule note"}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('set-rule-note',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"set","field":"notes","value":"Rule note"}]', 0, 'and')
+            """)
         }
 
         let imported: Transaction = {
@@ -1155,9 +1169,9 @@ struct SyncClientOfflineWriteTests {
 
         let messageValues = try await database.dbQueueForTesting.read { db in
             try String.fetchAll(db, sql: """
-                SELECT value FROM messages_crdt
-                WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
-                """, arguments: [importedId])
+            SELECT value FROM messages_crdt
+            WHERE dataset = 'transactions' AND row = ? AND column = 'notes'
+            """, arguments: [importedId])
         }
         #expect(messageValues == [CRDTValue.serialize(persisted.syncableFields["notes"] ?? nil)])
         let timestamps = try await database.dbQueueForTesting.read { db in
@@ -1165,7 +1179,7 @@ struct SyncClientOfflineWriteTests {
         }
         var expected = MerkleTree()
         for timestamp in timestamps {
-            expected = expected.inserting(try #require(HLCTimestamp.parse(timestamp)))
+            expected = try expected.inserting(#require(HLCTimestamp.parse(timestamp)))
         }
         #expect(try database.deriveMerkleFromMessageLog().root.hash == expected.pruned().root.hash)
     }
@@ -1182,7 +1196,8 @@ struct SyncClientOfflineWriteTests {
         try database.insertTransaction(imported)
         let partial = CRDTMessage(
             timestamp: HLCTimestamp(millis: 1_700_000_000_000, counter: 0, node: "89e0e8e90b203f9e"),
-            dataset: "transactions", row: imported.id, column: "amount", value: "N:-1234")
+            dataset: "transactions", row: imported.id, column: "amount", value: "N:-1234"
+        )
         _ = try database.insertMessages([partial])
 
         await #expect(throws: BudgetDatabase.TransactionWriteError.incompleteFinancialIdMessages) {
@@ -1201,9 +1216,9 @@ struct SyncClientOfflineWriteTests {
 
         try database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
-                VALUES ('tx-deleted', 'acct-1', 20260811, -1234, 'financial-reimport', 1)
-                """)
+            INSERT INTO transactions (id, acct, date, amount, financial_id, tombstone)
+            VALUES ('tx-deleted', 'acct-1', 20260811, -1234, 'financial-reimport', 1)
+            """)
         }
 
         var imported = transaction(id: "tx-reimported")
@@ -1223,5 +1238,4 @@ struct SyncClientOfflineWriteTests {
         }
         #expect(count == 2)
     }
-
 }

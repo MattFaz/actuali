@@ -1,7 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-
-@testable import Actuali
 
 /// Budget creation file plumbing (GH #387): new budget directories mirror
 /// upstream's createBudget (id shape from idFromBudgetName, metadata from
@@ -21,9 +20,9 @@ struct BudgetFileManagerCreateTests {
         return url
     }
 
-    // Upstream idFromBudgetName: every space or non-alphanumeric flattened to
-    // "-", then "-" plus 7 characters of a UUID (hex, since a UUID's first
-    // dash sits at index 8).
+    /// Upstream idFromBudgetName: every space or non-alphanumeric flattened to
+    /// "-", then "-" plus 7 characters of a UUID (hex, since a UUID's first
+    /// dash sits at index 8).
     @Test func budgetIdMatchesUpstreamShape() {
         let id = BudgetFileManager.budgetId(fromName: "My Finances")
         #expect(id.range(of: "^My-Finances-[0-9a-f]{7}$", options: .regularExpression) != nil)

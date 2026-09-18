@@ -1,14 +1,13 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the `transactions.schedule` column mapping: posted scheduled
 /// transactions link back to their schedule so the poster's dedup guard
 /// (`WHERE schedule = ? AND date >= ?`) can find them.
 @MainActor
 struct ScheduleFieldTests {
-
     /// Builds the fetch-path tables. `includeScheduleColumn: false` mimics an
     /// old snapshot whose `transactions` table predates the schedule column,
     /// so opening `BudgetDatabase` must backfill it via migration.
@@ -110,7 +109,7 @@ struct ScheduleFieldTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260115,
+            date: 20_260_115,
             amount: -1500,
             payeeId: nil,
             payeeName: nil,

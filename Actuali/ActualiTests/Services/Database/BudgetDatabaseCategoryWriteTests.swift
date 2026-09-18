@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Creating category groups and categories from the app (GH #284). Mirrors
 /// upstream `insertCategoryGroup` / `insertCategory`
@@ -9,7 +9,6 @@ import GRDB
 /// to the top of their group, and both refuse duplicate names.
 @MainActor
 struct BudgetDatabaseCategoryWriteTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -54,7 +53,7 @@ struct BudgetDatabaseCategoryWriteTests {
                     ('cat-fuel', 'cat-fuel');
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func cleanup(_ url: URL) {
@@ -91,7 +90,7 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(groups.count == 3)
     }
 
-    @Test func groupNamesUseUnicodeCaseFolding() async throws {
+    @Test func groupNamesUseUnicodeCaseFolding() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         _ = try db.insertCategoryGroup(id: "grp-savings", name: "Épargne")
@@ -107,8 +106,8 @@ struct BudgetDatabaseCategoryWriteTests {
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: "INSERT INTO category_groups (id) VALUES ('grp-partial')")
             try conn.execute(sql: """
-                INSERT INTO categories (id, cat_group) VALUES ('cat-partial', 'grp-daily')
-                """)
+            INSERT INTO categories (id, cat_group) VALUES ('cat-partial', 'grp-daily')
+            """)
         }
 
         _ = try db.insertCategoryGroup(id: "grp-fun", name: "Fun")
@@ -171,7 +170,8 @@ struct BudgetDatabaseCategoryWriteTests {
             try String.fetchOne(
                 conn,
                 sql: "SELECT transferId FROM category_mapping WHERE id = ?",
-                arguments: ["cat-coffee"])
+                arguments: ["cat-coffee"]
+            )
         }
         #expect(target == "cat-coffee")
     }
@@ -197,7 +197,7 @@ struct BudgetDatabaseCategoryWriteTests {
         #expect(daily?.categories.map(\.name) == ["Coffee", "Groceries", "Fuel"])
     }
 
-    @Test func categoryNamesAreUniqueWithinTheirGroup() async throws {
+    @Test func categoryNamesAreUniqueWithinTheirGroup() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -209,7 +209,7 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func theSameNameIsFineInAnotherGroup() async throws {
+    @Test func theSameNameIsFineInAnotherGroup() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
@@ -239,7 +239,7 @@ struct BudgetDatabaseCategoryWriteTests {
         }
     }
 
-    @Test func anUnknownGroupIsRefused() async throws {
+    @Test func anUnknownGroupIsRefused() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 

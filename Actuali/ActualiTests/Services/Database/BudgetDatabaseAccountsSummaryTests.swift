@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the semantics of `fetchAccountsMonthSummary()`, the accounts tab's
 /// summary group (GH #256): the same income and spending the budget tab
@@ -9,7 +9,6 @@ import GRDB
 /// hidden categories and groups left out, split parents excluded.
 @MainActor
 struct BudgetDatabaseAccountsSummaryTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -105,9 +104,9 @@ struct BudgetDatabaseAccountsSummaryTests {
 
         let summary = try await db.fetchAccountsMonthSummary(month: "2026-08")
 
-        #expect(summary.incomeCents == 400000)
-        #expect(summary.expenseCents == 150000)
-        #expect(summary.netCents == 250000)
+        #expect(summary.incomeCents == 400_000)
+        #expect(summary.expenseCents == 150_000)
+        #expect(summary.netCents == 250_000)
     }
 
     @Test func aMonthOfRefundsGoesNegativeLikeTheBudgetTabsSpent() async throws {
@@ -131,9 +130,9 @@ struct BudgetDatabaseAccountsSummaryTests {
 
         let summary = try await db.fetchAccountsMonthSummary(month: "2026-08")
 
-        #expect(summary.incomeCents == 400000)
+        #expect(summary.incomeCents == 400_000)
         #expect(summary.expenseCents == -75000)
-        #expect(summary.netCents == 475000)
+        #expect(summary.netCents == 475_000)
     }
 
     @Test func countsOnBudgetAccountsOnly() async throws {
@@ -162,7 +161,7 @@ struct BudgetDatabaseAccountsSummaryTests {
 
         let summary = try await db.fetchAccountsMonthSummary(month: "2026-08")
 
-        #expect(summary.incomeCents == 300000)
+        #expect(summary.incomeCents == 300_000)
         #expect(summary.expenseCents == 1200)
     }
 
@@ -226,8 +225,8 @@ struct BudgetDatabaseAccountsSummaryTests {
 
         let summary = try await db.fetchAccountsMonthSummary(month: "2026-08")
 
-        #expect(summary.incomeCents == 400000)
-        #expect(summary.expenseCents == 150000)
+        #expect(summary.incomeCents == 400_000)
+        #expect(summary.expenseCents == 150_000)
     }
 
     @Test func countsSplitChildrenButNotTheirParent() async throws {

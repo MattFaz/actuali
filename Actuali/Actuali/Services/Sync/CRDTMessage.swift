@@ -6,34 +6,33 @@ import GRDB
 /// A CRDT message representing a single field change
 struct CRDTMessage {
     let timestamp: HLCTimestamp
-    let dataset: String      // Table name: "transactions", "accounts", etc.
-    let row: String          // Row ID (UUID)
-    let column: String       // Field name: "amount", "date", etc.
-    let value: String        // Serialized value: "N:1234", "S:text", "0:"
+    let dataset: String // Table name: "transactions", "accounts", etc.
+    let row: String // Row ID (UUID)
+    let column: String // Field name: "amount", "date", etc.
+    let value: String // Serialized value: "N:1234", "S:text", "0:"
 }
 
 /// Value serialization matching Actual's format
 enum CRDTValue {
-
     /// Serialize a value for CRDT storage
     static func serialize(_ value: Any?) -> String {
         switch value {
         case nil:
-            return "0:"
+            "0:"
         case let n as Int:
-            return "N:\(n)"
+            "N:\(n)"
         case let n as Int64:
-            return "N:\(n)"
+            "N:\(n)"
         case let d as Double:
             // Full precision — upstream parses "N:" payloads with parseFloat,
             // so fractional values (e.g. coordinates) must not be truncated.
-            return "N:\(d)"
+            "N:\(d)"
         case let s as String:
-            return "S:\(s)"
+            "S:\(s)"
         case let b as Bool:
-            return "N:\(b ? 1 : 0)"
+            "N:\(b ? 1 : 0)"
         default:
-            return "0:"
+            "0:"
         }
     }
 

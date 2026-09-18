@@ -97,7 +97,8 @@ extension GoalTemplate {
     static func encodeArray(_ templates: [GoalTemplate]) -> String? {
         let objects = templates.map(\.jsonObject)
         guard let data = try? JSONSerialization.data(
-            withJSONObject: objects, options: [.sortedKeys]) else { return nil }
+            withJSONObject: objects, options: [.sortedKeys]
+        ) else { return nil }
         return String(decoding: data, as: UTF8.self)
     }
 
@@ -110,7 +111,9 @@ extension GoalTemplate {
         }
         func bool(_ key: String) -> Bool? {
             guard let value = jsonObject[key], !(value is NSNull) else { return nil }
-            if let number = value as? NSNumber { return number.boolValue }
+            if let number = value as? NSNumber {
+                return number.boolValue
+            }
             return nil
         }
         func string(_ key: String) -> String? {
@@ -129,48 +132,52 @@ extension GoalTemplate {
             return
         }
 
-        amount = double("amount")
-        monthly = double("monthly")
+        self.amount = double("amount")
+        self.monthly = double("monthly")
         if let limitObject = jsonObject["limit"] as? [String: Any],
-           let limitAmount = (limitObject["amount"] as? NSNumber)?.doubleValue {
-            limit = Limit(
+           let limitAmount = (limitObject["amount"] as? NSNumber)?.doubleValue
+        {
+            self.limit = Limit(
                 amount: limitAmount,
                 hold: (limitObject["hold"] as? NSNumber)?.boolValue ?? false,
                 period: (limitObject["period"] as? String)
                     .flatMap(LimitPeriod.init(rawValue:)) ?? .monthly,
-                start: limitObject["start"] as? String)
+                start: limitObject["start"] as? String
+            )
         } else if kind == .limit {
             // The UI's LimitTemplate stores its fields at the top level.
-            limit = Limit(
+            self.limit = Limit(
                 amount: amount ?? 0,
                 hold: bool("hold") ?? false,
                 period: string("period").flatMap(LimitPeriod.init(rawValue:)) ?? .monthly,
-                start: string("start"))
+                start: string("start")
+            )
         }
-        percent = double("percent")
-        previous = bool("previous")
-        category = string("category")
+        self.percent = double("percent")
+        self.previous = bool("previous")
+        self.category = string("category")
         if let periodObject = jsonObject["period"] as? [String: Any],
            let unit = (periodObject["period"] as? String).flatMap(PeriodUnit.init(rawValue:)),
-           let periodAmount = (periodObject["amount"] as? NSNumber)?.intValue {
-            period = Period(period: unit, amount: periodAmount)
+           let periodAmount = (periodObject["amount"] as? NSNumber)?.intValue
+        {
+            self.period = Period(period: unit, amount: periodAmount)
         }
-        starting = string("starting")
-        month = string("month")
-        annual = bool("annual")
-        repeatCount = int("repeat")
-        from = string("from")
-        name = string("name")
-        scheduleId = string("scheduleId")
-        full = bool("full")
-        adjustment = double("adjustment")
-        adjustmentType = string("adjustmentType").flatMap(AdjustmentType.init(rawValue:))
-        numMonths = int("numMonths")
-        lookBack = int("lookBack")
-        weight = double("weight")
-        line = string("line")
-        error = string("error")
-        description = string("description")
+        self.starting = string("starting")
+        self.month = string("month")
+        self.annual = bool("annual")
+        self.repeatCount = int("repeat")
+        self.from = string("from")
+        self.name = string("name")
+        self.scheduleId = string("scheduleId")
+        self.full = bool("full")
+        self.adjustment = double("adjustment")
+        self.adjustmentType = string("adjustmentType").flatMap(AdjustmentType.init(rawValue:))
+        self.numMonths = int("numMonths")
+        self.lookBack = int("lookBack")
+        self.weight = double("weight")
+        self.line = string("line")
+        self.error = string("error")
+        self.description = string("description")
     }
 
     /// The JSON object upstream's `JSON.parse(goal_def)` readers expect.
@@ -179,7 +186,7 @@ extension GoalTemplate {
     var jsonObject: [String: Any] {
         var object: [String: Any] = [
             "type": type.rawValue,
-            "directive": directive.rawValue,
+            "directive": directive.rawValue
         ]
         // Upstream's parser emits explicit nulls for priority on
         // remainder/goal lines; readers null-check rather than key-check, so
@@ -189,49 +196,93 @@ extension GoalTemplate {
             value == value.rounded() && abs(value) < 1e15
                 ? NSNumber(value: Int64(value)) : NSNumber(value: value)
         }
-        if let amount { object["amount"] = number(amount) }
-        if let monthly { object["monthly"] = number(monthly) }
-        if type == .simple, monthly == nil { object["monthly"] = NSNull() }
+        if let amount {
+            object["amount"] = number(amount)
+        }
+        if let monthly {
+            object["monthly"] = number(monthly)
+        }
+        if type == .simple, monthly == nil {
+            object["monthly"] = NSNull()
+        }
         if let limit, type == .limit {
             object["amount"] = number(limit.amount)
             object["hold"] = limit.hold
             object["period"] = limit.period.rawValue
-            if let start = limit.start { object["start"] = start }
+            if let start = limit.start {
+                object["start"] = start
+            }
         } else if let limit {
             var limitObject: [String: Any] = [
                 "amount": number(limit.amount),
                 "hold": limit.hold,
-                "period": limit.period.rawValue,
+                "period": limit.period.rawValue
             ]
             limitObject["start"] = limit.start.map { $0 as Any } ?? NSNull()
             object["limit"] = limitObject
         } else if type == .simple || type == .periodic || type == .remainder {
             object["limit"] = NSNull()
         }
-        if let percent { object["percent"] = number(percent) }
-        if let previous { object["previous"] = previous }
-        if let category { object["category"] = category }
+        if let percent {
+            object["percent"] = number(percent)
+        }
+        if let previous {
+            object["previous"] = previous
+        }
+        if let category {
+            object["category"] = category
+        }
         if let period {
             object["period"] = ["period": period.period.rawValue, "amount": period.amount]
         }
-        if let starting { object["starting"] = starting }
-        if let month { object["month"] = month }
-        if let annual { object["annual"] = annual }
-        if let repeatCount { object["repeat"] = repeatCount }
+        if let starting {
+            object["starting"] = starting
+        }
+        if let month {
+            object["month"] = month
+        }
+        if let annual {
+            object["annual"] = annual
+        }
+        if let repeatCount {
+            object["repeat"] = repeatCount
+        }
         if type == .spend || type == .by {
             object["from"] = from.map { $0 as Any } ?? NSNull()
         }
-        if let name { object["name"] = name }
-        if let scheduleId { object["scheduleId"] = scheduleId }
-        if let full { object["full"] = full }
-        if let adjustment { object["adjustment"] = number(adjustment) }
-        if let adjustmentType { object["adjustmentType"] = adjustmentType.rawValue }
-        if let numMonths { object["numMonths"] = numMonths }
-        if let lookBack { object["lookBack"] = lookBack }
-        if let weight { object["weight"] = number(weight) }
-        if let line { object["line"] = line }
-        if let error { object["error"] = error }
-        if let description { object["description"] = description }
+        if let name {
+            object["name"] = name
+        }
+        if let scheduleId {
+            object["scheduleId"] = scheduleId
+        }
+        if let full {
+            object["full"] = full
+        }
+        if let adjustment {
+            object["adjustment"] = number(adjustment)
+        }
+        if let adjustmentType {
+            object["adjustmentType"] = adjustmentType.rawValue
+        }
+        if let numMonths {
+            object["numMonths"] = numMonths
+        }
+        if let lookBack {
+            object["lookBack"] = lookBack
+        }
+        if let weight {
+            object["weight"] = number(weight)
+        }
+        if let line {
+            object["line"] = line
+        }
+        if let error {
+            object["error"] = error
+        }
+        if let description {
+            object["description"] = description
+        }
         return object
     }
 }

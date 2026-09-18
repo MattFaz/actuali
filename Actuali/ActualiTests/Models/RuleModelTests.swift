@@ -1,14 +1,13 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Round-tripping rules through the JSON blobs Actual stores them in. Field
 /// names must come back out internal (`description`, `acct`) or the web app and
 /// the sync engine will read a rule we wrote as a different rule.
 struct RuleModelTests {
-
-    @Test func stageLabelUsesRequestedLocale() {
-        let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
+    @Test func stageLabelUsesRequestedLocale() throws {
+        let bundle = try #require(Bundle(identifier: "com.mfazz.ActualiOS"))
         #expect(Rule.Stage.pre.label(
             locale: Locale(identifier: "fr_FR"), bundle: bundle
         ) == "Avant")
@@ -28,7 +27,7 @@ struct RuleModelTests {
         #expect(rule.actions[0].field == "account")
     }
 
-    @Test func serializesBackToInternalFieldNames() throws {
+    @Test func serializesBackToInternalFieldNames() {
         let rule = Rule(
             id: "r-1", stage: .default, conditionsOp: .and,
             conditions: [.init(op: "contains", field: "imported_payee",
@@ -60,7 +59,7 @@ struct RuleModelTests {
         #expect(rule.syncableFields["stage"] as? String == nil)
         #expect(rule.syncableFields["conditions_op"] as? String == "and")
     }
-    
+
     /// Upstream drops a rule whose conditions don't parse rather than running a
     /// weakened version of it.
     @Test func rejectsRuleWithAMalformedCondition() {
@@ -68,7 +67,8 @@ struct RuleModelTests {
             try Rule.parse(
                 id: "r-1", stage: nil, conditionsOp: "and",
                 conditionsJSON: #"[{"op":"is","field":"description","value":"p"},{"value":"orphan"}]"#,
-                actionsJSON: #"[{"op":"set","field":"category","value":"cat-1"}]"#)
+                actionsJSON: #"[{"op":"set","field":"category","value":"cat-1"}]"#
+            )
         }
     }
 }

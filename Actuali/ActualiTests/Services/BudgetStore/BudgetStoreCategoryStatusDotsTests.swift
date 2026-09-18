@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreCategoryStatusDotsTests {
-
     @Test func categoryStatusDotsShowByDefault() {
         #expect(BudgetStore.previewInstance().showCategoryStatusDots)
     }

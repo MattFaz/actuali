@@ -11,13 +11,15 @@ enum Backup: Identifiable, Equatable {
 
     var id: String {
         switch self {
-        case .archive(let id, _): return id
-        case .latest: return "db.latest.sqlite"
+        case .archive(let id, _): id
+        case .latest: "db.latest.sqlite"
         }
     }
 
     var isLatest: Bool {
-        if case .latest = self { return true }
+        if case .latest = self {
+            return true
+        }
         return false
     }
 }
@@ -31,13 +33,13 @@ enum BackupError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .snapshotFailed(let error):
-            return String(localized: "Couldn't snapshot the budget database: \(error.localizedDescription)")
+            String(localized: "Couldn't snapshot the budget database: \(error.localizedDescription)")
         case .archiveCreationFailed(let error):
-            return String(localized: "Couldn't create the backup archive: \(error.localizedDescription)")
+            String(localized: "Couldn't create the backup archive: \(error.localizedDescription)")
         case .backupNotFound(let id):
-            return String(localized: "Backup \(id) no longer exists")
+            String(localized: "Backup \(id) no longer exists")
         case .restoreFailed(let error):
-            return String(localized: "Couldn't restore the backup: \(error.localizedDescription)")
+            String(localized: "Couldn't restore the backup: \(error.localizedDescription)")
         }
     }
 }
@@ -224,7 +226,7 @@ actor BackupService {
             await destinationManager.removeMirroredArchive(budgetId: budgetId, filename: id)
         }
     }
-    
+
     // MARK: - Restore
 
     /// Restore backupId over the live files, first snapshotting the current state so the user can revert.
@@ -244,7 +246,8 @@ actor BackupService {
                 // Both halves must exist — a half-pair from a crash is not a
                 // baseline (the creation order below makes the db the marker).
                 guard fm.fileExists(atPath: latestDb.path),
-                      fm.fileExists(atPath: latestMetadata.path) else {
+                      fm.fileExists(atPath: latestMetadata.path)
+                else {
                     throw BackupError.backupNotFound(backupId)
                 }
                 try replaceFile(at: liveDb, with: latestDb)

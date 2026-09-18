@@ -16,7 +16,9 @@ struct BillsCalendarView: View {
     @State private var actionError: String? = nil
     @State private var pendingDelete: ScheduleSummary? = nil
 
-    private var today: DayDate { DayDate.today() }
+    private var today: DayDate {
+        DayDate.today()
+    }
 
     private var monthKey: String {
         String(format: "%04d-%02d", selectedYear, selectedMonth)
@@ -69,7 +71,7 @@ struct BillsCalendarView: View {
     private var weekdaySymbols: [String] {
         let symbols = DateFormatter().veryShortStandaloneWeekdaySymbols
             ?? ["S", "M", "T", "W", "T", "F", "S"]
-        return (1..<8).map { symbols[$0 % 7] }   // Monday first
+        return (1..<8).map { symbols[$0 % 7] } // Monday first
     }
 
     private func run(_ operation: @escaping () async throws -> Void) {
@@ -86,7 +88,8 @@ struct BillsCalendarView: View {
         let itemsByDate = Dictionary(grouping: items, by: \.date)
         let summary = BillsCalendarEngine.summarize(items: items)
         let filtered = BillsCalendarEngine.filter(
-            items: items, filter: activeFilter, selectedDate: selectedDate)
+            items: items, filter: activeFilter, selectedDate: selectedDate
+        )
 
         ScrollView {
             VStack(spacing: 16) {
@@ -209,7 +212,12 @@ struct BillsCalendarView: View {
             pendingDelete.map { _ in "Delete this schedule?" } ?? "",
             isPresented: Binding(
                 get: { pendingDelete != nil },
-                set: { if !$0 { pendingDelete = nil } }),
+                set: {
+                    if !$0 {
+                        pendingDelete = nil
+                    }
+                }
+            ),
             titleVisibility: .visible
         ) {
             Button("Delete Schedule", role: .destructive) {
@@ -221,8 +229,12 @@ struct BillsCalendarView: View {
         }
         .alert("Action Failed", isPresented: Binding(
             get: { actionError != nil },
-            set: { if !$0 { actionError = nil } })
-        ) {
+            set: {
+                if !$0 {
+                    actionError = nil
+                }
+            }
+        )) {
             Button("OK", role: .cancel) { actionError = nil }
         } message: {
             Text(actionError ?? "")
@@ -576,7 +588,7 @@ private struct BillCardView: View {
     }
 
     private var subtitleText: String? {
-        let parts = [item.categoryName, item.accountName].compactMap { $0 }.filter { !$0.isEmpty }
+        let parts = [item.categoryName, item.accountName].compactMap(\.self).filter { !$0.isEmpty }
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 }

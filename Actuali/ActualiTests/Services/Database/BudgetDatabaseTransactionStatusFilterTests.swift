@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the status-filter chips on the transaction lists (GH #439):
 /// All / Uncategorized / Uncleared / Cleared / Reconciled. The filter runs in
@@ -13,7 +13,6 @@ import GRDB
 /// status chips partition the list, matching the row status dot.
 @MainActor
 struct BudgetDatabaseTransactionStatusFilterTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -226,25 +225,25 @@ struct BudgetDatabaseTransactionStatusFilterTests {
 
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, description, amount, date, sort_order, isParent, isChild, parent_id, tombstone) VALUES
-                    ('t-split-mixed',     'acct-1', NULL,   'payee-market', -1000, 20260605, 7, 1, 0, NULL, 0),
-                    ('t-split-mixed-c',   'acct-1', 'cat-1', NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
-                    ('t-split-mixed-u',   'acct-1', NULL,   NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
-                    ('t-split-categorized', 'acct-1', NULL, 'payee-market', -2000, 20260604, 6, 1, 0, NULL, 0),
-                    ('t-split-cat-c',     'acct-1', 'cat-1', NULL,           0,     20260604, 6, 0, 1, 't-split-categorized', 0),
-                    ('t-split-dead',      'acct-1', NULL,   'payee-market', -3000, 20260603, 5, 1, 0, NULL, 0),
-                    ('t-split-dead-u',    'acct-1', NULL,   NULL,           0,     20260603, 5, 0, 1, 't-split-dead', 1),
-                    ('t-split-on-transfer', 'acct-1', NULL, 'payee-market', -4000, 20260602, 4, 1, 0, NULL, 0),
-                    ('t-split-on-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
-                    ('t-split-on-transfer-c', 'acct-1', NULL, 'payee-transfer-on', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
-                    ('t-split-parent-transfer', 'acct-1', NULL, 'payee-transfer-on', -5000, 20260601, 3, 1, 0, NULL, 0),
-                    ('t-split-parent-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
-                    ('t-split-parent-transfer-c', 'acct-1', NULL, 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
-                    ('t-split-off-transfer', 'acct-1', NULL, 'payee-market', -6000, 20260531, 2, 1, 0, NULL, 0),
-                    ('t-split-off-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
-                    ('t-split-off-transfer-c', 'acct-1', NULL, 'payee-transfer-off', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
-                    ('t-orphan-acct',     'acct-gone', NULL, 'payee-market', -4000, 20260602, 4, 0, 0, NULL, 0);
-                """)
+            INSERT INTO transactions (id, acct, category, description, amount, date, sort_order, isParent, isChild, parent_id, tombstone) VALUES
+                ('t-split-mixed',     'acct-1', NULL,   'payee-market', -1000, 20260605, 7, 1, 0, NULL, 0),
+                ('t-split-mixed-c',   'acct-1', 'cat-1', NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
+                ('t-split-mixed-u',   'acct-1', NULL,   NULL,           0,     20260605, 7, 0, 1, 't-split-mixed', 0),
+                ('t-split-categorized', 'acct-1', NULL, 'payee-market', -2000, 20260604, 6, 1, 0, NULL, 0),
+                ('t-split-cat-c',     'acct-1', 'cat-1', NULL,           0,     20260604, 6, 0, 1, 't-split-categorized', 0),
+                ('t-split-dead',      'acct-1', NULL,   'payee-market', -3000, 20260603, 5, 1, 0, NULL, 0),
+                ('t-split-dead-u',    'acct-1', NULL,   NULL,           0,     20260603, 5, 0, 1, 't-split-dead', 1),
+                ('t-split-on-transfer', 'acct-1', NULL, 'payee-market', -4000, 20260602, 4, 1, 0, NULL, 0),
+                ('t-split-on-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
+                ('t-split-on-transfer-c', 'acct-1', NULL, 'payee-transfer-on', 0, 20260602, 4, 0, 1, 't-split-on-transfer', 0),
+                ('t-split-parent-transfer', 'acct-1', NULL, 'payee-transfer-on', -5000, 20260601, 3, 1, 0, NULL, 0),
+                ('t-split-parent-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
+                ('t-split-parent-transfer-c', 'acct-1', NULL, 'payee-market', 0, 20260601, 3, 0, 1, 't-split-parent-transfer', 0),
+                ('t-split-off-transfer', 'acct-1', NULL, 'payee-market', -6000, 20260531, 2, 1, 0, NULL, 0),
+                ('t-split-off-transfer-cat', 'acct-1', 'cat-1', 'payee-market', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
+                ('t-split-off-transfer-c', 'acct-1', NULL, 'payee-transfer-off', 0, 20260531, 2, 0, 1, 't-split-off-transfer', 0),
+                ('t-orphan-acct',     'acct-gone', NULL, 'payee-market', -4000, 20260602, 4, 0, 0, NULL, 0);
+            """)
         }
 
         let uncategorized = try await db.fetchTransactions(statusFilter: .uncategorized)

@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct NetWorthWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -46,7 +46,8 @@ struct NetWorthWidgetView: View {
                     currencyCode: budgetStore.currencyCode,
                     narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                     locale: locale,
-                    hidden: budgetStore.hideBalances))
+                    hidden: budgetStore.hideBalances
+                ))
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
                 Text(ReportStrings.text("Not enough data", locale: locale))

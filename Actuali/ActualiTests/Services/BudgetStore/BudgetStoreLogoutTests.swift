@@ -1,8 +1,8 @@
+@testable import Actuali
 import CryptoKit
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Coverage for logout()'s local-data wipe: disconnecting must close the open
 /// database and sync client before deleting budget files (the same
@@ -11,7 +11,6 @@ import Testing
 /// refresh, and remove encrypted budgets' keys from the Keychain.
 @MainActor
 struct BudgetStoreLogoutTests {
-
     /// Store + file manager rooted in a unique temp directory. logout wipes
     /// *all* local budgets, and suites run in parallel against the shared
     /// Budgets directory, so isolation is mandatory for these tests.
@@ -80,7 +79,7 @@ struct BudgetStoreLogoutTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        store.configureForTesting(database: try makeOpenDatabase(), syncClient: makeSyncClient())
+        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
 
         store.logout()
 
@@ -100,7 +99,7 @@ struct BudgetStoreLogoutTests {
                     offBudget: false, closed: false, sortOrder: 0, balance: 100)
         ]
         store.transactions = [
-            Transaction(id: "t1", accountId: "a1", date: 20260810, amount: -500,
+            Transaction(id: "t1", accountId: "a1", date: 20_260_810, amount: -500,
                         payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
                         notes: nil, cleared: false, reconciled: false, transferId: nil,
                         isParent: false, parentId: nil, tombstone: false, sortOrder: nil,
@@ -147,7 +146,7 @@ struct BudgetStoreLogoutTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", in: manager)
-        store.configureForTesting(database: try makeOpenDatabase(), syncClient: makeSyncClient())
+        try store.configureForTesting(database: makeOpenDatabase(), syncClient: makeSyncClient())
 
         store.logout(clearLocalData: false)
 

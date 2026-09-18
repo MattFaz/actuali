@@ -1,9 +1,8 @@
+@testable import Actuali
 import AppIntents
 import Testing
-@testable import Actuali
 
 struct LogTransactionIntentTests {
-
     @Test func silentByDefaultSoAutomationsDoNotShowADialog() {
         let result = LogTransactionIntent.result(dialogText: "Logged $4.50 at Blue Bottle", showConfirmation: false)
         #expect(result.dialog == nil)
@@ -46,7 +45,8 @@ struct LogTransactionIntentTests {
     @MainActor @Test func loggerErrorsRemainTypedUntilPresentation() {
         let locale = Locale(identifier: "fr_FR")
         let mapped = LogTransactionError.wrapping(
-            TransactionLogger.LoggerError.transactionSuppressedByRule)
+            TransactionLogger.LoggerError.transactionSuppressedByRule
+        )
 
         guard case .transactionSuppressedByRule = mapped else {
             Issue.record("Expected a typed suppressed-by-rule error")

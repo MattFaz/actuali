@@ -35,7 +35,8 @@ enum SortOrder {
         before targetId: String?
     ) -> Placement {
         guard let targetId,
-              let to = items.firstIndex(where: { $0.id == targetId }) else {
+              let to = items.firstIndex(where: { $0.id == targetId })
+        else {
             return Placement(sortOrder: (items.last?.sortOrder ?? 0) + increment, moved: [])
         }
 
@@ -47,7 +48,9 @@ enum SortOrder {
             while next < items.count {
                 // A row already past the new order has a big enough gap of
                 // its own, and so does everything below it.
-                if order <= items[next].sortOrder { break }
+                if order <= items[next].sortOrder {
+                    break
+                }
                 moved.append(Position(id: items[next].id, sortOrder: order))
                 next += 1
                 order += increment

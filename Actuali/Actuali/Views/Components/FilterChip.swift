@@ -4,8 +4,7 @@ import SwiftUI
 /// transaction lists' status strip, so the two strips can't drift apart.
 extension View {
     func filterChip(isSelected: Bool) -> some View {
-        self
-            .font(.subheadline.weight(.semibold))
+        font(.subheadline.weight(.semibold))
             .foregroundStyle(isSelected ? Color.white : Color.primary)
             .padding(.horizontal, 14)
             .frame(minHeight: 40)

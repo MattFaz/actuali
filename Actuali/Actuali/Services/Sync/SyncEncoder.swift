@@ -1,7 +1,7 @@
 // Actuali/Actuali/Services/Sync/SyncEncoder.swift
 
-import Foundation
 import CryptoKit
+import Foundation
 
 enum SyncEncoderError: Error {
     case encodingFailed
@@ -70,7 +70,8 @@ struct SyncEncoder {
 
         // Parse merkle tree from JSON (server sends hash as signed Int32)
         guard let merkleData = response.merkle.data(using: .utf8),
-              let merkle = try? JSONDecoder().decode(MerkleNode.self, from: merkleData) else {
+              let merkle = try? JSONDecoder().decode(MerkleNode.self, from: merkleData)
+        else {
             throw SyncEncoderError.invalidMerkle
         }
 

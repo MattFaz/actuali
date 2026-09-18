@@ -1,5 +1,5 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct CleanupEngineTests {
     @Test func appliesPoolsThenGlobalRulesAndSinkWeights() {
@@ -11,15 +11,15 @@ struct CleanupEngineTests {
             .init(id: "global-source", name: "Global Source", cleanup: [.source()]),
             .init(id: "global-overspent", name: "Global Overspent", cleanup: []),
             .init(id: "global-sink-1", name: "Global Sink 1", cleanup: [.sink(weight: 1)]),
-            .init(id: "global-sink-2", name: "Global Sink 2", cleanup: [.sink(weight: 3)]),
+            .init(id: "global-sink-2", name: "Global Sink 2", cleanup: [.sink(weight: 3)])
         ]
         var sheet = GoalTemplateSheet()
-        sheet.budgeted[.init(202608, "pool-source")] = 1_000
-        sheet.leftover[.init(202608, "pool-source")] = 1_000
-        sheet.leftover[.init(202608, "pool-overspent")] = -600
-        sheet.budgeted[.init(202608, "global-source")] = 300
-        sheet.leftover[.init(202608, "global-source")] = 300
-        sheet.leftover[.init(202608, "global-overspent")] = -100
+        sheet.budgeted[.init(202_608, "pool-source")] = 1000
+        sheet.leftover[.init(202_608, "pool-source")] = 1000
+        sheet.leftover[.init(202_608, "pool-overspent")] = -600
+        sheet.budgeted[.init(202_608, "global-source")] = 300
+        sheet.leftover[.init(202_608, "global-source")] = 300
+        sheet.leftover[.init(202_608, "global-overspent")] = -100
 
         let result = CleanupEngine.run(
             month: month,
@@ -35,7 +35,7 @@ struct CleanupEngineTests {
             .init(category: "global-source", amount: 0),
             .init(category: "global-overspent", amount: 100),
             .init(category: "global-sink-1", amount: 50),
-            .init(category: "global-sink-2", amount: 150),
+            .init(category: "global-sink-2", amount: 150)
         ])
         #expect(result.goals == [.init(category: "global-source", goal: 0, longGoal: false)])
         #expect(result.notification == .applied(sourceCount: 1, sinkCount: 2))
@@ -45,14 +45,15 @@ struct CleanupEngineTests {
         let categories: [CleanupEngine.Category] = [
             .init(id: "source", name: "Source", cleanup: [.source(groupId: "pool")]),
             .init(id: "sink-1", name: "Sink 1", cleanup: [.sink(groupId: "pool")]),
-            .init(id: "sink-2", name: "Sink 2", cleanup: [.sink(groupId: "pool")]),
+            .init(id: "sink-2", name: "Sink 2", cleanup: [.sink(groupId: "pool")])
         ]
         var sheet = GoalTemplateSheet()
-        sheet.budgeted[.init(202608, "source")] = 1
-        sheet.leftover[.init(202608, "source")] = 1
+        sheet.budgeted[.init(202_608, "source")] = 1
+        sheet.leftover[.init(202_608, "source")] = 1
 
         let result = CleanupEngine.run(
-            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet
+        )
 
         #expect(result.budgets.filter { $0.category.hasPrefix("sink") }
             .map(\.amount).reduce(0, +) == 1)
@@ -62,14 +63,15 @@ struct CleanupEngineTests {
     @Test func negativeAvailableFundsDoNotWorsenOverspending() {
         let categories: [CleanupEngine.Category] = [
             .init(id: "overspent", name: "Overspent", cleanup: []),
-            .init(id: "sink", name: "Sink", cleanup: [.sink()]),
+            .init(id: "sink", name: "Sink", cleanup: [.sink()])
         ]
         var sheet = GoalTemplateSheet()
         sheet.availableStart = -100
-        sheet.leftover[.init(202608, "overspent")] = -50
+        sheet.leftover[.init(202_608, "overspent")] = -50
 
         let result = CleanupEngine.run(
-            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet
+        )
 
         #expect(result.budgets.isEmpty)
         #expect(result.notification == .warning([.noGlobalFunds]))

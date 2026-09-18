@@ -6,7 +6,6 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "PendingIm
 /// Service responsible for approving pending imports and writing them to the budget.
 @MainActor
 final class PendingImportApprover {
-
     enum ApproveError: LocalizedError, Equatable {
         case invalidAmount
         case noAccountAvailable
@@ -29,34 +28,37 @@ final class PendingImportApprover {
         nonisolated func message(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
             case .invalidAmount:
-                return ReportStrings.text(
-                    "Transaction amount is missing or invalid.", locale: locale, bundle: bundle)
+                ReportStrings.text(
+                    "Transaction amount is missing or invalid.", locale: locale, bundle: bundle
+                )
             case .noAccountAvailable:
-                return ReportStrings.text(
-                    "No matching or default account available.", locale: locale, bundle: bundle)
+                ReportStrings.text(
+                    "No matching or default account available.", locale: locale, bundle: bundle
+                )
             case .accountClosed:
-                return ReportStrings.text(
-                    "The target account is closed.", locale: locale, bundle: bundle)
+                ReportStrings.text(
+                    "The target account is closed.", locale: locale, bundle: bundle
+                )
             case .budgetMismatch:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This import belongs to a different budget and cannot be approved here.",
                     locale: locale,
                     bundle: bundle
                 )
             case .budgetIdentityRequired:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This import needs review before it can be approved.",
                     locale: locale,
                     bundle: bundle
                 )
             case .sourceCurrencyRequired:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This import needs review before it can be approved.",
                     locale: locale,
                     bundle: bundle
                 )
             case .sourceCurrencyMismatch(let source, let budget):
-                return ReportStrings.format(
+                ReportStrings.format(
                     "This import is in %@, but the active budget uses %@. Review and confirm the transaction before saving.",
                     source,
                     budget,
@@ -64,36 +66,38 @@ final class PendingImportApprover {
                     bundle: bundle
                 )
             case .reviewConfirmationRequired:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "Review and confirm this import before saving it.",
                     locale: locale,
                     bundle: bundle
                 )
             case .suppressedByRule:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "A transaction rule suppressed this import, so it remains pending.",
                     locale: locale,
                     bundle: bundle
                 )
             case .noBudgetLoaded:
-                return ReportStrings.text(
-                    "Open Actuali and select a budget first.", locale: locale, bundle: bundle)
+                ReportStrings.text(
+                    "Open Actuali and select a budget first.", locale: locale, bundle: bundle
+                )
             case .transactionNeedsRecovery:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This import needs review before it can be approved.",
                     locale: locale,
                     bundle: bundle
                 )
             case .writeFailed(let message):
-                return ReportStrings.format(
+                ReportStrings.format(
                     "Failed to save transaction: %@",
                     message,
                     locale: locale,
                     bundle: bundle
                 )
             case .alreadyApproved:
-                return ReportStrings.text(
-                    "This pending import was already saved.", locale: locale, bundle: bundle)
+                ReportStrings.text(
+                    "This pending import was already saved.", locale: locale, bundle: bundle
+                )
             }
         }
     }
@@ -131,11 +135,14 @@ final class PendingImportApprover {
     ) -> String? {
         if let hint = cardHint, !hint.isEmpty,
            let resolved = BudgetStore.resolveAccountId(
-               hint: hint, accounts: accounts, cardMappings: cardMappings) {
+               hint: hint, accounts: accounts, cardMappings: cardMappings
+           )
+        {
             return resolved
         }
         if let defaultAccountId,
-           accounts.contains(where: { $0.id == defaultAccountId && !$0.closed }) {
+           accounts.contains(where: { $0.id == defaultAccountId && !$0.closed })
+        {
             return defaultAccountId
         }
         return nil
@@ -218,7 +225,7 @@ final class PendingImportApprover {
 
         // 4. Log transaction.
         do {
-            let result = try await TransactionLogger(store: store).logTransaction(
+            return try await TransactionLogger(store: store).logTransaction(
                 accountId: account.id,
                 amountCents: amountCents,
                 rawMerchant: item.payee ?? "Unknown",
@@ -231,7 +238,6 @@ final class PendingImportApprover {
                 financialId: Self.financialId(for: item),
                 transactionId: item.id.uuidString
             )
-            return result
         } catch TransactionLogger.LoggerError.transactionAlreadyExists {
             throw ApproveError.alreadyApproved
         } catch TransactionLogger.LoggerError.transactionSuppressedByRule {
@@ -255,7 +261,8 @@ final class PendingImportApprover {
         guard form.type != .transfer, form.splits.isEmpty,
               let amount = Double(form.amount),
               let unsignedCents = Transaction.cents(fromDollars: amount),
-              unsignedCents > 0 else {
+              unsignedCents > 0
+        else {
             throw ApproveError.invalidAmount
         }
         guard let currentBudgetId = store.currentBudgetId else {
@@ -266,7 +273,8 @@ final class PendingImportApprover {
             budgetCurrency: store.currencyCode
         )
         if !reviewRequirements.isEmpty
-            && !form.reviewConfirmations.isSuperset(of: reviewRequirements) {
+            && !form.reviewConfirmations.isSuperset(of: reviewRequirements)
+        {
             throw ApproveError.reviewConfirmationRequired
         }
 

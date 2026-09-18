@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Regression coverage for actios-2v0: the Log Transaction Shortcut reported
 /// "Account is no longer available" on a cold/headless launch because the
@@ -10,7 +10,6 @@ import GRDB
 /// direct database read when the cache is empty.
 @MainActor
 struct BudgetStoreAccountsForIntentTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -74,7 +73,7 @@ struct BudgetStoreAccountsForIntentTests {
         }
 
         let store = try await makeStore(database: db)
-        #expect(store.accounts.isEmpty)  // preview store never auto-loads
+        #expect(store.accounts.isEmpty) // preview store never auto-loads
 
         let resolved = await store.accountsForIntent()
         #expect(Set(resolved.map(\.id)) == ["acct-checking", "acct-closed"])
@@ -110,7 +109,7 @@ struct BudgetStoreAccountsForIntentTests {
     }
 
     /// No budget/database available: resolve to empty rather than crashing.
-    @Test func returnsEmptyWhenNoDatabaseAvailable() async throws {
+    @Test func returnsEmptyWhenNoDatabaseAvailable() async {
         let store = BudgetStore.previewInstance()
         #expect(store.accounts.isEmpty)
 

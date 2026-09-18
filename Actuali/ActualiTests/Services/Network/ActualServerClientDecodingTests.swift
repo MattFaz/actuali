@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct ActualServerClientDecodingTests {
-
     @Test func decodesKeyInfoWithTest() throws {
         let json = """
         {"status":"ok","data":{"id":"kid-1","salt":"c2FsdA==","test":"{\\"value\\":\\"abc\\"}"}}

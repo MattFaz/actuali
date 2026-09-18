@@ -1,8 +1,7 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct CleanupTemplatesTests {
-
     @Test func parsesCleanupNoteLines() {
         let note = """
         #cleanup source
@@ -18,16 +17,17 @@ struct CleanupTemplatesTests {
             .init(kind: .sink(weight: 3), groupName: nil),
             .init(kind: .source, groupName: "Vacation"),
             .init(kind: .sink(weight: 2), groupName: "Vacation Fund"),
-            .init(kind: .overspend, groupName: "Holidays"),
+            .init(kind: .overspend, groupName: "Holidays")
         ])
     }
 
     @Test func parsesCRLFNoteLines() {
         let rows = CleanupNotes.parseRows(
-            fromNote: "#cleanup source\r\n#cleanup Vacation sink\r\n")
+            fromNote: "#cleanup source\r\n#cleanup Vacation sink\r\n"
+        )
         #expect(rows == [
             .init(kind: .source, groupName: nil),
-            .init(kind: .sink(weight: 1), groupName: "Vacation"),
+            .init(kind: .sink(weight: 1), groupName: "Vacation")
         ])
     }
 
@@ -45,7 +45,7 @@ struct CleanupTemplatesTests {
             .source(),
             .sink(weight: 2),
             .source(groupId: "grp-1"),
-            .overspend(groupId: "grp-2"),
+            .overspend(groupId: "grp-2")
         ]
         let encoded = try #require(CleanupTemplate.encodeArray(rows))
         let decoded = try #require(CleanupTemplate.decodeArray(fromJSON: encoded))
@@ -68,7 +68,7 @@ struct CleanupTemplatesTests {
             .sink(weight: 3),
             .source(groupId: "grp-1"),
             .sink(groupId: "grp-1", weight: 2),
-            .overspend(groupId: "grp-2"),
+            .overspend(groupId: "grp-2")
         ]
         let config = CleanupConfig.from(cleanup: rows)
         #expect(config.global.send)
@@ -96,7 +96,7 @@ struct CleanupTemplatesTests {
             .source(),
             .sink(weight: 2),
             .source(groupId: "grp-1"),
-            .overspend(groupId: "grp-2"),
+            .overspend(groupId: "grp-2")
         ]) { id in
             id == "grp-1" ? "Vacation" : id == "grp-2" ? "Holidays" : nil
         }

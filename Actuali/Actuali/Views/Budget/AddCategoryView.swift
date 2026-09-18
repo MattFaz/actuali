@@ -9,7 +9,9 @@ enum NewBudgetItem: String, Identifiable {
     case category
     case group
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 }
 
 struct CategoryGroupSheet: View {

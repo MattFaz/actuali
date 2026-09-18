@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Backing queries and writes for the Payee Locations management screen
 /// (GH #147): list every payee that has recorded locations, and clear them
 /// one at a time or all at once.
 struct PayeeLocationManagementTests {
-
     private func makeDatabasePath() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -20,17 +19,17 @@ struct PayeeLocationManagementTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
-                CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0);
+            CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT);
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
     }
 
@@ -55,11 +54,14 @@ struct PayeeLocationManagementTests {
         try database.insertPayee(Payee(id: "p-none", name: "No Locations", transferAccountId: nil))
 
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l1", payeeId: "p-b", latitude: 1, longitude: 1, createdAt: 100))
+            id: "l1", payeeId: "p-b", latitude: 1, longitude: 1, createdAt: 100
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l2", payeeId: "p-b", latitude: 2, longitude: 2, createdAt: 200))
+            id: "l2", payeeId: "p-b", latitude: 2, longitude: 2, createdAt: 200
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "l3", payeeId: "p-a", latitude: 3, longitude: 3, createdAt: 300))
+            id: "l3", payeeId: "p-a", latitude: 3, longitude: 3, createdAt: 300
+        ))
 
         let summaries = try await database.fetchPayeesWithLocations()
 
@@ -81,16 +83,21 @@ struct PayeeLocationManagementTests {
         try database.insertPayee(Payee(id: "p-live", name: "Live", transferAccountId: nil))
         try database.insertPayee(Payee(id: "p-cleared", name: "Cleared", transferAccountId: nil))
         try database.insertPayee(
-            Payee(id: "p-dead", name: "Deleted Payee", transferAccountId: nil, tombstone: true))
+            Payee(id: "p-dead", name: "Deleted Payee", transferAccountId: nil, tombstone: true)
+        )
 
         try database.insertPayeeLocation(PayeeLocation(
-            id: "keep", payeeId: "p-live", latitude: 1, longitude: 1, createdAt: 100))
+            id: "keep", payeeId: "p-live", latitude: 1, longitude: 1, createdAt: 100
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "gone", payeeId: "p-live", latitude: 2, longitude: 2, createdAt: 200, tombstone: true))
+            id: "gone", payeeId: "p-live", latitude: 2, longitude: 2, createdAt: 200, tombstone: true
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "all-gone", payeeId: "p-cleared", latitude: 3, longitude: 3, createdAt: 300, tombstone: true))
+            id: "all-gone", payeeId: "p-cleared", latitude: 3, longitude: 3, createdAt: 300, tombstone: true
+        ))
         try database.insertPayeeLocation(PayeeLocation(
-            id: "orphan", payeeId: "p-dead", latitude: 4, longitude: 4, createdAt: 400))
+            id: "orphan", payeeId: "p-dead", latitude: 4, longitude: 4, createdAt: 400
+        ))
 
         let summaries = try await database.fetchPayeesWithLocations()
 
@@ -112,13 +119,15 @@ struct PayeeLocationManagementTests {
         try await queue.write { db in
             try db.execute(
                 sql: "INSERT INTO payee_locations (id, payee_id) VALUES (?, ?)",
-                arguments: ["partial", "p1"])
+                arguments: ["partial", "p1"]
+            )
         }
 
         #expect(try await database.fetchPayeesWithLocations().isEmpty)
 
         try database.insertPayeeLocation(PayeeLocation(
-            id: "full", payeeId: "p1", latitude: 1, longitude: 1, createdAt: 100))
+            id: "full", payeeId: "p1", latitude: 1, longitude: 1, createdAt: 100
+        ))
         let summaries = try await database.fetchPayeesWithLocations()
         #expect(summaries.map(\.locationCount) == [1])
     }
@@ -139,9 +148,12 @@ struct PayeeLocationManagementTests {
             PayeeLocation(id: "a", payeeId: "p1", latitude: 1, longitude: 1, createdAt: 100),
             PayeeLocation(id: "b", payeeId: "p1", latitude: 2, longitude: 2, createdAt: 200)
         ]
-        for location in doomed { try database.insertPayeeLocation(location) }
+        for location in doomed {
+            try database.insertPayeeLocation(location)
+        }
         try database.insertPayeeLocation(PayeeLocation(
-            id: "other", payeeId: "p2", latitude: 3, longitude: 3, createdAt: 300))
+            id: "other", payeeId: "p2", latitude: 3, longitude: 3, createdAt: 300
+        ))
 
         let syncClient = try await makeSyncClient(database: database)
         try await syncClient.deletePayeeLocations(doomed)

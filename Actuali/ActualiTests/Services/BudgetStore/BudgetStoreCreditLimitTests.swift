@@ -1,11 +1,10 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreCreditLimitTests {
-
     /// Points the store at a throwaway budget with configured database and sync client.
     private func withStore(_ body: @MainActor (BudgetStore) async throws -> Void) async throws {
         let tempURL = FileManager.default.temporaryDirectory
@@ -28,7 +27,8 @@ struct BudgetStoreCreditLimitTests {
     }
 
     private func account(id: String, name: String, type: AccountType = .credit,
-                         closed: Bool = false, balance: Int = 0) -> Account {
+                         closed: Bool = false, balance: Int = 0) -> Account
+    {
         Account(id: id, name: name, type: type, offBudget: false, closed: closed,
                 sortOrder: 0, balance: balance)
     }
@@ -46,10 +46,10 @@ struct BudgetStoreCreditLimitTests {
             // Over the limit reads negative rather than clamping — being $100
             // over is a fact worth showing.
             store.accounts = [account(id: "acct_card", name: "Card", balance: -1_010_000)]
-            #expect(store.availableCredit(for: "acct_card") == -10_000)
+            #expect(store.availableCredit(for: "acct_card") == -10000)
 
             // Overpaid card: headroom exceeds the limit.
-            store.accounts = [account(id: "acct_card", name: "Card", balance: 5_000)]
+            store.accounts = [account(id: "acct_card", name: "Card", balance: 5000)]
             #expect(store.availableCredit(for: "acct_card") == 1_005_000)
         }
     }
@@ -57,9 +57,9 @@ struct BudgetStoreCreditLimitTests {
     @Test func availableCreditIsNilWithoutALimitOrAnActiveCard() async throws {
         try await withStore { store in
             store.accounts = [
-                account(id: "acct_nolimit", name: "No Limit", balance: -1_000),
-                account(id: "acct_closed", name: "Closed", closed: true, balance: -1_000),
-                account(id: "acct_untracked", name: "Checking", type: .checking, balance: -1_000),
+                account(id: "acct_nolimit", name: "No Limit", balance: -1000),
+                account(id: "acct_closed", name: "Closed", closed: true, balance: -1000),
+                account(id: "acct_untracked", name: "Checking", type: .checking, balance: -1000)
             ]
             await store.setCreditCard(accountId: "acct_nolimit", statementDay: 15, limit: nil)
             await store.setCreditCard(accountId: "acct_closed", statementDay: 15, limit: 500_000)

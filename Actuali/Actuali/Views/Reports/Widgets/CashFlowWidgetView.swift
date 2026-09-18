@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct CashFlowWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -12,7 +12,9 @@ struct CashFlowWidgetView: View {
         let kind: String
         let amount: Double
 
-        var id: String { "\(kind)-\(period.timeIntervalSinceReferenceDate)" }
+        var id: String {
+            "\(kind)-\(period.timeIntervalSinceReferenceDate)"
+        }
     }
 
     private var bars: [Bar] {
@@ -57,7 +59,8 @@ struct CashFlowWidgetView: View {
                     currencyCode: budgetStore.currencyCode,
                     narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                     locale: locale,
-                    hidden: budgetStore.hideBalances))
+                    hidden: budgetStore.hideBalances
+                ))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

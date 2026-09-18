@@ -33,7 +33,9 @@ enum AccountType: String, CaseIterable {
 // MARK: - CRDTSyncable
 
 extension Account: CRDTSyncable {
-    static var datasetName: String { "accounts" }
+    static var datasetName: String {
+        "accounts"
+    }
 
     /// Only the fields a manually-created (non-bank-linked) account sets.
     /// Bank-sync columns (account_id, balance_current, mask, official_name,

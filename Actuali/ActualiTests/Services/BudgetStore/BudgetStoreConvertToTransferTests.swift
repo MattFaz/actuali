@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// End-to-end coverage for turning an ordinary (often bank-imported)
 /// transaction into a transfer through `saveTransaction` → `convertToTransfer`
@@ -10,7 +10,6 @@ import Testing
 /// for the opposite amount.
 @MainActor
 struct BudgetStoreConvertToTransferTests {
-
     /// Upstream schema for the tables the transaction writes and fetches
     /// touch (matches BudgetStoreUpdateTransferTests).
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -19,84 +18,84 @@ struct BudgetStoreConvertToTransferTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                );
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            );
 
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            );
 
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                );
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            );
 
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
 
-                INSERT INTO accounts (id, name, offbudget) VALUES
-                    ('acct-checking',  'Checking',  0),
-                    ('acct-card',      'Card',      0),
-                    ('acct-brokerage', 'Brokerage', 1);
+            INSERT INTO accounts (id, name, offbudget) VALUES
+                ('acct-checking',  'Checking',  0),
+                ('acct-card',      'Card',      0),
+                ('acct-brokerage', 'Brokerage', 1);
 
-                -- One transfer payee per account, like Actual maintains.
-                INSERT INTO payees (id, name, transfer_acct) VALUES
-                    ('payee-checking',  NULL, 'acct-checking'),
-                    ('payee-card',      NULL, 'acct-card'),
-                    ('payee-brokerage', NULL, 'acct-brokerage');
+            -- One transfer payee per account, like Actual maintains.
+            INSERT INTO payees (id, name, transfer_acct) VALUES
+                ('payee-checking',  NULL, 'acct-checking'),
+                ('payee-card',      NULL, 'acct-card'),
+                ('payee-brokerage', NULL, 'acct-brokerage');
 
-                INSERT INTO payee_mapping (id, targetId) VALUES
-                    ('payee-checking',  'payee-checking'),
-                    ('payee-card',      'payee-card'),
-                    ('payee-brokerage', 'payee-brokerage');
-                """)
+            INSERT INTO payee_mapping (id, targetId) VALUES
+                ('payee-checking',  'payee-checking'),
+                ('payee-card',      'payee-card'),
+                ('payee-brokerage', 'payee-brokerage');
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Store wired to a real database and sync client, with the accounts and
@@ -113,13 +112,13 @@ struct BudgetStoreConvertToTransferTests {
             Account(id: "acct-card", name: "Card", type: .credit,
                     offBudget: false, closed: false, sortOrder: 1, balance: 0),
             Account(id: "acct-brokerage", name: "Brokerage", type: .investment,
-                    offBudget: true, closed: false, sortOrder: 2, balance: 0),
+                    offBudget: true, closed: false, sortOrder: 2, balance: 0)
         ]
         store.payees = [
             Payee(id: "payee-checking", name: "", transferAccountId: "acct-checking", tombstone: false),
             Payee(id: "payee-card", name: "", transferAccountId: "acct-card", tombstone: false),
             Payee(id: "payee-brokerage", name: "", transferAccountId: "acct-brokerage", tombstone: false),
-            Payee(id: "payee-bank", name: "BANK", transferAccountId: nil, tombstone: false),
+            Payee(id: "payee-bank", name: "BANK", transferAccountId: nil, tombstone: false)
         ]
         return store
     }
@@ -135,11 +134,12 @@ struct BudgetStoreConvertToTransferTests {
         parentId: String? = nil
     ) throws -> Transaction {
         let imported = Transaction(
-            id: "tx-imported", accountId: accountId, date: 20260610, amount: amount,
+            id: "tx-imported", accountId: accountId, date: 20_260_610, amount: amount,
             payeeId: "payee-bank", payeeName: "BANK", categoryId: categoryId,
             categoryName: nil, notes: "card payment", cleared: true, reconciled: true,
             transferId: nil, isParent: isParent, parentId: parentId, tombstone: false,
-            sortOrder: 1000, importedPayee: "RAW BANK MEMO")
+            sortOrder: 1000, importedPayee: "RAW BANK MEMO"
+        )
         try database.insertTransaction(imported)
         return imported
     }
@@ -160,7 +160,7 @@ struct BudgetStoreConvertToTransferTests {
             transferToAccountId: transferToAccountId,
             categoryId: categoryId,
             notes: notes,
-            date: Transaction.date(fromYYYYMMDD: 20260610),
+            date: Transaction.date(fromYYYYMMDD: 20_260_610),
             cleared: cleared
         )
     }
@@ -222,7 +222,8 @@ struct BudgetStoreConvertToTransferTests {
 
         try await store.saveTransaction(
             form(accountId: "acct-card", transferToAccountId: "acct-checking"),
-            editing: imported)
+            editing: imported
+        )
 
         let all = try rows(path: path)
         let leg = try #require(all.first { $0["id"] as String == "tx-imported" })
@@ -244,7 +245,7 @@ struct BudgetStoreConvertToTransferTests {
         let imported = try seedImported(into: database)
 
         var edit = form(amount: "300.00", notes: "fixed up")
-        edit.date = Transaction.date(fromYYYYMMDD: 20260715)
+        edit.date = Transaction.date(fromYYYYMMDD: 20_260_715)
         try await store.saveTransaction(edit, editing: imported)
 
         let all = try rows(path: path)
@@ -252,8 +253,8 @@ struct BudgetStoreConvertToTransferTests {
         let partner = try #require(all.first { $0["id"] as String != "tx-imported" })
         #expect(leg["amount"] == -30000)
         #expect(partner["amount"] == 30000)
-        #expect(leg["date"] == 20260715)
-        #expect(partner["date"] == 20260715)
+        #expect(leg["date"] == 20_260_715)
+        #expect(partner["date"] == 20_260_715)
         #expect(leg["notes"] == "fixed up")
         #expect(partner["notes"] == "fixed up")
     }
@@ -269,7 +270,8 @@ struct BudgetStoreConvertToTransferTests {
         // does both lands the leg in the account the form names.
         try await store.saveTransaction(
             form(accountId: "acct-brokerage", transferToAccountId: "acct-card"),
-            editing: imported)
+            editing: imported
+        )
 
         let all = try rows(path: path)
         let leg = try #require(all.first { $0["id"] as String == "tx-imported" })
@@ -346,7 +348,8 @@ struct BudgetStoreConvertToTransferTests {
 
         await #expect(throws: BudgetStoreError.transferAccountsMatch) {
             try await store.saveTransaction(
-                self.form(transferToAccountId: "acct-checking"), editing: imported)
+                self.form(transferToAccountId: "acct-checking"), editing: imported
+            )
         }
         #expect(try rows(path: path).count == 1)
     }

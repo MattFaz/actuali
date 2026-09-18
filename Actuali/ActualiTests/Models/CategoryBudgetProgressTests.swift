@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct CategoryBudgetProgressTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
@@ -129,8 +128,8 @@ struct CategoryBudgetProgressTests {
         #expect(current.quickAssignSuggestions(history: []).isEmpty)
     }
 
-    // With one history month the average equals Spent Last Month; offering
-    // both would just duplicate the suggestion.
+    /// With one history month the average equals Spent Last Month; offering
+    /// both would just duplicate the suggestion.
     @Test func quickAssignOmitsAverageForASingleHistoryMonth() {
         let current = makeCategory(budgeted: 10000, spent: -4000, available: 6000)
         let history = [makeCategory(budgeted: 9000, spent: -8000, available: 1000)]
@@ -161,10 +160,10 @@ struct CategoryBudgetProgressTests {
         let expected = [
             "fr_FR": ["Non financée (0)", "Non financée (1)", "Non financées (2)"],
             "pt_BR": ["Não financiada (0)", "Não financiada (1)", "Não financiadas (2)"],
-            "it_IT": ["Non finanziate (0)", "Non finanziata (1)", "Non finanziate (2)"],
+            "it_IT": ["Non finanziate (0)", "Non finanziata (1)", "Non finanziate (2)"]
         ][identifier]!
 
-        let titles = (0...2).map { count in
+        let titles = (0 ... 2).map { count in
             BudgetCategoryFilter.unassigned.title(
                 count: count,
                 isTrackingBudget: false,
@@ -176,7 +175,6 @@ struct CategoryBudgetProgressTests {
         #expect(titles == expected)
     }
 
-
     @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
     func everyFilterUsesLocalizedLabelsAndAccessibilityWrapper(identifier: String) {
         let locale = Locale(identifier: identifier)
@@ -186,7 +184,7 @@ struct CategoryBudgetProgressTests {
         #expect(wrapper != englishWrapper)
         for filter in BudgetCategoryFilter.allCases {
             for isTrackingBudget in [false, true] {
-                for count in 0...2 {
+                for count in 0 ... 2 {
                     let title = filter.title(
                         count: count,
                         isTrackingBudget: isTrackingBudget,
@@ -214,9 +212,9 @@ struct CategoryBudgetProgressTests {
         }
     }
 
-    // The toolbar stepper abbreviates the month so its `.principal` item keeps
-    // a width UIKit will still centre; everything that reads a month aloud or
-    // in prose keeps the full name.
+    /// The toolbar stepper abbreviates the month so its `.principal` item keeps
+    /// a width UIKit will still centre; everything that reads a month aloud or
+    /// in prose keeps the full name.
     @Test func toolbarMonthTitleAbbreviatesButKeepsTheYear() {
         let short = MonthPicker.shortTitle(for: "2026-09")
         #expect(short.contains("2026"))

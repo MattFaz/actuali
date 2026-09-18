@@ -8,7 +8,9 @@ struct DisplaySettingsLoadRequest: Equatable {
 private struct CurrencyOption: Identifiable, Sendable {
     let symbol: String
     let code: String
-    var id: String { code }
+    var id: String {
+        code
+    }
 }
 
 /// Every currency in Actual's loot-core currencies list, plus a few
@@ -211,7 +213,8 @@ struct DisplaySettingsView: View {
         // match in the picker, and the Reports tab already falls back to the
         // first page — so drop it rather than show a phantom selection.
         if let id = budgetStore.defaultDashboardPageId,
-           !pages.contains(where: { $0.id == id }) {
+           !pages.contains(where: { $0.id == id })
+        {
             budgetStore.defaultDashboardPageId = nil
         }
     }

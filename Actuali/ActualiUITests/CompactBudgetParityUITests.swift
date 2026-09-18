@@ -2,7 +2,7 @@ import XCTest
 
 final class CompactBudgetParityUITests: XCTestCase {
     @MainActor
-    func testExpenseCellsReachExistingActionFlows() throws {
+    func testExpenseCellsReachExistingActionFlows() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -11,7 +11,7 @@ final class CompactBudgetParityUITests: XCTestCase {
             "-showBudgetProgressBars", "NO",
             "-showCategoryStatusDots", "NO",
             "-useNarrowCurrencySymbol", "YES",
-            "-initialTab", "1",
+            "-initialTab", "1"
         ]
         app.launch()
 
@@ -84,12 +84,12 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testKeepsSharedMonthSwipeNavigation() throws {
+    func testKeepsSharedMonthSwipeNavigation() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
-            "-initialTab", "1",
+            "-initialTab", "1"
         ]
         app.launch()
 
@@ -105,12 +105,12 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() throws {
+    func testCategoryFilterUsesSharedEmptyAndRecoveryFlow() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
-            "-initialTab", "1",
+            "-initialTab", "1"
         ]
         app.launch()
 
@@ -128,14 +128,14 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() throws {
+    func testEmptyCategoryStatusDotAndProgressBarRespectIndependentSettings() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-budgetDisplayStyle", "compact",
             "-showBudgetProgressBars", "YES",
             "-showCategoryStatusDots", "YES",
-            "-initialTab", "1",
+            "-initialTab", "1"
         ]
         app.launch()
 
@@ -187,13 +187,13 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeNameAndReceivedReachTheirTransactionScopes() throws {
+    func testIncomeNameAndReceivedReachTheirTransactionScopes() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-loadTrackingDemoData",
             "-budgetDisplayStyle", "compact",
-            "-initialTab", "1",
+            "-initialTab", "1"
         ]
         app.launch()
 
@@ -218,11 +218,11 @@ final class CompactBudgetParityUITests: XCTestCase {
     }
 
     @MainActor
-    func testIncomeContextMenuHidesAndShowsCategory() throws {
+    func testIncomeContextMenuHidesAndShowsCategory() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData", "-budgetDisplayStyle", "compact",
-            "-showHiddenCategories", "YES", "-initialTab", "1",
+            "-showHiddenCategories", "YES", "-initialTab", "1"
         ]
         app.launch()
 

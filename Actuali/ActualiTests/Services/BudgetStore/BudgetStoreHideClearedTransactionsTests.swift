@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The "hide cleared transactions" toggle (GH #133) must default to off and
 /// persist like the other display settings.
 @MainActor
 struct BudgetStoreHideClearedTransactionsTests {
-
     @Test func defaultsToFalse() {
         UserDefaults.standard.removeObject(forKey: "hideClearedTransactions")
         let store = BudgetStore.previewInstance()

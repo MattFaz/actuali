@@ -5,12 +5,12 @@ import Foundation
 /// A node in the Merkle trie
 /// Uses ternary branches (0, 1, 2) based on base-3 encoding of minutes
 struct MerkleNode: Codable, Equatable {
-    var hash: Int32  // Int32 for JSON compatibility (server sends signed integers)
-    var children: [String: MerkleNode]  // Keys: "0", "1", "2"
+    var hash: Int32 // Int32 for JSON compatibility (server sends signed integers)
+    var children: [String: MerkleNode] // Keys: "0", "1", "2"
 
     enum CodingKeys: String, CodingKey {
         case hash
-        case children = "0"  // This will be overridden dynamically
+        case children = "0" // This will be overridden dynamically
     }
 
     init(hash: Int32 = 0, children: [String: MerkleNode] = [:]) {
@@ -34,7 +34,8 @@ struct MerkleNode: Codable, Equatable {
         var children: [String: MerkleNode] = [:]
         for key in ["0", "1", "2"] {
             if let childKey = DynamicCodingKey(stringValue: key),
-               let child = try? container.decode(MerkleNode.self, forKey: childKey) {
+               let child = try? container.decode(MerkleNode.self, forKey: childKey)
+            {
                 children[key] = child
             }
         }
@@ -55,7 +56,7 @@ struct MerkleNode: Codable, Equatable {
         }
     }
 
-    // Dynamic coding key for flexible JSON encoding
+    /// Dynamic coding key for flexible JSON encoding
     private struct DynamicCodingKey: CodingKey {
         var stringValue: String
         var intValue: Int?
@@ -143,7 +144,7 @@ struct MerkleTree {
     /// Returns nil if trees are in sync, otherwise returns milliseconds since epoch
     func diff(with other: MerkleTree) -> Int64? {
         if root.hash == other.root.hash {
-            return nil  // Trees match
+            return nil // Trees match
         }
 
         var node1 = root

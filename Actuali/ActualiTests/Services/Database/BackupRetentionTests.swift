@@ -1,8 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-
-@testable import Actuali
 
 struct BackupRetentionTests {
     /// Local-calendar date, matching how prune buckets by day.
@@ -10,45 +9,47 @@ struct BackupRetentionTests {
         Calendar.current.date(from: DateComponents(year: y, month: m, day: d))!
     }
 
-    private var today: Date { day(2017, 1, 1) }
+    private var today: Date {
+        day(2017, 1, 1)
+    }
 
-    // Upstream vector 1: keeps 3 backups on the current day.
+    /// Upstream vector 1: keeps 3 backups on the current day.
     @Test func keepsThreeOnCurrentDay() {
-        let backups = (1...4).map { (id: "backup\($0)", date: day(2017, 1, 1)) }
+        let backups = (1 ... 4).map { (id: "backup\($0)", date: day(2017, 1, 1)) }
         #expect(BackupService.backupsToRemove(backups, today: today) == ["backup4"])
     }
 
-    // Upstream vector 2: nothing to delete — ≤3 today, 1 per prior day.
+    /// Upstream vector 2: nothing to delete — ≤3 today, 1 per prior day.
     @Test func keepsOnePerPriorDay() {
         let backups = [
             (id: "backup1", date: day(2017, 1, 1)),
             (id: "backup2", date: day(2017, 1, 1)),
             (id: "backup3", date: day(2016, 12, 30)),
-            (id: "backup4", date: day(2016, 12, 29)),
+            (id: "backup4", date: day(2016, 12, 29))
         ]
         #expect(BackupService.backupsToRemove(backups, today: today).isEmpty)
     }
 
-    // Upstream vector 3: extra copies on a prior day are deleted.
+    /// Upstream vector 3: extra copies on a prior day are deleted.
     @Test func deletesExtrasOnPriorDays() {
         let backups = [
             (id: "backup1", date: day(2017, 1, 1)),
             (id: "backup2", date: day(2017, 1, 1)),
             (id: "backup3", date: day(2016, 12, 29)),
             (id: "backup4", date: day(2016, 12, 29)),
-            (id: "backup5", date: day(2016, 12, 29)),
+            (id: "backup5", date: day(2016, 12, 29))
         ]
         let removed = BackupService.backupsToRemove(backups, today: today)
         #expect(Set(removed) == ["backup4", "backup5"])
     }
 
-    // Upstream vector 4: cap at 10 total (12 in → backup11/12 out).
+    /// Upstream vector 4: cap at 10 total (12 in → backup11/12 out).
     @Test func capsAtTenTotal() {
         var backups = [
             (id: "backup1", date: day(2017, 1, 1)),
-            (id: "backup2", date: day(2017, 1, 1)),
+            (id: "backup2", date: day(2017, 1, 1))
         ]
-        for (index, dayOfMonth) in (20...29).reversed().enumerated() {
+        for (index, dayOfMonth) in (20 ... 29).reversed().enumerated() {
             backups.append((id: "backup\(index + 3)", date: day(2016, 12, dayOfMonth)))
         }
         let removed = BackupService.backupsToRemove(backups, today: today)
@@ -56,19 +57,19 @@ struct BackupRetentionTests {
     }
 
     // Ours: a backup from 23:59 yesterday is "yesterday", not "today".
-    @Test func dayBucketsUseLocalMidnightBoundary() {
-        let yesterdayLate = Calendar.current.date(
+    @Test func dayBucketsUseLocalMidnightBoundary() throws {
+        let yesterdayLate = try #require(Calendar.current.date(
             byAdding: DateComponents(minute: -1), to: today
-        )!
+        ))
         let backups = [
             (id: "today1", date: today),
             (id: "late1", date: yesterdayLate),
-            (id: "late2", date: yesterdayLate),
+            (id: "late2", date: yesterdayLate)
         ]
         #expect(BackupService.backupsToRemove(backups, today: today) == ["late2"])
     }
 
-    // Retention runs as part of makeBackup (end-to-end over real files).
+    /// Retention runs as part of makeBackup (end-to-end over real files).
     @Test func makeBackupPrunes() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

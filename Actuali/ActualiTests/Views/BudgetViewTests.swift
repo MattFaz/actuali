@@ -1,10 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct BudgetViewTests {
+    private var appBundle: Bundle {
+        .main
+    }
 
-    private var appBundle: Bundle { .main }
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }

@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct NotificationRouterRouteTests {
-
     @Test func successMarkerSetsNavigationFlagOnly() {
         let router = NotificationRouter()
         router.route(userInfo: TransactionLoggedMarker.userInfo)

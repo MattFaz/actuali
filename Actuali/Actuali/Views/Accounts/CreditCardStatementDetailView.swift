@@ -141,7 +141,8 @@ struct CreditCardStatementDetailView: View {
     private func reloadAfterEdit() async {
         await loadTransactions()
         guard let refreshed = await budgetStore.fetchRecentStatements(accountId: account.id)
-            .first(where: { $0.id == statement.id }) else {
+            .first(where: { $0.id == statement.id })
+        else {
             dismiss()
             return
         }

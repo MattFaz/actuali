@@ -58,7 +58,6 @@ struct ExtractedTransaction {
 // MARK: - Parser
 
 enum TransactionTextParser {
-
     /// Parse raw message text into transaction fields. Uses Foundation Models
     /// (on-device LLM) when available, falls back to NSDataDetector + NLTagger.
     static func parse(_ text: String) async -> ParsedMessage {
@@ -85,15 +84,15 @@ enum TransactionTextParser {
     @available(iOS 26, *)
     private static func parseWithFoundationModels(_ text: String) async throws -> ParsedMessage {
         let session = LanguageModelSession(instructions: """
-            Extract transaction details from bank notification text. \
-            The amount should be a positive number without currency symbols. \
-            Preserve an explicit source currency code such as USD, EUR, GBP, or INR when present; use nil when absent or ambiguous. \
-            Identify the merchant or payee name (the store, service, restaurant, or person receiving payment). \
-            Never use the funding source, wallet provider, card issuer, or bank (e.g., wallet, bank account, card brand) as the merchant. \
-            In phrases like 'spent from [Wallet/Bank] ... at [Merchant]', the merchant is the entity after 'at' or 'to', not the wallet or bank. \
-            If a card or account number's last 4 digits are mentioned, extract them. \
-            Determine if money was received (income/credit/refund) or spent (debit/payment).
-            """)
+        Extract transaction details from bank notification text. \
+        The amount should be a positive number without currency symbols. \
+        Preserve an explicit source currency code such as USD, EUR, GBP, or INR when present; use nil when absent or ambiguous. \
+        Identify the merchant or payee name (the store, service, restaurant, or person receiving payment). \
+        Never use the funding source, wallet provider, card issuer, or bank (e.g., wallet, bank account, card brand) as the merchant. \
+        In phrases like 'spent from [Wallet/Bank] ... at [Merchant]', the merchant is the entity after 'at' or 'to', not the wallet or bank. \
+        If a card or account number's last 4 digits are mentioned, extract them. \
+        Determine if money was received (income/credit/refund) or spent (debit/payment).
+        """)
         let response = try await session.respond(
             to: text,
             generating: ExtractedTransaction.self
@@ -141,7 +140,8 @@ enum TransactionTextParser {
         let code = value.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard code.count == 3,
               code.unicodeScalars.allSatisfy({ $0.value >= 65 && $0.value <= 90 }),
-              Locale.Currency.isoCurrencies.contains(where: { $0.identifier == code }) else {
+              Locale.Currency.isoCurrencies.contains(where: { $0.identifier == code })
+        else {
             return nil
         }
         return code
@@ -158,9 +158,15 @@ enum TransactionTextParser {
         if let code = currencyCode(in: text, matching: trailingPattern) {
             return code
         }
-        if text.contains("€") { return "EUR" }
-        if text.contains("£") { return "GBP" }
-        if text.contains("₹") { return "INR" }
+        if text.contains("€") {
+            return "EUR"
+        }
+        if text.contains("£") {
+            return "GBP"
+        }
+        if text.contains("₹") {
+            return "INR"
+        }
         return nil
     }
 
@@ -176,7 +182,7 @@ enum TransactionTextParser {
         return nil
     }
 
-    // Lowercase ISO codes overlap ordinary prose ("all", "try", "pen").
+    /// Lowercase ISO codes overlap ordinary prose ("all", "try", "pen").
     private static func isExplicitCurrencyCode(_ value: String) -> Bool {
         value.unicodeScalars.allSatisfy { $0.value >= 65 && $0.value <= 90 }
     }
@@ -190,7 +196,7 @@ enum TransactionTextParser {
             (#"(?:[\$€£₹]|\brs\.?)\s*(\d[\d,]*(?:\.\d{1,2})?)"#, 1, nil),
             (#"(\d[\d,]*(?:\.\d{1,2})?)\s*(?:[\$€£₹]|\brs\b)"#, 1, nil),
             (#"(?<!\p{L})[\(\[]?([A-Za-z]{3})(?!\p{L})[\)\]]?\s*[.:=,;\-]?\s*(\d[\d,]*(?:\.\d{1,2})?)"#, 2, 1),
-            (#"(\d[\d,]*(?:\.\d{1,2})?)\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#, 1, 2),
+            (#"(\d[\d,]*(?:\.\d{1,2})?)\s*[.:=,;\-]?\s*(?<!\p{L})([A-Za-z]{3})(?!\p{L})"#, 1, 2)
         ]
         let full = NSRange(text.startIndex..., in: text)
         var earliest: (start: String.Index, amount: Double)?
@@ -215,7 +221,9 @@ enum TransactionTextParser {
                         of: #"\d{1,4}[-/.]\d{1,4}[-/.]$"#,
                         options: .regularExpression
                     ) != nil
-                    if isReferenceNumber || isDate { continue }
+                    if isReferenceNumber || isDate {
+                        continue
+                    }
                 }
                 if earliest == nil || amountRange.lowerBound < earliest!.start {
                     earliest = (amountRange.lowerBound, amount)
@@ -234,7 +242,8 @@ enum TransactionTextParser {
         let pattern = #"(?:card|a/c|ending|acct|xx|x{2,})[^\d]*(\d{4})"#
         guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
               let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-              let range = Range(match.range(at: 1), in: text) else {
+              let range = Range(match.range(at: 1), in: text)
+        else {
             return nil
         }
         return String(text[range])
@@ -263,7 +272,8 @@ enum TransactionTextParser {
             let candidatePattern = escapedWords.joined(separator: #"\s+"#)
             let pattern = #"\b(?:spent|debited|paid|withdrawn)\s+from\s+"# + candidatePattern
             if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-               regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil {
+               regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)) != nil
+            {
                 return extractMerchant(from: text)
             }
         }
@@ -279,7 +289,8 @@ enum TransactionTextParser {
         let pattern = #"\b(?:at|to|paid|merchant|vpa)\s+(?!from\b)([A-Za-z0-9\s&'.-]+?)(?:\s+(?:on|using|via|for|with|card|ref|\d{1,4}[-/.]\d{1,2}[-/.]\d{2,4}|\.|\,)|$)"#
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)),
-           let range = Range(match.range(at: 1), in: text) {
+           let range = Range(match.range(at: 1), in: text)
+        {
             let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
             if isValidMerchantCandidate(candidate) {
                 return candidate
@@ -302,7 +313,9 @@ enum TransactionTextParser {
                     of: #"\b(?:spent|debited|paid|withdrawn)\s+from\s*$"#,
                     options: [.regularExpression, .caseInsensitive]
                 ) != nil
-                if isDebitFundingSource { return true }
+                if isDebitFundingSource {
+                    return true
+                }
                 let candidate = String(text[range]).trimmingCharacters(in: .whitespacesAndNewlines.union(.init(charactersIn: ".,;:-")))
                 if isValidMerchantCandidate(candidate) {
                     found = candidate

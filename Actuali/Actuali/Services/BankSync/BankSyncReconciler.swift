@@ -54,7 +54,9 @@ struct BankSyncPlan: Sendable, Equatable {
     /// Conflicting downloads with the same provider id are not imported.
     var rejectedConflicts: Int = 0
 
-    var isEmpty: Bool { inserts.isEmpty && updates.isEmpty }
+    var isEmpty: Bool {
+        inserts.isEmpty && updates.isEmpty
+    }
 }
 
 /// Decides which downloaded transactions are new, which ones are transactions
@@ -114,11 +116,11 @@ enum BankSyncReconciler {
                 continue
             }
             let window = existing.compactMap { row -> FuzzyMatch? in
-                    guard !row.tombstone, row.amount == candidate.amount,
-                          let distance = dayDistance(row.date, candidate.date),
-                          distance <= fuzzyMatchDayRadius else { return nil }
-                    return FuzzyMatch(row: row, distance: distance)
-                }
+                guard !row.tombstone, row.amount == candidate.amount,
+                      let distance = dayDistance(row.date, candidate.date),
+                      distance <= fuzzyMatchDayRadius else { return nil }
+                return FuzzyMatch(row: row, distance: distance)
+            }
             pending.append((candidate, nil, window))
         }
 
@@ -158,7 +160,7 @@ enum BankSyncReconciler {
                 plan.unchanged += 1
                 continue
             }
-            let update = self.update(for: entry.candidate, matching: match)
+            let update = update(for: entry.candidate, matching: match)
             if changed(update, from: match) {
                 plan.updates.append(update)
             } else {
@@ -180,7 +182,9 @@ enum BankSyncReconciler {
                     && (payeeId == nil || match.row.payeeId == payeeId)
             }
             .min {
-                if $0.distance != $1.distance { return $0.distance < $1.distance }
+                if $0.distance != $1.distance {
+                    return $0.distance < $1.distance
+                }
                 return $0.row.id < $1.row.id
             }?
             .row
@@ -197,7 +201,8 @@ enum BankSyncReconciler {
         for importedId in grouped.keys.sorted() {
             let variants = grouped[importedId, default: []]
             guard let first = variants.first,
-                  variants.dropFirst().allSatisfy({ $0 == first }) else {
+                  variants.dropFirst().allSatisfy({ $0 == first })
+            else {
                 rejectedConflicts += 1
                 continue
             }
@@ -312,7 +317,9 @@ extension BankSyncCandidate {
     private static func payeeName(from candidates: [String?]) -> String {
         for candidate in candidates {
             let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            if !trimmed.isEmpty { return trimmed }
+            if !trimmed.isEmpty {
+                return trimmed
+            }
         }
         return "Unknown"
     }

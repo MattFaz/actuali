@@ -16,15 +16,19 @@ struct TransactionSearchMatcher {
 
     init(_ query: String) {
         self.query = query.trimmingCharacters(in: .whitespaces)
-        amountRange = Self.parseAmountRange(self.query)
+        self.amountRange = Self.parseAmountRange(self.query)
     }
 
     /// The trimmed query text, for callers that push matching into SQL.
-    var text: String { query }
+    var text: String {
+        query
+    }
 
     /// Absolute cent range the query matches as an amount, if it parses as
     /// one, for callers that push matching into SQL.
-    var amountCentsRange: ClosedRange<Int>? { amountRange }
+    var amountCentsRange: ClosedRange<Int>? {
+        amountRange
+    }
 
     func matches(_ transaction: Transaction) -> Bool {
         if query.isEmpty {
@@ -32,7 +36,8 @@ struct TransactionSearchMatcher {
         }
         if transaction.payeeName?.localizedCaseInsensitiveContains(query) == true ||
             transaction.categoryName?.localizedCaseInsensitiveContains(query) == true ||
-            transaction.notes?.localizedCaseInsensitiveContains(query) == true {
+            transaction.notes?.localizedCaseInsensitiveContains(query) == true
+        {
             return true
         }
         if let amountRange, amountRange.contains(abs(transaction.amount)) {
@@ -74,6 +79,6 @@ struct TransactionSearchMatcher {
         // "19.0" -> 1900...1909, "19.05" -> exactly 1905.
         let slot = fractionPart.count == 0 ? 100 : (fractionPart.count == 1 ? 10 : 1)
         let lower = base * slot
-        return lower...(lower + slot - 1)
+        return lower ... (lower + slot - 1)
     }
 }

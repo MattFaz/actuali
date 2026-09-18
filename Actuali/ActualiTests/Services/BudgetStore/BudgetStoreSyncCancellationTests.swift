@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// Pull-to-refresh runs `BudgetStore.sync()` inside SwiftUI's `.refreshable`
 /// task, which the system may cancel on further scroll interaction. A
@@ -10,7 +10,6 @@ import Testing
 /// "Something Went Wrong" alert and went blank when that happened.
 @MainActor
 struct BudgetStoreSyncCancellationTests {
-
     /// Every table `refreshDataOnly()` reads after a sync, so the refresh
     /// completes without error against this fixture.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -99,7 +98,7 @@ struct BudgetStoreSyncCancellationTests {
                     ('acct-1', 'Checking', 'checking', 1.0);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Store wired to a real database and sync client. The server client is

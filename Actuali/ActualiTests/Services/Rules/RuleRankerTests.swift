@@ -1,11 +1,10 @@
-import Testing
 @testable import Actuali
+import Testing
 
 /// Port fidelity for `rankRules` (loot-core server/rules/rule-utils.ts). Order
 /// decides which of two matching rules wins, so the score table is behaviour,
 /// not an implementation detail.
 struct RuleRankerTests {
-
     private func rule(id: String, stage: Rule.Stage = .default, ops: [String]) -> Rule {
         Rule(
             id: id,

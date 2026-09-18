@@ -45,7 +45,7 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testHubOpensEverySettingsDestination() throws {
+    func testHubOpensEverySettingsDestination() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -80,7 +80,7 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() throws {
+    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
@@ -117,7 +117,7 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testBudgetSelectionLongPressShowsManagementActions() throws {
+    func testBudgetSelectionLongPressShowsManagementActions() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",

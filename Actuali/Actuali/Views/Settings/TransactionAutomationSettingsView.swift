@@ -127,17 +127,19 @@ struct TransactionAutomationSettingsView: View {
                     }
                 }
 
-                if !budgetStore.payeeLocationWritesEnabled
-                    && budgetStore.currentBudgetId == nil {
+                if !budgetStore.payeeLocationWritesEnabled,
+                   budgetStore.currentBudgetId == nil
+                {
                     Text(String(localized: "Load a budget to manage transaction accounts."))
                         .foregroundStyle(.secondary)
                 }
             } header: {
                 Text(String(localized: "Payees & Accounts"))
             } footer: {
-                if !budgetStore.payeeLocationWritesEnabled
-                    && budgetStore.currentBudgetId != nil
-                    && budgetStore.isConnected {
+                if !budgetStore.payeeLocationWritesEnabled,
+                   budgetStore.currentBudgetId != nil,
+                   budgetStore.isConnected
+                {
                     Text(String(localized: "Payee locations require Actual Server 26.4.0 or later."))
                 }
             }
@@ -211,7 +213,7 @@ struct TransactionAutomationSettingsView: View {
 
     private func enableTransactionNotifications() async {
         let center = UNUserNotificationCenter.current()
-        let granted = (try? await center.requestAuthorization(options: [.alert, .sound])) ?? false
+        let granted = await (try? center.requestAuthorization(options: [.alert, .sound])) ?? false
         notificationPermissionDenied = !granted
     }
 

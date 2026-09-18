@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct NoteLinkTextTests {
-
     /// Every URL attached to a link run, in note order.
     private func linkURLs(_ text: String) -> [URL] {
         NoteLinkText.links(in: text).map(\.url)
@@ -68,8 +67,8 @@ struct NoteLinkTextTests {
         #expect(links.map(\.label) == ["Rule", "https://example.com/x"])
         #expect(links.map(\.url) == [
             URL(string: "https://amazon.com/rule"),
-            URL(string: "https://example.com/x"),
-        ].compactMap { $0 })
+            URL(string: "https://example.com/x")
+        ].compactMap(\.self))
     }
 
     @Test func markdownURLIsNotDoubleDetected() {

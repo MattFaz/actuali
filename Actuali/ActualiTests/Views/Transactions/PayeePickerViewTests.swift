@@ -1,5 +1,5 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct PayeePickerViewTests {
     private func payee(
@@ -82,7 +82,7 @@ struct PayeePickerViewTests {
             Account(id: "checking", name: "Checking", type: .checking,
                     offBudget: false, closed: false, sortOrder: 0, balance: 0),
             Account(id: "savings", name: "Savings", type: .savings,
-                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0)
         ]
 
         let result = PayeePickerView.filteredPayees(
@@ -102,12 +102,13 @@ struct PayeePickerViewTests {
             Account(id: "checking", name: "Checking", type: .checking,
                     offBudget: false, closed: false, sortOrder: 0, balance: 0),
             Account(id: "savings", name: "Savings", type: .savings,
-                    offBudget: false, closed: false, sortOrder: 1, balance: 0),
+                    offBudget: false, closed: false, sortOrder: 1, balance: 0)
         ]
 
         let result = PayeePickerView.filteredPayees(
             from: standard + [transfer], accounts: accounts,
-            transferFromAccountId: "checking", searchText: "")
+            transferFromAccountId: "checking", searchText: ""
+        )
 
         #expect(result.contains { $0.id == "transfer" })
     }

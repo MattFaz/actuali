@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the row set of `fetchCategoryTransactions(categoryId:month:)` to the
 /// same rules as the budget month's per-category "Spent" figure (GH #56), so
@@ -14,7 +14,6 @@ import GRDB
 /// - optional "yyyy-MM" month narrows to that month; nil means all time.
 @MainActor
 struct BudgetDatabaseCategoryTransactionsTests {
-
     @Test func onlyCurrentUncancelledReloadCanPublish() {
         #expect(CategoryTransactionsView.shouldPublishReload(
             generation: 2,

@@ -42,7 +42,9 @@ enum ActualServerError: LocalizedError {
     /// with something unusable. Callers that fall back to a degraded mode on
     /// failure use this to tell "old server" apart from "no server".
     var isConnectionFailure: Bool {
-        if case .networkError = self { return true }
+        if case .networkError = self {
+            return true
+        }
         return false
     }
 
@@ -96,7 +98,9 @@ struct LoginMethod: Codable, Sendable, Equatable {
     /// SQLite stores this as 0/1; decode tolerantly as an integer.
     let active: Int?
 
-    var isActive: Bool { (active ?? 0) != 0 }
+    var isActive: Bool {
+        (active ?? 0) != 0
+    }
 }
 
 struct LoginMethodsResponse: Codable, Sendable {
@@ -174,12 +178,12 @@ struct ServerBankSyncError: Decodable, Sendable, Equatable {
     /// this device failed to sync reads the same in the web UI.
     var bankSyncStatus: String {
         switch errorCode {
-        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": return "reauth-required"
-        case "ACCOUNT_NEEDS_ATTENTION": return "attention-required"
-        case "RATE_LIMIT_EXCEEDED": return "rate-limit-exceeded"
-        case "TIMED_OUT": return "timed-out"
-        case "ACCOUNT_MISSING": return "account-missing"
-        default: return "failed"
+        case "ITEM_LOGIN_REQUIRED", "INVALID_ACCESS_TOKEN": "reauth-required"
+        case "ACCOUNT_NEEDS_ATTENTION": "attention-required"
+        case "RATE_LIMIT_EXCEEDED": "rate-limit-exceeded"
+        case "TIMED_OUT": "timed-out"
+        case "ACCOUNT_MISSING": "account-missing"
+        default: "failed"
         }
     }
 
@@ -232,13 +236,13 @@ struct ServerBankSyncDownloads: Decodable, Sendable {
         // A whole-request failure decodes cleanly here too — every field is
         // optional — so it only counts as one when it names a code.
         let possibleFailure = try? ServerBankSyncError(from: decoder)
-        failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
+        self.failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
 
         let container = try decoder.container(keyedBy: DynamicKey.self)
         for key in container.allKeys {
             switch key.stringValue {
             case "errors":
-                errors = (try? container.decode([String: [ServerBankSyncError]].self, forKey: key)) ?? [:]
+                self.errors = (try? container.decode([String: [ServerBankSyncError]].self, forKey: key)) ?? [:]
             case "error_type", "error_code", "reason", "status":
                 continue
             default:
@@ -255,12 +259,19 @@ struct ServerBankSyncDownloads: Decodable, Sendable {
 
     private struct DynamicKey: CodingKey {
         var stringValue: String
-        var intValue: Int? { nil }
-        init?(stringValue: String) { self.stringValue = stringValue }
-        init?(intValue: Int) { nil }
+        var intValue: Int? {
+            nil
+        }
+
+        init?(stringValue: String) {
+            self.stringValue = stringValue
+        }
+
+        init?(intValue: Int) {
+            nil
+        }
     }
 }
-
 
 /// Version gate for features that depend on the server's Actual release.
 enum ServerVersion {
@@ -317,12 +328,13 @@ actor ActualServerClient {
         // swallows this method's errors with try?, and a bad fallback must not
         // leave the client without a working primary.
         self.serverURL = url
-        self.configuredPrimaryURL = url
+        configuredPrimaryURL = url
         self.fallbackServerURL = nil
         if !fallbackServerURL.isEmpty {
             guard let fallbackURL = URL(string: fallbackServerURL),
                   fallbackURL.scheme != nil,
-                  fallbackURL.host != nil else {
+                  fallbackURL.host != nil
+            else {
                 throw ActualServerError.invalidFallbackURL
             }
             self.fallbackServerURL = fallbackURL
@@ -334,7 +346,7 @@ actor ActualServerClient {
     }
 
     func setCustomHeaders(_ headers: [(name: String, value: String)]) {
-        self.customHeaders = headers
+        customHeaders = headers
     }
 
     /// Build a request with the user's custom headers already applied. Callers
@@ -369,7 +381,8 @@ actor ActualServerClient {
                    primaryServerURL: primaryServerURL,
                    fallbackServerURL: requestFallbackURL
                ),
-               fallbackURL != requestURL {
+               fallbackURL != requestURL
+            {
                 var fallbackRequest = request
                 fallbackRequest.url = fallbackURL
                 do {
@@ -438,12 +451,12 @@ actor ActualServerClient {
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
         let requestPath = requestURL.path(percentEncoded: true)
             .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        let endpointPath: Substring
-        if !primaryPath.isEmpty,
-           requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/") {
-            endpointPath = requestPath.dropFirst(primaryPath.count)
+        let endpointPath: Substring = if !primaryPath.isEmpty,
+                                         requestPath == primaryPath || requestPath.hasPrefix(primaryPath + "/")
+        {
+            requestPath.dropFirst(primaryPath.count)
         } else {
-            endpointPath = requestPath[...]
+            requestPath[...]
         }
 
         var components = URLComponents(
@@ -471,7 +484,8 @@ actor ActualServerClient {
     /// non-JSON `Content-Type` or a redirect landing on a known Access host.
     private func looksLikeAuthProxy(_ response: HTTPURLResponse, data: Data) -> Bool {
         if let host = response.url?.host?.lowercased(),
-           host.contains("cloudflareaccess.com") {
+           host.contains("cloudflareaccess.com")
+        {
             return true
         }
         guard let contentType = response.value(forHTTPHeaderField: "Content-Type")?.lowercased() else {
@@ -590,7 +604,8 @@ actor ActualServerClient {
         guard let (data, response) = try? await send(request),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
-              let created = try? JSONDecoder().decode(Bool.self, from: data) else {
+              let created = try? JSONDecoder().decode(Bool.self, from: data)
+        else {
             return true
         }
         return created
@@ -600,6 +615,7 @@ actor ActualServerClient {
         struct Build: Decodable {
             let version: String?
         }
+
         let build: Build?
     }
 
@@ -615,7 +631,8 @@ actor ActualServerClient {
         guard let (data, response) = try? await send(request),
               let httpResponse = response as? HTTPURLResponse,
               httpResponse.statusCode == 200,
-              let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data) else {
+              let info = try? JSONDecoder().decode(ServerInfoResponse.self, from: data)
+        else {
             return nil
         }
         return info.build?.version
@@ -671,7 +688,8 @@ actor ActualServerClient {
         let decoded = try JSONDecoder().decode(OpenIDInitResponse.self, from: data)
         guard decoded.status == "ok",
               let urlString = decoded.data?.returnUrl,
-              let authURL = URL(string: urlString) else {
+              let authURL = URL(string: urlString)
+        else {
             throw ActualServerError.invalidResponse
         }
         return authURL
@@ -878,7 +896,9 @@ actor ActualServerClient {
         if looksLikeAuthProxy(httpResponse, data: data) {
             throw ActualServerError.authProxyBlocked
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         if httpResponse.statusCode == 400, data == Data("file-not-found".utf8) {
             throw ActualServerError.fileNotFound
         }
@@ -904,7 +924,9 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8))
         }
@@ -993,9 +1015,9 @@ actor ActualServerClient {
 
             init(from decoder: any Decoder) throws {
                 let container = try decoder.container(keyedBy: CodingKeys.self)
-                accounts = try? container.decodeIfPresent([SimpleFINAccount].self, forKey: .accounts)
+                self.accounts = try? container.decodeIfPresent([SimpleFINAccount].self, forKey: .accounts)
                 let possibleFailure = try? ServerBankSyncError(from: decoder)
-                failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
+                self.failure = possibleFailure?.errorCode == nil ? nil : possibleFailure
             }
 
             private enum CodingKeys: String, CodingKey { case accounts }
@@ -1008,9 +1030,9 @@ actor ActualServerClient {
 
     /// Shared plumbing for the `/simplefin` routes. Returns nil when the route
     /// isn't there; throws for everything else.
-    private func postBankSync<Body: Encodable, Response: Decodable>(
+    private func postBankSync<Response: Decodable>(
         path: String,
-        body: Body
+        body: some Encodable
     ) async throws -> Response? {
         guard let serverURL else { throw ActualServerError.invalidURL }
         guard let token else { throw ActualServerError.unauthorized }
@@ -1025,10 +1047,14 @@ actor ActualServerClient {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw ActualServerError.invalidResponse
         }
-        if httpResponse.statusCode == 403 { throw ActualServerError.unauthorized }
+        if httpResponse.statusCode == 403 {
+            throw ActualServerError.unauthorized
+        }
         // The route genuinely isn't served here — not a failure, just an older
         // server. 501 covers proxies that answer unimplemented paths that way.
-        if [404, 405, 501].contains(httpResponse.statusCode) { return nil }
+        if [404, 405, 501].contains(httpResponse.statusCode) {
+            return nil
+        }
         guard httpResponse.statusCode == 200 else {
             throw ActualServerError.httpError(
                 statusCode: httpResponse.statusCode, message: String(data: data, encoding: .utf8)
@@ -1040,7 +1066,6 @@ actor ActualServerClient {
             throw ActualServerError.decodingError(error)
         }
     }
-
 
     // MARK: - Sync
 

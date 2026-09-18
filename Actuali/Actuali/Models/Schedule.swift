@@ -2,8 +2,8 @@ import Foundation
 
 /// Amount condition on a schedule's rule.
 enum ScheduledAmount: Equatable {
-    case fixed(Int)             // cents
-    case range(Int, Int)        // num1, num2 from an isbetween condition (cents)
+    case fixed(Int) // cents
+    case range(Int, Int) // num1, num2 from an isbetween condition (cents)
 
     /// Amount a posted transaction should carry, mirroring loot-core
     /// `getScheduledAmount`: `Math.round((num1 + num2) / 2)`. JS `Math.round`
@@ -11,8 +11,8 @@ enum ScheduledAmount: Equatable {
     /// (-3 + -4) / 2 = -3.5 → -3, whereas Swift's `.rounded()` gives -4.
     var postAmount: Int {
         switch self {
-        case .fixed(let a): return a
-        case .range(let a, let b): return Int((Double(a + b) / 2 + 0.5).rounded(.down))
+        case .fixed(let a): a
+        case .range(let a, let b): Int((Double(a + b) / 2 + 0.5).rounded(.down))
         }
     }
 }

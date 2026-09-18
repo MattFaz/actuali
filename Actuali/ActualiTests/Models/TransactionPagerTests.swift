@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pins TransactionPager, the paging state shared by the transaction lists
 /// (GH #65): it fetches newest-first pages through an injected fetch closure,
@@ -8,12 +8,11 @@ import Testing
 /// pages, and ignores stale in-flight loads after a reset.
 @MainActor
 struct TransactionPagerTests {
-
     private func makeTxn(_ id: String) -> Transaction {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260601,
+            date: 20_260_601,
             amount: -1000,
             payeeId: nil,
             payeeName: nil,
@@ -129,7 +128,7 @@ struct TransactionPagerTests {
     /// Concurrent load-more triggers (e.g. the sentinel row re-appearing
     /// during a scroll bounce) must not fetch or append the same page twice.
     @Test func concurrentNextPageLoadsOnlyOnce() async {
-        let all = (1...6).map { "t-\($0)" }.map(makeTxn)
+        let all = (1 ... 6).map { "t-\($0)" }.map(makeTxn)
         let pager = TransactionPager(pageSize: 3) { offset, limit, _ in
             try? await Task.sleep(for: .milliseconds(50))
             return Array(all.dropFirst(offset).prefix(limit))
@@ -141,13 +140,13 @@ struct TransactionPagerTests {
         async let second: Void = pager.loadNextPage()
         _ = await (first, second)
 
-        #expect(pager.transactions.map(\.id) == (1...6).map { "t-\($0)" })
+        #expect(pager.transactions.map(\.id) == (1 ... 6).map { "t-\($0)" })
     }
 
     /// A reset (new first page) while a next-page fetch is in flight must
     /// drop the stale append — it belongs to the old result set.
     @Test func staleNextPageIsDroppedAfterReset() async {
-        let all = (1...6).map { "t-\($0)" }.map(makeTxn)
+        let all = (1 ... 6).map { "t-\($0)" }.map(makeTxn)
         let pager = TransactionPager(pageSize: 3) { offset, limit, search in
             if offset > 0 {
                 try? await Task.sleep(for: .milliseconds(150))

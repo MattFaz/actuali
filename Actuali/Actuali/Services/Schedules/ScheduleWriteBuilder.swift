@@ -22,7 +22,6 @@ struct ScheduleWritePlan {
 }
 
 enum ScheduleWriteBuilder {
-
     /// Port of loot-core `createSchedule`: one rule, one next-date row, one
     /// schedule row.
     ///
@@ -43,15 +42,15 @@ enum ScheduleWriteBuilder {
 
         let actions: [[String: Any]] = [["op": "link-schedule", "value": scheduleId]]
 
-        return ScheduleWritePlan(
+        return try ScheduleWritePlan(
             scheduleId: scheduleId,
             writes: [
                 .init(dataset: "rules", row: ruleId, fields: [
                     ("stage", nil),
                     ("conditions_op", "and"),
-                    ("conditions", try ScheduleConditions.serialize(conditions)),
-                    ("actions", try ScheduleConditions.serialize(actions)),
-                    ("tombstone", 0),
+                    ("conditions", ScheduleConditions.serialize(conditions)),
+                    ("actions", ScheduleConditions.serialize(actions)),
+                    ("tombstone", 0)
                 ]),
                 // Both halves of the next-date pair start equal, which is what
                 // makes the local value the effective one until something
@@ -61,7 +60,7 @@ enum ScheduleWriteBuilder {
                     ("local_next_date", nextDate.yyyymmdd),
                     ("local_next_date_ts", now),
                     ("base_next_date", nextDate.yyyymmdd),
-                    ("base_next_date_ts", now),
+                    ("base_next_date_ts", now)
                 ]),
                 .init(dataset: "schedules", row: scheduleId, fields: [
                     ("rule", ruleId),
@@ -69,10 +68,11 @@ enum ScheduleWriteBuilder {
                     ("posts_transaction", fields.postsTransaction ? 1 : 0),
                     ("custom_upcoming_length", fields.customUpcomingLength),
                     ("completed", 0),
-                    ("tombstone", 0),
-                ]),
+                    ("tombstone", 0)
+                ])
             ],
-            conditions: conditions)
+            conditions: conditions
+        )
     }
 
     /// Port of loot-core `updateSchedule`.
@@ -94,9 +94,11 @@ enum ScheduleWriteBuilder {
         let existingActions = ScheduleConditions.parse(schedule.actionsJSON)
 
         let scheduleConditions = try ScheduleConditions.build(
-            fields: fields, existing: existingConditions)
+            fields: fields, existing: existingConditions
+        )
         let merged = ScheduleConditions.merge(
-            existing: existingConditions, scheduleConditions: scheduleConditions)
+            existing: existingConditions, scheduleConditions: scheduleConditions
+        )
 
         var writes: [ScheduleWritePlan.RowWrite] = []
 
@@ -105,18 +107,20 @@ enum ScheduleWriteBuilder {
         // This is the one case where writing `rule` is correct — upstream's
         // "you cannot change the rule" guard is about swapping a live rule.
         let ruleId = schedule.ruleId ?? newRuleId()
-        var ruleFields: [(column: String, value: (any Sendable)?)] = [
-            ("conditions", try ScheduleConditions.serialize(merged)),
+        var ruleFields: [(column: String, value: (any Sendable)?)] = try [
+            ("conditions", ScheduleConditions.serialize(merged))
         ]
         if schedule.ruleId == nil {
             ruleFields.append(("stage", nil))
             ruleFields.append(("conditions_op", "and"))
-            ruleFields.append(("actions", try ScheduleConditions.serialize(
-                [["op": "link-schedule", "value": schedule.id]])))
+            try ruleFields.append(("actions", ScheduleConditions.serialize(
+                [["op": "link-schedule", "value": schedule.id]]
+            )))
             ruleFields.append(("tombstone", 0))
         } else if let actions = ScheduleConditions.syncedActions(
-            conditions: merged, actions: existingActions) {
-            ruleFields.append(("actions", try ScheduleConditions.serialize(actions)))
+            conditions: merged, actions: existingActions
+        ) {
+            try ruleFields.append(("actions", ScheduleConditions.serialize(actions)))
         }
         writes.append(.init(dataset: "rules", row: ruleId, fields: ruleFields))
 
@@ -125,8 +129,9 @@ enum ScheduleWriteBuilder {
         let newIndices = ScheduleConditions.extract(merged)
         let accountChanged = !ScheduleConditions.conditionsEqual(
             ScheduleConditions.condition(at: oldIndices.account, in: existingConditions),
-            ScheduleConditions.condition(at: newIndices.account, in: merged))
-        
+            ScheduleConditions.condition(at: newIndices.account, in: merged)
+        )
+
         let oldDateCondition = ScheduleConditions.condition(at: oldIndices.date, in: existingConditions)
         let newDateCondition = ScheduleConditions.condition(at: newIndices.date, in: merged)
         // Compare the date SEMANTICALLY, not as raw JSON. A config written by
@@ -138,7 +143,8 @@ enum ScheduleWriteBuilder {
 
         if resetRequested || accountChanged || dateChanged,
            let date = fields.date,
-           let nextDate = ScheduleConditions.nextDate(for: date, from: today) {
+           let nextDate = ScheduleConditions.nextDate(for: date, from: today)
+        {
             // A schedule whose next-date row went missing gets a fresh one
             // rather than silently skipping the write; `schedule_id` is only
             // needed on that new row.
@@ -157,9 +163,11 @@ enum ScheduleWriteBuilder {
         var scheduleFields: [(column: String, value: (any Sendable)?)] = [
             ("name", fields.normalizedName),
             ("posts_transaction", fields.postsTransaction ? 1 : 0),
-            ("custom_upcoming_length", fields.customUpcomingLength),
+            ("custom_upcoming_length", fields.customUpcomingLength)
         ]
-        if schedule.ruleId == nil { scheduleFields.append(("rule", ruleId)) }
+        if schedule.ruleId == nil {
+            scheduleFields.append(("rule", ruleId))
+        }
         writes.append(.init(dataset: "schedules", row: schedule.id, fields: scheduleFields))
 
         return ScheduleWritePlan(scheduleId: schedule.id, writes: writes, conditions: merged)
@@ -172,7 +180,7 @@ enum ScheduleWriteBuilder {
     /// — an orphaned rule would keep matching imported transactions forever.
     static func deletePlan(schedule: ScheduleSummary) -> ScheduleWritePlan {
         var writes: [ScheduleWritePlan.RowWrite] = [
-            .init(dataset: "schedules", row: schedule.id, fields: [("tombstone", 1)]),
+            .init(dataset: "schedules", row: schedule.id, fields: [("tombstone", 1)])
         ]
         if let ruleId = schedule.ruleId {
             writes.append(.init(dataset: "rules", row: ruleId, fields: [("tombstone", 1)]))
@@ -202,7 +210,8 @@ enum ScheduleWriteBuilder {
         return ScheduleWritePlan(
             scheduleId: schedule.id,
             writes: [.init(dataset: "schedules_next_date", row: rowId, fields: fields)],
-            conditions: nil)
+            conditions: nil
+        )
     }
 
     /// Update only the schedule row's own columns (complete / restart, and the
@@ -214,15 +223,18 @@ enum ScheduleWriteBuilder {
         ScheduleWritePlan(
             scheduleId: scheduleId,
             writes: [.init(dataset: "schedules", row: scheduleId, fields: fields)],
-            conditions: nil)
+            conditions: nil
+        )
     }
-    
+
     /// Parse a raw date condition into its semantic form so two encodings of
     /// the same recurrence compare equal. `RecurConfig(json:)` normalises the
     /// optional fields, which is exactly the normalisation this needs.
     private static func parsedDate(_ condition: [String: Any]?) -> ScheduleDateCondition? {
         guard let value = condition?["value"] else { return nil }
-        if let iso = value as? String { return DayDate(iso: iso).map(ScheduleDateCondition.fixed) }
+        if let iso = value as? String {
+            return DayDate(iso: iso).map(ScheduleDateCondition.fixed)
+        }
         if let json = value as? [String: Any], let config = RecurConfig(json: json) {
             return .recurring(config)
         }

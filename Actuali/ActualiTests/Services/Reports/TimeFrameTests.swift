@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct TimeFrameTests {
-
     /// 2026-05-14 fixed reference date for deterministic tests (UTC).
     private var referenceDate: Date {
         var components = DateComponents()

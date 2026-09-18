@@ -108,8 +108,8 @@ struct ReportsTabView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                 Text(pages.first { $0.id == selectedPageId }.map(displayName(for:))
-                     ?? ReportStrings.text("Dashboard", locale: locale))
+                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:))
+                    ?? ReportStrings.text("Dashboard", locale: locale))
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -181,7 +181,7 @@ struct ReportsTabView: View {
                 currentRequest: currentLoadRequest,
                 taskIsCancelled: Task.isCancelled
             ) else { return }
-            self.hasLoaded = true
+            hasLoaded = true
             return
         }
         do {
@@ -197,13 +197,13 @@ struct ReportsTabView: View {
                 currentRequest: currentLoadRequest,
                 taskIsCancelled: Task.isCancelled
             ) else { return }
-            self.pages = fetchedPages
-            self.selectedPageId = pageId
-            self.widgets = fetched
+            pages = fetchedPages
+            selectedPageId = pageId
+            widgets = fetched
             // Same render pass as the widgets it identifies, so the dashboard
             // is re-created around them rather than around their predecessor.
-            self.loadedPageId = pageId
-            self.loadError = nil
+            loadedPageId = pageId
+            loadError = nil
         } catch is CancellationError {
             // The hosting task was torn down (tab switch, refresh gesture
             // cancelled). Keep whatever is on screen; the next appearance
@@ -215,13 +215,13 @@ struct ReportsTabView: View {
                 currentRequest: currentLoadRequest,
                 taskIsCancelled: Task.isCancelled
             ) else { return }
-            self.loadError = error.localizedDescription
+            loadError = error.localizedDescription
         }
         guard Self.shouldPublish(
             request: request,
             currentRequest: currentLoadRequest,
             taskIsCancelled: Task.isCancelled
         ) else { return }
-        self.hasLoaded = true
+        hasLoaded = true
     }
 }

@@ -1,5 +1,5 @@
-import Foundation
 import Combine
+import Foundation
 
 extension Transaction {
     /// Compares only stable transaction state returned by the normal fetch path.
@@ -7,20 +7,20 @@ extension Transaction {
     /// `sortOrder` normalization must not make a live row differ from history.
     func matchesLiveTransaction(_ transaction: Transaction) -> Bool {
         id == transaction.id &&
-        accountId == transaction.accountId &&
-        date == transaction.date &&
-        amount == transaction.amount &&
-        payeeId == transaction.payeeId &&
-        categoryId == transaction.categoryId &&
-        notes == transaction.notes &&
-        cleared == transaction.cleared &&
-        reconciled == transaction.reconciled &&
-        transferId == transaction.transferId &&
-        isParent == transaction.isParent &&
-        parentId == transaction.parentId &&
-        tombstone == transaction.tombstone &&
-        importedPayee == transaction.importedPayee &&
-        schedule == transaction.schedule
+            accountId == transaction.accountId &&
+            date == transaction.date &&
+            amount == transaction.amount &&
+            payeeId == transaction.payeeId &&
+            categoryId == transaction.categoryId &&
+            notes == transaction.notes &&
+            cleared == transaction.cleared &&
+            reconciled == transaction.reconciled &&
+            transferId == transaction.transferId &&
+            isParent == transaction.isParent &&
+            parentId == transaction.parentId &&
+            tombstone == transaction.tombstone &&
+            importedPayee == transaction.importedPayee &&
+            schedule == transaction.schedule
     }
 }
 
@@ -56,7 +56,7 @@ struct HistoryAction: Identifiable, Codable, Equatable {
             case .deleted: return String(localized: "Deleted transfer")
             }
         }
-        if after.contains(where: { $0.isParent }) || before.contains(where: { $0.isParent }) {
+        if after.contains(where: \.isParent) || before.contains(where: \.isParent) {
             switch kind {
             case .created: return String(localized: "Added split transaction")
             case .edited: return String(localized: "Edited split transaction")
@@ -151,7 +151,8 @@ final class HistoryStore: ObservableObject {
            let existingParentID = Self.splitParentID(before: existing.before, after: existing.after),
            let parentID = Self.splitParentID(before: before, after: after),
            existingParentID == parentID,
-           Date().timeIntervalSince(existing.createdAt) <= 0.5 {
+           Date().timeIntervalSince(existing.createdAt) <= 0.5
+        {
             actions[0] = HistoryAction(
                 id: existing.id,
                 createdAt: existing.createdAt,
@@ -174,7 +175,8 @@ final class HistoryStore: ObservableObject {
            existing.after.count == 1,
            let existingTransaction = existing.after.first,
            existingTransaction.id == transaction.transferId,
-           existingTransaction.transferId == transaction.id {
+           existingTransaction.transferId == transaction.id
+        {
             actions[0] = HistoryAction(
                 id: existing.id,
                 createdAt: existing.createdAt,
@@ -208,8 +210,8 @@ final class HistoryStore: ObservableObject {
 
     func canUndo(_ action: HistoryAction) -> Bool {
         action.budgetID == loadedBudgetID &&
-        action.status == .applied &&
-        actions.first(where: { $0.status == .applied })?.id == action.id
+            action.status == .applied &&
+            actions.first(where: { $0.status == .applied })?.id == action.id
     }
 
     func clearError() {
@@ -225,7 +227,7 @@ final class HistoryStore: ObservableObject {
         var live = Dictionary(uniqueKeysWithValues: budgetStore.transactions.map { ($0.id, $0) })
         let splitParentIDs = Set(
             action.before.compactMap { $0.isParent ? $0.id : $0.parentId } +
-            action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
+                action.after.compactMap { $0.isParent ? $0.id : $0.parentId }
         )
         for parentID in splitParentIDs {
             for child in await budgetStore.fetchSplitChildren(parentId: parentID) {

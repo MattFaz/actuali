@@ -1,16 +1,15 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct AutomationValidationTests {
-
     @Test func everyAutomationErrorHasLocalizedMessages() {
         let errors: [AutomationError] = [
             .scheduleNotFound(name: "Rent"), .refillNoCap, .limitNoContributor,
             .percentageOutOfRange(percent: 125), .percentageNoSource,
             .percentageSourceNotFound(source: "Ghost"), .byNoMonth,
             .byTargetPast(month: "2024-01"), .spendNoFrom,
-            .spendFromAfterTarget, .adjustmentOutOfRange,
+            .spendFromAfterTarget, .adjustmentOutOfRange
         ]
         let locale = Locale(identifier: "fr_FR")
         let bundle = Bundle.main
@@ -22,7 +21,7 @@ struct AutomationValidationTests {
         }
 
         let conflicts: [AutomationConflict] = [
-            .percentOver100(total: 125), .schedulePriorityMismatch,
+            .percentOver100(total: 125), .schedulePriorityMismatch
         ]
         for conflict in conflicts {
             #expect(!conflict.message(locale: locale, bundle: bundle).isEmpty)
@@ -46,20 +45,24 @@ struct AutomationValidationTests {
             allTemplates: all ?? [entry.template],
             schedules: schedules,
             currentMonth: currentMonth,
-            validPercentageSources: sources)
+            validPercentageSources: sources
+        )
     }
 
     @Test func scheduleMustExistAndBeActive() throws {
-        let entry = AutomationEntry(
-            template: try parse("#template schedule Rent"), displayType: .schedule)
+        let entry = try AutomationEntry(
+            template: parse("#template schedule Rent"), displayType: .schedule
+        )
         #expect(validate(entry) == .scheduleNotFound(name: "Rent"))
 
         let active = GoalScheduleInfo(
-            id: "s1", name: "Rent", completed: false, amount: nil, dateCondition: nil)
+            id: "s1", name: "Rent", completed: false, amount: nil, dateCondition: nil
+        )
         #expect(validate(entry, schedules: [active]) == nil)
 
         let completed = GoalScheduleInfo(
-            id: "s1", name: "Rent", completed: true, amount: nil, dateCondition: nil)
+            id: "s1", name: "Rent", completed: true, amount: nil, dateCondition: nil
+        )
         #expect(validate(entry, schedules: [completed]) == .scheduleNotFound(name: "Rent"))
 
         var empty = BudgetAutomations.defaultTemplate(for: .schedule)
@@ -68,23 +71,25 @@ struct AutomationValidationTests {
             == .scheduleNotFound(name: ""))
     }
 
-    @Test func refillNeedsALimit() throws {
+    @Test func refillNeedsALimit() {
         let refill = AutomationEntry(
-            template: BudgetAutomations.defaultTemplate(for: .refill), displayType: .refill)
+            template: BudgetAutomations.defaultTemplate(for: .refill), displayType: .refill
+        )
         #expect(validate(refill) == .refillNoCap)
         let limit = BudgetAutomations.defaultTemplate(for: .limit)
         #expect(validate(refill, all: [refill.template, limit]) == nil)
     }
 
-    @Test func limitNeedsAContributor() throws {
+    @Test func limitNeedsAContributor() {
         let limit = AutomationEntry(
-            template: BudgetAutomations.defaultTemplate(for: .limit), displayType: .limit)
+            template: BudgetAutomations.defaultTemplate(for: .limit), displayType: .limit
+        )
         #expect(validate(limit) == .limitNoContributor)
         let fixed = BudgetAutomations.defaultTemplate(for: .fixed)
         #expect(validate(limit, all: [limit.template, fixed]) == nil)
     }
 
-    @Test func percentageChecks() throws {
+    @Test func percentageChecks() {
         var template = BudgetAutomations.defaultTemplate(for: .percentage)
         template.category = nil
         #expect(validate(AutomationEntry(template: template, displayType: .percentage))
@@ -129,37 +134,39 @@ struct AutomationValidationTests {
         schedule.adjustment = 1500
         schedule.adjustmentType = .percent
         let active = GoalScheduleInfo(
-            id: "s1", name: "Rent", completed: false, amount: nil, dateCondition: nil)
+            id: "s1", name: "Rent", completed: false, amount: nil, dateCondition: nil
+        )
         #expect(validate(
             AutomationEntry(template: schedule, displayType: .schedule),
-            schedules: [active]) == .adjustmentOutOfRange)
+            schedules: [active]
+        ) == .adjustmentOutOfRange)
     }
 
     @Test func percentageAllocationConflict() throws {
-        let templates = [
-            try parse("#template 60% of all income"),
-            try parse("#template 50% of all income"),
+        let templates = try [
+            parse("#template 60% of all income"),
+            parse("#template 50% of all income")
         ]
         #expect(AutomationValidation.percentageAllocationConflict(templates)
             == .percentOver100(total: 110))
         // Different sources don't sum together.
-        let split = [
-            try parse("#template 60% of all income"),
-            try parse("#template 50% of Salary"),
+        let split = try [
+            parse("#template 60% of all income"),
+            parse("#template 50% of Salary")
         ]
         #expect(AutomationValidation.percentageAllocationConflict(split) == nil)
     }
 
     @Test func schedulePriorityConflict() throws {
-        let mismatched = [
-            try parse("#template-1 schedule Rent"),
-            try parse("#template-2 500 by 2025-12"),
+        let mismatched = try [
+            parse("#template-1 schedule Rent"),
+            parse("#template-2 500 by 2025-12")
         ]
         #expect(AutomationValidation.schedulePriorityConflict(mismatched)
             == .schedulePriorityMismatch)
-        let matched = [
-            try parse("#template-1 schedule Rent"),
-            try parse("#template-1 500 by 2025-12"),
+        let matched = try [
+            parse("#template-1 schedule Rent"),
+            parse("#template-1 500 by 2025-12")
         ]
         #expect(AutomationValidation.schedulePriorityConflict(matched) == nil)
     }

@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 @MainActor
 struct CrossoverEngineTests {
-
     private func utcDate(_ year: Int, _ month: Int, _ day: Int) -> Date {
         var c = DateComponents(); c.year = year; c.month = month; c.day = day
         c.timeZone = TimeZone(identifier: "UTC")
@@ -22,8 +21,8 @@ struct CrossoverEngineTests {
         )
     }
 
-    // `Category` alone is ambiguous in the test target (clashes with the ObjC
-    // runtime's Category typedef), so qualify the app type.
+    /// `Category` alone is ambiguous in the test target (clashes with the ObjC
+    /// runtime's Category typedef), so qualify the app type.
     private func cat(_ id: String, isIncome: Bool = false, hidden: Bool = false) -> Actuali.Category {
         Actuali.Category(id: id, name: id, groupId: "g1", isIncome: isIncome, hidden: hidden, sortOrder: 0)
     }
@@ -60,12 +59,12 @@ struct CrossoverEngineTests {
     @Test func expenseBucketingByMonthForSelectedCategories() {
         // Range is earliest tx month through the previous month (May 2026).
         let transactions = [
-            tx(date: 20260110, amount: -1000, category: "food"),
-            tx(date: 20260205, amount: -2000, category: "food"),
-            tx(date: 20260220, amount: -500, category: "food"),
-            tx(date: 20260215, amount: 90000, category: "salary"),   // income category — excluded
-            tx(date: 20260310, amount: -700, category: "secret"),    // hidden — excluded by default
-            tx(date: 20260601, amount: -300, category: "food")       // current month — outside range
+            tx(date: 20_260_110, amount: -1000, category: "food"),
+            tx(date: 20_260_205, amount: -2000, category: "food"),
+            tx(date: 20_260_220, amount: -500, category: "food"),
+            tx(date: 20_260_215, amount: 90000, category: "salary"), // income category — excluded
+            tx(date: 20_260_310, amount: -700, category: "secret"), // hidden — excluded by default
+            tx(date: 20_260_601, amount: -300, category: "food") // current month — outside range
         ]
         let result = CrossoverEngine.compute(
             meta: meta(incomeAccountIds: ["inv"]),
@@ -73,7 +72,7 @@ struct CrossoverEngineTests {
             accountIds: ["a1", "inv"], today: utcDate(2026, 6, 15)
         )
         let historical = result.points.filter { !$0.isProjection }
-        #expect(historical.count == 5)  // Jan..May
+        #expect(historical.count == 5) // Jan..May
         #expect(historical.map(\.expensesCents) == [1000, 2500, 0, 0, 0])
 
         // showHiddenCategories includes the hidden category's spending.
@@ -83,14 +82,14 @@ struct CrossoverEngineTests {
             accountIds: ["a1", "inv"], today: utcDate(2026, 6, 15)
         )
         #expect(withHidden.points.filter { !$0.isProjection }.map(\.expensesCents)
-                == [1000, 2500, 700, 0, 0])
+            == [1000, 2500, 700, 0, 0])
     }
 
     @Test func incomeAccountBalanceAccumulation() {
         let transactions = [
-            tx(date: 20260115, amount: 100_000, account: "inv"),
-            tx(date: 20260320, amount: 50_000, account: "inv"),
-            tx(date: 20260112, amount: -1000, account: "a1", category: "food")
+            tx(date: 20_260_115, amount: 100_000, account: "inv"),
+            tx(date: 20_260_320, amount: 50000, account: "inv"),
+            tx(date: 20_260_112, amount: -1000, account: "a1", category: "food")
         ]
         let result = CrossoverEngine.compute(
             meta: meta(incomeAccountIds: ["inv"]),
@@ -109,8 +108,8 @@ struct CrossoverEngineTests {
 
     @Test func staticTimeFrameFoldsPriorTransactionsIntoStartingBalance() {
         let transactions = [
-            tx(date: 20260115, amount: 100_000, account: "inv"),
-            tx(date: 20260320, amount: 50_000, account: "inv")
+            tx(date: 20_260_115, amount: 100_000, account: "inv"),
+            tx(date: 20_260_320, amount: 50000, account: "inv")
         ]
         let result = CrossoverEngine.compute(
             meta: meta(
@@ -121,19 +120,19 @@ struct CrossoverEngineTests {
             accountIds: ["inv"], today: utcDate(2026, 6, 15)
         )
         let historical = result.points.filter { !$0.isProjection }
-        #expect(historical.count == 3)  // Mar..May
+        #expect(historical.count == 3) // Mar..May
         #expect(historical.map(\.nestEggCents) == [150_000, 150_000, 150_000])
         #expect(historical.first?.month == utcDate(2026, 3, 1))
     }
 
     @Test func malformedStaticTimeFrameBoundsFallBackLikeMissingBounds() {
         let transactions = [
-            tx(date: 20260110, amount: -100, category: "food"),
-            tx(date: 20260210, amount: -200, category: "food"),
-            tx(date: 20260310, amount: -300, category: "food"),
-            tx(date: 20260410, amount: -400, category: "food"),
-            tx(date: 20260510, amount: -500, category: "food"),
-            tx(date: 20260115, amount: 100_000, account: "inv")
+            tx(date: 20_260_110, amount: -100, category: "food"),
+            tx(date: 20_260_210, amount: -200, category: "food"),
+            tx(date: 20_260_310, amount: -300, category: "food"),
+            tx(date: 20_260_410, amount: -400, category: "food"),
+            tx(date: 20_260_510, amount: -500, category: "food"),
+            tx(date: 20_260_115, amount: 100_000, account: "inv")
         ]
         let missing = CrossoverEngine.compute(
             meta: meta(incomeAccountIds: ["inv"], timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .static)),
@@ -154,19 +153,19 @@ struct CrossoverEngineTests {
         }
     }
 
-    // Expenses [100, 100, 110, 90, 1000, 1200]:
-    //   median = 105; MAD = median(|v - 105|) = median([15,5,5,5,895,1095]) = 10;
-    //   Hampel bounds = 105 ± 1.4826 * 10 * 3 = [60.522, 149.478] → drops 1000
-    //   and 1200 → median([90,100,100,110]) = 100. Mean = 2600/6 ≈ 433.33.
+    /// Expenses [100, 100, 110, 90, 1000, 1200]:
+    ///   median = 105; MAD = median(|v - 105|) = median([15,5,5,5,895,1095]) = 10;
+    ///   Hampel bounds = 105 ± 1.4826 * 10 * 3 = [60.522, 149.478] → drops 1000
+    ///   and 1200 → median([90,100,100,110]) = 100. Mean = 2600/6 ≈ 433.33.
     private var projectionFixture: [Transaction] {
         [
-            tx(date: 20260110, amount: -100, category: "food"),
-            tx(date: 20260210, amount: -100, category: "food"),
-            tx(date: 20260310, amount: -110, category: "food"),
-            tx(date: 20260410, amount: -90, category: "food"),
-            tx(date: 20260510, amount: -1000, category: "food"),
-            tx(date: 20260610, amount: -1200, category: "food"),
-            tx(date: 20260115, amount: 100_000, account: "inv")
+            tx(date: 20_260_110, amount: -100, category: "food"),
+            tx(date: 20_260_210, amount: -100, category: "food"),
+            tx(date: 20_260_310, amount: -110, category: "food"),
+            tx(date: 20_260_410, amount: -90, category: "food"),
+            tx(date: 20_260_510, amount: -1000, category: "food"),
+            tx(date: 20_260_610, amount: -1200, category: "food"),
+            tx(date: 20_260_115, amount: 100_000, account: "inv")
         ]
     }
 
@@ -202,7 +201,7 @@ struct CrossoverEngineTests {
     }
 
     @Test func safeWithdrawalRateMath() {
-        let transactions = [tx(date: 20260110, amount: 100_000, account: "inv")]
+        let transactions = [tx(date: 20_260_110, amount: 100_000, account: "inv")]
         let result = CrossoverEngine.compute(
             meta: meta(incomeAccountIds: ["inv"], safeWithdrawalRate: 0.12),
             transactions: transactions, categories: categories,
@@ -215,10 +214,10 @@ struct CrossoverEngineTests {
 
     @Test func expenseAdjustmentFactorScalesTarget() {
         let transactions = [
-            tx(date: 20260110, amount: -1000, category: "food"),
-            tx(date: 20260210, amount: -1000, category: "food"),
-            tx(date: 20260310, amount: -1000, category: "food"),
-            tx(date: 20260115, amount: 100_000, account: "inv")
+            tx(date: 20_260_110, amount: -1000, category: "food"),
+            tx(date: 20_260_210, amount: -1000, category: "food"),
+            tx(date: 20_260_310, amount: -1000, category: "food"),
+            tx(date: 20_260_115, amount: 100_000, account: "inv")
         ]
         let result = CrossoverEngine.compute(
             meta: meta(
@@ -246,20 +245,20 @@ struct CrossoverEngineTests {
         // income_i = (100000 + 50000 i) * 0.04/12 → 833 at i=3, 1000 at i=4.
         // Flat expenses 999 → crossover on the 4th projected month (Jul 2026).
         let transactions = [
-            tx(date: 20260110, amount: -999, category: "food"),
-            tx(date: 20260210, amount: -999, category: "food"),
-            tx(date: 20260310, amount: -999, category: "food"),
-            tx(date: 20260115, amount: 100_000, account: "inv")
+            tx(date: 20_260_110, amount: -999, category: "food"),
+            tx(date: 20_260_210, amount: -999, category: "food"),
+            tx(date: 20_260_310, amount: -999, category: "food"),
+            tx(date: 20_260_115, amount: 100_000, account: "inv")
         ]
         let result = CrossoverEngine.compute(
-            meta: meta(incomeAccountIds: ["inv"], expectedContribution: 50_000),
+            meta: meta(incomeAccountIds: ["inv"], expectedContribution: 50000),
             transactions: transactions, categories: categories,
             accountIds: ["a1", "inv"], today: utcDate(2026, 4, 15)
         )
         #expect(result.crossoverMonth == utcDate(2026, 7, 1))
-        #expect(result.points.count == 3 + 4)  // Jan..Mar + 4 projected months
+        #expect(result.points.count == 3 + 4) // Jan..Mar + 4 projected months
         #expect(result.points.last?.isProjection == true)
-        #expect(result.yearsToRetire == 0.25)  // 3 months out
+        #expect(result.yearsToRetire == 0.25) // 3 months out
         #expect(result.targetMonthlyIncomeCents == 999)
         #expect(result.lastKnownMonthlyExpensesCents == 999)
     }
@@ -267,7 +266,7 @@ struct CrossoverEngineTests {
     @Test func emptyIncomeAccountsProducesEmptyData() {
         let result = CrossoverEngine.compute(
             meta: meta(incomeAccountIds: []),
-            transactions: [tx(date: 20260110, amount: -1000, category: "food")],
+            transactions: [tx(date: 20_260_110, amount: -1000, category: "food")],
             categories: categories, accountIds: [], today: utcDate(2026, 6, 15)
         )
         #expect(result == .empty)

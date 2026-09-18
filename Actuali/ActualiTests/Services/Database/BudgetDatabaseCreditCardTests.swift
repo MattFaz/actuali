@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins `fetchCreditCardConfigs()` and `fetchPreferences(prefix:)` against the
 /// SQLite `preferences` table. Preferences are keyed by a unique namespace
@@ -9,7 +9,6 @@ import GRDB
 /// Actual preferences without schema alterations.
 @MainActor
 struct BudgetDatabaseCreditCardTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -29,7 +28,7 @@ struct BudgetDatabaseCreditCardTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
 
-        let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500000)
+        let chaseConfig = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
         let appleConfig = CreditCardConfig(statementDay: 31, dueOffsetDays: 15, limit: nil)
 
         let chaseData = try JSONEncoder().encode(chaseConfig)
@@ -57,7 +56,7 @@ struct BudgetDatabaseCreditCardTests {
         let chase = try #require(configs["acct_chase"])
         #expect(chase.statementDay == 18)
         #expect(chase.dueOffsetDays == 25)
-        #expect(chase.limit == 500000)
+        #expect(chase.limit == 500_000)
 
         let apple = try #require(configs["acct_apple"])
         #expect(apple.statementDay == 31)

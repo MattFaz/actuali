@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the balance semantics of `fetchAccounts()`: every non-tombstoned,
 /// non-split-parent transaction row for the account counts (split children and
@@ -9,7 +9,6 @@ import GRDB
 /// double-counted), and accounts with no transactions report 0.
 @MainActor
 struct BudgetDatabaseAccountBalanceTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

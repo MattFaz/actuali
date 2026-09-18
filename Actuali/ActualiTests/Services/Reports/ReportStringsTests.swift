@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct ReportStringsTests {
     private var appBundle: Bundle {
@@ -23,30 +23,33 @@ struct ReportStringsTests {
 
     @Test func interpolatedReportLabelsResolveAtLookupTime() {
         let english = ReportStrings.format(
-            "Ending: %@", "$1,234", locale: Locale(identifier: "en_US"), bundle: appBundle)
+            "Ending: %@", "$1,234", locale: Locale(identifier: "en_US"), bundle: appBundle
+        )
         let french = ReportStrings.format(
-            "Ending: %@", "$1,234", locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            "Ending: %@", "$1,234", locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        )
         let brazilianPortuguese = ReportStrings.format(
-            "Ending: %@", "$1,234", locale: Locale(identifier: "pt_BR"), bundle: appBundle)
+            "Ending: %@", "$1,234", locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        )
 
         #expect(english == "Ending: $1,234")
         #expect(french == "Fin : $1,234")
         #expect(brazilianPortuguese == "Final: $1,234")
     }
 
-        @Test func formatUsesRequestedLocaleForInterpolation() {
-            let requestedLocale = Locale.current.language.languageCode?.identifier == "fr"
-                ? Locale(identifier: "en_US")
-                : Locale(identifier: "fr_FR")
-            let french = ReportStrings.format(
-                "%0.2f",
-                1234.5,
-                locale: requestedLocale,
-                bundle: appBundle
-            )
+    @Test func formatUsesRequestedLocaleForInterpolation() {
+        let requestedLocale = Locale.current.language.languageCode?.identifier == "fr"
+            ? Locale(identifier: "en_US")
+            : Locale(identifier: "fr_FR")
+        let french = ReportStrings.format(
+            "%0.2f",
+            1234.5,
+            locale: requestedLocale,
+            bundle: appBundle
+        )
 
-            #expect(french == (requestedLocale.language.languageCode?.identifier == "fr" ? "1\u{202F}234,50" : "1,234.50"))
-        }
+        #expect(french == (requestedLocale.language.languageCode?.identifier == "fr" ? "1\u{202F}234,50" : "1,234.50"))
+    }
 
     @Test(arguments: [
         (0.0, "0 years", "0 an", "0 ano"),
@@ -58,11 +61,14 @@ struct ReportStringsTests {
         years: Double, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(ReportStrings.yearsToRetire(
-            years, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            years, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(ReportStrings.yearsToRetire(
-            years, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            years, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(ReportStrings.yearsToRetire(
-            years, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            years, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 
     @Test func overspentBadgeUsesRequestedLocaleAndPluralRules() {
@@ -75,7 +81,8 @@ struct ReportStringsTests {
         for (locale, values) in expected {
             for (count, value) in values.enumerated() {
                 #expect(MainTabView.overspentBadgeValue(
-                    count: count, locale: locale, bundle: appBundle) == value)
+                    count: count, locale: locale, bundle: appBundle
+                ) == value)
             }
         }
     }
@@ -177,15 +184,17 @@ struct ReportStringsTests {
         }
     }
 
-    @Test func calendarFormattingUsesRequestedLocale() {
+    @Test func calendarFormattingUsesRequestedLocale() throws {
         var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(identifier: "UTC")!
-        let calendarDate = calendar.date(from: DateComponents(year: 2024, month: 1, day: 1))!
+        calendar.timeZone = try #require(TimeZone(identifier: "UTC"))
+        let calendarDate = try #require(calendar.date(from: DateComponents(year: 2024, month: 1, day: 1)))
 
         #expect(CalendarWidgetFormatting.weekdaySymbols(
-            locale: Locale(identifier: "en_US"), firstDayOfWeekIdx: 0) == ["S", "M", "T", "W", "T", "F", "S"])
+            locale: Locale(identifier: "en_US"), firstDayOfWeekIdx: 0
+        ) == ["S", "M", "T", "W", "T", "F", "S"])
         #expect(CalendarWidgetFormatting.weekdaySymbols(
-            locale: Locale(identifier: "fr_FR"), firstDayOfWeekIdx: 1) == ["L", "M", "M", "J", "V", "S", "D"])
+            locale: Locale(identifier: "fr_FR"), firstDayOfWeekIdx: 1
+        ) == ["L", "M", "M", "J", "V", "S", "D"])
         let expected = [
             ("en_US", "Jan 2024"),
             ("fr_FR", "janv. 2024"),
@@ -194,7 +203,8 @@ struct ReportStringsTests {
         ]
         for (identifier, title) in expected {
             #expect(CalendarWidgetFormatting.monthTitle(
-                calendarDate, locale: Locale(identifier: identifier)) == title)
+                calendarDate, locale: Locale(identifier: identifier)
+            ) == title)
         }
         let buddhistLocaleTitle = CalendarWidgetFormatting.monthTitle(
             calendarDate,

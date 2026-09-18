@@ -8,7 +8,6 @@ enum RuleFieldType: String {
 }
 
 enum RuleSchema {
-
     // MARK: - Types and operators
 
     /// Public field name -> type. `saved` (saved-filter references) is
@@ -137,16 +136,16 @@ enum RuleSchema {
         bundle: Bundle = .main
     ) -> String {
         switch field {
-        case "payee": return ReportStrings.text("rule.summary.field.payee", locale: locale, bundle: bundle)
-        case "category": return ReportStrings.text("rule.summary.field.category", locale: locale, bundle: bundle)
-        case "account": return ReportStrings.text("rule.summary.field.account", locale: locale, bundle: bundle)
-        case "date": return ReportStrings.text("rule.summary.field.date", locale: locale, bundle: bundle)
-        case "notes": return ReportStrings.text("rule.summary.field.notes", locale: locale, bundle: bundle)
-        case "cleared": return ReportStrings.text("rule.summary.field.cleared", locale: locale, bundle: bundle)
-        case "reconciled": return ReportStrings.text("rule.summary.field.reconciled", locale: locale, bundle: bundle)
-        case "transfer": return ReportStrings.text("rule.summary.field.transfer", locale: locale, bundle: bundle)
-        case "parent": return ReportStrings.text("rule.summary.field.parent", locale: locale, bundle: bundle)
-        default: return label(field: field, options: options, locale: locale, bundle: bundle)
+        case "payee": ReportStrings.text("rule.summary.field.payee", locale: locale, bundle: bundle)
+        case "category": ReportStrings.text("rule.summary.field.category", locale: locale, bundle: bundle)
+        case "account": ReportStrings.text("rule.summary.field.account", locale: locale, bundle: bundle)
+        case "date": ReportStrings.text("rule.summary.field.date", locale: locale, bundle: bundle)
+        case "notes": ReportStrings.text("rule.summary.field.notes", locale: locale, bundle: bundle)
+        case "cleared": ReportStrings.text("rule.summary.field.cleared", locale: locale, bundle: bundle)
+        case "reconciled": ReportStrings.text("rule.summary.field.reconciled", locale: locale, bundle: bundle)
+        case "transfer": ReportStrings.text("rule.summary.field.transfer", locale: locale, bundle: bundle)
+        case "parent": ReportStrings.text("rule.summary.field.parent", locale: locale, bundle: bundle)
+        default: label(field: field, options: options, locale: locale, bundle: bundle)
         }
     }
 

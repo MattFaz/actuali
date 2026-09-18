@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 /// One message in the fake server's log.
 private struct StubMessage {
@@ -25,14 +25,20 @@ private final class FakeSyncServer: URLProtocol {
         requestedSince = []
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         var response = SyncResponse()
 
         if let decoded = try? SyncRequest(serializedData: Self.readBody(request)),
-           !decoded.fileID.isEmpty {
+           !decoded.fileID.isEmpty
+        {
             Self.requestedSince.append(decoded.since)
             Self.absorb(decoded.messages)
             for message in Self.log where message.timestamp > decoded.since {
@@ -130,8 +136,7 @@ private final class FakeSyncServer: URLProtocol {
 /// diff can see the gap and the server can resend it.
 @Suite(.serialized)
 struct SyncClientMerkleRepairTests {
-
-    // Canonical HLC strings: <ISO8601 with millis>-<4 hex counter>-<16 hex node>
+    /// Canonical HLC strings: <ISO8601 with millis>-<4 hex counter>-<16 hex node>
     private static let oldMessage = "2026-07-01T09:15:22.000Z-0000-a1b2c3d4e5f60718"
     /// The message the old sync skipped: a $30k transaction deleted on another
     /// client. Never applied locally, so the row still counts toward the balance.
@@ -142,7 +147,7 @@ struct SyncClientMerkleRepairTests {
         [
             StubMessage(timestamp: oldMessage, dataset: "transactions", row: "t1", column: "amount", value: "N:1000"),
             StubMessage(timestamp: missedTombstone, dataset: "transactions", row: "t2", column: "tombstone", value: "N:1"),
-            StubMessage(timestamp: recentMessage, dataset: "transactions", row: "t2", column: "notes", value: "S:rent"),
+            StubMessage(timestamp: recentMessage, dataset: "transactions", row: "t2", column: "notes", value: "S:rent")
         ]
     }
 
@@ -205,9 +210,9 @@ struct SyncClientMerkleRepairTests {
             for timestamp in [Self.oldMessage, Self.recentMessage] {
                 try db.execute(
                     sql: """
-                        INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
-                        VALUES (?, 'transactions', 't1', 'amount', 'N:1000')
-                        """,
+                    INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+                    VALUES (?, 'transactions', 't1', 'amount', 'N:1000')
+                    """,
                     arguments: [timestamp]
                 )
             }
@@ -218,14 +223,14 @@ struct SyncClientMerkleRepairTests {
                 timestamp: Self.recentMessage,
                 merkle: FakeSyncServer.merkle(over: Self.serverLog).root
             )
-            let json = String(data: try JSONEncoder().encode(adopted), encoding: .utf8)!
+            let json = try String(data: JSONEncoder().encode(adopted), encoding: .utf8)!
             try db.execute(
                 sql: "INSERT INTO messages_clock (id, clock) VALUES (1, ?)",
                 arguments: [json]
             )
         }
 
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {
@@ -251,7 +256,7 @@ struct SyncClientMerkleRepairTests {
 
         // The symptom the reporter saw: $30k of deleted transaction still counted.
         let before = try await database.fetchAccounts().first { $0.id == "acct-1" }
-        #expect(before?.balance == 3001000)
+        #expect(before?.balance == 3_001_000)
 
         let syncClient = try await makeSyncClient(database: database)
         await syncClient.syncNow()
@@ -267,7 +272,7 @@ struct SyncClientMerkleRepairTests {
         #expect(FakeSyncServer.requestedSince.contains { $0 < Self.missedTombstone })
     }
 
-    @Test func derivedMerkleReplacesAPersistedTreeThatDisagreesWithTheLog() async throws {
+    @Test func derivedMerkleReplacesAPersistedTreeThatDisagreesWithTheLog() throws {
         FakeSyncServer.reset(log: Self.serverLog)
         let (database, path) = try makePoisonedDatabase()
         defer { cleanup(path) }
@@ -276,7 +281,7 @@ struct SyncClientMerkleRepairTests {
         // nothing else.
         var expected = MerkleTree()
         for timestamp in [Self.oldMessage, Self.recentMessage] {
-            expected = expected.inserting(try #require(HLCTimestamp.parse(timestamp)))
+            expected = try expected.inserting(#require(HLCTimestamp.parse(timestamp)))
         }
 
         let derived = try database.deriveMerkleFromMessageLog()

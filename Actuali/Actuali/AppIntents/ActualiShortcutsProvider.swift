@@ -12,7 +12,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Log transaction in \(.applicationName)",
                 "Log transaction to \(\.$account) in \(.applicationName)",
                 "Add transaction to \(.applicationName)",
-                "Log a transaction in \(.applicationName)",
+                "Log a transaction in \(.applicationName)"
             ],
             shortTitle: "Log Transaction",
             systemImageName: "plus"
@@ -23,7 +23,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             phrases: [
                 "Add transaction with review in \(.applicationName)",
                 "Enter transaction in \(.applicationName)",
-                "Review a transaction in \(.applicationName)",
+                "Review a transaction in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("Add with Review"),
             systemImageName: "square.and.pencil"
@@ -36,7 +36,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "Get \(\.$account) balance in \(.applicationName)",
                 "Check account balance in \(.applicationName)",
                 "Get account balance in \(.applicationName)",
-                "Check \(.applicationName) account balance",
+                "Check \(.applicationName) account balance"
             ],
             shortTitle: LocalizedStringResource("Account Balance"),
             systemImageName: "building.columns.fill"
@@ -48,7 +48,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
                 "How much is left in \(\.$category) in \(.applicationName)",
                 "Check \(\.$category) balance in \(.applicationName)",
                 "Get \(\.$category) balance in \(.applicationName)",
-                "Check category balance in \(.applicationName)",
+                "Check category balance in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("Category Balance"),
             systemImageName: "chart.pie.fill"
@@ -58,7 +58,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             intent: GetCategoriesIntent(),
             phrases: [
                 "Get categories in \(.applicationName)",
-                "List categories in \(.applicationName)",
+                "List categories in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("List Categories"),
             systemImageName: "folder.fill"
@@ -68,7 +68,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             intent: GetPayeesIntent(),
             phrases: [
                 "Get payees in \(.applicationName)",
-                "List payees in \(.applicationName)",
+                "List payees in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("List Payees"),
             systemImageName: "person.2.fill"
@@ -78,7 +78,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             intent: GetAccountsIntent(),
             phrases: [
                 "Get accounts in \(.applicationName)",
-                "List accounts in \(.applicationName)",
+                "List accounts in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("List Accounts"),
             systemImageName: "creditcard.fill"
@@ -89,7 +89,7 @@ struct ActualiShortcutsProvider: AppShortcutsProvider {
             phrases: [
                 "Import transaction from text in \(.applicationName)",
                 "Parse transaction in \(.applicationName)",
-                "Queue transaction in \(.applicationName)",
+                "Queue transaction in \(.applicationName)"
             ],
             shortTitle: LocalizedStringResource("Import from Text"),
             systemImageName: "tray.and.arrow.down"

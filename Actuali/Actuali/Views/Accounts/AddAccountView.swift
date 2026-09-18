@@ -118,7 +118,8 @@ struct CreateLocalAccountView: View {
         if trimmedBalance.isEmpty {
             cents = 0
         } else if let dollars = AmountParser.parse(balanceText),
-                  let parsedCents = Transaction.cents(fromDollars: dollars) {
+                  let parsedCents = Transaction.cents(fromDollars: dollars)
+        {
             cents = parsedCents
         } else {
             errorMessage = String(localized: "accounts.create.invalidBalance")

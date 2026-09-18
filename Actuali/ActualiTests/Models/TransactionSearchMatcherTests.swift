@@ -1,5 +1,5 @@
-import Testing
 @testable import Actuali
+import Testing
 
 struct TransactionSearchMatcherTests {
     private func makeTransaction(
@@ -8,7 +8,7 @@ struct TransactionSearchMatcherTests {
         categoryName: String? = nil,
         notes: String? = nil
     ) -> Transaction {
-        Transaction(id: "t1", accountId: "a1", date: 20260701, amount: amount,
+        Transaction(id: "t1", accountId: "a1", date: 20_260_701, amount: amount,
                     payeeId: nil, payeeName: payeeName,
                     categoryId: nil, categoryName: categoryName,
                     notes: notes, cleared: false, reconciled: false,
@@ -84,7 +84,7 @@ struct TransactionSearchMatcherTests {
 
     @Test func groupingSeparatorQueryIsNotTreatedAsAmount() {
         // "1,234" is ambiguous (grouping vs. decimals); it falls back to text-only search.
-        #expect(!TransactionSearchMatcher("1,234").matches(makeTransaction(amount: -123400)))
+        #expect(!TransactionSearchMatcher("1,234").matches(makeTransaction(amount: -123_400)))
         #expect(!TransactionSearchMatcher("1,234").matches(makeTransaction(amount: -123)))
     }
 

@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct WalletImportMapperTests {
-
     private func candidate(
         id: UUID = UUID(),
         amount: Decimal = Decimal(string: "8.20")!,
@@ -25,23 +24,23 @@ struct WalletImportMapperTests {
     }
 
     @Test func debitMapsToNegativeCents() throws {
-        let mapped = try #require(candidate(amount: Decimal(string: "8.20")!, isCredit: false))
+        let mapped = try #require(try candidate(amount: #require(Decimal(string: "8.20")), isCredit: false))
         #expect(mapped.amountCents == -820)
     }
 
     @Test func creditMapsToPositiveCents() throws {
-        let mapped = try #require(candidate(amount: Decimal(string: "8.20")!, isCredit: true))
+        let mapped = try #require(try candidate(amount: #require(Decimal(string: "8.20")), isCredit: true))
         #expect(mapped.amountCents == 820)
     }
 
     @Test func negativeDecimalUsesMagnitude() throws {
         // Sign is carried by creditDebitIndicator, never by the decimal.
-        let mapped = try #require(candidate(amount: Decimal(string: "-8.20")!, isCredit: false))
+        let mapped = try #require(try candidate(amount: #require(Decimal(string: "-8.20")), isCredit: false))
         #expect(mapped.amountCents == -820)
     }
 
     @Test func subCentAmountRoundsHalfAwayFromZero() throws {
-        let mapped = try #require(candidate(amount: Decimal(string: "10.005")!, isCredit: false))
+        let mapped = try #require(try candidate(amount: #require(Decimal(string: "10.005")), isCredit: false))
         #expect(mapped.amountCents == -1001)
     }
 
@@ -52,19 +51,22 @@ struct WalletImportMapperTests {
 
     @Test func missingMerchantFallsBackToDescription() throws {
         let mapped = try #require(candidate(
-            merchantName: nil, transactionDescription: "TST* JOES DINER"))
+            merchantName: nil, transactionDescription: "TST* JOES DINER"
+        ))
         #expect(mapped.payeeName == "Joes Diner")
     }
 
     @Test func emptyMerchantFallsBackToDescription() throws {
         let mapped = try #require(candidate(
-            merchantName: "", transactionDescription: "JOES DINER"))
+            merchantName: "", transactionDescription: "JOES DINER"
+        ))
         #expect(mapped.payeeName == "Joes Diner")
     }
 
     @Test func whitespaceMerchantFallsBackToDescription() throws {
         let mapped = try #require(candidate(
-            merchantName: "   ", transactionDescription: "JOES DINER"))
+            merchantName: "   ", transactionDescription: "JOES DINER"
+        ))
         #expect(mapped.payeeName == "Joes Diner")
     }
 

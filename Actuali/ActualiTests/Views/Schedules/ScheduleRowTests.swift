@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct SchedulesListLocalizationTests {
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
@@ -14,11 +14,14 @@ struct SchedulesListLocalizationTests {
         count: Int, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(SchedulesListLocalization.completedFooter(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(SchedulesListLocalization.completedFooter(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(SchedulesListLocalization.completedFooter(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 }
 

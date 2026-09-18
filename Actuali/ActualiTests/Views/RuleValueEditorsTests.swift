@@ -1,12 +1,11 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// The multi-picker's toggle logic. The picker only lists live, visible
 /// entities, but a rule can reference hidden categories, closed accounts, or
 /// ids authored on another client — toggling one item must never drop them.
 struct RuleValueEditorsTests {
-
     private let visible = ["cat-a", "cat-b", "cat-c"]
 
     @MainActor @Test func togglingAddsAndRemovesAVisibleId() {

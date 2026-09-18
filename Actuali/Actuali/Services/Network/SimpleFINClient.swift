@@ -23,19 +23,19 @@ enum SimpleFINError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidSetupToken:
-            return String(localized: "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again.")
+            String(localized: "That doesn't look like a SimpleFIN setup token. Copy the whole token from SimpleFIN and paste it again.")
         case .invalidAccessKey:
-            return String(localized: "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again.")
+            String(localized: "The stored SimpleFIN access key is unreadable. Disconnect SimpleFIN and set it up again.")
         case .claimRejected:
-            return String(localized: "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that.")
+            String(localized: "SimpleFIN rejected this setup token. Tokens can only be claimed once — generate a new one at SimpleFIN and paste that.")
         case .forbidden:
-            return String(localized: "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token.")
+            String(localized: "SimpleFIN rejected the saved access key. Disconnect SimpleFIN and set it up again with a new setup token.")
         case .httpError(let statusCode):
-            return String(localized: "SimpleFIN returned an unexpected response (HTTP \(statusCode)).")
+            String(localized: "SimpleFIN returned an unexpected response (HTTP \(statusCode)).")
         case .invalidResponse:
-            return String(localized: "SimpleFIN returned a response Actuali couldn't read.")
+            String(localized: "SimpleFIN returned a response Actuali couldn't read.")
         case .networkError(let message):
-            return String(localized: "Couldn't reach SimpleFIN: \(message)")
+            String(localized: "Couldn't reach SimpleFIN: \(message)")
         }
     }
 }
@@ -90,7 +90,8 @@ struct SimpleFINAccessKey: Sendable, Equatable {
         // here rather than failing later with a confusing transport error.
         guard scheme.lowercased() == "https", !host.isEmpty,
               !username.isEmpty, !password.isEmpty,
-              let baseURL = URL(string: "https://\(host)") else {
+              let baseURL = URL(string: "https://\(host)")
+        else {
             throw SimpleFINError.invalidAccessKey
         }
 
@@ -105,10 +106,11 @@ struct SimpleFINAccessKey: Sendable, Equatable {
         let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let data = Data(base64Encoded: trimmed, options: [.ignoreUnknownCharacters]),
               let decoded = String(data: data, encoding: .utf8)?
-                  .trimmingCharacters(in: .whitespacesAndNewlines),
+              .trimmingCharacters(in: .whitespacesAndNewlines),
               let url = URL(string: decoded),
               url.scheme?.lowercased() == "https",
-              url.host != nil else {
+              url.host != nil
+        else {
             throw SimpleFINError.invalidSetupToken
         }
         return url
@@ -130,11 +132,11 @@ struct SimpleFINAccountSet: Decodable, Sendable, Equatable {
         // the protocol's array of strings; an unreadable `errors` must not
         // cost us the account data alongside it.
         if let decoded = try? container.decodeIfPresent([String].self, forKey: .errors) {
-            errors = decoded
+            self.errors = decoded
         } else {
-            errors = []
+            self.errors = []
         }
-        accounts = try container.decodeIfPresent([SimpleFINAccount].self, forKey: .accounts) ?? []
+        self.accounts = try container.decodeIfPresent([SimpleFINAccount].self, forKey: .accounts) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -150,11 +152,15 @@ struct SimpleFINOrg: Decodable, Sendable, Equatable {
     /// The stable identifier Actual keys its `banks` rows on
     /// (`orgDomain ?? orgId` upstream), so an account linked here and an
     /// account linked in the web UI land on the same bank row.
-    var bankId: String? { domain ?? id }
+    var bankId: String? {
+        domain ?? id
+    }
 
     /// What to show a person picking accounts. Falls back through the org's
     /// other identifiers rather than showing nothing.
-    var displayName: String { name ?? domain ?? id ?? "Unknown institution" }
+    var displayName: String {
+        name ?? domain ?? id ?? "Unknown institution"
+    }
 
     private enum CodingKeys: String, CodingKey {
         case domain, name, id
@@ -172,18 +178,20 @@ struct SimpleFINAccount: Decodable, Sendable, Equatable, Identifiable {
     let balanceDate: Int?
     let transactions: [SimpleFINTransaction]
 
-    var balanceCents: Int? { SimpleFINAmount.cents(from: balance) }
+    var balanceCents: Int? {
+        SimpleFINAmount.cents(from: balance)
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Account"
-        org = try container.decode(SimpleFINOrg.self, forKey: .org)
-        balance = try container.decodeIfPresent(String.self, forKey: .balance) ?? "0"
-        availableBalance = try container.decodeIfPresent(String.self, forKey: .availableBalance)
-        balanceDate = try container.decodeIfPresent(Int.self, forKey: .balanceDate)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.name = try container.decodeIfPresent(String.self, forKey: .name) ?? "Account"
+        self.org = try container.decode(SimpleFINOrg.self, forKey: .org)
+        self.balance = try container.decodeIfPresent(String.self, forKey: .balance) ?? "0"
+        self.availableBalance = try container.decodeIfPresent(String.self, forKey: .availableBalance)
+        self.balanceDate = try container.decodeIfPresent(Int.self, forKey: .balanceDate)
         // Absent entirely on a `balances-only` fetch.
-        transactions = try container.decodeIfPresent([SimpleFINTransaction].self, forKey: .transactions) ?? []
+        self.transactions = try container.decodeIfPresent([SimpleFINTransaction].self, forKey: .transactions) ?? []
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -206,28 +214,34 @@ struct SimpleFINTransaction: Decodable, Sendable, Equatable, Identifiable {
     let memo: String?
     let pending: Bool?
 
-    var amountCents: Int? { SimpleFINAmount.cents(from: amount) }
+    var amountCents: Int? {
+        SimpleFINAmount.cents(from: amount)
+    }
 
     /// Whether the bank considers the transaction final. Mirrors upstream's
     /// `trans.pending ?? trans.posted === 0` — `pending` is optional in the
     /// protocol, and a zero `posted` is how bridges that omit it say the same
     /// thing. Booked transactions import as cleared.
-    var isBooked: Bool { !(pending ?? (posted == 0)) }
+    var isBooked: Bool {
+        !(pending ?? (posted == 0))
+    }
 
     /// The timestamp the transaction's date comes from: what the bank posted
     /// it on once it is final, when it happened while it is still pending.
-    var effectiveTimestamp: Int { isBooked ? posted : (transactedAt ?? posted) }
+    var effectiveTimestamp: Int {
+        isBooked ? posted : (transactedAt ?? posted)
+    }
 
     init(from decoder: any Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        id = try container.decode(String.self, forKey: .id)
-        posted = try container.decodeIfPresent(Int.self, forKey: .posted) ?? 0
-        transactedAt = try container.decodeIfPresent(Int.self, forKey: .transactedAt)
-        amount = try container.decodeIfPresent(String.self, forKey: .amount) ?? "0"
-        description = try container.decodeIfPresent(String.self, forKey: .description)
-        payee = try container.decodeIfPresent(String.self, forKey: .payee)
-        memo = try container.decodeIfPresent(String.self, forKey: .memo)
-        pending = try container.decodeIfPresent(Bool.self, forKey: .pending)
+        self.id = try container.decode(String.self, forKey: .id)
+        self.posted = try container.decodeIfPresent(Int.self, forKey: .posted) ?? 0
+        self.transactedAt = try container.decodeIfPresent(Int.self, forKey: .transactedAt)
+        self.amount = try container.decodeIfPresent(String.self, forKey: .amount) ?? "0"
+        self.description = try container.decodeIfPresent(String.self, forKey: .description)
+        self.payee = try container.decodeIfPresent(String.self, forKey: .payee)
+        self.memo = try container.decodeIfPresent(String.self, forKey: .memo)
+        self.pending = try container.decodeIfPresent(Bool.self, forKey: .pending)
     }
 
     private enum CodingKeys: String, CodingKey {
@@ -304,7 +318,7 @@ enum SimpleFINAmount {
             case ".":
                 guard !dotSeen else { return false }
                 dotSeen = true
-            case "0"..."9":
+            case "0" ... "9":
                 digitsSeen = true
             default:
                 return false
@@ -358,7 +372,7 @@ actor SimpleFINClient {
         guard httpResponse.statusCode == 200 else {
             logger.error("SimpleFIN claim failed (HTTP \(httpResponse.statusCode, privacy: .public))")
             throw httpResponse.statusCode == 403 ? SimpleFINError.claimRejected
-                                                 : SimpleFINError.httpError(statusCode: httpResponse.statusCode)
+                : SimpleFINError.httpError(statusCode: httpResponse.statusCode)
         }
         guard let body = String(data: data, encoding: .utf8) else {
             throw SimpleFINError.invalidResponse

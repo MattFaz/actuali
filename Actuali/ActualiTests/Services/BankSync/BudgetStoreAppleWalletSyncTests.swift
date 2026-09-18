@@ -1,7 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-@testable import Actuali
 
 private enum WalletCallCounter {
     nonisolated(unsafe) static var accounts = 0
@@ -31,7 +31,6 @@ private struct CountingWalletStore: AppleWalletReading {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreAppleWalletSyncTests {
-
     private static let accountId = "acct-card"
     /// FinanceKit account UUID, lowercased, the way linking stores it.
     private static let externalAccountId = "22222222-2222-2222-2222-222222222222"
@@ -91,66 +90,66 @@ struct BudgetStoreAppleWalletSyncTests {
                 )
             """)
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    schedule TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                schedule TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY, name TEXT, transfer_acct TEXT, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
             try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
             // Every display read joins through these; a backfill fetches the
             // opening balance back to correct it, so this fixture needs them.
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                    is_income INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
+                is_income INTEGER DEFAULT 0, hidden INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: "CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)")
             try db.execute(sql: """
-                CREATE TABLE banks (
-                    id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE banks (
+                id TEXT PRIMARY KEY, bank_id TEXT, name TEXT, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             try db.execute(sql: """
-                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-                VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1)
-                """, arguments: [Self.accountId])
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+            VALUES (?, 'Apple Card', 'credit', 0, 0, 0, 1)
+            """, arguments: [Self.accountId])
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(
@@ -202,9 +201,9 @@ struct BudgetStoreAppleWalletSyncTests {
         let queue = try DatabaseQueue(path: path.path)
         return try queue.read { db in
             try Int.fetchOne(db, sql: """
-                SELECT COALESCE(SUM(amount), 0) FROM transactions
-                WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
-                """, arguments: [Self.accountId]) ?? 0
+            SELECT COALESCE(SUM(amount), 0) FROM transactions
+            WHERE acct = ? AND (tombstone = 0 OR tombstone IS NULL)
+            """, arguments: [Self.accountId]) ?? 0
         }
     }
 
@@ -268,16 +267,16 @@ struct BudgetStoreAppleWalletSyncTests {
         let queue = try DatabaseQueue(path: url.path)
         try await queue.write { db in
             try db.execute(sql: """
-                INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
-                VALUES ('2024-03-05T12:00:00.000Z-0000-abcdef1234567890',
-                        'accounts', 'acct-card', 'name', X'00')
-                """)
+            INSERT INTO messages_crdt (timestamp, dataset, row, column, value)
+            VALUES ('2024-03-05T12:00:00.000Z-0000-abcdef1234567890',
+                    'accounts', 'acct-card', 'name', X'00')
+            """)
         }
         let store = try await makeStore(
             database: database, walletStore: appleCard(), linked: false
         )
 
-        #expect(await store.resolvedBankSyncImportStartDay() == 20240305)
+        #expect(await store.resolvedBankSyncImportStartDay() == 20_240_305)
     }
 
     /// A budget with no messages yet falls back to the shared 90-day lookback.
@@ -519,10 +518,10 @@ struct BudgetStoreAppleWalletSyncTests {
         let externalId = Self.externalAccountId
         try await queue.write { db in
             try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
-                WHERE id = ?
-                """, arguments: [externalId, accountId])
+            UPDATE accounts
+            SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+            WHERE id = ?
+            """, arguments: [externalId, accountId])
         }
         let store = try await makeStore(
             database: database, walletStore: appleCard(), linked: false
@@ -562,12 +561,12 @@ struct BudgetStoreAppleWalletSyncTests {
                 WHERE id = ?
             """, arguments: [externalAccountId, accountId])
             try db.execute(sql: """
-                CREATE TRIGGER fail_legacy_wallet_adoption
-                BEFORE INSERT ON bank_sync_local_links
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced legacy adoption failure');
-                END
-                """)
+            CREATE TRIGGER fail_legacy_wallet_adoption
+            BEFORE INSERT ON bank_sync_local_links
+            BEGIN
+                SELECT RAISE(ABORT, 'forced legacy adoption failure');
+            END
+            """)
         }
         let store = try await makeStore(
             database: database, walletStore: appleCard(), linked: false
@@ -580,7 +579,7 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(account["account_sync_source"] as String? == BankSyncSource.financeKit.rawValue)
         #expect(account["bank"] as String? == "bank-1")
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == Self.externalAccountId)
+            == Self.externalAccountId)
         #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
         #expect(try row(path: url, sql: "SELECT COUNT(*) AS count FROM messages_crdt")?["count"] as Int? == 0)
     }
@@ -650,7 +649,7 @@ struct BudgetStoreAppleWalletSyncTests {
             )]
         )
         let store = try await makeStore(database: database, walletStore: wallet)
-        let importStart = 20240115
+        let importStart = 20_240_115
         store.setBankSyncImportStartDay(importStart)
 
         let first = try await store.syncBankAccounts()
@@ -658,7 +657,7 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(first.added == 1)
         let opening = try rows(path: url, where: "starting_balance_flag = 1")
         #expect(opening.count == 1)
-        #expect(opening[0]["amount"] == -50_000)
+        #expect(opening[0]["amount"] == -50000)
         #expect(opening[0]["date"] == importStart)
         #expect(try row(path: url, sql: "SELECT bank_sync_status FROM accounts WHERE id = ?", arguments: [Self.accountId])?["bank_sync_status"] as String? == "ok")
 
@@ -686,19 +685,19 @@ struct BudgetStoreAppleWalletSyncTests {
         let (database, url) = try makeDatabase()
         defer { cleanup(url) }
         let duplicateId = "44444444-4444-4444-4444-444444444444"
-        let wallet = StubWalletStore(
+        let wallet = try StubWalletStore(
             accountsValue: [AppleWalletAccount(
                 id: Self.externalAccountId, name: "Apple Card",
                 institutionName: "Apple", balanceCents: -50000
             )],
             transactionsByAccount: [Self.externalAccountId: [
                 AppleWalletTransaction(
-                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    id: duplicateId, amount: #require(Decimal(string: "10.00")), isCredit: false,
                     merchantName: "Coffee", description: "Coffee", status: .booked,
                     date: Self.daysAgo(2)
                 ),
                 AppleWalletTransaction(
-                    id: duplicateId, amount: Decimal(string: "10.00")!, isCredit: false,
+                    id: duplicateId, amount: #require(Decimal(string: "10.00")), isCredit: false,
                     merchantName: "Coffee", description: "Coffee", status: .booked,
                     date: Self.daysAgo(2)
                 )
@@ -709,7 +708,7 @@ struct BudgetStoreAppleWalletSyncTests {
         let first = try await store.syncBankAccounts()
         #expect(first.added == 2)
         #expect(try rows(path: url, where: "financial_id = '\(duplicateId)' AND tombstone = 0").count == 1)
-        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == -49_000)
+        #expect(try row(path: url, sql: "SELECT amount FROM transactions WHERE starting_balance_flag = 1")?["amount"] as Int? == -49000)
 
         let second = try await store.syncBankAccounts()
         #expect(second.added == 0)
@@ -735,7 +734,7 @@ struct BudgetStoreAppleWalletSyncTests {
         #expect(bankRowId == nil)
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.source == .financeKit)
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == Self.externalAccountId)
+            == Self.externalAccountId)
     }
 
     @Test func legacyWalletDefaultsMigrateOnceAndAreRemoved() async throws {
@@ -751,7 +750,7 @@ struct BudgetStoreAppleWalletSyncTests {
         await store.loadBankSyncAccounts()
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == Self.externalAccountId)
+            == Self.externalAccountId)
         #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
         #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
             accountId: Self.accountId,
@@ -769,9 +768,9 @@ struct BudgetStoreAppleWalletSyncTests {
         let missingAccountId = "acct-missing"
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
-                VALUES (?, 'Deleted Card', 'credit', 0, 0, 1, 2)
-                """, arguments: [tombstonedAccountId])
+            INSERT INTO accounts (id, name, type, offbudget, closed, tombstone, sort_order)
+            VALUES (?, 'Deleted Card', 'credit', 0, 0, 1, 2)
+            """, arguments: [tombstonedAccountId])
         }
         let originalDefaults = [
             Self.accountId: Self.externalAccountId,
@@ -783,7 +782,7 @@ struct BudgetStoreAppleWalletSyncTests {
         await store.loadBankSyncAccounts()
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == Self.externalAccountId)
+            == Self.externalAccountId)
         #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
             accountId: Self.accountId,
             externalAccountId: Self.externalAccountId,
@@ -821,18 +820,18 @@ struct BudgetStoreAppleWalletSyncTests {
         defaults.set(originalDefaults, forKey: "appleWalletLinks_wallet-tests")
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER fail_legacy_defaults_migration
-                BEFORE INSERT ON bank_sync_local_links
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced legacy defaults migration failure');
-                END
-                """)
+            CREATE TRIGGER fail_legacy_defaults_migration
+            BEFORE INSERT ON bank_sync_local_links
+            BEGIN
+                SELECT RAISE(ABORT, 'forced legacy defaults migration failure');
+            END
+            """)
         }
 
         await store.loadBankSyncAccounts()
 
         #expect(defaults.dictionary(forKey: "appleWalletLinks_wallet-tests") as? [String: String]
-                == originalDefaults)
+            == originalDefaults)
         #expect(try await database.fetchBankSyncLocalLinks().isEmpty)
     }
 
@@ -859,7 +858,7 @@ struct BudgetStoreAppleWalletSyncTests {
         await store.loadBankSyncAccounts()
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == localExternalId)
+            == localExternalId)
         #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
             accountId: Self.accountId,
             externalAccountId: localExternalId,
@@ -893,7 +892,7 @@ struct BudgetStoreAppleWalletSyncTests {
         await store.loadBankSyncAccounts()
 
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == newerExternalId)
+            == newerExternalId)
         #expect(defaults.object(forKey: "appleWalletLinks_wallet-tests") == nil)
         #expect(try await database.fetchBankSyncLocalLinks() == [ExpectedBankSyncLink(
             accountId: Self.accountId,
@@ -925,10 +924,10 @@ struct BudgetStoreAppleWalletSyncTests {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
-                WHERE id = ?
-                """, arguments: [synchronizedExternalId, accountId])
+            UPDATE accounts
+            SET account_id = ?, account_sync_source = 'financeKit', bank = 'bank-1'
+            WHERE id = ?
+            """, arguments: [synchronizedExternalId, accountId])
         }
 
         try await store.unlinkBankAccount(accountId: Self.accountId)
@@ -952,10 +951,10 @@ struct BudgetStoreAppleWalletSyncTests {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
-                WHERE id = ?
-                """, arguments: [accountId])
+            UPDATE accounts
+            SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+            WHERE id = ?
+            """, arguments: [accountId])
         }
 
         await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
@@ -975,10 +974,10 @@ struct BudgetStoreAppleWalletSyncTests {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
-                WHERE id = ?
-                """, arguments: [accountId])
+            UPDATE accounts
+            SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+            WHERE id = ?
+            """, arguments: [accountId])
         }
 
         await #expect(throws: BankSyncDatabaseError.bankSyncMaterializationStale) {
@@ -1004,10 +1003,10 @@ struct BudgetStoreAppleWalletSyncTests {
         let accountId = Self.accountId
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                UPDATE accounts
-                SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
-                WHERE id = ?
-                """, arguments: [accountId])
+            UPDATE accounts
+            SET account_id = 'simplefin-account', account_sync_source = 'simpleFin', bank = 'bank-1'
+            WHERE id = ?
+            """, arguments: [accountId])
         }
 
         await store.loadBankSyncAccounts()
@@ -1046,7 +1045,7 @@ struct BudgetStoreAppleWalletSyncTests {
             try await store.unlinkBankAccount(accountId: Self.accountId)
         }
         #expect(store.bankSyncAccount(forAccountId: Self.accountId)?.externalAccountId
-                == newer.externalAccountId)
+            == newer.externalAccountId)
         #expect(try await database.fetchBankSyncLocalLinks() == [newer])
     }
 
@@ -1070,10 +1069,10 @@ struct BudgetStoreAppleWalletSyncTests {
             sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",
             arguments: [Self.accountId]
         )
-        let beforeMessageCount = try row(
+        let beforeMessageCount = try #require(row(
             path: path,
             sql: "SELECT COUNT(*) AS count FROM messages_crdt"
-        )!["count"] as Int
+        )?["count"]) as Int
 
         try await store.linkBankAccount(
             accountId: Self.accountId,
@@ -1095,10 +1094,10 @@ struct BudgetStoreAppleWalletSyncTests {
             sql: "SELECT external_account_id, source FROM bank_sync_local_links WHERE account_id = ?",
             arguments: [Self.accountId]
         )
-        let afterMessageCount = try row(
+        let afterMessageCount = try #require(row(
             path: path,
             sql: "SELECT COUNT(*) AS count FROM messages_crdt"
-        )!["count"] as Int
+        )?["count"]) as Int
 
         #expect(before?["account_id"] as String? == "simplefin-account")
         #expect(account?["account_id"] as String? == nil)
@@ -1137,11 +1136,11 @@ struct BudgetStoreAppleWalletSyncTests {
         try await store.unlinkBankAccount(accountId: Self.accountId)
         await store.loadBankSyncAccounts()
 
-        let localCount = try row(
+        let localCount = try #require(row(
             path: path,
             sql: "SELECT COUNT(*) AS count FROM bank_sync_local_links WHERE account_id = ?",
             arguments: [Self.accountId]
-        )!["count"] as Int
+        )?["count"]) as Int
         let account = try row(
             path: path,
             sql: "SELECT account_id, account_sync_source FROM accounts WHERE id = ?",

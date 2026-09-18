@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct AppleWalletSyncTests {
     #if targetEnvironment(simulator)
@@ -117,7 +117,7 @@ struct AppleWalletSyncTests {
     @Test func anOverpaidCardComesOutPositive() {
         #expect(AppleWalletAccount.owedBalance(
             fromRemainingCredit: 510_000, creditLimitCents: 500_000
-        ) == 10_000)
+        ) == 10000)
     }
 
     /// With no known limit there's no way to work out what's owed; no balance
@@ -133,13 +133,13 @@ struct AppleWalletSyncTests {
         let older = AppleWalletBalance(
             accountId: accountId,
             cents: -40000,
-            asOfDate: Date(timeIntervalSince1970: 1_000),
+            asOfDate: Date(timeIntervalSince1970: 1000),
             includesPending: false
         )
         let newer = AppleWalletBalance(
             accountId: accountId,
             cents: -50000,
-            asOfDate: Date(timeIntervalSince1970: 2_000),
+            asOfDate: Date(timeIntervalSince1970: 2000),
             includesPending: true
         )
 
@@ -152,13 +152,13 @@ struct AppleWalletSyncTests {
         let older = AppleWalletBalance(
             accountId: Self.cardId,
             cents: -50000,
-            asOfDate: Date(timeIntervalSince1970: 1_000),
+            asOfDate: Date(timeIntervalSince1970: 1000),
             includesPending: false
         )
         let newer = AppleWalletBalance(
             accountId: Self.cardId,
             cents: nil,
-            asOfDate: Date(timeIntervalSince1970: 2_000),
+            asOfDate: Date(timeIntervalSince1970: 2000),
             includesPending: true
         )
 

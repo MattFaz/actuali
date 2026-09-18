@@ -1,10 +1,9 @@
+@testable import Actuali
 import Foundation
 import Testing
 import UserNotifications
-@testable import Actuali
 
 struct CreditCardDueNotifierTests {
-
     private func makeDefaults(enabled: Bool) -> CreditCardNotificationSettings {
         let name = "CreditCardDueNotifierTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -62,7 +61,7 @@ struct CreditCardDueNotifierTests {
         #expect(center.removedIdentifiers == expectedCancelled)
     }
 
-    @Test func unpaidCardSchedulesRemindersForFutureOffsets() async {
+    @Test func unpaidCardSchedulesRemindersForFutureOffsets() async throws {
         let cal = fixedCalendar()
         // Feb 20, 2026 at 08:00 UTC.
         // Cycle statement day 15, default 15d offset -> Statement Feb 15, due Mar 2, 2026.
@@ -71,7 +70,7 @@ struct CreditCardDueNotifierTests {
         // 5d before: Feb 25 (future -> scheduled)
         // 3d before: Feb 27 (future -> scheduled)
         // 1d before: Mar 1  (future -> scheduled)
-        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8, minute: 0))!
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8, minute: 0)))
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -7500)
         let cycle = CreditCardCycle(statementDay: 15)
@@ -96,18 +95,18 @@ struct CreditCardDueNotifierTests {
         #expect(identifiers.contains(CreditCardDueNotifier.requestIdentifier(accountId: "card1", offsetDays: 1)))
 
         // Verify content
-        let request1d = center.added.first(where: { $0.identifier.hasSuffix(".1d") })!
+        let request1d = try #require(center.added.first(where: { $0.identifier.hasSuffix(".1d") }))
         #expect(request1d.content.title == "Visa payment due tomorrow")
         #expect(request1d.content.body.contains("75.00"))
         #expect(request1d.content.body.contains("Current balance"))
         #expect(request1d.content.userInfo[CreditCardDueNotifier.accountIdKey] as? String == "card1")
         #expect(request1d.content.categoryIdentifier == CreditCardDueNotifier.categoryIdentifier)
 
-        let request7d = center.added.first(where: { $0.identifier.hasSuffix(".7d") })!
+        let request7d = try #require(center.added.first(where: { $0.identifier.hasSuffix(".7d") }))
         #expect(request7d.content.title == "Visa payment due in 7 days")
     }
 
-    @Test func pastReminderDatesAreSkipped() async {
+    @Test func pastReminderDatesAreSkipped() async throws {
         let cal = fixedCalendar()
         // Feb 26, 2026 at 10:00 UTC.
         // Due date is Mar 2, 2026.
@@ -115,7 +114,7 @@ struct CreditCardDueNotifierTests {
         // 5d before is Feb 25 09:00 -> in the past (skipped).
         // 3d before is Feb 27 09:00 -> future (scheduled).
         // 1d before is Mar 1 09:00 -> future (scheduled).
-        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 26, hour: 10, minute: 0))!
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 2, day: 26, hour: 10, minute: 0)))
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -5000)
         let cycle = CreditCardCycle(statementDay: 15)
@@ -181,7 +180,7 @@ struct CreditCardDueNotifierTests {
         #expect(center.removedIdentifiers == expectedRemoved)
     }
 
-    @Test func unpaidStatementIncludesStatementDueInNotificationBody() async {
+    @Test func unpaidStatementIncludesStatementDueInNotificationBody() async throws {
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -70000)
         let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(15))
@@ -193,7 +192,7 @@ struct CreditCardDueNotifierTests {
         )
 
         let cal = fixedCalendar()
-        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 25, hour: 8, minute: 0))!
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 2, day: 25, hour: 8, minute: 0)))
 
         await CreditCardDueNotifier.scheduleNotifications(
             accounts: [card],
@@ -210,11 +209,12 @@ struct CreditCardDueNotifierTests {
         #expect(!center.added.isEmpty)
         let body = center.added.first?.content.body ?? ""
         let expectedAmount = CurrencyAmountFormat.string(
-            cents: 50000, currencyCode: "USD", narrowSymbol: true)
+            cents: 50000, currencyCode: "USD", narrowSymbol: true
+        )
         #expect(body.contains(expectedAmount))
     }
 
-    @Test func paidEarlierStatementSchedulesNextUnpaidStatement() async {
+    @Test func paidEarlierStatementSchedulesNextUnpaidStatement() async throws {
         let center = FakeCreditCardNotificationCenter()
         let card = account(id: "card1", name: "Visa", balance: -50000)
         let cycle = CreditCardCycle(statementDay: 15, paymentDue: .daysAfter(45))
@@ -233,7 +233,7 @@ struct CreditCardDueNotifierTests {
             )
         ]
         let cal = fixedCalendar()
-        let now = cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8))!
+        let now = try #require(cal.date(from: DateComponents(year: 2026, month: 2, day: 20, hour: 8)))
 
         await CreditCardDueNotifier.scheduleNotifications(
             accounts: [card],
@@ -249,7 +249,8 @@ struct CreditCardDueNotifierTests {
 
         #expect(center.added.count == 4)
         let expectedAmount = CurrencyAmountFormat.string(
-            cents: 30000, currencyCode: "USD", narrowSymbol: true)
+            cents: 30000, currencyCode: "USD", narrowSymbol: true
+        )
         #expect(center.added.first?.content.body.contains(expectedAmount) == true)
         let firstTrigger = center.added.first?.trigger as? UNCalendarNotificationTrigger
         #expect(firstTrigger?.dateComponents.month == 3)

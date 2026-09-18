@@ -1,6 +1,6 @@
 import Foundation
-import UserNotifications
 import os
+import UserNotifications
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "CreditCardDueNotifier")
 
@@ -70,7 +70,8 @@ enum CreditCardDueNotifier {
             guard let account = accountsById[accountId],
                   !account.closed,
                   isUnpaid,
-                  let cycle = cycles[accountId] else {
+                  let cycle = cycles[accountId]
+            else {
                 center.removePendingNotificationRequests(withIdentifiers: ids)
                 continue
             }

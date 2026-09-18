@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct BalanceForecastWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -35,19 +35,20 @@ struct BalanceForecastWidgetView: View {
                             budgetStore.displayBalanceWholeUnits(ending.balanceCents, locale: locale),
                             locale: locale
                         ))
-                            .font(.subheadline)
-                            .monospacedDigit()
-                            .foregroundStyle(ending.balanceCents < 0 ? Color.red : .secondary)
+                        .font(.subheadline)
+                        .monospacedDigit()
+                        .foregroundStyle(ending.balanceCents < 0 ? Color.red : .secondary)
                         if let lowest = data.points.min(by: { $0.balanceCents < $1.balanceCents }),
-                           lowest.date != ending.date {
+                           lowest.date != ending.date
+                        {
                             Text(ReportStrings.format(
                                 "Low: %@",
                                 budgetStore.displayBalanceWholeUnits(lowest.balanceCents, locale: locale),
                                 locale: locale
                             ))
-                                .font(.caption)
-                                .monospacedDigit()
-                                .foregroundStyle(.secondary)
+                            .font(.caption)
+                            .monospacedDigit()
+                            .foregroundStyle(.secondary)
                         }
                     }
                 }
@@ -86,7 +87,8 @@ struct BalanceForecastWidgetView: View {
                     currencyCode: budgetStore.currencyCode,
                     narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                     locale: locale,
-                    hidden: budgetStore.hideBalances))
+                    hidden: budgetStore.hideBalances
+                ))
                 .accessibilityHidden(budgetStore.hideBalances)
             } else {
                 Text(ReportStrings.text("Not enough data", locale: locale))

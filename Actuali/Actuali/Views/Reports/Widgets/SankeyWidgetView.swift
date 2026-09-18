@@ -54,10 +54,12 @@ private struct SankeyCardLayout {
         let rect: CGRect
         let color: Color
     }
+
     struct Ribbon {
         let path: Path
         let color: Color
     }
+
     struct Label {
         let text: String
         let rect: CGRect
@@ -189,7 +191,9 @@ private struct SankeyCardLayout {
     ]
 
     private static func color(for node: SankeyData.Node) -> Color {
-        if node.isNegative { return .red }
+        if node.isNegative {
+            return .red
+        }
         switch node.key {
         case "to_budget": return .green
         case "budgeted", "available_income", "all_income": return .blue
@@ -197,10 +201,12 @@ private struct SankeyCardLayout {
         case "from_previous_month", "for_next_month": return .gray
         default: break
         }
-        if node.key.hasSuffix("__OTHER_BUCKET") { return .gray }
+        if node.key.hasSuffix("__OTHER_BUCKET") {
+            return .gray
+        }
         // Upstream colorIndexFromKey: first 3 hex chars of the (UUID) key as
         // a stable color index.
-        let hex = node.key.lowercased().filter { $0.isHexDigit }.prefix(3)
+        let hex = node.key.lowercased().filter(\.isHexDigit).prefix(3)
         let value = Int(hex, radix: 16) ?? 0
         return palette[value % palette.count]
     }

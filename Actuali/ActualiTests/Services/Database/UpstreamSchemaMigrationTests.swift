@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Covers the 26.6.0/26.7.0 upstream migrations mirrored in BudgetDatabase:
 /// tags.hidden, accounts.bank_sync_status, the bank-sync link columns,
@@ -10,7 +10,6 @@ import GRDB
 /// plus the already-migrated-file guard and CRDT replay into new columns.
 @MainActor
 struct UpstreamSchemaMigrationTests {
-
     private func makeDatabasePath() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -21,19 +20,19 @@ struct UpstreamSchemaMigrationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE tags (id TEXT PRIMARY KEY, tag TEXT, color TEXT, description TEXT, tombstone INTEGER DEFAULT 0);
-                CREATE TABLE accounts (id TEXT PRIMARY KEY, name TEXT);
-                CREATE TABLE categories (id TEXT PRIMARY KEY, name TEXT);
-                CREATE TABLE schedules (id TEXT PRIMARY KEY, rule TEXT);
-                CREATE TABLE transactions (id TEXT PRIMARY KEY, acct TEXT, amount INTEGER, schedule TEXT, tombstone INTEGER DEFAULT 0)
-                """)
+            CREATE TABLE tags (id TEXT PRIMARY KEY, tag TEXT, color TEXT, description TEXT, tombstone INTEGER DEFAULT 0);
+            CREATE TABLE accounts (id TEXT PRIMARY KEY, name TEXT);
+            CREATE TABLE categories (id TEXT PRIMARY KEY, name TEXT);
+            CREATE TABLE schedules (id TEXT PRIMARY KEY, rule TEXT);
+            CREATE TABLE transactions (id TEXT PRIMARY KEY, acct TEXT, amount INTEGER, schedule TEXT, tombstone INTEGER DEFAULT 0)
+            """)
         }
     }
 
     private func columnNames(_ path: URL, table: String) throws -> Set<String> {
         let queue = try DatabaseQueue(path: path.path)
         return try queue.read { db in
-            Set(try db.columns(in: table).map(\.name))
+            try Set(db.columns(in: table).map(\.name))
         }
     }
 
@@ -55,8 +54,8 @@ struct UpstreamSchemaMigrationTests {
         try queue.read { db in
             #expect(try db.tableExists("cleanup_groups"))
             let indexes = try String.fetchAll(db, sql: """
-                SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'transactions'
-                """)
+            SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'transactions'
+            """)
             #expect(indexes.contains("idx_transactions_acct_tombstone"))
             #expect(indexes.contains("idx_transactions_schedule"))
         }
@@ -70,21 +69,21 @@ struct UpstreamSchemaMigrationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE tags (id TEXT PRIMARY KEY, tag TEXT, hidden BOOLEAN DEFAULT 0);
-                CREATE TABLE accounts (id TEXT PRIMARY KEY, name TEXT, bank_sync_status TEXT);
-                CREATE TABLE categories (id TEXT PRIMARY KEY, name TEXT, cleanup_def TEXT);
-                CREATE TABLE schedules (id TEXT PRIMARY KEY, custom_upcoming_length TEXT);
-                CREATE TABLE transactions (id TEXT PRIMARY KEY, acct TEXT, amount INTEGER, schedule TEXT, tombstone INTEGER DEFAULT 0)
-                """)
+            CREATE TABLE tags (id TEXT PRIMARY KEY, tag TEXT, hidden BOOLEAN DEFAULT 0);
+            CREATE TABLE accounts (id TEXT PRIMARY KEY, name TEXT, bank_sync_status TEXT);
+            CREATE TABLE categories (id TEXT PRIMARY KEY, name TEXT, cleanup_def TEXT);
+            CREATE TABLE schedules (id TEXT PRIMARY KEY, custom_upcoming_length TEXT);
+            CREATE TABLE transactions (id TEXT PRIMARY KEY, acct TEXT, amount INTEGER, schedule TEXT, tombstone INTEGER DEFAULT 0)
+            """)
         }
 
         _ = try BudgetDatabase(path: path)
 
         try queue.read { db in
-            let applied = Set(try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__"))
-            #expect(applied.contains(1769000000000))
-            #expect(applied.contains(1780327681000))
-            #expect(applied.contains(1780606215000))
+            let applied = try Set(Int64.fetchAll(db, sql: "SELECT id FROM __migrations__"))
+            #expect(applied.contains(1_769_000_000_000))
+            #expect(applied.contains(1_780_327_681_000))
+            #expect(applied.contains(1_780_606_215_000))
         }
     }
 
@@ -97,23 +96,23 @@ struct UpstreamSchemaMigrationTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
             try db.execute(sql: "INSERT INTO tags (id, tag) VALUES ('tag-1', 'work')")
             // Two messages for the same cell — the later one must win.
             try db.execute(sql: """
-                INSERT INTO messages_crdt (timestamp, dataset, row, column, value) VALUES
-                ('2026-06-01T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-1', 'hidden', 'N:1'),
-                ('2026-06-02T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-1', 'hidden', 'N:0'),
-                ('2026-06-03T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-2', 'hidden', 'N:1')
-                """)
+            INSERT INTO messages_crdt (timestamp, dataset, row, column, value) VALUES
+            ('2026-06-01T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-1', 'hidden', 'N:1'),
+            ('2026-06-02T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-1', 'hidden', 'N:0'),
+            ('2026-06-03T00:00:00.000Z-0000-0000000000000001', 'tags', 'tag-2', 'hidden', 'N:1')
+            """)
         }
 
         _ = try BudgetDatabase(path: path)

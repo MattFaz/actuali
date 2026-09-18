@@ -1,7 +1,6 @@
+@testable import Actuali
 import Testing
 import UIKit
-
-@testable import Actuali
 
 /// The accent color is the app's global tint, so it lands on top of every
 /// standard background. WCAG AA requires 4.5:1 for body-sized text.
@@ -14,7 +13,7 @@ private let contentBackgrounds: [(name: String, color: UIColor)] = [
     ("secondarySystemBackground", .secondarySystemBackground),
     ("systemGroupedBackground", .systemGroupedBackground),
     ("secondarySystemGroupedBackground", .secondarySystemGroupedBackground),
-    ("tertiarySystemBackground", .tertiarySystemBackground),
+    ("tertiarySystemBackground", .tertiarySystemBackground)
 ]
 
 private func relativeLuminance(of color: UIColor) -> Double {

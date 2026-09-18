@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct ServerBankSyncDecodingTests {
-
     private func decode(_ json: String) throws -> ServerBankSyncDownloads {
         try JSONDecoder().decode(ServerBankSyncDownloads.self, from: Data(json.utf8))
     }
@@ -79,7 +78,6 @@ struct ServerBankSyncDecodingTests {
 }
 
 struct ServerBankSyncNormalizationTests {
-
     private func transaction(_ json: String) throws -> ServerBankSyncTransaction {
         try JSONDecoder().decode(ServerBankSyncTransaction.self, from: Data(json.utf8))
     }
@@ -92,7 +90,7 @@ struct ServerBankSyncNormalizationTests {
         """)))
 
         #expect(candidate.importedId == "t1")
-        #expect(candidate.date == 20240301)
+        #expect(candidate.date == 20_240_301)
         #expect(candidate.amount == -3345)
         #expect(candidate.payeeName == "Blue Bottle")
         // Hashes are escaped here too, the same as on the direct path.
@@ -119,13 +117,12 @@ struct ServerBankSyncNormalizationTests {
     }
 
     @Test(arguments: [
-        #"{"date": "2024-03-01", "transactionAmount": {"amount": "-1.00"}}"#,      // no id
-        #"{"transactionId": "t1", "transactionAmount": {"amount": "-1.00"}}"#,     // no date
+        #"{"date": "2024-03-01", "transactionAmount": {"amount": "-1.00"}}"#, // no id
+        #"{"transactionId": "t1", "transactionAmount": {"amount": "-1.00"}}"#, // no date
         #"{"transactionId": "t1", "date": "not-a-date", "transactionAmount": {"amount": "-1.00"}}"#,
-        #"{"transactionId": "t1", "date": "2024-03-01"}"#                          // no amount
+        #"{"transactionId": "t1", "date": "2024-03-01"}"# // no amount
     ])
     func skipsTransactionsMissingWhatAnImportNeeds(_ json: String) throws {
         #expect(try BankSyncCandidate(serverBankSync: transaction(json)) == nil)
     }
-
 }

@@ -27,7 +27,7 @@ struct ScheduleEditView: View {
     @State private var isSaving = false
     @State private var errorMessage: String?
     @State private var confirmingDelete = false
-    
+
     @State private var linkedTransactions: [Transaction] = []
 
     /// "Use the budget default" is modelled as an empty string rather than nil
@@ -87,7 +87,9 @@ struct ScheduleEditView: View {
         }
     }
 
-    private var isEditing: Bool { editing != nil }
+    private var isEditing: Bool {
+        editing != nil
+    }
 
     /// The rule carries a date condition we couldn't parse — `dateOp` is set
     /// but `RecurConfig` rejected the value (a legacy string interval, an
@@ -216,11 +218,17 @@ struct ScheduleEditView: View {
             }
         }
         .overlay {
-            if isSaving { ProgressView().controlSize(.large) }
+            if isSaving {
+                ProgressView().controlSize(.large)
+            }
         }
         .alert(String(localized: "Couldn't Save Schedule"), isPresented: Binding(
             get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } }
+            set: {
+                if !$0 {
+                    errorMessage = nil
+                }
+            }
         )) {
             Button(String(localized: "OK")) {}
         } message: {
@@ -239,7 +247,6 @@ struct ScheduleEditView: View {
 
     // MARK: - Sections
 
-    @ViewBuilder
     private var amountSection: some View {
         Section(String(localized: "Amount")) {
             Picker(String(localized: "Type"), selection: $txType) {
@@ -273,7 +280,6 @@ struct ScheduleEditView: View {
         }
     }
 
-    @ViewBuilder
     private var dateSection: some View {
         Section {
             Toggle(String(localized: "Repeats"), isOn: $repeats)
@@ -351,7 +357,8 @@ struct ScheduleEditView: View {
         let payeeId: String?
         if txType == .transfer {
             guard let accountId, let transferToAccountId,
-                  accountId != transferToAccountId else {
+                  accountId != transferToAccountId
+            else {
                 throw BudgetStoreError.missingTransferDestination
             }
             guard let transferPayee = budgetStore.payees.first(where: {
@@ -384,7 +391,8 @@ struct ScheduleEditView: View {
             amountOp: amountOp,
             date: date,
             postsTransaction: postsTransaction,
-            customUpcomingLength: upcomingLength.isEmpty ? nil : upcomingLength)
+            customUpcomingLength: upcomingLength.isEmpty ? nil : upcomingLength
+        )
     }
 
     private func save() async {
@@ -414,7 +422,7 @@ struct ScheduleEditView: View {
             errorMessage = error.localizedDescription
         }
     }
-    
+
     private func loadLinkedTransactions(_ scheduleId: String) async {
         linkedTransactions = await budgetStore.fetchScheduleTransactions(scheduleId)
     }

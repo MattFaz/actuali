@@ -1,16 +1,17 @@
-import Testing
-import SwiftUI
-import UIKit
 @testable import Actuali
+import SwiftUI
+import Testing
+import UIKit
 
 /// Drives AmountInputField's UITextFieldDelegate coordinator directly,
 /// simulating keystrokes the way UIKit delivers them.
 @MainActor
 struct AmountInputFieldTests {
-
     final class TextBox {
         var value: String
-        init(_ value: String = "") { self.value = value }
+        init(_ value: String = "") {
+            self.value = value
+        }
     }
 
     /// Builds a coordinator wired to a real UITextField, mirroring makeUIView.
@@ -145,18 +146,18 @@ struct AmountInputFieldTests {
     }
 
     @Test func pastingConflictingFormatFallsBackToWholeAmount() {
-    let (coordinator, textField, box) = makeField()
-    coordinator.numberFormat = .commaDot
+        let (coordinator, textField, box) = makeField()
+        coordinator.numberFormat = .commaDot
 
-    _ = coordinator.textField(
-        textField,
-        shouldChangeCharactersIn: NSRange(location: 0, length: 0),
-        replacementString: "1.234,56"
-    )
+        _ = coordinator.textField(
+            textField,
+            shouldChangeCharactersIn: NSRange(location: 0, length: 0),
+            replacementString: "1.234,56"
+        )
 
-    #expect(textField.text == "1,234.56")
-    #expect(box.value == "1234.56")
-}
+        #expect(textField.text == "1,234.56")
+        #expect(box.value == "1234.56")
+    }
 
     @Test func pastingConflictingCommaDotFormatFallsBackToWholeAmount() {
         let (coordinator, textField, box) = makeField()
@@ -358,14 +359,14 @@ struct AmountInputFieldTests {
         #expect(box.value == "-2.50")
     }
 
-    // Reconcile can show a negative balance, so the true signed result stands.
+    /// Reconcile can show a negative balance, so the true signed result stands.
     @Test func prefilledNegativeAmountKeepsSignWhenEdited() {
         let (coordinator, textField, box) = makeField(initial: "-123.4", allowsNegative: true)
         type("5", into: coordinator, textField)
         #expect(box.value == "-123.45")
     }
 
-    // Tapping the field selects all; the next digit replaces everything.
+    /// Tapping the field selects all; the next digit replaces everything.
     @Test func fullReplaceResetsSign() {
         let (coordinator, textField, box) = makeField(initial: "-123.45", allowsNegative: true)
         _ = coordinator.textField(

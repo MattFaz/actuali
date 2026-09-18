@@ -8,7 +8,6 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "RuleRanke
 /// the most specific rule applies last and wins. Ties break on id, so every
 /// client orders an identical rule set identically.
 enum RuleRanker {
-
     private static let opScores: [String: Int] = [
         "is": 10, "isNot": 10,
         "oneOf": 9, "notOneOf": 9,

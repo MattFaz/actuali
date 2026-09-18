@@ -2,12 +2,12 @@ import XCTest
 
 final class TransactionLongPressSelectUITests: XCTestCase {
     @MainActor
-    func testLongPressOpensSelectionModeAndSelectsTheRow() throws {
+    func testLongPressOpensSelectionModeAndSelectsTheRow() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-hideClearedTransactions", "NO",
-            "-transactionDisplayMode", "flat",
+            "-transactionDisplayMode", "flat"
         ]
         app.launch()
 

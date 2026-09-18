@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins the row set and fields of `fetchTransactionsForReports()`, which feeds
 /// every dashboard widget engine:
@@ -13,7 +13,6 @@ import GRDB
 ///   rule `fetchAccounts()` already applies to balances).
 @MainActor
 struct BudgetDatabaseReportsFetchTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

@@ -29,7 +29,9 @@ struct RulesListView: View {
     @State private var isCreating = false
     @State private var failureMessage: String?
     @State private var hasLoaded = false
-    private var summary: RuleSummary { budgetStore.ruleSummary }
+    private var summary: RuleSummary {
+        budgetStore.ruleSummary
+    }
 
     private var filteredRules: [Rule] {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -83,7 +85,11 @@ struct RulesListView: View {
         }
         .alert("Couldn't Delete Rule", isPresented: Binding(
             get: { failureMessage != nil },
-            set: { if !$0 { failureMessage = nil } }
+            set: {
+                if !$0 {
+                    failureMessage = nil
+                }
+            }
         )) {
             Button("OK") { failureMessage = nil }
         } message: {
@@ -182,9 +188,9 @@ private struct RuleRow: View {
 
     private var stageColor: Color {
         switch rule.stage {
-        case .pre: return .blue
-        case .default: return .secondary
-        case .post: return .orange
+        case .pre: .blue
+        case .default: .secondary
+        case .post: .orange
         }
     }
 

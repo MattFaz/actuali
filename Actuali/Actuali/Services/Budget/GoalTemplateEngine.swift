@@ -134,15 +134,16 @@ final class GoalTemplateContext {
         self.allCategories = allCategories
         self.currentMonth = currentMonth
         self.skipAvailableClamp = skipAvailableClamp
-        previouslyBudgeted = budgeted
-        hideDecimal = sheet.hideFraction
-        inputTemplateCount = templates.count
+        self.previouslyBudgeted = budgeted
+        self.hideDecimal = sheet.hideFraction
+        self.inputTemplateCount = templates.count
 
         if let invalid = templates.first(where: {
             $0.type == .error || $0.directive == .error
         }) {
             throw GoalTemplateError.category(
-                "\(invalid.line ?? "Template"): \(invalid.error ?? "Invalid template syntax")")
+                "\(invalid.line ?? "Template"): \(invalid.error ?? "Invalid template syntax")"
+            )
         }
 
         let lastMonth = BudgetMonthMath.subMonths(month, 1)
@@ -150,7 +151,8 @@ final class GoalTemplateContext {
         let carryover = sheet.carryover(month: lastMonth, category: category.id)
         if (fromLastMonth < 0 && !carryover) // overspend without rollover
             || category.isIncome // tracking income categories
-            || (sheet.isTracking && !carryover) { // tracking regular categories
+            || (sheet.isTracking && !carryover)
+        { // tracking regular categories
             fromLastMonth = 0
         }
         self.fromLastMonth = fromLastMonth
@@ -161,7 +163,9 @@ final class GoalTemplateContext {
         for (index, template) in templates.enumerated() {
             if template.directive == .template, template.type != .remainder, template.type != .limit {
                 self.templates.append((index, template))
-                if let priority = template.priority { priorities.insert(priority) }
+                if let priority = template.priority {
+                    priorities.insert(priority)
+                }
             } else if template.directive == .template, template.type == .remainder {
                 remainder.append((index, template))
                 remainderWeight += template.weight ?? 1
@@ -245,7 +249,8 @@ final class GoalTemplateContext {
                         lastMonthGoal: sheet.goal(month: lastMonth, category: category.id),
                         categoryIsIncome: category.isIncome,
                         isTracking: sheet.isTracking,
-                        schedules: schedules)
+                        schedules: schedules
+                    )
                     // The schedule run returns the whole to-budget figure, so
                     // strip what earlier templates already contributed.
                     newBudget = result.toBudget - toBudget
@@ -267,12 +272,14 @@ final class GoalTemplateContext {
         // batch to whichever sibling ran first (upstream redistributeBatch).
         redistributeBatch(
             &perTemplateLocal,
-            siblings: priorityTemplates.filter { $0.template.type == .by }.map { $0.index },
-            weightOf: { Double(max(0, byPerTemplate[$0] ?? 0)) })
+            siblings: priorityTemplates.filter { $0.template.type == .by }.map(\.index),
+            weightOf: { Double(max(0, byPerTemplate[$0] ?? 0)) }
+        )
         redistributeBatch(
             &perTemplateLocal,
-            siblings: priorityTemplates.filter { $0.template.type == .schedule }.map { $0.index },
-            weightOf: { max(0, schedulePerTemplate[$0] ?? 0) })
+            siblings: priorityTemplates.filter { $0.template.type == .schedule }.map(\.index),
+            weightOf: { max(0, schedulePerTemplate[$0] ?? 0) }
+        )
 
         var scale = 1.0
 
@@ -282,7 +289,9 @@ final class GoalTemplateContext {
             toBudget = limitAmount - toBudgetAmount - fromLastMonth
             limitMet = true
             available = available + original - toBudget
-            if original > 0 { scale *= Double(toBudget) / Double(original) }
+            if original > 0 {
+                scale *= Double(toBudget) / Double(original)
+            }
         }
 
         if hideDecimal {
@@ -290,7 +299,9 @@ final class GoalTemplateContext {
             // engine's actual budgeted amount.
             let preRound = toBudget
             toBudget = removeFraction(toBudget)
-            if preRound != 0 { scale *= Double(toBudget) / Double(preRound) }
+            if preRound != 0 {
+                scale *= Double(toBudget) / Double(preRound)
+            }
         }
 
         // Don't overbudget at a positive priority unless this is an income
@@ -299,7 +310,9 @@ final class GoalTemplateContext {
         if priority > 0, available < 0, !category.isIncome, !skipAvailableClamp {
             fullAmount = (fullAmount ?? 0) + toBudget
             let adjusted = max(0, toBudget + available)
-            if toBudget > 0 { scale *= Double(adjusted) / Double(toBudget) }
+            if toBudget > 0 {
+                scale *= Double(adjusted) / Double(toBudget)
+            }
             toBudget = adjusted
             toBudgetAmount += toBudget
         } else {
@@ -336,7 +349,8 @@ final class GoalTemplateContext {
         let siblingSet = Set(siblings)
         var total = 0
         for (position, entry) in perTemplateLocal.enumerated()
-            where siblingSet.contains(entry.index) {
+            where siblingSet.contains(entry.index)
+        {
             total += entry.value
             perTemplateLocal[position].value = 0
         }
@@ -347,14 +361,13 @@ final class GoalTemplateContext {
         var remaining = total
         for (position, index) in siblings.enumerated() {
             let isLast = position == siblings.count - 1
-            let share: Int
-            if isLast {
-                share = remaining
+            let share: Int = if isLast {
+                remaining
             } else if totalWeight > 0 {
-                share = BudgetMonthMath.jsRound(Double(total) * weightOf(index) / totalWeight)
+                BudgetMonthMath.jsRound(Double(total) * weightOf(index) / totalWeight)
             } else {
                 // Equal split fallback when no weights are usable.
-                share = BudgetMonthMath.jsRound(Double(total) / Double(siblings.count))
+                BudgetMonthMath.jsRound(Double(total) / Double(siblings.count))
             }
             let allocated = max(0, min(share, remaining))
             shares[index] = allocated
@@ -396,7 +409,8 @@ final class GoalTemplateContext {
                 let share = isLast
                     ? remaining
                     : BudgetMonthMath.jsRound(
-                        Double(toBudget) * (entry.template.weight ?? 1) / remainderWeight)
+                        Double(toBudget) * (entry.template.weight ?? 1) / remainderWeight
+                    )
                 let allocated = max(0, min(share, remaining))
                 perTemplateContribution[entry.index, default: 0] += allocated
                 remaining -= allocated
@@ -411,17 +425,21 @@ final class GoalTemplateContext {
         runGoal()
         var perTemplate = [Int](repeating: 0, count: inputTemplateCount)
         for (index, contribution) in perTemplateContribution
-            where index >= 0 && index < inputTemplateCount {
+            where index >= 0 && index < inputTemplateCount
+        {
             perTemplate[index] = contribution
         }
         return Values(
             budgeted: toBudgetAmount, goal: goalAmount, longGoal: isLongGoal,
-            perTemplate: perTemplate)
+            perTemplate: perTemplate
+        )
     }
 
     private func runGoal() {
         if let goal = goals.first {
-            if isGoalOnly() { toBudgetAmount = previouslyBudgeted }
+            if isGoalOnly() {
+                toBudgetAmount = previouslyBudgeted
+            }
             isLongGoal = true
             goalAmount = BudgetMonthMath.amountToInteger(goal.amount ?? 0)
             return
@@ -447,12 +465,14 @@ final class GoalTemplateContext {
             if let scheduleId = template.scheduleId {
                 guard scheduleIds.contains(scheduleId) else {
                     throw GoalTemplateError.category(
-                        "Schedule \(template.name ?? scheduleId) does not exist")
+                        "Schedule \(template.name ?? scheduleId) does not exist"
+                    )
                 }
             } else if let name = template.name {
                 guard scheduleNames.contains(name.trimmingCharacters(in: .whitespaces)) else {
                     throw GoalTemplateError.category(
-                        "Schedule \(name.trimmingCharacters(in: .whitespaces)) does not exist")
+                        "Schedule \(name.trimmingCharacters(in: .whitespaces)) does not exist"
+                    )
                 }
             } else {
                 throw GoalTemplateError.category("Schedule template has no scheduleId or name")
@@ -462,14 +482,16 @@ final class GoalTemplateContext {
         let lowestPriority = byAndSchedule.compactMap(\.priority).min() ?? 0
         for template in byAndSchedule where template.priority != lowestPriority {
             throw GoalTemplateError.category(
-                "Schedule and By templates must be the same priority level. Fix by setting all Schedule and By templates to priority level \(lowestPriority)")
+                "Schedule and By templates must be the same priority level. Fix by setting all Schedule and By templates to priority level \(lowestPriority)"
+            )
         }
 
         for template in templates where template.type == .by || template.type == .spend {
             let range = BudgetMonthMath.differenceInCalendarMonths(template.month ?? "", month)
             if range < 0, (repeatInterval(template) ?? 0) <= 0 {
                 throw GoalTemplateError.category(
-                    "Target month has passed, remove or update the target month")
+                    "Target month has passed, remove or update the target month"
+                )
             }
         }
     }
@@ -490,22 +512,25 @@ final class GoalTemplateContext {
         let incomeCategories = categories.filter(\.isIncome)
         let names = Set(incomeCategories.map { $0.name.lowercased() })
         let ids = Set(incomeCategories.map(\.id))
-        let specialSources: Set<String> = ["all income", "available funds"]
+        let specialSources: Set = ["all income", "available funds"]
 
         for template in percentageTemplates {
             let raw = template.category ?? ""
             let lowered = raw.lowercased()
             guard specialSources.contains(lowered) || names.contains(lowered)
-                || ids.contains(raw) else {
+                || ids.contains(raw)
+            else {
                 throw GoalTemplateError.category(
-                    "Category \"\(raw)\" is not found in available income categories")
+                    "Category \"\(raw)\" is not found in available income categories"
+                )
             }
         }
     }
 
     private func checkLimit(_ templates: [GoalTemplate]) throws {
         for template in templates where template.type == .simple || template.type == .periodic
-            || template.type == .limit || template.type == .remainder {
+            || template.type == .limit || template.type == .remainder
+        {
             // limit-type templates carry the limit itself; the others may
             // have an attached one.
             guard let limit = template.limit else { continue }
@@ -523,13 +548,16 @@ final class GoalTemplateContext {
                 // unchanged, so the walk below would never terminate.
                 guard let start = limit.start, BudgetMonthMath.day(start) != nil else {
                     throw GoalTemplateError.category(
-                        "Weekly limit requires a start date (YYYY-MM-DD)")
+                        "Weekly limit requires a start date (YYYY-MM-DD)"
+                    )
                 }
                 let nextMonth = BudgetMonthMath.nextMonth(month)
                 var week = start
                 let baseLimit = BudgetMonthMath.amountToInteger(limit.amount)
                 while week < nextMonth {
-                    if week >= month { limitAmount += baseLimit }
+                    if week >= month {
+                        limitAmount += baseLimit
+                    }
                     week = BudgetMonthMath.addWeeks(week, 1)
                 }
             case .monthly:
@@ -598,12 +626,11 @@ final class GoalTemplateContext {
 
         // `addMonths` collapses a day string to "yyyy-MM" exactly like
         // upstream's month utils — the lexicographic compares below rely on it.
-        let shift: (String, Int) -> String
-        switch period.period {
-        case .day: shift = BudgetMonthMath.addDays
-        case .week: shift = BudgetMonthMath.addWeeks
-        case .month: shift = BudgetMonthMath.addMonths
-        case .year: shift = { BudgetMonthMath.addMonths($0, $1 * 12) }
+        let shift: (String, Int) -> String = switch period.period {
+        case .day: BudgetMonthMath.addDays
+        case .week: BudgetMonthMath.addWeeks
+        case .month: BudgetMonthMath.addMonths
+        case .year: { BudgetMonthMath.addMonths($0, $1 * 12) }
         }
 
         while month > date {
@@ -670,7 +697,8 @@ final class GoalTemplateContext {
                 $0.isIncome && ($0.id == template.category || $0.name.lowercased() == source)
             }) else {
                 throw GoalTemplateError.category(
-                    "Income category \"\(template.category ?? "")\" not found for percentage template")
+                    "Income category \"\(template.category ?? "")\" not found for percentage template"
+                )
             }
             monthlyIncome = sheet.spent(month: sheetMonth, category: incomeCategory.id)
         }
@@ -680,7 +708,9 @@ final class GoalTemplateContext {
     private func runAverage(_ template: GoalTemplate) -> Int {
         var average = Double(categoryAverage(maxMonths: template.numMonths ?? 0))
         // Sheet activity is cost (negative); budget the positive amount.
-        if average < 0 { average *= -1 }
+        if average < 0 {
+            average *= -1
+        }
 
         if let adjustment = template.adjustment, let adjustmentType = template.adjustmentType {
             switch adjustmentType {
@@ -707,7 +737,9 @@ final class GoalTemplateContext {
         var months: [String] = []
         var walker = startMonth
         for _ in 0..<max(0, maxMonths) {
-            if let firstActivity, BudgetMonthMath.monthInt(walker) < firstActivity { break }
+            if let firstActivity, BudgetMonthMath.monthInt(walker) < firstActivity {
+                break
+            }
             months.append(walker)
             walker = BudgetMonthMath.prevMonth(walker)
         }
@@ -744,23 +776,25 @@ final class GoalTemplateContext {
         for (position, entry) in byTemplates.enumerated() {
             let (numMonths, period) = savedInfo[position]
             let target = BudgetMonthMath.amountToInteger(entry.template.amount ?? 0)
-            let amount: Int
-            if numMonths > shortNumMonths, let period, period > 0 {
+            let amount: Int = if numMonths > shortNumMonths, let period, period > 0 {
                 // Back-interpolate what the longer-window template needs
                 // during the short window.
-                amount = BudgetMonthMath.jsRound(
-                    Double(target) / Double(period) * Double(period - numMonths + shortNumMonths))
+                BudgetMonthMath.jsRound(
+                    Double(target) / Double(period) * Double(period - numMonths + shortNumMonths)
+                )
             } else if numMonths > shortNumMonths {
-                amount = BudgetMonthMath.jsRound(
-                    Double(target) / Double(numMonths + 1) * Double(shortNumMonths + 1))
+                BudgetMonthMath.jsRound(
+                    Double(target) / Double(numMonths + 1) * Double(shortNumMonths + 1)
+                )
             } else {
-                amount = target
+                target
             }
             perTemplateNeed[entry.index] = amount
             totalNeeded += amount
         }
         let toBudget = BudgetMonthMath.jsRound(
-            Double(totalNeeded - fromLastMonth) / Double(shortNumMonths + 1))
+            Double(totalNeeded - fromLastMonth) / Double(shortNumMonths + 1)
+        )
         return (toBudget, perTemplateNeed)
     }
 }
@@ -771,7 +805,6 @@ final class GoalTemplateContext {
 /// run every category's templates for one month and produce the budget and
 /// goal writes.
 enum GoalTemplateEngine {
-
     struct GoalWrite: Equatable, Sendable {
         let category: String
         let goal: Int?
@@ -802,7 +835,9 @@ enum GoalTemplateEngine {
             for context in remainderContexts {
                 availBudget -= context.runRemainder(budgetAvail: availBudget, perWeight: perWeight)
             }
-            if availBudget == beforePass { break }
+            if availBudget == beforePass {
+                break
+            }
             remainderContexts = contexts.filter { $0.hasRemainder() }
         }
         return availBudget
@@ -844,7 +879,8 @@ enum GoalTemplateEngine {
                         sheet: sheet,
                         schedules: schedules,
                         allCategories: allCategories,
-                        currentMonth: currentMonth)
+                        currentMonth: currentMonth
+                    )
                     // Funds not managed by templates stay out of the pool.
                     if !context.isGoalOnly() {
                         availBudget += budgeted
@@ -879,7 +915,8 @@ enum GoalTemplateEngine {
             for context in contexts {
                 do {
                     let budget = try context.runTemplatesForPriority(
-                        priority, budgetAvail: availBudget, availStart: availStart)
+                        priority, budgetAvail: availBudget, availStart: availStart
+                    )
                     availBudget -= budget
                 } catch GoalTemplateError.category(let message) {
                     errors.append("\(context.category.name): \(message)")
@@ -887,7 +924,9 @@ enum GoalTemplateEngine {
                     errors.append("\(context.category.name): \(error.localizedDescription)")
                 }
             }
-            if !errors.isEmpty { return .errors(errors) }
+            if !errors.isEmpty {
+                return .errors(errors)
+            }
         }
 
         _ = distributeRemainder(contexts: contexts, availBudget: availBudget)
@@ -904,7 +943,8 @@ enum GoalTemplateEngine {
             goals.append(GoalWrite(
                 category: context.category.id,
                 goal: values.goal,
-                longGoal: values.longGoal == true))
+                longGoal: values.longGoal == true
+            ))
         }
         return .applied(count: contexts.count, budgets: budgets, goals: goals)
     }
@@ -936,14 +976,18 @@ enum GoalTemplateEngine {
                 schedules: schedules,
                 allCategories: allCategories,
                 currentMonth: currentMonth,
-                skipAvailableClamp: true)
+                skipAvailableClamp: true
+            )
             var availBudget = sheet.availableStart
-            if !context.isGoalOnly() { availBudget += budgeted }
+            if !context.isGoalOnly() {
+                availBudget += budgeted
+            }
             availBudget += context.limitExcess
             for priority in context.getPriorities().sorted() {
                 let availStart = availBudget
                 let budget = try context.runTemplatesForPriority(
-                    priority, budgetAvail: availBudget, availStart: availStart)
+                    priority, budgetAvail: availBudget, availStart: availStart
+                )
                 availBudget -= budget
             }
             _ = distributeRemainder(contexts: [context], availBudget: availBudget)

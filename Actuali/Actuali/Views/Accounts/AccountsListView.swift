@@ -71,9 +71,17 @@ struct AccountsListView: View {
         budgetStore.visibleClosedAccounts
     }
 
-    var onBudgetTotal: Int { onBudgetAccounts.sumBalance }
-    var offBudgetTotal: Int { offBudgetAccounts.sumBalance }
-    var closedTotal: Int { closedAccounts.sumBalance }
+    var onBudgetTotal: Int {
+        onBudgetAccounts.sumBalance
+    }
+
+    var offBudgetTotal: Int {
+        offBudgetAccounts.sumBalance
+    }
+
+    var closedTotal: Int {
+        closedAccounts.sumBalance
+    }
 
     var body: some View {
         Group {
@@ -306,7 +314,7 @@ struct AccountsListView: View {
     /// Everything both layouts hang off their account list: title, notification
     /// routing, pull-to-refresh, loading overlay.
     /// Shared so the two layouts can't drift apart.
-    private func withChrome<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
+    private func withChrome(@ViewBuilder _ content: () -> some View) -> some View {
         Group(content: content)
             // Both layouts' section state lives in @AppStorage, and a write to
             // that lands outside any withAnimation transaction — so the rows
@@ -385,7 +393,7 @@ struct AccountsListView: View {
             // menu is long gone by the time the download finishes, and this
             // stack's pushed account views sit above this alert anyway.
             .alert("Bank Sync", isPresented: bankSyncAlertBinding) {
-                    Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
+                Button(String(localized: "common.ok"), role: .cancel) { budgetStore.bankSyncSummary = nil }
             } message: {
                 Text(budgetStore.bankSyncSummary ?? "")
             }
@@ -420,10 +428,14 @@ struct AccountsListView: View {
                 consumePendingAccountNavigation()
             }
             .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
-                if pending { consumePendingAllAccountsNavigation() }
+                if pending {
+                    consumePendingAllAccountsNavigation()
+                }
             }
             .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
-                if accountId != nil { consumePendingAccountNavigation() }
+                if accountId != nil {
+                    consumePendingAccountNavigation()
+                }
             }
             // Keyed to dataVersion so the summary's month totals follow every
             // edit and sync, like the account balances beneath them.
@@ -445,11 +457,15 @@ struct AccountsListView: View {
                 }
             }
     }
-    
+
     private var bankSyncAlertBinding: Binding<Bool> {
         Binding(
             get: { budgetStore.bankSyncSummary != nil },
-            set: { if !$0 { budgetStore.bankSyncSummary = nil } }
+            set: {
+                if !$0 {
+                    budgetStore.bankSyncSummary = nil
+                }
+            }
         )
     }
 
@@ -517,7 +533,8 @@ private struct AccountTransactionsScreen: View {
         }
         .task(id: account?.id) {
             if account?.offBudget == true,
-               budgetStore.transactionStatusFilter == .uncategorized {
+               budgetStore.transactionStatusFilter == .uncategorized
+            {
                 budgetStore.transactionStatusFilter = .all
             }
         }
@@ -527,12 +544,16 @@ private struct AccountTransactionsScreen: View {
 /// Green over positive, red over negative, primary at exactly zero — shared
 /// by every balance-displaying view so the copies don't drift.
 func balanceColor(for balance: Int) -> Color {
-    if balance > 0 { return .green }
-    if balance < 0 { return .red }
+    if balance > 0 {
+        return .green
+    }
+    if balance < 0 {
+        return .red
+    }
     return .primary
 }
 
-private extension Array where Element == Account {
+private extension [Account] {
     /// Sum of every account's balance in the array — used for the "All
     /// Accounts" total and each section's subtotal alike, so the reduction
     /// itself only lives in one place.
@@ -555,7 +576,9 @@ struct AccountsSummaryCard: View {
     /// the figures were fetched for.
     let monthTotals: AccountsMonthTotals?
 
-    private var summary: BudgetDatabase.AccountsMonthSummary? { monthTotals?.totals }
+    private var summary: BudgetDatabase.AccountsMonthSummary? {
+        monthTotals?.totals
+    }
 
     var body: some View {
         let balance = budgetStore.displayBalance(totalBalance)
@@ -626,7 +649,7 @@ struct AccountSectionHeader: View {
         } label: {
             HStack(spacing: 8) {
                 DisclosureChevron(isExpanded: isExpanded)
-                                    .frame(width: 12)
+                    .frame(width: 12)
                 Text(title)
                 Spacer()
                 Text(totalText)

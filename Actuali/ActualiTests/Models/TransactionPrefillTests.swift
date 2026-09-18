@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct TransactionPrefillTests {
-
     @Test func roundTripsAllFields() {
         let date = Date(timeIntervalSince1970: 1_750_000_000)
         let prefill = TransactionPrefill(
@@ -45,7 +44,7 @@ struct TransactionPrefillTests {
         let userInfo: [AnyHashable: Any] = [
             "kind": "com.mfazz.Actuali.transactionPrefill",
             "payee": "Blue Bottle",
-            "date": 1_750_000_000.0,
+            "date": 1_750_000_000.0
         ]
         let decoded = TransactionPrefill(userInfo: userInfo)
         #expect(decoded != nil)

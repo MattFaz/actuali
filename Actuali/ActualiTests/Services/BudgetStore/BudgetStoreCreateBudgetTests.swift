@@ -1,8 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-
-@testable import Actuali
 
 /// In-app budget creation (GH #387): name validation mirrors upstream's
 /// validateBudgetName, and the create flow builds the file from the bundled
@@ -16,8 +15,13 @@ private final class CreateBudgetTransport: URLProtocol {
     nonisolated(unsafe) static var committedName: String?
     nonisolated(unsafe) static var afterUpload: (@Sendable () -> Void)?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let path = request.url?.path ?? ""
@@ -70,7 +74,6 @@ private final class CreateBudgetTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreCreateBudgetTests {
-
     // MARK: - Name validation (upstream validateBudgetName)
 
     @Test func nameValidationMirrorsUpstream() {
@@ -238,9 +241,9 @@ struct BudgetStoreCreateBudgetTests {
             else { return }
             try? queue.write { db in
                 try db.execute(sql: """
-                    DROP TABLE messages_clock;
-                    CREATE TABLE messages_clock (bad TEXT);
-                    """)
+                DROP TABLE messages_clock;
+                CREATE TABLE messages_clock (bad TEXT);
+                """)
             }
         }
 

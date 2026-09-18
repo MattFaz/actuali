@@ -1,7 +1,7 @@
-import Foundation
-import Testing
-import GRDB
 @testable import Actuali
+import Foundation
+import GRDB
+import Testing
 
 /// Pins `BudgetDatabase.fetchPostableSchedules()` and the dedup guard
 /// `hasTransaction(scheduleId:onOrAfter:)`. These feed the SchedulePoster,
@@ -9,7 +9,6 @@ import GRDB
 /// skip, never a throw and never a bogus schedule.
 @MainActor
 struct ScheduleFetchTests {
-
     // MARK: - Fixtures
 
     private func makeDatabase(includeScheduleTables: Bool = true) throws -> (BudgetDatabase, URL) {
@@ -126,8 +125,8 @@ struct ScheduleFetchTests {
     }
 
     private static let monthlyDateJSON = """
-        {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}
-        """
+    {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}
+    """
 
     /// Inserts a full schedule (rule + schedule + next-date row). Conditions
     /// default to a postable recurring monthly schedule on acct-1.
@@ -141,37 +140,37 @@ struct ScheduleFetchTests {
         ruleTombstone: Int = 0,
         conditions: String? = nil,
         actions: String = "[]",
-        localNextDate: Int? = 20260801,
-        localNextDateTs: Int64? = 1_000,
-        baseNextDate: Int? = 20260801,
-        baseNextDateTs: Int64? = 1_000
+        localNextDate: Int? = 20_260_801,
+        localNextDateTs: Int64? = 1000,
+        baseNextDate: Int? = 20_260_801,
+        baseNextDateTs: Int64? = 1000
     ) throws {
         let conditionsJSON = conditions ?? """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-1"},
-             {"op":"isapprox","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-1"},
+         {"op":"isapprox","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
-                VALUES (?, NULL, 'and', ?, ?, ?)
-                """, arguments: ["rule-\(id)", conditionsJSON, actions, ruleTombstone])
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions, tombstone)
+            VALUES (?, NULL, 'and', ?, ?, ?)
+            """, arguments: ["rule-\(id)", conditionsJSON, actions, ruleTombstone])
             try conn.execute(sql: """
-                INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: [id, "rule-\(id)", completed, postsTransaction, tombstone, name])
+            INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: [id, "rule-\(id)", completed, postsTransaction, tombstone, name])
             try conn.execute(sql: """
-                INSERT INTO schedules_next_date
-                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: ["nd-\(id)", id, localNextDate, localNextDateTs, baseNextDate, baseNextDateTs])
+            INSERT INTO schedules_next_date
+                (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: ["nd-\(id)", id, localNextDate, localNextDateTs, baseNextDate, baseNextDateTs])
         }
     }
 
     // MARK: - Extraction
 
-    @Test func happyPathExtractsAllFields() async throws {
+    @Test func happyPathExtractsAllFields() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db)
@@ -184,9 +183,9 @@ struct ScheduleFetchTests {
         #expect(s.accountId == "acct-1")
         #expect(s.payeeId == "payee-1")
         #expect(s.amount == .fixed(-1500))
-        #expect(s.nextDate.yyyymmdd == 20260801)
+        #expect(s.nextDate.yyyymmdd == 20_260_801)
         #expect(s.nextDateRowId == "nd-sched-1")
-        #expect(s.baseNextDateTs == 1_000)
+        #expect(s.baseNextDateTs == 1000)
         guard case .recurring(let config) = s.dateCondition else {
             Issue.record("expected recurring date condition")
             return
@@ -196,36 +195,36 @@ struct ScheduleFetchTests {
         #expect(config.interval == 1)
     }
 
-    // The schedule's category lives as a `set category` action on the linked
-    // rule (added via the Rules UI upstream). The RulesEngine can't apply it
-    // at post time — the rule's recurring-date condition is unsupported on
-    // iOS — so the fetch must surface it for the poster to set directly.
-    @Test func categoryExtractedFromSetCategoryAction() async throws {
+    /// The schedule's category lives as a `set category` action on the linked
+    /// rule (added via the Rules UI upstream). The RulesEngine can't apply it
+    /// at post time — the rule's recurring-date condition is unsupported on
+    /// iOS — so the fetch must surface it for the poster to set directly.
+    @Test func categoryExtractedFromSetCategoryAction() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: """
-            [{"op":"link-schedule","value":"sched-1"},
-             {"op":"set","field":"category","value":"cat-groceries"}]
-            """)
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"category","value":"cat-groceries"}]
+        """)
 
         let s = try #require(try db.fetchPostableSchedules().first)
         #expect(s.categoryId == "cat-groceries")
     }
 
-    @Test func noCategoryActionYieldsNilCategory() async throws {
+    @Test func noCategoryActionYieldsNilCategory() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: """
-            [{"op":"link-schedule","value":"sched-1"}]
-            """)
+        [{"op":"link-schedule","value":"sched-1"}]
+        """)
 
         let s = try #require(try db.fetchPostableSchedules().first)
         #expect(s.categoryId == nil)
     }
 
-    // A broken actions blob must not cost the user the posting itself —
-    // worst case is an uncategorized transaction, same as today.
-    @Test func malformedActionsStillReturnsScheduleWithNilCategory() async throws {
+    /// A broken actions blob must not cost the user the posting itself —
+    /// worst case is an uncategorized transaction, same as today.
+    @Test func malformedActionsStillReturnsScheduleWithNilCategory() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: "not json")
@@ -234,24 +233,24 @@ struct ScheduleFetchTests {
         #expect(s.categoryId == nil)
     }
 
-    @Test func nonStringCategoryValueYieldsNilCategory() async throws {
+    @Test func nonStringCategoryValueYieldsNilCategory() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: """
-            [{"op":"set","field":"category","value":42}]
-            """)
+        [{"op":"set","field":"category","value":42}]
+        """)
 
         let s = try #require(try db.fetchPostableSchedules().first)
         #expect(s.categoryId == nil)
     }
 
-    @Test func fixedDateConditionParses() async throws {
+    @Test func fixedDateConditionParses() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":"2026-07-01"}]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"date","value":"2026-07-01"}]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         let s = try #require(schedules.first)
@@ -264,14 +263,14 @@ struct ScheduleFetchTests {
         #expect(s.amount == nil)
     }
 
-    @Test func rangeAmountParsesFromIsbetween() async throws {
+    @Test func rangeAmountParsesFromIsbetween() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"isbetween","field":"amount","value":{"num1":-1500,"num2":-2500}},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"isbetween","field":"amount","value":{"num1":-1500,"num2":-2500}},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.first?.amount == .range(-1500, -2500))
@@ -279,14 +278,14 @@ struct ScheduleFetchTests {
 
     /// loot-core's v_schedules resolves the payee condition through
     /// payee_mapping (pm.targetId), so a merged payee posts to its target.
-    @Test func payeeResolvesThroughPayeeMapping() async throws {
+    @Test func payeeResolvesThroughPayeeMapping() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-merged"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-merged"},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.first?.payeeId == "payee-target")
@@ -294,14 +293,14 @@ struct ScheduleFetchTests {
 
     /// LEFT JOIN semantics: a payee value with no payee_mapping row yields a
     /// nil payee (loot-core's pm.targetId is NULL there) — still postable.
-    @Test func unmappedPayeeYieldsNilPayeeButStillPostable() async throws {
+    @Test func unmappedPayeeYieldsNilPayeeButStillPostable() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-unmapped"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-unmapped"},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.count == 1)
@@ -311,16 +310,16 @@ struct ScheduleFetchTests {
     /// extractScheduleConds is two-pass: a `payee` condition beats an EARLIER
     /// `description` one, and `account` beats an earlier `acct`. If array
     /// order won here the closed acct would get picked and the row skipped.
-    @Test func payeeAndAccountFieldsWinOverEarlierAliases() async throws {
+    @Test func payeeAndAccountFieldsWinOverEarlierAliases() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"description","value":"payee-1"},
-             {"op":"is","field":"payee","value":"payee-merged"},
-             {"op":"is","field":"acct","value":"acct-closed"},
-             {"op":"is","field":"account","value":"acct-1"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"description","value":"payee-1"},
+         {"op":"is","field":"payee","value":"payee-merged"},
+         {"op":"is","field":"acct","value":"acct-closed"},
+         {"op":"is","field":"account","value":"acct-1"},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.count == 1)
@@ -333,24 +332,24 @@ struct ScheduleFetchTests {
     /// v_schedules' `local_next_date_ts = base_next_date_ts` CASE is NULL for
     /// NULL timestamps, so the web falls through to base_next_date and still
     /// posts — a NULL ts row must not be skipped (GH #97 follow-up).
-    @Test func nullBaseNextDateTsPostsUsingBaseNextDate() async throws {
+    @Test func nullBaseNextDateTsPostsUsingBaseNextDate() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, id: "s-nots", localNextDate: 20260715, localNextDateTs: nil,
-                           baseNextDate: 20260801, baseNextDateTs: nil)
+        try insertSchedule(db, id: "s-nots", localNextDate: 20_260_715, localNextDateTs: nil,
+                           baseNextDate: 20_260_801, baseNextDateTs: nil)
         try insertSchedule(db, id: "s-ok")
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.map(\.id) == ["s-nots", "s-ok"])
         let noTs = schedules.first { $0.id == "s-nots" }
-        #expect(noTs?.nextDate == DayDate(yyyymmdd: 20260801))
+        #expect(noTs?.nextDate == DayDate(yyyymmdd: 20_260_801))
         #expect(noTs?.baseNextDateTs == nil)
     }
 
     /// loot-core's rules service only loads rules with tombstone = 0, so a
     /// schedule whose rule is tombstoned is unpostable on web — iOS must not
     /// post from its dead conditions either.
-    @Test func skipsScheduleWhoseRuleIsTombstoned() async throws {
+    @Test func skipsScheduleWhoseRuleIsTombstoned() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-deadrule", ruleTombstone: 1)
@@ -367,33 +366,33 @@ struct ScheduleFetchTests {
     @Test func duplicateNextDateRowsYieldOneScheduleDeterministically() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db)   // creates nd row "nd-sched-1", date 20260801
+        try insertSchedule(db) // creates nd row "nd-sched-1", date 20260801
         // Second nd row for the same schedule, alphabetically FIRST ("nd-a" <
         // "nd-sched-1"), so ORDER BY — not insertion order — must pick it.
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO schedules_next_date
-                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES ('nd-a', 'sched-1', 20260901, 2000, 20260901, 2000)
-                """)
+            INSERT INTO schedules_next_date
+                (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES ('nd-a', 'sched-1', 20260901, 2000, 20260901, 2000)
+            """)
         }
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.count == 1)
         #expect(schedules.first?.nextDateRowId == "nd-a")
-        #expect(schedules.first?.nextDate.yyyymmdd == 20260901)
+        #expect(schedules.first?.nextDate.yyyymmdd == 20_260_901)
     }
 
     /// A malformed amount value (neither number nor {num1,num2}) degrades to
     /// nil amount — the schedule is still returned, the poster decides.
-    @Test func malformedAmountValueYieldsNilAmount() async throws {
+    @Test func malformedAmountValueYieldsNilAmount() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"amount","value":"fifteen dollars"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"amount","value":"fifteen dollars"},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.count == 1)
@@ -412,35 +411,35 @@ struct ScheduleFetchTests {
 
     // MARK: - Effective next date (loot-core v_schedules CASE)
 
-    @Test func localNextDateWinsWhenTimestampsMatch() async throws {
+    @Test func localNextDateWinsWhenTimestampsMatch() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(
             db,
-            localNextDate: 20260701, localNextDateTs: 5_000,
-            baseNextDate: 20260801, baseNextDateTs: 5_000
+            localNextDate: 20_260_701, localNextDateTs: 5000,
+            baseNextDate: 20_260_801, baseNextDateTs: 5000
         )
 
         let schedules = try db.fetchPostableSchedules()
-        #expect(schedules.first?.nextDate.yyyymmdd == 20260701)
+        #expect(schedules.first?.nextDate.yyyymmdd == 20_260_701)
     }
 
-    @Test func baseNextDateWinsWhenTimestampsDiffer() async throws {
+    @Test func baseNextDateWinsWhenTimestampsDiffer() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(
             db,
-            localNextDate: 20260701, localNextDateTs: 5_000,
-            baseNextDate: 20260801, baseNextDateTs: 6_000
+            localNextDate: 20_260_701, localNextDateTs: 5000,
+            baseNextDate: 20_260_801, baseNextDateTs: 6000
         )
 
         let schedules = try db.fetchPostableSchedules()
-        #expect(schedules.first?.nextDate.yyyymmdd == 20260801)
+        #expect(schedules.first?.nextDate.yyyymmdd == 20_260_801)
     }
 
     // MARK: - Silent skips
 
-    @Test func skipsNonPostingCompletedAndTombstonedSchedules() async throws {
+    @Test func skipsNonPostingCompletedAndTombstonedSchedules() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-nopost", postsTransaction: 0)
@@ -452,17 +451,17 @@ struct ScheduleFetchTests {
         #expect(schedules.map(\.id) == ["s-ok"])
     }
 
-    @Test func skipsClosedAccountAndMissingAccountCondition() async throws {
+    @Test func skipsClosedAccountAndMissingAccountCondition() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-closed", conditions: """
-            [{"op":"is","field":"acct","value":"acct-closed"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"acct","value":"acct-closed"},
+         \(Self.monthlyDateJSON)]
+        """)
         try insertSchedule(db, id: "s-noacct", conditions: """
-            [{"op":"is","field":"description","value":"payee-1"},
-             \(Self.monthlyDateJSON)]
-            """)
+        [{"op":"is","field":"description","value":"payee-1"},
+         \(Self.monthlyDateJSON)]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.isEmpty)
@@ -473,23 +472,23 @@ struct ScheduleFetchTests {
     /// (setNextDate throws on shapes it can't handle and the service swallows
     /// it). So an unparseable or missing date condition must still yield a
     /// postable schedule, marked so the poster posts once and never advances.
-    @Test func unparseableRecurrenceAndMissingDateConditionStillPostable() async throws {
+    @Test func unparseableRecurrenceAndMissingDateConditionStillPostable() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, id: "s-badfreq", conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"fortnightly","start":"2026-01-15"}}]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"fortnightly","start":"2026-01-15"}}]
+        """)
         try insertSchedule(db, id: "s-nodate", conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-1"}]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-1"}]
+        """)
         // Legacy picker state could store interval as a string; rSchedule
         // throws on it upstream, so it must not silently post on interval 1.
         try insertSchedule(db, id: "s-strinterval", conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":"2"}}]
-            """)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":"2"}}]
+        """)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.map(\.id) == ["s-badfreq", "s-nodate", "s-strinterval"])
@@ -501,18 +500,18 @@ struct ScheduleFetchTests {
         }
     }
 
-    @Test func skipsInvalidEffectiveNextDate() async throws {
+    @Test func skipsInvalidEffectiveNextDate() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         // 20260950: month 9 has no day 50 — not a valid DayDate.
-        try insertSchedule(db, id: "s-baddate", localNextDate: 20260950, baseNextDate: 20260950)
+        try insertSchedule(db, id: "s-baddate", localNextDate: 20_260_950, baseNextDate: 20_260_950)
         try insertSchedule(db, id: "s-nulldate", localNextDate: nil, baseNextDate: nil)
 
         let schedules = try db.fetchPostableSchedules()
         #expect(schedules.isEmpty)
     }
 
-    @Test func missingScheduleTablesReturnsEmpty() async throws {
+    @Test func missingScheduleTablesReturnsEmpty() throws {
         let (db, url) = try makeDatabase(includeScheduleTables: false)
         defer { cleanup(url) }
 
@@ -527,28 +526,28 @@ struct ScheduleFetchTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
-                VALUES (?, 'acct-1', ?, -1500, ?, ?)
-                """, arguments: [id, date, schedule, tombstone])
+            INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+            VALUES (?, 'acct-1', ?, -1500, ?, ?)
+            """, arguments: [id, date, schedule, tombstone])
         }
     }
 
-    @Test func hasTransactionFindsExactAndLaterDates() async throws {
+    @Test func hasTransactionFindsExactAndLaterDates() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertTransaction(db, id: "t-1", schedule: "sched-1", date: 20260801)
+        try insertTransaction(db, id: "t-1", schedule: "sched-1", date: 20_260_801)
 
-        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20260801))
-        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20260715))
+        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20_260_801))
+        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20_260_715))
     }
 
-    @Test func hasTransactionIgnoresEarlierAndTombstonedMatches() async throws {
+    @Test func hasTransactionIgnoresEarlierAndTombstonedMatches() throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertTransaction(db, id: "t-old", schedule: "sched-1", date: 20260701)
-        try insertTransaction(db, id: "t-dead", schedule: "sched-1", date: 20260801, tombstone: 1)
-        try insertTransaction(db, id: "t-other", schedule: "sched-2", date: 20260801)
+        try insertTransaction(db, id: "t-old", schedule: "sched-1", date: 20_260_701)
+        try insertTransaction(db, id: "t-dead", schedule: "sched-1", date: 20_260_801, tombstone: 1)
+        try insertTransaction(db, id: "t-other", schedule: "sched-2", date: 20_260_801)
 
-        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20260801) == false)
+        #expect(try db.hasTransaction(scheduleId: "sched-1", onOrAfter: 20_260_801) == false)
     }
 }

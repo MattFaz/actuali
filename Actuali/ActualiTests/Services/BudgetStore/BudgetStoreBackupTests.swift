@@ -1,8 +1,7 @@
+@testable import Actuali
 import Foundation
 import GRDB
 import Testing
-
-@testable import Actuali
 
 @MainActor
 struct BudgetStoreBackupTests {
@@ -45,8 +44,8 @@ struct BudgetStoreBackupTests {
         defer { try? FileManager.default.removeItem(at: root) }
         try seedBudget(manager: manager, id: "b")
         store.currentBudgetId = "b"
-        store.configureForTesting(
-            database: try BudgetDatabase(path: manager.databasePath(for: "b")),
+        try store.configureForTesting(
+            database: BudgetDatabase(path: manager.databasePath(for: "b")),
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "0123456789abcdef")
         )
 
@@ -60,10 +59,10 @@ struct BudgetStoreBackupTests {
             .filter { $0.pathExtension == "zip" }
         #expect(zips.isEmpty)
     }
-    
-    // A restored budget (cloud identity kept, groupId nulled) must not get a
-    // sync client: the server still has the old group, so any sync would earn
-    // a 400 file-has-reset and an endless retry loop.
+
+    /// A restored budget (cloud identity kept, groupId nulled) must not get a
+    /// sync client: the server still has the old group, so any sync would earn
+    /// a 400 file-has-reset and an endless retry loop.
     @Test func loadSkipsSyncConfigurationWhenDetachedByRestore() async throws {
         let (store, manager, root) = try makeStore()
         defer { try? FileManager.default.removeItem(at: root) }

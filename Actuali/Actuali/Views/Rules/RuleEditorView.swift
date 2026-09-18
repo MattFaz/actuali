@@ -25,8 +25,8 @@ struct RuleEditorView: View {
     @State private var isSaving = false
 
     init(rule: Rule) {
-        ruleId = rule.id
-        isNew = rule.conditions.isEmpty && rule.actions.isEmpty
+        self.ruleId = rule.id
+        self.isNew = rule.conditions.isEmpty && rule.actions.isEmpty
         _stage = State(initialValue: rule.stage)
         _conditionsOp = State(initialValue: rule.conditionsOp)
         _conditions = State(initialValue: rule.conditions.map { Row(value: $0) })
@@ -101,7 +101,11 @@ struct RuleEditorView: View {
         }
         .alert("Couldn't Save Rule", isPresented: Binding(
             get: { failureMessage != nil },
-            set: { if !$0 { failureMessage = nil } }
+            set: {
+                if !$0 {
+                    failureMessage = nil
+                }
+            }
         )) {
             Button("OK") { failureMessage = nil }
         } message: {

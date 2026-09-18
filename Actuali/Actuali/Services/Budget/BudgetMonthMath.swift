@@ -6,7 +6,6 @@ import Foundation
 /// those exact semantics (including `addMonths` collapsing a day string to a
 /// month string) so ported engine code behaves identically.
 enum BudgetMonthMath {
-
     /// JS `Math.round`: half rounds toward +∞ (matters for negatives).
     static func jsRound(_ value: Double) -> Int {
         Int((value + 0.5).rounded(.down))
@@ -20,7 +19,7 @@ enum BudgetMonthMath {
     static func yearAndMonth(_ value: String) -> (year: Int, month: Int)? {
         let parts = value.split(separator: "-")
         guard parts.count >= 2, let year = Int(parts[0]), let month = Int(parts[1]),
-              (1...12).contains(month) else { return nil }
+              (1 ... 12).contains(month) else { return nil }
         return (year, month)
     }
 
@@ -61,7 +60,9 @@ enum BudgetMonthMath {
 
     /// Month-or-day string → DayDate (day 1 for months), upstream `_parse`.
     static func day(_ value: String) -> DayDate? {
-        if let date = DayDate(iso: value) { return date }
+        if let date = DayDate(iso: value) {
+            return date
+        }
         guard let (year, month) = yearAndMonth(value) else { return nil }
         return DayDate(year: year, month: month, day: 1)
     }

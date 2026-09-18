@@ -1,6 +1,6 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pins `Transaction.needsCategory(offBudgetAccountIds:)`, the shared rule
 /// behind the sync notification's "Needs a category" marker and the list
@@ -8,11 +8,11 @@ import Testing
 /// filter: split parents, off-budget accounts and transfers don't take a
 /// category — unless the transfer's other side is off-budget.
 struct TransactionNeedsCategoryTests {
-
     private func makeTransaction(categoryId: String? = nil, isParent: Bool = false,
                                  transferId: String? = nil,
-                                 transferAcct: String? = nil) -> Transaction {
-        Transaction(id: "t1", accountId: "acct1", date: 20260707, amount: -1250,
+                                 transferAcct: String? = nil) -> Transaction
+    {
+        Transaction(id: "t1", accountId: "acct1", date: 20_260_707, amount: -1250,
                     payeeId: nil, payeeName: nil, categoryId: categoryId,
                     categoryName: nil, notes: nil, cleared: false, reconciled: false,
                     transferId: transferId, isParent: isParent, parentId: nil,

@@ -1,6 +1,6 @@
 import Foundation
-import UserNotifications
 import os
+import UserNotifications
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "NewTransactionNotifier")
 
@@ -18,7 +18,6 @@ extension UNUserNotificationCenter: NotificationPosting {}
 /// background syncs both post it; NotificationRouter's willPresent shows the
 /// banner even while the app is open.
 enum NewTransactionNotifier {
-
     /// Stable so a newer summary replaces the previous one in Notification
     /// Center instead of stacking. Also used as the thread identifier.
     static let requestIdentifier = "com.mfazz.Actuali.newTransactions"
@@ -40,7 +39,8 @@ enum NewTransactionNotifier {
                        accountNames: [String: String] = [:],
                        offBudgetAccountIds: Set<String> = [],
                        settings: TransactionNotificationSettings = TransactionNotificationSettings(),
-                       center: any NotificationPosting = UNUserNotificationCenter.current()) async {
+                       center: any NotificationPosting = UNUserNotificationCenter.current()) async
+    {
         guard settings.isEnabled else { return }
         guard let request = makeRequest(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
@@ -69,7 +69,8 @@ enum NewTransactionNotifier {
                             narrowSymbol: Bool = false,
                             numberFormat: ActualNumberFormat = .commaDot,
                             accountNames: [String: String] = [:],
-                            offBudgetAccountIds: Set<String> = []) -> UNNotificationRequest? {
+                            offBudgetAccountIds: Set<String> = []) -> UNNotificationRequest?
+    {
         guard let content = makeContent(for: transactions, currencyCode: currencyCode,
                                         narrowSymbol: narrowSymbol,
                                         numberFormat: numberFormat,
@@ -86,7 +87,8 @@ enum NewTransactionNotifier {
                             narrowSymbol: Bool = false,
                             numberFormat: ActualNumberFormat = .commaDot,
                             accountNames: [String: String] = [:],
-                            offBudgetAccountIds: Set<String> = []) -> UNNotificationContent? {
+                            offBudgetAccountIds: Set<String> = []) -> UNNotificationContent?
+    {
         guard !transactions.isEmpty else { return nil }
 
         let content = UNMutableNotificationContent()
@@ -118,7 +120,8 @@ enum NewTransactionNotifier {
                              narrowSymbol: Bool,
                              numberFormat: ActualNumberFormat,
                              accountNames: [String: String],
-                             offBudgetAccountIds: Set<String>) -> String {
+                             offBudgetAccountIds: Set<String>) -> String
+    {
         var line = CurrencyAmountFormat.string(cents: transaction.amount,
                                                currencyCode: currencyCode,
                                                narrowSymbol: narrowSymbol,

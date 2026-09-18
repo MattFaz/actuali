@@ -10,7 +10,7 @@ struct WidgetSnapshotStore {
     let fileURL: URL
 
     init(containerURL: URL) {
-        fileURL = containerURL.appendingPathComponent("widget-snapshot.json")
+        self.fileURL = containerURL.appendingPathComponent("widget-snapshot.json")
     }
 
     /// nil when the app group container is unavailable — e.g. a provisioning

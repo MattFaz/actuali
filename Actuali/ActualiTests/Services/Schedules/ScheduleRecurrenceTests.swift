@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct ScheduleRecurrenceTests {
-
     private struct Fixture {
         let name: String
         let config: [String: Any]
@@ -65,25 +64,25 @@ struct ScheduleRecurrenceTests {
     /// wrong cadence. Absent or null interval stays 1 (upstream default).
     @Test func configRejectsNonIntegerInterval() {
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "interval": "2",
+            "frequency": "monthly", "start": "2026-01-01", "interval": "2"
         ]) == nil)
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01",
+            "frequency": "monthly", "start": "2026-01-01"
         ])?.interval == 1)
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "interval": NSNull(),
+            "frequency": "monthly", "start": "2026-01-01", "interval": NSNull()
         ])?.interval == 1)
     }
 
     @Test func configRejectsMalformedPatterns() {
         let badType: [String: Any] = [
             "frequency": "monthly", "start": "2026-01-01",
-            "patterns": [["type": "XX", "value": 1]],
+            "patterns": [["type": "XX", "value": 1]]
         ]
         #expect(RecurConfig(json: badType) == nil)
         let missingValue: [String: Any] = [
             "frequency": "monthly", "start": "2026-01-01",
-            "patterns": [["type": "day"]],
+            "patterns": [["type": "day"]]
         ]
         #expect(RecurConfig(json: missingValue) == nil)
     }
@@ -92,7 +91,7 @@ struct ScheduleRecurrenceTests {
         func config(patterns: [[String: Any]]) -> RecurConfig? {
             RecurConfig(json: ["frequency": "monthly", "start": "2026-01-01", "patterns": patterns])
         }
-        #expect(config(patterns: [["type": "TU", "value": 0]]) == nil)   // nth=0 weekday
+        #expect(config(patterns: [["type": "TU", "value": 0]]) == nil) // nth=0 weekday
         #expect(config(patterns: [["type": "day", "value": 0]]) == nil)
         #expect(config(patterns: [["type": "day", "value": 32]]) == nil)
         #expect(config(patterns: [["type": "day", "value": -32]]) == nil)
@@ -102,16 +101,16 @@ struct ScheduleRecurrenceTests {
 
     @Test func configRejectsBoundedEndModeWithoutBound() {
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date",
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date"
         ]) == nil)
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date", "endDate": "garbage",
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "on_date", "endDate": "garbage"
         ]) == nil)
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences",
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences"
         ]) == nil)
         #expect(RecurConfig(json: [
-            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences", "endOccurrences": 0,
+            "frequency": "monthly", "start": "2026-01-01", "endMode": "after_n_occurrences", "endOccurrences": 0
         ]) == nil)
     }
 
@@ -119,24 +118,23 @@ struct ScheduleRecurrenceTests {
         let full: [String: Any] = [
             "frequency": "monthly", "start": "2026-01-01",
             "patterns": [["type": "day", "value": -1], ["type": "FR", "value": 5], ["type": "day", "value": 31]],
-            "endMode": "after_n_occurrences", "endOccurrences": 3,
+            "endMode": "after_n_occurrences", "endOccurrences": 3
         ]
         #expect(RecurConfig(json: full) != nil)
         let onDate: [String: Any] = [
-            "frequency": "weekly", "start": "2026-01-07", "endMode": "on_date", "endDate": "2026-06-01",
+            "frequency": "weekly", "start": "2026-01-07", "endMode": "on_date", "endDate": "2026-06-01"
         ]
         #expect(RecurConfig(json: onDate) != nil)
     }
 }
 
 struct DayDateTests {
-
     @Test func invalidInputsReturnNil() {
         #expect(DayDate(iso: "not-a-date") == nil)
         #expect(DayDate(iso: "2026-02-30") == nil)
         #expect(DayDate(iso: "2026-00-10") == nil)
-        #expect(DayDate(yyyymmdd: 20260230) == nil)
-        #expect(DayDate(yyyymmdd: 20261301) == nil)
+        #expect(DayDate(yyyymmdd: 20_260_230) == nil)
+        #expect(DayDate(yyyymmdd: 20_261_301) == nil)
     }
 
     @Test func parsesLongerISOStrings() {
@@ -159,10 +157,10 @@ struct DayDateTests {
     }
 
     @Test func yyyymmddRoundTrip() {
-        let d = DayDate(yyyymmdd: 20260717)
-        #expect(d?.yyyymmdd == 20260717)
+        let d = DayDate(yyyymmdd: 20_260_717)
+        #expect(d?.yyyymmdd == 20_260_717)
         #expect(d?.iso == "2026-07-17")
-        #expect(DayDate(iso: "2026-07-17")?.yyyymmdd == 20260717)
+        #expect(DayDate(iso: "2026-07-17")?.yyyymmdd == 20_260_717)
     }
 
     @Test func comparableOrdering() {

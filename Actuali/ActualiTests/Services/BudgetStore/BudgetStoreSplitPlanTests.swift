@@ -1,13 +1,12 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 /// Pure validation/routing of split entry in `BudgetStore.plan(for:)`:
 /// a form with split lines resolves to `.split` with signed parent and
 /// child amounts, and malformed splits are rejected before any write.
 @MainActor
 struct BudgetStoreSplitPlanTests {
-
     private func form(
         type: TransactionType = .expense,
         amount: String = "10.00",

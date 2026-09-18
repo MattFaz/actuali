@@ -1,9 +1,8 @@
+@testable import Actuali
 import Foundation
 import Testing
-@testable import Actuali
 
 struct TransactionLocalizationTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func transactionFallbackLabelsMatchTheAppCatalog() {
@@ -117,17 +116,23 @@ struct TransactionLocalizationTests {
         count: Int, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english.replacingOccurrences(of: "Duplicate", with: "Delete"))
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english.replacingOccurrences(of: "Duplicate", with: "Delete"))
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french.replacingOccurrences(of: "Dupliquer", with: "Supprimer"))
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french.replacingOccurrences(of: "Dupliquer", with: "Supprimer"))
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese.replacingOccurrences(of: "Duplicar", with: "Excluir"))
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese.replacingOccurrences(of: "Duplicar", with: "Excluir"))
     }
 
     @Test(arguments: [
@@ -139,11 +144,14 @@ struct TransactionLocalizationTests {
         count: Int, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 
     @Test func ruleOperatorsMatchTheAppCatalog() {
