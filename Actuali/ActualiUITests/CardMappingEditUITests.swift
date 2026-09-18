@@ -23,13 +23,31 @@ final class CardMappingEditUITests: XCTestCase {
     /// Creates a mapping through the add sheet. The demo budget has no default
     /// account, so the sheet seeds the first open account (Chase Checking).
     @MainActor
+    private func typeText(_ text: String, into field: XCUIElement, in app: XCUIApplication) {
+        // On iOS 26+ the tap on a sheet's text field intermittently fails to
+        // make it first responder, and a follow-up typeText dies with
+        // "Neither element nor any descendant has keyboard focus". The
+        // software keyboard is the focus signal: re-tap until it shows.
+        for attempt in 1...3 {
+            if app.keyboards.firstMatch.exists { break }
+            if attempt > 1 {
+                field.tap()
+            }
+            _ = app.keyboards.firstMatch.waitForExistence(timeout: 3)
+        }
+        XCTAssertTrue(app.keyboards.firstMatch.exists,
+                      "keyboard did not appear after tapping \(field.identifier.isEmpty ? "field" : field.identifier)")
+        field.typeText(text)
+    }
+
+    @MainActor
     private func addMapping(_ keyword: String, in app: XCUIApplication) {
         app.buttons["Add Card Mapping"].tap()
 
         let field = app.textFields["cardMappings.keywordField"]
         XCTAssertTrue(field.waitForExistence(timeout: 5), "keyword field not found")
         field.tap()
-        field.typeText(keyword)
+        typeText(keyword, into: field, in: app)
         let saveButton = app.buttons.matching(NSPredicate(format: "label BEGINSWITH 'Save'")).firstMatch
         _ = saveButton.waitForExistence(timeout: 5)
         let savePredicate = NSPredicate(format: "isEnabled == true")
@@ -94,7 +112,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(firstField.waitForExistence(timeout: 5), "keyword field not found")
         XCTAssertTrue(firstField.isHittable, "keyword field is not hittable")
         firstField.tap()
-        firstField.typeText("246813")
+        typeText("246813", into: firstField, in: app)
         let firstValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '246813'"), object: firstField
         )
@@ -104,7 +122,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(secondField.waitForExistence(timeout: 5), "second keyword field not found")
         XCTAssertTrue(secondField.isHittable, "second keyword field is not hittable")
         secondField.tap()
-        secondField.typeText("975310")
+        typeText("975310", into: secondField, in: app)
         let secondValue = XCTNSPredicateExpectation(
             predicate: NSPredicate(format: "value == '975310'"), object: secondField
         )
@@ -121,7 +139,7 @@ final class CardMappingEditUITests: XCTestCase {
         XCTAssertTrue(replacementField.waitForExistence(timeout: 5), "replacement keyword field not found")
         XCTAssertTrue(replacementField.isHittable, "replacement keyword field is not hittable")
         replacementField.tap()
-        replacementField.typeText("975310")
+        typeText("975310", into: replacementField, in: app)
 
         app.buttons["Save"].tap()
         XCTAssertTrue(app.navigationBars["Add Mapping"].waitForNonExistence(timeout: 5),
