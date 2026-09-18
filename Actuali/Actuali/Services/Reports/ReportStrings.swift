@@ -18,7 +18,7 @@ enum ReportStrings {
         let identifiers = [
             locale.identifier,
             locale.identifier.replacingOccurrences(of: "_", with: "-"),
-            locale.language.languageCode?.identifier ?? locale.identifier
+            locale.language.languageCode?.identifier ?? locale.identifier,
         ]
         for identifier in identifiers {
             if let path = bundle.path(forResource: identifier, ofType: "lproj"),

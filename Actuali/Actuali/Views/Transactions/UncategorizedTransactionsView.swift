@@ -23,7 +23,6 @@ struct UncategorizedTransactionsView: View {
         return transactions.filter { matcher.matches($0) }
     }
 
-    @ViewBuilder
     private func transactionRow(_ transaction: Transaction, showDate: Bool) -> some View {
         Button {
             if budgetStore.uncategorizedTapAction.opensEditor(for: transaction) {
@@ -73,7 +72,7 @@ struct UncategorizedTransactionsView: View {
 
     var body: some View {
         Group {
-            if transactions.isEmpty && loaded {
+            if transactions.isEmpty, loaded {
                 ContentUnavailableView(
                     "All Categorized",
                     systemImage: "checkmark.circle",
@@ -81,7 +80,7 @@ struct UncategorizedTransactionsView: View {
                 )
             } else {
                 List {
-                    if !transactions.isEmpty && filteredTransactions.isEmpty {
+                    if !transactions.isEmpty, filteredTransactions.isEmpty {
                         Text("No matching transactions")
                             .foregroundStyle(.secondary)
                     }

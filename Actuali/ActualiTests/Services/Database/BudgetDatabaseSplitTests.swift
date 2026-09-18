@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Split transaction behavior at the database layer (GH #47):
@@ -10,7 +10,6 @@ import GRDB
 /// - `insertSplit` writes parent + children + CRDT messages atomically
 @MainActor
 struct BudgetDatabaseSplitTests {
-
     /// Sendable projection of the transaction columns under test, decoded inside
     /// the `read` closure so no non-Sendable `Row` crosses the actor boundary.
     private struct SplitRow: FetchableRecord {
@@ -253,7 +252,7 @@ struct BudgetDatabaseSplitTests {
         #expect(txns.first?.splitPortions == [
             .init(categoryName: "Fun", amount: -6000),
             .init(categoryName: "Food", amount: -3000),
-            .init(categoryName: "Food", amount: -1000)
+            .init(categoryName: "Food", amount: -1000),
         ])
     }
 
@@ -274,7 +273,7 @@ struct BudgetDatabaseSplitTests {
         let txns = try await db.fetchTransactions()
         #expect(txns.first?.splitPortions == [
             .init(categoryName: nil, amount: -6000),
-            .init(categoryName: nil, amount: -4000)
+            .init(categoryName: nil, amount: -4000),
         ])
     }
 
@@ -334,7 +333,7 @@ struct BudgetDatabaseSplitTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260610,
+            date: 20_260_610,
             amount: amount,
             payeeId: payeeId,
             payeeName: nil,
@@ -377,7 +376,7 @@ struct BudgetDatabaseSplitTests {
         let parent = transaction(id: "parent", amount: -1000, payeeId: "payee-market", isParent: true, sortOrder: 100)
         let children = [
             transaction(id: "c-1", amount: -600, categoryId: "cat-food", parentId: "parent", sortOrder: 99),
-            transaction(id: "c-2", amount: -400, categoryId: "cat-fun", parentId: "parent", sortOrder: 98)
+            transaction(id: "c-2", amount: -400, categoryId: "cat-fun", parentId: "parent", sortOrder: 98),
         ]
         let crdtMessages = messages(for: [parent] + children)
 
@@ -387,9 +386,9 @@ struct BudgetDatabaseSplitTests {
         let queue = try DatabaseQueue(path: url.path)
         let rows = try await queue.read { conn in
             try SplitRow.fetchAll(conn, sql: """
-                SELECT id, isParent, isChild, parent_id, category, amount, sort_order
-                FROM transactions ORDER BY sort_order DESC
-                """)
+            SELECT id, isParent, isChild, parent_id, category, amount, sort_order
+            FROM transactions ORDER BY sort_order DESC
+            """)
         }
         #expect(rows.count == 3)
         #expect(rows[0].id == "parent")
@@ -427,8 +426,8 @@ struct BudgetDatabaseSplitTests {
 
         let queue = try DatabaseQueue(path: url.path)
         let counts = try await queue.read { conn in
-            (try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
-             try Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
+            try (Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM transactions") ?? -1,
+                 Int.fetchOne(conn, sql: "SELECT COUNT(*) FROM messages_crdt") ?? -1)
         }
         #expect(counts == (0, 0))
     }

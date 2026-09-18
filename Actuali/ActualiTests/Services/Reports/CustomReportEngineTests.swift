@@ -11,9 +11,9 @@ struct CustomReportEngineTests {
         return c.date(from: DateComponents(year: 2026, month: 7, day: 11))!
     }()
 
-    // Two expense groups, two categories each; "Secret" hidden category for
-    // visibility tests; an income group so Budgeted can skip it. Payees and
-    // accounts for the Payee/Account groupings.
+    /// Two expense groups, two categories each; "Secret" hidden category for
+    /// visibility tests; an income group so Budgeted can skip it. Payees and
+    /// accounts for the Payee/Account groupings.
     private var reportContext: CustomReportEngine.ReportContext {
         CustomReportEngine.ReportContext(
             categories: [
@@ -38,7 +38,8 @@ struct CustomReportEngineTests {
                 Account(id: "a1", name: "Checking", type: .checking, offBudget: false, closed: false, sortOrder: 0, balance: 0),
                 Account(id: "a-savings", name: "Savings", type: .savings, offBudget: false, closed: false, sortOrder: 1, balance: 0),
                 Account(id: "a-off", name: "Brokerage", type: .investment, offBudget: true, closed: false, sortOrder: 2, balance: 0),
-            ])
+            ]
+        )
     }
 
     private func tx(_ id: String, date: Int, amount: Int, category: String?,
@@ -67,16 +68,17 @@ struct CustomReportEngineTests {
             includeCurrent: true, showEmpty: showEmpty,
             showOffBudget: showOffBudget, showHidden: false, showUncategorized: showUncategorized,
             sortBy: sortBy, showTrendLines: showTrendLines, trimIntervals: trimIntervals,
-            conditions: conditions, conditionsOp: "and")
+            conditions: conditions, conditionsOp: "and"
+        )
     }
 
     private var sampleTxs: [Transaction] {
         [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),   // Jun: food 100
-            tx("2", date: 20260615, amount: -20_000, category: "c-rent"),   // Jun: rent 200
-            tx("3", date: 20260701, amount: -5_000,  category: "c-fun"),    // Jul: fun 50
-            tx("4", date: 20260702, amount: 30_000,  category: nil),        // Jul: income (uncat)
-            tx("5", date: 20260703, amount: -1_000,  category: "c-hidden"), // hidden, dropped
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"), // Jun: food 100
+            tx("2", date: 20_260_615, amount: -20000, category: "c-rent"), // Jun: rent 200
+            tx("3", date: 20_260_701, amount: -5000, category: "c-fun"), // Jul: fun 50
+            tx("4", date: 20_260_702, amount: 30000, category: nil), // Jul: income (uncat)
+            tx("5", date: 20_260_703, amount: -1000, category: "c-hidden"), // hidden, dropped
         ]
     }
 
@@ -86,13 +88,14 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Category", balance: "Payment",
                            interval: "Monthly", graph: "BarGraph", sortBy: "name"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .bars(let bars, let signed) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
         #expect(signed == false)
-        #expect(bars.map(\.label) == ["Food", "Fun", "Rent"])       // name sort
-        #expect(bars.map(\.valueUnits) == [100.0, 50.0, 200.0])    // |debts|
+        #expect(bars.map(\.label) == ["Food", "Fun", "Rent"]) // name sort
+        #expect(bars.map(\.valueUnits) == [100.0, 50.0, 200.0]) // |debts|
     }
 
     @Test func savedLostBarsPerInterval() {
@@ -103,7 +106,8 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net",
                            interval: "Monthly", graph: "BarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: englishLocale)
+            filterContext: .empty, today: today, locale: englishLocale
+        )
         guard case .bars(let bars, let signed) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -117,12 +121,13 @@ struct CustomReportEngineTests {
             config: config(mode: "time", groupBy: "Group", balance: "Payment",
                            interval: "Monthly", graph: "StackedBarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: englishLocale)
+            filterContext: .empty, today: today, locale: englishLocale
+        )
         guard case .stacked(let s) = data.kind else {
             Issue.record("expected stacked, got \(data.kind)"); return
         }
         #expect(s.intervalLabels == ["Jun '26", "Jul '26"])
-        #expect(s.seriesNames == ["Living", "Play"])   // desc by total: 300 vs 50
+        #expect(s.seriesNames == ["Living", "Play"]) // desc by total: 300 vs 50
         #expect(s.values == [[300.0, 0.0], [0.0, 50.0]])
     }
 
@@ -131,8 +136,9 @@ struct CustomReportEngineTests {
         let data = CustomReportEngine.compute(
             config: config(mode: "time", groupBy: "Group", balance: "Payment",
                            interval: "Weekly", graph: "StackedBarGraph"),
-            transactions: [tx("1", date: 20260701, amount: -5_000, category: "c-fun")],
-            reportContext: reportContext, filterContext: .empty, today: today)
+            transactions: [tx("1", date: 20_260_701, amount: -5000, category: "c-fun")],
+            reportContext: reportContext, filterContext: .empty, today: today
+        )
         guard case .stacked(let s) = data.kind else {
             Issue.record("expected stacked, got \(data.kind)"); return
         }
@@ -144,9 +150,10 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Payment",
                            interval: "Yearly", graph: "BarGraph",
                            staticRange: ("2026-01-01", "2026-12-31")),
-            transactions: [tx("1", date: 20260701, amount: -5_000, category: "c-fun")],
+            transactions: [tx("1", date: 20_260_701, amount: -5000, category: "c-fun")],
             reportContext: reportContext, filterContext: .empty, today: today,
-            locale: Locale(identifier: "th_TH"))
+            locale: Locale(identifier: "th_TH")
+        )
         guard case .bars(let bars, _) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -157,7 +164,8 @@ struct CustomReportEngineTests {
         let barLine = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "Category", balance: "Payment",
                            interval: "Monthly", graph: "BarLineGraph"),
-            transactions: [], reportContext: reportContext, filterContext: .empty, today: today)
+            transactions: [], reportContext: reportContext, filterContext: .empty, today: today
+        )
         guard case .unsupported(let reason) = barLine.kind else {
             Issue.record("expected unsupported, got \(barLine.kind)"); return
         }
@@ -165,7 +173,8 @@ struct CustomReportEngineTests {
 
         let missing = CustomReportEngine.compute(
             config: nil, transactions: [], reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .unsupported = missing.kind else {
             Issue.record("expected unsupported for missing config"); return
         }
@@ -176,7 +185,8 @@ struct CustomReportEngineTests {
             config: config(mode: "time", groupBy: "Category", balance: "Net",
                            interval: "Monthly", graph: "TableGraph", sortBy: "budget"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .table(let rows) = data.kind else {
             Issue.record("expected table, got \(data.kind)"); return
         }
@@ -193,9 +203,9 @@ struct CustomReportEngineTests {
         var ctx = reportContext
         ctx.offBudgetAccountIds = ["a-off"]
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),                    // Food 100
-            tx("2", date: 20260615, amount: -4_000,  category: nil,     account: "a-off"),   // off-budget 40
-            tx("3", date: 20260620, amount: -1_000,  category: "c-fun", account: "a-off"),   // off-budget 10
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"), // Food 100
+            tx("2", date: 20_260_615, amount: -4000, category: nil, account: "a-off"), // off-budget 40
+            tx("3", date: 20_260_620, amount: -1000, category: "c-fun", account: "a-off"), // off-budget 10
         ]
         func run(groupBy: String) -> CustomReportData {
             CustomReportEngine.compute(
@@ -203,7 +213,8 @@ struct CustomReportEngineTests {
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                showOffBudget: true),
                 transactions: txs, reportContext: ctx, filterContext: .empty, today: today,
-                locale: englishLocale)
+                locale: englishLocale
+            )
         }
         guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
               case .bars(let byGroup, _) = run(groupBy: "Group").kind,
@@ -226,8 +237,8 @@ struct CustomReportEngineTests {
         // showUncategorized=true it lands in the "Uncategorized" row — and
         // in the combined group under groupBy Group. It never vanishes.
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
-            tx("2", date: 20260615, amount: -4_000,  category: "c-ghost"),  // dangling
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_615, amount: -4000, category: "c-ghost"), // dangling
         ]
         func run(groupBy: String) -> CustomReportData {
             CustomReportEngine.compute(
@@ -235,7 +246,8 @@ struct CustomReportEngineTests {
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                showUncategorized: true),
                 transactions: txs, reportContext: reportContext, filterContext: .empty,
-                today: today, locale: englishLocale)
+                today: today, locale: englishLocale
+            )
         }
         guard case .bars(let byCategory, _) = run(groupBy: "Category").kind,
               case .bars(let byGroup, _) = run(groupBy: "Group").kind else {
@@ -252,7 +264,8 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net",
                            interval: "Monthly", graph: "TableGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: englishLocale)
+            filterContext: .empty, today: today, locale: englishLocale
+        )
         guard case .table(let rows) = data.kind else {
             Issue.record("expected table, got \(data.kind)"); return
         }
@@ -267,14 +280,15 @@ struct CustomReportEngineTests {
         // tx without a payee lands nowhere; transfer payees show the linked
         // account's name (v_payees).
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food", payee: "p-store"),
-            tx("2", date: 20260615, amount: -4_000,  category: "c-rent", payee: "p-xfer"),
-            tx("3", date: 20260701, amount: -5_000,  category: "c-fun"),   // no payee
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food", payee: "p-store"),
+            tx("2", date: 20_260_615, amount: -4000, category: "c-rent", payee: "p-xfer"),
+            tx("3", date: 20_260_701, amount: -5000, category: "c-fun"), // no payee
         ]
         let data = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "Payee", balance: "Payment",
                            interval: "Monthly", graph: "BarGraph", sortBy: "budget"),
-            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+        )
         guard case .bars(let bars, _) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -286,15 +300,16 @@ struct CustomReportEngineTests {
         var ctx = reportContext
         ctx.offBudgetAccountIds = ["a-off"]
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
-            tx("2", date: 20260615, amount: -4_000,  category: nil, account: "a-off"),
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_615, amount: -4000, category: nil, account: "a-off"),
         ]
         func run(showOffBudget: Bool) -> [CustomReportData.Bar] {
             let data = CustomReportEngine.compute(
                 config: config(mode: "total", groupBy: "Account", balance: "Payment",
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                showOffBudget: showOffBudget),
-                transactions: txs, reportContext: ctx, filterContext: .empty, today: today)
+                transactions: txs, reportContext: ctx, filterContext: .empty, today: today
+            )
             guard case .bars(let bars, _) = data.kind else { return [] }
             return bars
         }
@@ -311,14 +326,15 @@ struct CustomReportEngineTests {
         // under Net Payment and 50 under Net Deposit; per-interval values
         // still split by bucket.
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
-            tx("2", date: 20260701, amount: 15_000,  category: "c-food"),
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_701, amount: 15000, category: "c-food"),
         ]
         func run(balance: String, graph: String) -> CustomReportData.Kind {
             CustomReportEngine.compute(
                 config: config(mode: graph == "BarGraph" ? "total" : "time", groupBy: "Category",
                                balance: balance, interval: "Monthly", graph: graph),
-                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today).kind
+                transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+            ).kind
         }
         guard case .bars(let payment, _) = run(balance: "Net Payment", graph: "BarGraph"),
               case .bars(let deposit, _) = run(balance: "Net Deposit", graph: "BarGraph"),
@@ -337,7 +353,8 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net Payment",
                            interval: "Monthly", graph: "BarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .bars(let bars, let signed) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -352,18 +369,19 @@ struct CustomReportEngineTests {
         // and only category / category_group conditions apply.
         var ctx = reportContext
         ctx.budgetEntries = [
-            BudgetAnalysisBudgetEntry(month: 202605, categoryId: "c-food", amountCents: 99_900),   // before range
-            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-food", amountCents: 50_000),
-            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-rent", amountCents: 120_000),
-            BudgetAnalysisBudgetEntry(month: 202607, categoryId: "c-food", amountCents: 50_000),
-            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-salary", amountCents: 300_000), // income
+            BudgetAnalysisBudgetEntry(month: 202_605, categoryId: "c-food", amountCents: 99900), // before range
+            BudgetAnalysisBudgetEntry(month: 202_606, categoryId: "c-food", amountCents: 50000),
+            BudgetAnalysisBudgetEntry(month: 202_606, categoryId: "c-rent", amountCents: 120_000),
+            BudgetAnalysisBudgetEntry(month: 202_607, categoryId: "c-food", amountCents: 50000),
+            BudgetAnalysisBudgetEntry(month: 202_606, categoryId: "c-salary", amountCents: 300_000), // income
         ]
         func run(conditions: [WidgetRuleCondition]?) -> [CustomReportData.Bar] {
             let data = CustomReportEngine.compute(
                 config: config(mode: "total", groupBy: "Category", balance: "Budgeted",
                                interval: "Monthly", graph: "BarGraph", sortBy: "budget",
                                conditions: conditions),
-                transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today)
+                transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today
+            )
             guard case .bars(let bars, _) = data.kind else { return [] }
             return bars
         }
@@ -381,12 +399,13 @@ struct CustomReportEngineTests {
         // earliest transaction). That is an empty chart, not a trap.
         var ctx = reportContext
         ctx.budgetEntries = [
-            BudgetAnalysisBudgetEntry(month: 202606, categoryId: "c-food", amountCents: 50_000),
+            BudgetAnalysisBudgetEntry(month: 202_606, categoryId: "c-food", amountCents: 50000),
         ]
         let data = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "Category", balance: "Budgeted",
                            interval: "Monthly", graph: "BarGraph", dateRange: "Last year"),
-            transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today)
+            transactions: sampleTxs, reportContext: ctx, filterContext: .empty, today: today
+        )
         guard case .bars(let bars, _) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -402,7 +421,8 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Payment",
                            interval: "Monthly", graph: "DonutGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: englishLocale)
+            filterContext: .empty, today: today, locale: englishLocale
+        )
         guard case .donut(let slices, let groups) = data.kind else {
             Issue.record("expected donut, got \(data.kind)"); return
         }
@@ -416,12 +436,13 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Category", balance: "Payment",
                            interval: "Monthly", graph: "DonutGraph", showEmpty: true),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .donut(let slices, let groups) = data.kind else {
             Issue.record("expected donut, got \(data.kind)"); return
         }
         #expect(groups.isEmpty)
-        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"])   // desc; empties gone
+        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"]) // desc; empties gone
         #expect(slices.map(\.valueUnits) == [200.0, 100.0, 50.0])
         #expect(slices.allSatisfy { $0.group == nil })
     }
@@ -431,13 +452,14 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "CategoryGroup", balance: "Payment",
                            interval: "Monthly", graph: "DonutGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today)
+            filterContext: .empty, today: today
+        )
         guard case .donut(let slices, let groups) = data.kind else {
             Issue.record("expected donut, got \(data.kind)"); return
         }
-        #expect(groups.map(\.label) == ["Living", "Play"])       // desc: 300 vs 50
+        #expect(groups.map(\.label) == ["Living", "Play"]) // desc: 300 vs 50
         #expect(groups.map(\.valueUnits) == [300.0, 50.0])
-        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"])  // grouped, desc within group
+        #expect(slices.map(\.label) == ["Rent", "Food", "Fun"]) // grouped, desc within group
         #expect(slices.map(\.group) == [0, 0, 1])
         for (gi, group) in groups.enumerated() {
             let members = slices.filter { $0.group == gi }.map(\.valueUnits).reduce(0, +)
@@ -449,9 +471,10 @@ struct CustomReportEngineTests {
         let data = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "CategoryGroup", balance: "Payment",
                            interval: "Monthly", graph: "DonutGraph", showUncategorized: true),
-            transactions: [tx("uncategorized", date: 20260701, amount: -5_000, category: nil)],
+            transactions: [tx("uncategorized", date: 20_260_701, amount: -5000, category: nil)],
             reportContext: reportContext, filterContext: .empty, today: today,
-            locale: Locale(identifier: "fr_FR"), bundle: Bundle.main)
+            locale: Locale(identifier: "fr_FR"), bundle: Bundle.main
+        )
         guard case .donut(_, let groups) = data.kind else {
             Issue.record("expected donut, got \(data.kind)"); return
         }
@@ -466,7 +489,8 @@ struct CustomReportEngineTests {
                 config: config(mode: "time", groupBy: "Category", balance: "Payment",
                                interval: "Monthly", graph: "LineGraph", showTrendLines: showTrendLines),
                 transactions: sampleTxs, reportContext: reportContext,
-                filterContext: .empty, today: today).kind
+                filterContext: .empty, today: today
+            ).kind
         }
         guard case .lines(let plain, let noTrends) = run(showTrendLines: false),
               case .lines(let withTrends, let trends) = run(showTrendLines: true) else {
@@ -496,7 +520,8 @@ struct CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Payment",
                            interval: "Monthly", graph: "AreaGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: englishLocale)
+            filterContext: .empty, today: today, locale: englishLocale
+        )
         guard case .area(let points) = data.kind else {
             Issue.record("expected area, got \(data.kind)"); return
         }
@@ -509,8 +534,8 @@ struct CustomReportEngineTests {
     @Test func trimIntervalsDropsEmptyEdges() {
         // Static Mar–Aug range with activity only in May and June.
         let txs = [
-            tx("1", date: 20260510, amount: -10_000, category: "c-food"),
-            tx("2", date: 20260620, amount: -5_000,  category: "c-fun"),
+            tx("1", date: 20_260_510, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_620, amount: -5000, category: "c-fun"),
         ]
         func run(trim: Bool, groupBy: String) -> [String] {
             let data = CustomReportEngine.compute(
@@ -518,7 +543,8 @@ struct CustomReportEngineTests {
                                interval: "Monthly", graph: groupBy == "Interval" ? "BarGraph" : "StackedBarGraph",
                                trimIntervals: trim, staticRange: ("2026-03-01", "2026-08-31")),
                 transactions: txs, reportContext: reportContext, filterContext: .empty,
-                today: today, locale: englishLocale)
+                today: today, locale: englishLocale
+            )
             switch data.kind {
             case .stacked(let s): return s.intervalLabels
             case .bars(let bars, _): return bars.map(\.label)
@@ -534,14 +560,15 @@ struct CustomReportEngineTests {
         // Upstream sortData compares the signed metric, so under Net the
         // biggest inflow comes first and the biggest outflow last.
         let txs = [
-            tx("1", date: 20260601, amount: -10_000, category: "c-food"),
-            tx("2", date: 20260601, amount: 25_000,  category: "c-rent"),
-            tx("3", date: 20260601, amount: -5_000,  category: "c-fun"),
+            tx("1", date: 20_260_601, amount: -10000, category: "c-food"),
+            tx("2", date: 20_260_601, amount: 25000, category: "c-rent"),
+            tx("3", date: 20_260_601, amount: -5000, category: "c-fun"),
         ]
         let data = CustomReportEngine.compute(
             config: config(mode: "total", groupBy: "Category", balance: "Net",
                            interval: "Monthly", graph: "BarGraph"),
-            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today)
+            transactions: txs, reportContext: reportContext, filterContext: .empty, today: today
+        )
         guard case .bars(let bars, _) = data.kind else {
             Issue.record("expected bars, got \(data.kind)"); return
         }
@@ -558,17 +585,18 @@ struct CustomReportEngineTests {
             Category(id: "c-cafe-accent", name: "Café", groupId: "g-living", isIncome: false, hidden: false, sortOrder: 3),
         ]
         let transactions = [
-            tx("zebra", date: 20260701, amount: -100, category: "c-zebra"),
-            tx("angstrom", date: 20260701, amount: -100, category: "c-angstrom"),
-            tx("cafe", date: 20260701, amount: -100, category: "c-cafe"),
-            tx("cafe-accent", date: 20260701, amount: -100, category: "c-cafe-accent"),
+            tx("zebra", date: 20_260_701, amount: -100, category: "c-zebra"),
+            tx("angstrom", date: 20_260_701, amount: -100, category: "c-angstrom"),
+            tx("cafe", date: 20_260_701, amount: -100, category: "c-cafe"),
+            tx("cafe-accent", date: 20_260_701, amount: -100, category: "c-cafe-accent"),
         ]
         func names(_ locale: Locale) -> [String] {
             let data = CustomReportEngine.compute(
                 config: config(mode: "total", groupBy: "Category", balance: "Payment",
                                interval: "Monthly", graph: "BarGraph", sortBy: "name"),
                 transactions: transactions, reportContext: context,
-                filterContext: .empty, today: today, locale: locale)
+                filterContext: .empty, today: today, locale: locale
+            )
             guard case .bars(let bars, _) = data.kind else { return [] }
             return bars.map(\.label)
         }
@@ -586,7 +614,8 @@ struct CustomReportEngineTests {
         for (format, expected) in arguments {
             #expect(CustomReportChartAccessibility.amount(
                 units: 1000.33, numberFormat: format, currencyCode: "USD",
-                narrowSymbol: true, locale: Locale(identifier: "en_US")) == expected)
+                narrowSymbol: true, locale: Locale(identifier: "en_US")
+            ) == expected)
         }
     }
 
@@ -594,10 +623,12 @@ struct CustomReportEngineTests {
         let locale = Locale(identifier: "en_US")
         #expect(ReportCurrencyAxisFormatting.label(
             units: 1000.33, numberFormat: .commaDot, currencyCode: "USD",
-            narrowSymbol: true, locale: locale) == "$1,000.33")
+            narrowSymbol: true, locale: locale
+        ) == "$1,000.33")
         #expect(ReportCurrencyAxisFormatting.label(
             units: 1000.33, numberFormat: .dotComma, currencyCode: "USD",
-            narrowSymbol: true, locale: locale) == "$1.000,33")
+            narrowSymbol: true, locale: locale
+        ) == "$1.000,33")
     }
 
     @Test func reportCurrencyAxisPreservesHiddenBalanceSemantics() {
@@ -610,34 +641,41 @@ struct CustomReportEngineTests {
         let locale = Locale(identifier: "en_US")
         let bars = CustomReportChartAccessibility.rows(
             for: .bars([.init(label: "Food", valueUnits: 12.34)], signed: false),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(bars == [.init(series: nil, label: "Food", value: "$12.34")])
 
         let stacked = CustomReportChartAccessibility.rows(
             for: .stacked(.init(intervalLabels: ["Jun '26"], seriesNames: ["Living"], values: [[12.34]])),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(stacked == [.init(series: "Living", label: "Jun '26", value: "$12.34")])
 
         let lines = CustomReportChartAccessibility.rows(
             for: .lines(.init(intervalLabels: ["Jun '26"], seriesNames: ["Living"], values: [[12.34]]), trends: []),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(lines == stacked)
 
         let area = CustomReportChartAccessibility.rows(
             for: .area([.init(label: "Jun '26", valueUnits: 12.34)]),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(area == [.init(series: nil, label: "Jun '26", value: "$12.34")])
 
         let oneRing = CustomReportChartAccessibility.rows(
             for: .donut(slices: [.init(label: "Food", valueUnits: 12.34, group: nil)], groups: []),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(oneRing == [.init(series: nil, label: "Food", value: "$12.34")])
 
         let twoRing = CustomReportChartAccessibility.rows(
             for: .donut(
                 slices: [.init(label: "Food", valueUnits: 12.34, group: 0)],
-                groups: [.init(label: "Living", valueUnits: 12.34)]),
-            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale)
+                groups: [.init(label: "Living", valueUnits: 12.34)]
+            ),
+            numberFormat: format, currencyCode: "USD", narrowSymbol: true, locale: locale
+        )
         #expect(twoRing == [
             .init(series: nil, label: "Living", value: "$12.34"),
             .init(series: "Living", label: "Food", value: "$12.34"),
@@ -651,7 +689,8 @@ extension CustomReportEngineTests {
             config: config(mode: "total", groupBy: "Interval", balance: "Net",
                            interval: "Yearly", graph: "BarGraph"),
             transactions: sampleTxs, reportContext: reportContext,
-            filterContext: .empty, today: today, locale: Locale(identifier: "th_TH"))
+            filterContext: .empty, today: today, locale: Locale(identifier: "th_TH")
+        )
         guard case .bars(let bars, _) = data.kind else { Issue.record("Expected bars"); return }
         #expect(bars.map(\.label) == ["2026"])
     }

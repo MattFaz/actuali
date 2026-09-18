@@ -6,7 +6,6 @@ import XCTest
 /// flow has nothing to dismiss to, so its Cancel resets the form and routes
 /// to the Start Page tab instead.
 final class AddTransactionCancelUITests: XCTestCase {
-
     /// Types an amount, drops the keyboard the way the form offers (the Done
     /// bar above the decimal pad), then taps the Cancel row at the foot of the
     /// form — Cancel lives below the save button now, not in the navigation
@@ -30,7 +29,7 @@ final class AddTransactionCancelUITests: XCTestCase {
         XCTAssertTrue(cancel.waitForExistence(timeout: 5),
                       "tab-hosted add flow has no Cancel button")
         var scrollsLeft = 5
-        while !cancel.isHittable && scrollsLeft > 0 {
+        while !cancel.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -54,7 +53,7 @@ final class AddTransactionCancelUITests: XCTestCase {
     }
 
     @MainActor
-    func testCancelReturnsToStartPageAndClearsTheForm() throws {
+    func testCancelReturnsToStartPageAndClearsTheForm() {
         let app = XCUIApplication()
         // -startTab feeds UserDefaults via the argument domain, the same key
         // the Settings Start Page picker persists.
@@ -72,7 +71,7 @@ final class AddTransactionCancelUITests: XCTestCase {
     }
 
     @MainActor
-    func testCancelStaysPutWhenStartPageIsAddTransaction() throws {
+    func testCancelStaysPutWhenStartPageIsAddTransaction() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2", "-startTab", "addTransaction"]
         app.launch()

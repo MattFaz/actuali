@@ -8,7 +8,6 @@ import Testing
 /// balance-adjustment transaction.
 @MainActor
 struct BudgetStoreReconciliationTests {
-
     @Test func lockedReconciledMessageUsesPluralLocalization() {
         let bundle = Bundle(identifier: "com.mfazz.ActualiOS") ?? .main
         #expect(BudgetStore.lockedReconciledMessage(
@@ -34,76 +33,76 @@ struct BudgetStoreReconciliationTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                )
-                """)
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            )
+            """)
             // The split cascade reads children via fetchChildTransactions,
             // whose display joins touch these three tables.
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    transfer_acct TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE category_mapping (
-                    id TEXT PRIMARY KEY,
-                    transferId TEXT
-                )
-                """)
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Store wired to a real database and sync client. The server client is
@@ -134,14 +133,14 @@ struct BudgetStoreReconciliationTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions
-                    (id, acct, amount, date, cleared, reconciled, tombstone, isParent, isChild, parent_id, sort_order)
-                VALUES (?, ?, ?, 20260701, ?, ?, ?, ?, ?, ?, 1)
-                """, arguments: [
-                    id, acct, amount,
-                    cleared ? 1 : 0, reconciled ? 1 : 0, tombstone ? 1 : 0,
-                    isParent ? 1 : 0, parentId != nil ? 1 : 0, parentId
-                ])
+            INSERT INTO transactions
+                (id, acct, amount, date, cleared, reconciled, tombstone, isParent, isChild, parent_id, sort_order)
+            VALUES (?, ?, ?, 20260701, ?, ?, ?, ?, ?, ?, 1)
+            """, arguments: [
+                id, acct, amount,
+                cleared ? 1 : 0, reconciled ? 1 : 0, tombstone ? 1 : 0,
+                isParent ? 1 : 0, parentId != nil ? 1 : 0, parentId,
+            ])
         }
     }
 
@@ -178,7 +177,7 @@ struct BudgetStoreReconciliationTests {
         Transaction(
             id: id,
             accountId: "acct-1",
-            date: 20260701,
+            date: 20_260_701,
             amount: amount,
             payeeId: nil,
             payeeName: nil,
@@ -203,7 +202,7 @@ struct BudgetStoreReconciliationTests {
         defer { cleanup(url) }
 
         try insertRow(url, id: "t1", amount: -1000, cleared: true)
-        try insertRow(url, id: "t2", amount: -500, cleared: false)            // uncleared: excluded
+        try insertRow(url, id: "t2", amount: -500, cleared: false) // uncleared: excluded
         try insertRow(url, id: "t3", amount: 300, cleared: true, reconciled: true) // reconciled still counts
         try insertRow(url, id: "t4", acct: "acct-2", amount: -9999, cleared: true) // other account
         try insertRow(url, id: "t5", amount: -800, cleared: true, tombstone: true) // deleted

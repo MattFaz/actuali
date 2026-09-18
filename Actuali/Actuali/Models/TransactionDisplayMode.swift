@@ -4,12 +4,14 @@ enum TransactionDisplayMode: String, CaseIterable, Identifiable {
     case flat
     case groupedByDate
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     func label(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
-        case .flat: return ReportStrings.text("Flat List", locale: locale, bundle: bundle)
-        case .groupedByDate: return ReportStrings.text("Grouped by Date", locale: locale, bundle: bundle)
+        case .flat: ReportStrings.text("Flat List", locale: locale, bundle: bundle)
+        case .groupedByDate: ReportStrings.text("Grouped by Date", locale: locale, bundle: bundle)
         }
     }
 

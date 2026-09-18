@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct CashFlowEngineTests {
-
     private var asOf: Date {
         var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 14
         c.timeZone = TimeZone(identifier: "UTC")
@@ -33,9 +32,9 @@ struct CashFlowEngineTests {
 
     @Test func splitsPositiveAndNegativeAmounts() {
         let transactions = [
-            tx(date: 20260301, amount: 50000),
-            tx(date: 20260315, amount: -20000),
-            tx(date: 20260320, amount: -10000)
+            tx(date: 20_260_301, amount: 50000),
+            tx(date: 20_260_315, amount: -20000),
+            tx(date: 20_260_320, amount: -10000),
         ]
         let meta = CashFlowMeta(name: nil,
                                 timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
@@ -60,10 +59,10 @@ struct CashFlowEngineTests {
         // (GH #15: totals over 2x). The WebUI's cash flow filters
         // payee.transfer_acct != null, so both legs must be excluded.
         let transactions = [
-            tx(date: 20260310, amount: 10000, account: "savings", transferAcct: "checking"),
-            tx(date: 20260310, amount: -10000, account: "checking", transferAcct: "savings"),
-            tx(date: 20260312, amount: 5000),
-            tx(date: 20260313, amount: -2000)
+            tx(date: 20_260_310, amount: 10000, account: "savings", transferAcct: "checking"),
+            tx(date: 20_260_310, amount: -10000, account: "checking", transferAcct: "savings"),
+            tx(date: 20_260_312, amount: 5000),
+            tx(date: 20_260_313, amount: -2000),
         ]
         let meta = CashFlowMeta(name: nil,
                                 timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
@@ -79,9 +78,9 @@ struct CashFlowEngineTests {
         // The WebUI's cash flow filters account.offbudget == false; tracking
         // account activity must not count toward income or expense.
         let transactions = [
-            tx(date: 20260305, amount: 7000),
-            tx(date: 20260306, amount: 90000, account: "brokerage"),
-            tx(date: 20260307, amount: -40000, account: "brokerage")
+            tx(date: 20_260_305, amount: 7000),
+            tx(date: 20_260_306, amount: 90000, account: "brokerage"),
+            tx(date: 20_260_307, amount: -40000, account: "brokerage"),
         ]
         let meta = CashFlowMeta(name: nil,
                                 timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),
@@ -98,13 +97,13 @@ struct CashFlowEngineTests {
 
     @Test func excludesTombstonedAndOutOfRange() {
         let transactions = [
-            tx(date: 20260301, amount: 1000),   // March 2026 - in range
-            tx(date: 20251201, amount: 9999),   // Dec 2025 - out of range
-            Transaction(id: "tomb", accountId: "a1", date: 20260301, amount: 5000,
+            tx(date: 20_260_301, amount: 1000), // March 2026 - in range
+            tx(date: 20_251_201, amount: 9999), // Dec 2025 - out of range
+            Transaction(id: "tomb", accountId: "a1", date: 20_260_301, amount: 5000,
                         payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
                         notes: nil, cleared: false, reconciled: false,
                         transferId: nil, isParent: false, parentId: nil,
-                        tombstone: true, sortOrder: nil, importedPayee: nil)
+                        tombstone: true, sortOrder: nil, importedPayee: nil),
         ]
         let meta = CashFlowMeta(name: nil,
                                 timeFrame: WidgetTimeFrame(start: nil, end: nil, mode: .yearToDate),

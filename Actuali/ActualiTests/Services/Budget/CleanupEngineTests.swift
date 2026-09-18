@@ -14,12 +14,12 @@ struct CleanupEngineTests {
             .init(id: "global-sink-2", name: "Global Sink 2", cleanup: [.sink(weight: 3)]),
         ]
         var sheet = GoalTemplateSheet()
-        sheet.budgeted[.init(202608, "pool-source")] = 1_000
-        sheet.leftover[.init(202608, "pool-source")] = 1_000
-        sheet.leftover[.init(202608, "pool-overspent")] = -600
-        sheet.budgeted[.init(202608, "global-source")] = 300
-        sheet.leftover[.init(202608, "global-source")] = 300
-        sheet.leftover[.init(202608, "global-overspent")] = -100
+        sheet.budgeted[.init(202_608, "pool-source")] = 1000
+        sheet.leftover[.init(202_608, "pool-source")] = 1000
+        sheet.leftover[.init(202_608, "pool-overspent")] = -600
+        sheet.budgeted[.init(202_608, "global-source")] = 300
+        sheet.leftover[.init(202_608, "global-source")] = 300
+        sheet.leftover[.init(202_608, "global-overspent")] = -100
 
         let result = CleanupEngine.run(
             month: month,
@@ -48,11 +48,12 @@ struct CleanupEngineTests {
             .init(id: "sink-2", name: "Sink 2", cleanup: [.sink(groupId: "pool")]),
         ]
         var sheet = GoalTemplateSheet()
-        sheet.budgeted[.init(202608, "source")] = 1
-        sheet.leftover[.init(202608, "source")] = 1
+        sheet.budgeted[.init(202_608, "source")] = 1
+        sheet.leftover[.init(202_608, "source")] = 1
 
         let result = CleanupEngine.run(
-            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet
+        )
 
         #expect(result.budgets.filter { $0.category.hasPrefix("sink") }
             .map(\.amount).reduce(0, +) == 1)
@@ -66,10 +67,11 @@ struct CleanupEngineTests {
         ]
         var sheet = GoalTemplateSheet()
         sheet.availableStart = -100
-        sheet.leftover[.init(202608, "overspent")] = -50
+        sheet.leftover[.init(202_608, "overspent")] = -50
 
         let result = CleanupEngine.run(
-            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet)
+            month: "2026-08", categories: categories, groupNames: [:], sheet: sheet
+        )
 
         #expect(result.budgets.isEmpty)
         #expect(result.notification == .warning([.noGlobalFunds]))

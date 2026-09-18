@@ -1,7 +1,7 @@
 import CryptoKit
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 // Fixture-based tests proving the Swift sync engine is bit-identical to the
@@ -16,7 +16,6 @@ import GRDB
 // MARK: - MurmurHash3
 
 struct MurmurHash3FixtureTests {
-
     // Upstream: timestamp.ts Timestamp.hash() = murmurhash.v3(this.toString())
     // with the `murmurhash` npm package (UTF-8 via TextEncoder, seed 0).
     // Values computed-by-node: require('murmurhash').v3(s).
@@ -25,45 +24,44 @@ struct MurmurHash3FixtureTests {
     // ("adding an item works": hashes 1983295247 / 1469038940).
     @Test func timestampStringVectors() {
         let vectors: [(String, UInt32)] = [
-            ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1983295247),
-            ("2018-11-13T13:21:40.122Z-0000-0123456789ABCDEF", 1469038940),
-            ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4179357717),
-            ("2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF", 2838536857),
-            ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1359285735),
-            ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779909595),
+            ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1_983_295_247),
+            ("2018-11-13T13:21:40.122Z-0000-0123456789ABCDEF", 1_469_038_940),
+            ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4_179_357_717),
+            ("2015-04-24T22:23:42.123Z-1000-0123456789ABCDEF", 2_838_536_857),
+            ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1_359_285_735),
+            ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779_909_595),
         ]
         for (input, expected) in vectors {
             #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
         }
     }
 
-    // Tail-length coverage (0..3 trailing bytes plus a full block).
-    // Computed-by-node with the murmurhash package used by upstream.
+    /// Tail-length coverage (0..3 trailing bytes plus a full block).
+    /// Computed-by-node with the murmurhash package used by upstream.
     @Test func tailLengthVectors() {
         let vectors: [(String, UInt32)] = [
             ("", 0),
-            ("abc", 3017643002),
-            ("abcd", 1139631978),
-            ("abcde", 3902511862),
-            ("abcdef", 1635893381),
+            ("abc", 3_017_643_002),
+            ("abcd", 1_139_631_978),
+            ("abcde", 3_902_511_862),
+            ("abcdef", 1_635_893_381),
         ]
         for (input, expected) in vectors {
             #expect(MurmurHash3.hash(input) == expected, "hash mismatch for \(input)")
         }
     }
 
-    // Upstream's murmurhash package encodes input with TextEncoder (UTF-8),
-    // so multi-byte characters are well-defined. Computed-by-node.
+    /// Upstream's murmurhash package encodes input with TextEncoder (UTF-8),
+    /// so multi-byte characters are well-defined. Computed-by-node.
     @Test func nonASCIIVectors() {
-        #expect(MurmurHash3.hash("café") == 605818632)
-        #expect(MurmurHash3.hash("日本語") == 2779017879)
+        #expect(MurmurHash3.hash("café") == 605_818_632)
+        #expect(MurmurHash3.hash("日本語") == 2_779_017_879)
     }
 }
 
 // MARK: - HLCTimestamp parse/format
 
 struct HLCTimestampFixtureTests {
-
     // Upstream: timestamp.test.ts "parsing > should parse" — each valid input
     // must round-trip exactly (parsed.toString() === validInput).
     @Test func parseRoundTripValidInputs() {
@@ -97,7 +95,7 @@ struct HLCTimestampFixtureTests {
             "0",
             "invalid",
             "1969-1-1T0:0:0.0Z-0-0-0",
-            "1969-01-01T00:00:00.000Z-0000-0000000000000000",   // negative millis
+            "1969-01-01T00:00:00.000Z-0000-0000000000000000", // negative millis
             "10000-01-01T00:00:00.000Z-FFFF-FFFFFFFFFFFFFFFF", // 5-digit year
             "9999-12-31T23:59:59.999Z-10000-FFFFFFFFFFFFFFFF", // counter > FFFF
             "9999-12-31T23:59:59.999Z-FFFF-10000000000000000", // node > 16 chars
@@ -123,26 +121,26 @@ struct HLCTimestampFixtureTests {
         let minCounter = HLCTimestamp(millis: 0, counter: 0, node: "0123456789abcdef")
         #expect(minCounter.toString() == "1970-01-01T00:00:00.000Z-0000-0123456789abcdef")
 
-        let maxCounter = HLCTimestamp(millis: 0, counter: 0xFFFF, node: "0123456789abcdef")
+        let maxCounter = HLCTimestamp(millis: 0, counter: 0xffff, node: "0123456789abcdef")
         #expect(maxCounter.toString() == "1970-01-01T00:00:00.000Z-FFFF-0123456789abcdef")
     }
 
     // Upstream: timestamp.ts Timestamp.since.
     @Test func sinceFormat() {
         #expect(HLCTimestamp.since("2017-01-01T00:00:00.000Z")
-                == "2017-01-01T00:00:00.000Z-0000-0000000000000000")
+            == "2017-01-01T00:00:00.000Z-0000-0000000000000000")
     }
 
-    // Upstream Timestamp.hash() returns murmurhash.v3 unsigned; the Swift port
-    // reinterprets the same bits as Int32 because JS XOR (used by the merkle
-    // trie) operates on signed 32-bit values. Same bits, signed view.
-    // Unsigned values computed-by-node: Timestamp.parse(s).hash().
+    /// Upstream Timestamp.hash() returns murmurhash.v3 unsigned; the Swift port
+    /// reinterprets the same bits as Int32 because JS XOR (used by the merkle
+    /// trie) operates on signed 32-bit values. Same bits, signed view.
+    /// Unsigned values computed-by-node: Timestamp.parse(s).hash().
     @Test func timestampHashMatchesUpstream() {
         let vectors: [(String, UInt32)] = [
-            ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1983295247),
-            ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779909595),
-            ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4179357717),
-            ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1359285735),
+            ("2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF", 1_983_295_247),
+            ("2019-06-03T16:40:53.876Z-0000-9f66d38cba0ef956", 779_909_595),
+            ("1970-01-01T00:00:00.000Z-0000-0000000000000000", 4_179_357_717),
+            ("9999-12-31T23:59:59.999Z-FFFF-FFFFFFFFFFFFFFFF", 1_359_285_735),
         ]
         for (input, unsignedHash) in vectors {
             let ts = HLCTimestamp.parse(input)
@@ -163,7 +161,6 @@ struct HLCTimestampFixtureTests {
 // MARK: - MerkleTree
 
 struct MerkleTreeFixtureTests {
-
     private func ts(_ string: String) -> HLCTimestamp {
         HLCTimestamp.parse(string)!
     }
@@ -189,10 +186,10 @@ struct MerkleTreeFixtureTests {
         tree.insert(ts("2018-11-13T13:21:40.122Z-0000-0123456789ABCDEF"))
 
         let expected = """
-            {"1":{"2":{"1":{"0":{"1":{"0":{"0":{"2":{"0":{"1":{"1":{"0":{"2":{"2":{"0":{"0":{"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"1":{"0":{"1":{"0":{"2":{"0":{"0":{"0":{"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531}
-            """
+        {"1":{"2":{"1":{"0":{"1":{"0":{"0":{"2":{"0":{"1":{"1":{"0":{"2":{"2":{"0":{"0":{"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"hash":1983295247},"1":{"0":{"1":{"0":{"2":{"0":{"0":{"0":{"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":1469038940},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531},"hash":565800531}
+        """
         #expect(canonicalJSON(tree.root) == expected)
-        #expect(tree.root.hash == 565800531)
+        #expect(tree.root.hash == 565_800_531)
     }
 
     // Upstream: merkle.test.ts "diff returns the correct time difference",
@@ -212,12 +209,12 @@ struct MerkleTreeFixtureTests {
         trie1.insert(messages[0])
         trie1.insert(messages[1])
         trie1.insert(messages[2])
-        #expect(trie1.root.hash == 1562158574)
+        #expect(trie1.root.hash == 1_562_158_574)
 
         var trie2 = MerkleTree()
         trie2.insert(messages[3])
         trie2.insert(messages[4])
-        #expect(trie2.root.hash == -1230958401)
+        #expect(trie2.root.hash == -1_230_958_401)
 
         // Upstream expects 2018-11-02T17:15:00.000Z (millis computed-by-node)
         #expect(trie1.diff(with: trie2) == 1_541_178_900_000)
@@ -227,7 +224,7 @@ struct MerkleTreeFixtureTests {
         trie2.insert(messages[0])
         trie2.insert(messages[1])
         trie2.insert(messages[2])
-        #expect(trie1.root.hash == -339888815)
+        #expect(trie1.root.hash == -339_888_815)
         #expect(trie1.root.hash == trie2.root.hash)
         #expect(trie1.diff(with: trie2) == nil)
     }
@@ -269,14 +266,14 @@ struct MerkleTreeFixtureTests {
         for message in pruneScenarioMessages {
             tree.insert(message)
         }
-        #expect(tree.root.hash == 345045312)
+        #expect(tree.root.hash == 345_045_312)
 
         let pruned = tree.pruned()
-        #expect(pruned.root.hash == 345045312)
+        #expect(pruned.root.hash == 345_045_312)
 
         let expected = """
-            {"1":{"2":{"1":{"0":{"0":{"2":{"2":{"2":{"1":{"2":{"2":{"0":{"1":{"1":{"2":{"0":{"hash":-1718969198},"hash":-1718969198},"hash":-1718969198},"2":{"2":{"0":{"hash":384820918},"hash":384820918},"hash":384820918},"hash":1710637055},"2":{"1":{"2":{"0":{"hash":-497345306},"hash":-497345306},"hash":-497345306},"2":{"2":{"0":{"hash":1003725159},"hash":1003725159},"hash":1003725159},"hash":613353200},"hash":1710746760},"1":{"0":{"1":{"1":{"1":{"hash":-666153754},"hash":-666153754},"hash":-666153754},"2":{"1":{"1":{"hash":748821548},"hash":748821548},"hash":748821548},"hash":703357274},"1":{"0":{"1":{"1":{"hash":1485534354},"hash":1485534354},"hash":1485534354},"hash":1485534354},"hash":1902581192},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312}
-            """
+        {"1":{"2":{"1":{"0":{"0":{"2":{"2":{"2":{"1":{"2":{"2":{"0":{"1":{"1":{"2":{"0":{"hash":-1718969198},"hash":-1718969198},"hash":-1718969198},"2":{"2":{"0":{"hash":384820918},"hash":384820918},"hash":384820918},"hash":1710637055},"2":{"1":{"2":{"0":{"hash":-497345306},"hash":-497345306},"hash":-497345306},"2":{"2":{"0":{"hash":1003725159},"hash":1003725159},"hash":1003725159},"hash":613353200},"hash":1710746760},"1":{"0":{"1":{"1":{"1":{"hash":-666153754},"hash":-666153754},"hash":-666153754},"2":{"1":{"1":{"hash":748821548},"hash":748821548},"hash":748821548},"hash":703357274},"1":{"0":{"1":{"1":{"hash":1485534354},"hash":1485534354},"hash":1485534354},"hash":1485534354},"hash":1902581192},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312},"hash":345045312}
+        """
         #expect(canonicalJSON(pruned.root) == expected)
     }
 
@@ -290,26 +287,26 @@ struct MerkleTreeFixtureTests {
         }
 
         // Case 0: comparing with an empty trie returns the base time
-        #expect(MerkleTree().diff(with: tree) == 0)  // 1970-01-01T00:00:00.000Z
+        #expect(MerkleTree().diff(with: tree) == 0) // 1970-01-01T00:00:00.000Z
         #expect(tree.diff(with: MerkleTree()) == 0)
 
         // Case 1: older message modifying the 1st of 3 branches
         let trie1 = tree.inserting(ts("2018-11-01T00:59:00.000Z-0000-0123456789ABCDEF"))
 
-        #expect(trie1.diff(with: tree) == 1_541_033_640_000)                    // 2018-11-01T00:54:00.000Z
-        #expect(trie1.pruned().diff(with: tree) == 1_541_033_100_000)           // 2018-11-01T00:45:00.000Z
-        #expect(trie1.diff(with: tree.pruned()) == 1_541_033_100_000)           // 2018-11-01T00:45:00.000Z
-        #expect(trie1.pruned().diff(with: tree.pruned()) == 1_541_033_100_000)  // 2018-11-01T00:45:00.000Z
+        #expect(trie1.diff(with: tree) == 1_541_033_640_000) // 2018-11-01T00:54:00.000Z
+        #expect(trie1.pruned().diff(with: tree) == 1_541_033_100_000) // 2018-11-01T00:45:00.000Z
+        #expect(trie1.diff(with: tree.pruned()) == 1_541_033_100_000) // 2018-11-01T00:45:00.000Z
+        #expect(trie1.pruned().diff(with: tree.pruned()) == 1_541_033_100_000) // 2018-11-01T00:45:00.000Z
 
         // Case 2: second message modifies the 2nd key at the same level
         let trie2 = tree
             .inserting(ts("2018-11-01T00:59:00.000Z-0000-0123456789ABCDEF"))
             .inserting(ts("2018-11-01T01:15:00.000Z-0000-0123456789ABCDEF"))
 
-        #expect(trie2.diff(with: tree) == 1_541_033_640_000)                    // 2018-11-01T00:54:00.000Z
-        #expect(trie2.pruned().diff(with: tree) == 1_541_033_100_000)           // 2018-11-01T00:45:00.000Z
-        #expect(trie2.diff(with: tree.pruned()) == 1_541_033_100_000)           // 2018-11-01T00:45:00.000Z
-        #expect(trie2.pruned().diff(with: tree.pruned()) == 1_541_034_720_000)  // 2018-11-01T01:12:00.000Z
+        #expect(trie2.diff(with: tree) == 1_541_033_640_000) // 2018-11-01T00:54:00.000Z
+        #expect(trie2.pruned().diff(with: tree) == 1_541_033_100_000) // 2018-11-01T00:45:00.000Z
+        #expect(trie2.diff(with: tree.pruned()) == 1_541_033_100_000) // 2018-11-01T00:45:00.000Z
+        #expect(trie2.pruned().diff(with: tree.pruned()) == 1_541_034_720_000) // 2018-11-01T01:12:00.000Z
     }
 
     // Upstream: merkle.ts insert() derives the trie path from
@@ -329,24 +326,24 @@ struct MerkleTreeFixtureTests {
             node = child ?? .empty()
         }
         #expect(node.children.isEmpty)
-        #expect(node.hash == 1983295247)
+        #expect(node.hash == 1_983_295_247)
     }
 
-    // deriveMerkleFromMessageLog reads the trie's minute straight off the
-    // ISO-8601 prefix instead of parsing a Date, so it must agree with `parse`
-    // exactly — including across leap days, century boundaries and month ends,
-    // where hand-rolled calendar math goes wrong.
+    /// deriveMerkleFromMessageLog reads the trie's minute straight off the
+    /// ISO-8601 prefix instead of parsing a Date, so it must agree with `parse`
+    /// exactly — including across leap days, century boundaries and month ends,
+    /// where hand-rolled calendar math goes wrong.
     @Test(arguments: [
         "1970-01-01T00:00:00.000Z-0000-0123456789ABCDEF",
         "1970-01-01T00:00:59.999Z-FFFF-0123456789ABCDEF",
         "1999-12-31T23:59:00.000Z-0000-0123456789ABCDEF",
-        "2000-02-29T12:34:56.789Z-0000-0123456789ABCDEF",  // leap day, century leap year
+        "2000-02-29T12:34:56.789Z-0000-0123456789ABCDEF", // leap day, century leap year
         "2018-11-01T00:45:00.000Z-0000-0123456789ABCDEF",
         "2024-02-29T23:59:59.999Z-0000-0123456789ABCDEF",
-        "2026-03-01T00:00:00.000Z-0000-0123456789ABCDEF",  // day after a non-leap February
+        "2026-03-01T00:00:00.000Z-0000-0123456789ABCDEF", // day after a non-leap February
         "2026-07-22T10:00:00.000Z-0000-a1b2c3d4e5f60718",
         "2026-12-31T23:59:59.999Z-0000-0123456789ABCDEF",
-        "2100-03-01T00:00:00.000Z-0000-0123456789ABCDEF",  // century non-leap year
+        "2100-03-01T00:00:00.000Z-0000-0123456789ABCDEF", // century non-leap year
     ])
     func minuteArithmeticMatchesDateParsing(_ string: String) throws {
         let parsed = try #require(HLCTimestamp.parse(string))
@@ -369,8 +366,8 @@ struct MerkleTreeFixtureTests {
     @Test func bulkBuildMatchesPerMessageInsertion() {
         let timestamps = [
             "2018-11-01T00:47:12.000Z-0000-0123456789ABCDEF",
-            "2018-11-01T00:47:39.000Z-0001-0123456789ABCDEF",  // same minute
-            "2018-11-01T00:47:39.500Z-0000-FEDCBA9876543210",  // same minute
+            "2018-11-01T00:47:39.000Z-0001-0123456789ABCDEF", // same minute
+            "2018-11-01T00:47:39.500Z-0000-FEDCBA9876543210", // same minute
             "2018-11-01T01:15:00.000Z-0000-0123456789ABCDEF",
             "2018-11-12T13:21:40.122Z-0000-0123456789ABCDEF",
         ].map(ts)
@@ -380,7 +377,7 @@ struct MerkleTreeFixtureTests {
         for timestamp in timestamps {
             incremental = incremental.inserting(timestamp)
             // One bucket per minute, keyed by any millis inside it.
-            let minute = timestamp.millis / 60_000 * 60_000
+            let minute = timestamp.millis / 60000 * 60000
             buckets[minute, default: 0] ^= timestamp.hash()
         }
 
@@ -393,10 +390,9 @@ struct MerkleTreeFixtureTests {
 // MARK: - SyncEncoder / protobuf
 
 struct SyncEncoderFixtureTests {
-
-    // Known-bytes vectors computed-by-node with upstream's generated protobuf
-    // schema (actual/packages/crdt/src/proto/sync_pb.ts via @bufbuild/protobuf
-    // toBinary), the encoder used by loot-core's sync (server/sync/encoder.ts).
+    /// Known-bytes vectors computed-by-node with upstream's generated protobuf
+    /// schema (actual/packages/crdt/src/proto/sync_pb.ts via @bufbuild/protobuf
+    /// toBinary), the encoder used by loot-core's sync (server/sync/encoder.ts).
     @Test func messageEncodesToUpstreamBytes() throws {
         var inner = Message()
         inner.dataset = "accounts"
@@ -468,8 +464,8 @@ struct SyncEncoderFixtureTests {
         #expect(messages.first?.row == original.row)
         #expect(messages.first?.column == original.column)
         #expect(messages.first?.value == original.value)
-        #expect(merkle.hash == 565800531)
-        #expect(merkle.children["1"]?.hash == 565800531)
+        #expect(merkle.hash == 565_800_531)
+        #expect(merkle.children["1"]?.hash == 565_800_531)
     }
 
     @Test func encryptedRoundTrip() throws {
@@ -514,7 +510,6 @@ struct SyncEncoderFixtureTests {
 // MARK: - End-to-end convergence
 
 struct SyncConvergenceFixtureTests {
-
     /// accounts and messages_crdt normally come from the downloaded budget
     /// file, so create them with the upstream schema (matches
     /// BudgetDatabaseApplyMessagesTests).
@@ -524,26 +519,26 @@ struct SyncConvergenceFixtureTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func cleanup(_ url: URL) {
@@ -576,10 +571,10 @@ struct SyncConvergenceFixtureTests {
         }
     }
 
-    // Two in-memory clients exchange messages (including overlap/echo and
-    // reversed ordering) through the real insert/apply path and must converge
-    // to identical merkle hashes and identical table state — the invariant the
-    // upstream CRDT design guarantees (actual/packages/crdt).
+    /// Two in-memory clients exchange messages (including overlap/echo and
+    /// reversed ordering) through the real insert/apply path and must converge
+    /// to identical merkle hashes and identical table state — the invariant the
+    /// upstream CRDT design guarantees (actual/packages/crdt).
     @Test func twoClientsConvergeToIdenticalState() throws {
         func message(
             _ isoTimestamp: String, node: String,

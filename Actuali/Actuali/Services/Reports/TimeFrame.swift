@@ -3,7 +3,6 @@ import Foundation
 /// Resolves a widget's `WidgetTimeFrame` to a concrete `(start, end)` date range.
 /// Uses UTC to match upstream behavior.
 enum TimeFrame {
-
     private static var calendar: Calendar {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
@@ -143,7 +142,9 @@ enum TimeFrame {
     /// is used as-is.
     private static func parseRangeEnd(_ s: String?) -> Date? {
         guard let s, let d = CanonicalDateParser.parseMonthOrDay(s) else { return nil }
-        if s.count == 7 { return endOfMonth(d) }
+        if s.count == 7 {
+            return endOfMonth(d)
+        }
         return d
     }
 }

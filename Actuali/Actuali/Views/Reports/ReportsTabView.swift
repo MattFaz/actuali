@@ -108,8 +108,8 @@ struct ReportsTabView: View {
             }
         } label: {
             HStack(spacing: 8) {
-                 Text(pages.first { $0.id == selectedPageId }.map(displayName(for:))
-                     ?? ReportStrings.text("Dashboard", locale: locale))
+                Text(pages.first { $0.id == selectedPageId }.map(displayName(for:))
+                    ?? ReportStrings.text("Dashboard", locale: locale))
                     .font(.headline)
                     .foregroundStyle(.primary)
                     .lineLimit(1)

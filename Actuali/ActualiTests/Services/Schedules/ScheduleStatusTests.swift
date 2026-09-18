@@ -6,8 +6,7 @@ import Testing
 /// The badge on the phone and the badge on the web have to agree, so the
 /// branch order and the window arithmetic are both load-bearing.
 struct ScheduleStatusTests {
-
-    private static let today = DayDate(yyyymmdd: 20260813)!   // Thu 13 Aug 2026
+    private static let today = DayDate(yyyymmdd: 20_260_813)! // Thu 13 Aug 2026
 
     private func status(
         next: Int?,
@@ -20,33 +19,34 @@ struct ScheduleStatusTests {
             completed: completed,
             hasTransaction: hasTransaction,
             upcomingLength: upcomingLength,
-            today: Self.today)
+            today: Self.today
+        )
     }
 
     @Test func completedWinsOverEverything() {
-        #expect(status(next: 20260813, completed: true, hasTransaction: true) == .completed)
+        #expect(status(next: 20_260_813, completed: true, hasTransaction: true) == .completed)
         // Even a missed date reads as completed once the schedule is finished.
-        #expect(status(next: 20250101, completed: true) == .completed)
+        #expect(status(next: 20_250_101, completed: true) == .completed)
     }
 
     @Test func paidWinsOverDate() {
-        #expect(status(next: 20260813, hasTransaction: true) == .paid)
-        #expect(status(next: 20250101, hasTransaction: true) == .paid)
+        #expect(status(next: 20_260_813, hasTransaction: true) == .paid)
+        #expect(status(next: 20_250_101, hasTransaction: true) == .paid)
     }
 
     @Test func dueIsExactlyToday() {
-        #expect(status(next: 20260813) == .due)
+        #expect(status(next: 20_260_813) == .due)
     }
 
     @Test func upcomingIsInsideTheWindowInclusive() {
-        #expect(status(next: 20260814) == .upcoming)
-        #expect(status(next: 20260820) == .upcoming)   // today + 7, inclusive
-        #expect(status(next: 20260821) == .scheduled)  // one day past the window
+        #expect(status(next: 20_260_814) == .upcoming)
+        #expect(status(next: 20_260_820) == .upcoming) // today + 7, inclusive
+        #expect(status(next: 20_260_821) == .scheduled) // one day past the window
     }
 
     @Test func missedIsAnyPastDate() {
-        #expect(status(next: 20260812) == .missed)
-        #expect(status(next: 20250101) == .missed)
+        #expect(status(next: 20_260_812) == .missed)
+        #expect(status(next: 20_250_101) == .missed)
     }
 
     /// A schedule with no readable next-date row still has to render.
@@ -87,32 +87,39 @@ struct ScheduleStatusTests {
     // MARK: - Occurrence match window
 
     @Test func exactAndAutoPostingSchedulesGetNoLookback() {
-        let next = DayDate(yyyymmdd: 20260813)!
+        let next = DayDate(yyyymmdd: 20_260_813)!
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "is", postsTransaction: false) == next)
+            nextDate: next, dateOp: "is", postsTransaction: false
+        ) == next)
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "isapprox", postsTransaction: true) == next)
+            nextDate: next, dateOp: "isapprox", postsTransaction: true
+        ) == next)
     }
 
     @Test func manualApproximateSchedulesAllowTwoDaysEarly() {
-        let next = DayDate(yyyymmdd: 20260813)!
+        let next = DayDate(yyyymmdd: 20_260_813)!
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "isapprox", postsTransaction: false)
-            == DayDate(yyyymmdd: 20260811)!)
+            nextDate: next, dateOp: "isapprox", postsTransaction: false
+        )
+            == DayDate(yyyymmdd: 20_260_811)!)
     }
 
     @Test func recurringSchedulesUseFrequencyBoundedLookback() {
-        let next = DayDate(yyyymmdd: 20260813)!
+        let next = DayDate(yyyymmdd: 20_260_813)!
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .daily) == next)
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .daily
+        ) == next)
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .weekly)
-            == DayDate(yyyymmdd: 20260811)!)
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .weekly
+        )
+            == DayDate(yyyymmdd: 20_260_811)!)
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .monthly)
-            == DayDate(yyyymmdd: 20260809)!)
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .monthly
+        )
+            == DayDate(yyyymmdd: 20_260_809)!)
         #expect(ScheduleStatusCalculator.occurrenceMatchStartDate(
-            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .yearly)
-            == DayDate(yyyymmdd: 20260809)!)
+            nextDate: next, dateOp: "is", postsTransaction: true, frequency: .yearly
+        )
+            == DayDate(yyyymmdd: 20_260_809)!)
     }
 }

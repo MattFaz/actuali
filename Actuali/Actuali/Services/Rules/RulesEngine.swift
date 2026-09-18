@@ -8,8 +8,8 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "RulesEngi
 /// hangs off the transaction before the rules run.
 struct RuleContext {
     var offBudgetAccountIds: Set<String> = []
-    var categoryGroupIds: [String: String] = [:]   // category id -> group id
-    var payeeNames: [String: String] = [:]         // payee id -> name
+    var categoryGroupIds: [String: String] = [:] // category id -> group id
+    var payeeNames: [String: String] = [:] // payee id -> name
 
     static let empty = RuleContext()
 }
@@ -38,7 +38,6 @@ struct RuleRunResult {
 /// templates and formula actions, and recurring-date conditions. See the
 /// deferred-work section of the rules plan.
 enum RulesEngine {
-
     static func apply(
         _ transaction: Transaction,
         rules: [Rule],
@@ -167,7 +166,9 @@ enum RulesEngine {
         // Upstream coerces a missing string field to "" before comparing; id
         // fields keep their nil so `isNot` still matches an empty payee.
         var fieldValue = bag.string(for: condition.field)
-        if type == .string { fieldValue = fieldValue ?? "" }
+        if type == .string {
+            fieldValue = fieldValue ?? ""
+        }
 
         switch condition.op {
         case "is":
@@ -281,7 +282,7 @@ struct TransactionBag {
             "imported_payee": transaction.importedPayee,
             "transfer_id": transaction.transferId,
             "parent_id": transaction.parentId,
-            "schedule": transaction.schedule
+            "schedule": transaction.schedule,
         ]
         numbers = ["date": transaction.date, "amount": transaction.amount]
         // `cleared` and `reconciled` only. `transfer` and `parent` are absent on
@@ -291,7 +292,7 @@ struct TransactionBag {
         // ConditionsFilter) maps them to real columns.
         bools = [
             "cleared": transaction.cleared,
-            "reconciled": transaction.reconciled
+            "reconciled": transaction.reconciled,
         ]
         // Upstream reads `_account.offbudget`, and an unknown account means the
         // condition can't match either way.
@@ -300,11 +301,21 @@ struct TransactionBag {
             : !context.offBudgetAccountIds.contains(transaction.accountId)
     }
 
-    var date: Int? { numbers["date"] ?? nil }
+    var date: Int? {
+        numbers["date"] ?? nil
+    }
 
-    func string(for field: String) -> String? { strings[field] ?? nil }
-    func number(for field: String) -> Int? { numbers[field] ?? nil }
-    func bool(for field: String) -> Bool? { bools[field] }
+    func string(for field: String) -> String? {
+        strings[field] ?? nil
+    }
+
+    func number(for field: String) -> Int? {
+        numbers[field] ?? nil
+    }
+
+    func bool(for field: String) -> Bool? {
+        bools[field]
+    }
 
     mutating func set(_ field: String, to value: RuleValue) {
         switch RuleSchema.fieldType(field) {
@@ -317,7 +328,9 @@ struct TransactionBag {
                 numbers[field] = cents
             }
         case .boolean:
-            if let flag = value.boolValue { bools[field] = flag }
+            if let flag = value.boolValue {
+                bools[field] = flag
+            }
         case .date:
             // A `set date` action carries "yyyy-MM-dd"; the column is YYYYMMDD.
             if let text = value.stringValue,
@@ -339,9 +352,15 @@ struct TransactionBag {
 
     func snapshot() -> [String: String] {
         var out: [String: String] = [:]
-        for (key, value) in strings { out[key] = value.map { "s:" + $0 } ?? "nil" }
-        for (key, value) in numbers { out[key] = value.map { "i:\($0)" } ?? "nil" }
-        for (key, value) in bools { out[key] = "b:\(value)" }
+        for (key, value) in strings {
+            out[key] = value.map { "s:" + $0 } ?? "nil"
+        }
+        for (key, value) in numbers {
+            out[key] = value.map { "i:\($0)" } ?? "nil"
+        }
+        for (key, value) in bools {
+            out[key] = "b:\(value)"
+        }
         return out
     }
 
@@ -351,9 +370,15 @@ struct TransactionBag {
 
     func toTransaction(base: Transaction) -> Transaction {
         var transaction = base
-        if let accountId = string(for: "account") { transaction.accountId = accountId }
-        if let date = number(for: "date") { transaction.date = date }
-        if let amount = number(for: "amount") { transaction.amount = amount }
+        if let accountId = string(for: "account") {
+            transaction.accountId = accountId
+        }
+        if let date = number(for: "date") {
+            transaction.date = date
+        }
+        if let amount = number(for: "amount") {
+            transaction.amount = amount
+        }
         transaction.payeeId = string(for: "payee")
         transaction.categoryId = string(for: "category")
         transaction.notes = string(for: "notes")

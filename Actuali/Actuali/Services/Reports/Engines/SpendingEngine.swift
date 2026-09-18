@@ -1,8 +1,8 @@
 import Foundation
 
 struct SpendingData: Equatable {
-    let currentSpentCents: Int    // positive
-    let comparisonCents: Int      // positive
+    let currentSpentCents: Int // positive
+    let comparisonCents: Int // positive
 }
 
 /// Port of the webapp's spending-spreadsheet.ts + SpendingCard.tsx. The card
@@ -12,7 +12,6 @@ struct SpendingData: Equatable {
 /// all matching transactions (refunds count), with income categories and
 /// off-budget accounts already removed by the caller (spendingScope).
 enum SpendingEngine {
-
     static func compute(
         meta: SpendingMeta?,
         transactions: [Transaction],
@@ -52,28 +51,27 @@ enum SpendingEngine {
                                     throughDay: isCurrentCompare ? todayDay : nil)
         let sameDayCutoff: Int? = (isCurrentCompare && todayDay < 28) ? todayDay : nil
 
-        let comparison: Int
-        switch meta?.mode ?? .singleMonth {
+        let comparison: Int = switch meta?.mode ?? .singleMonth {
         case .singleMonth:
-            comparison = monthSpending(transactions: filtered,
-                                       monthStart: compareToStart,
-                                       calendar: cal,
-                                       throughDay: sameDayCutoff)
+            monthSpending(transactions: filtered,
+                          monthStart: compareToStart,
+                          calendar: cal,
+                          throughDay: sameDayCutoff)
         case .budget:
-            comparison = budgetComparison(meta: meta,
-                                          budgets: budgets,
-                                          categories: categories,
-                                          categoryGroups: categoryGroups,
-                                          compareStart: compareStart,
-                                          throughDay: sameDayCutoff,
-                                          calendar: cal)
+            budgetComparison(meta: meta,
+                             budgets: budgets,
+                             categories: categories,
+                             categoryGroups: categoryGroups,
+                             compareStart: compareStart,
+                             throughDay: sameDayCutoff,
+                             calendar: cal)
         case .average:
-            comparison = averageSpending(transactions: filtered,
-                                         allTransactions: live,
-                                         compareStart: compareStart,
-                                         range: meta?.averageRange,
-                                         throughDay: sameDayCutoff,
-                                         calendar: cal)
+            averageSpending(transactions: filtered,
+                            allTransactions: live,
+                            compareStart: compareStart,
+                            range: meta?.averageRange,
+                            throughDay: sameDayCutoff,
+                            calendar: cal)
         }
 
         return SpendingData(currentSpentCents: current, comparisonCents: comparison)
@@ -98,7 +96,7 @@ enum SpendingEngine {
             calendar.date(byAdding: .month, value: -1, to: d) ?? d
         }
 
-        if (mode == .budget || mode == .average) && isLive {
+        if mode == .budget || mode == .average, isLive {
             let compare = stored ?? currentMonthStart
             return (compare, prevMonth(compare))
         }
@@ -189,12 +187,13 @@ enum SpendingEngine {
         guard let endMonth = calendar.date(byAdding: .month, value: -1, to: compareStart) else { return 0 }
 
         // Unsupported last-n values normalize to the 3-month default upstream.
-        let supportedMonths: Set<Int> = [3, 6, 12]
+        let supportedMonths: Set = [3, 6, 12]
         let startMonth: Date?
         switch range?.mode {
         case "year-to-date":
             startMonth = calendar.date(from: DateComponents(
-                year: calendar.component(.year, from: compareStart), month: 1, day: 1))
+                year: calendar.component(.year, from: compareStart), month: 1, day: 1
+            ))
         case "all-time":
             // ponytail: earliest month derived from the transactions given to
             // the engine; upstream queries the globally earliest transaction.

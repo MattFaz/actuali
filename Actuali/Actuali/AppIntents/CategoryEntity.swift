@@ -16,7 +16,6 @@ struct CategoryEntity: AppEntity, Identifiable {
 }
 
 struct CategoryEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [CategoryEntity.ID]) async throws -> [CategoryEntity] {
         let categories = await BudgetStore.shared.categoriesForIntent()

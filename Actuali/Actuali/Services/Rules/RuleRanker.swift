@@ -8,7 +8,6 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "RuleRanke
 /// the most specific rule applies last and wins. Ties break on id, so every
 /// client orders an identical rule set identically.
 enum RuleRanker {
-
     private static let opScores: [String: Int] = [
         "is": 10, "isNot": 10,
         "oneOf": 9, "notOneOf": 9,
@@ -16,7 +15,7 @@ enum RuleRanker {
         "gt": 1, "gte": 1, "lt": 1, "lte": 1,
         "contains": 0, "doesNotContain": 0, "matches": 0,
         "hasTags": 0, "hasAnyTag": 0,
-        "onBudget": 0, "offBudget": 0
+        "onBudget": 0, "offBudget": 0,
     ]
 
     private static let doublingOps: Set<String> = ["is", "isNot", "isapprox", "oneOf", "notOneOf"]

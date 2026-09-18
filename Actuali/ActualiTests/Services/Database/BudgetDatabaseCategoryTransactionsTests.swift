@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the row set of `fetchCategoryTransactions(categoryId:month:)` to the
@@ -14,7 +14,6 @@ import GRDB
 /// - optional "yyyy-MM" month narrows to that month; nil means all time.
 @MainActor
 struct BudgetDatabaseCategoryTransactionsTests {
-
     @Test func onlyCurrentUncancelledReloadCanPublish() {
         #expect(CategoryTransactionsView.shouldPublishReload(
             generation: 2,
@@ -37,7 +36,7 @@ struct BudgetDatabaseCategoryTransactionsTests {
         let cases = [
             (Locale(identifier: "en_US"), "September 2026", "No Transactions", "Nothing in Food for September 2026", "Nothing in Food for any month"),
             (Locale(identifier: "fr_FR"), "septembre 2026", "Aucune transaction", "Aucune transaction dans Courses pour septembre 2026", "Aucune transaction dans Courses pour n'importe quel mois"),
-            (Locale(identifier: "pt_BR"), "setembro de 2026", "Nenhuma transação", "Nada em Alimentação para setembro de 2026", "Nada em Alimentação para qualquer mês")
+            (Locale(identifier: "pt_BR"), "setembro de 2026", "Nenhuma transação", "Nada em Alimentação para setembro de 2026", "Nada em Alimentação para qualquer mês"),
         ]
 
         for (locale, monthTitle, emptyTitle, monthDescription, allTimeDescription) in cases {

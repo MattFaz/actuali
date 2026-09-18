@@ -52,7 +52,9 @@ private struct ServerConnectionSettingsSection: View {
                 fallbackServerURL: editedFallbackServerURL
             )
             savingServerConnection = false
-            if saved { editingServerConnection = false }
+            if saved {
+                editingServerConnection = false
+            }
         }
     }
 
@@ -94,7 +96,7 @@ private struct ServerConnectionSettingsSection: View {
             .keyboardType(.URL)
             .accessibilityHint(String(localized: "Example: https://actual.example.com"))
 
-            TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
+        TextField(String(localized: "Fallback Server URL"), text: fallbackServerURL)
             .textContentType(.URL)
             .autocapitalization(.none)
             .keyboardType(.URL)
@@ -188,7 +190,7 @@ private struct ServerConnectionSettingsSection: View {
                         // already explained why; don't repeat the same
                         // failure as a login attempt.
                         guard budgetStore.error == nil else { return }
-                        if budgetStore.passwordLoginActive && !password.isEmpty {
+                        if budgetStore.passwordLoginActive, !password.isEmpty {
                             await budgetStore.login(password: password)
                         }
                     }
@@ -258,10 +260,14 @@ private struct ServerConnectionSettingsSection: View {
         // Re-hide before iOS snapshots the screen for the app switcher, so a
         // revealed password doesn't land in that on-disk snapshot.
         .onChange(of: scenePhase) { _, newPhase in
-            if newPhase != .active { isPasswordVisible = false }
+            if newPhase != .active {
+                isPasswordVisible = false
+            }
         }
         .onChange(of: budgetStore.isConnected) { _, isConnected in
-            if !isConnected { editingServerConnection = false }
+            if !isConnected {
+                editingServerConnection = false
+            }
         }
     }
 }
@@ -319,7 +325,7 @@ private struct BudgetSelectionSettingsSection: View {
                 budgetPickerForNoSelection()
             }
 
-            if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+            if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                 Button("Refresh Budgets") {
                     Task { await budgetStore.fetchRemoteBudgets() }
                 }
@@ -334,7 +340,7 @@ private struct BudgetSelectionSettingsSection: View {
             Text("Budget Selection")
         } footer: {
             if budgetStore.currentBudgetId == nil {
-                if budgetStore.remoteBudgets.isEmpty && !budgetStore.isLoading {
+                if budgetStore.remoteBudgets.isEmpty, !budgetStore.isLoading {
                     Text("No budgets were found on your server. Tap Create New Budget to make one, or Refresh Budgets if you've created one elsewhere.")
                 } else {
                     Text("Select a budget to load it onto this device.")
@@ -376,7 +382,11 @@ private struct BudgetSelectionSettingsSection: View {
             "Remove from this device?",
             isPresented: Binding(
                 get: { budgetToRemoveLocally != nil },
-                set: { if !$0 { budgetToRemoveLocally = nil } }
+                set: {
+                    if !$0 {
+                        budgetToRemoveLocally = nil
+                    }
+                }
             ),
             titleVisibility: .visible,
             presenting: budgetToRemoveLocally
@@ -386,7 +396,7 @@ private struct BudgetSelectionSettingsSection: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: { budget in
-                Text(String(format: String(localized: "Removes “%@” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again."), budget.name))
+            Text(String(format: String(localized: "Removes “%@” from this device, including its local backups. Any changes that haven't synced to the server yet will be lost. The budget stays on your server and can be downloaded again."), budget.name))
         }
         .task {
             await budgetStore.fetchRemoteBudgets()
@@ -516,7 +526,7 @@ private struct BudgetSelectionSettingsSection: View {
     }
 
     private func openBudget(_ budget: BudgetStore.RemoteBudget) {
-        if budget.isEncrypted && EncryptionKeyManager.load(fileId: budget.id) == nil {
+        if budget.isEncrypted, EncryptionKeyManager.load(fileId: budget.id) == nil {
             budgetToUnlock = budget
         } else {
             Task { await budgetStore.downloadBudget(budget) }
@@ -526,7 +536,7 @@ private struct BudgetSelectionSettingsSection: View {
     /// One-time nudge after connecting: surface budget selection so a fresh
     /// connection doesn't leave the user staring at empty tabs.
     private func promptBudgetSelectionIfNeeded() {
-        if budgetStore.currentBudgetId == nil && !budgetStore.remoteBudgets.isEmpty {
+        if budgetStore.currentBudgetId == nil, !budgetStore.remoteBudgets.isEmpty {
             showingBudgetSelectPrompt = true
         }
     }
@@ -621,7 +631,7 @@ private struct SyncSettingsSection: View {
                 }
             }
 
-            if case let .error(message) = budgetStore.syncState {
+            if case .error(let message) = budgetStore.syncState {
                 Text(message)
                     .font(.footnote)
                     .foregroundStyle(.secondary)

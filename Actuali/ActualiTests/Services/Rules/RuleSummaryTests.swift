@@ -4,7 +4,6 @@ import Testing
 
 /// The IF/THEN text on the rules list, and the string its search box matches.
 struct RuleSummaryTests {
-
     private let englishLocale = Locale(identifier: "en_US")
 
     private let summary = RuleSummary(
@@ -51,7 +50,8 @@ struct RuleSummaryTests {
             id: "r-1", stage: .default, conditionsOp: .and,
             conditions: [.init(op: "contains", field: "imported_payee",
                                value: .string("WOOLIES"), options: nil)],
-            actions: [.init(op: "set", field: "category", value: .string("cat-1"), options: nil)])
+            actions: [.init(op: "set", field: "category", value: .string("cat-1"), options: nil)]
+        )
 
         let text = summary.searchText(rule)
         #expect(text.contains("woolies"))
@@ -61,9 +61,11 @@ struct RuleSummaryTests {
     @Test func summaryUsesRequestedLocaleForConditionsAndActions() {
         let locale = Locale(identifier: "fr_FR")
         let condition = Rule.Condition(
-            op: "gt", field: "date", value: .string("2026-01-01"), options: nil)
+            op: "gt", field: "date", value: .string("2026-01-01"), options: nil
+        )
         let action = Rule.Action(
-            op: "set", field: "category", value: .string("cat-1"), options: nil)
+            op: "set", field: "category", value: .string("cat-1"), options: nil
+        )
 
         #expect(summary.condition(
             condition, locale: locale, bundle: appBundle
@@ -78,7 +80,7 @@ struct RuleSummaryTests {
             ("en_US", "IF", "THEN", "and", "or"),
             ("fr_FR", "SI", "ALORS", "et", "ou"),
             ("de_DE", "WENN", "DANN", "und", "oder"),
-            ("pt_BR", "SE", "ENTÃO", "e", "ou")
+            ("pt_BR", "SE", "ENTÃO", "e", "ou"),
         ]
 
         for (identifier, ifValue, thenValue, andValue, orValue) in expected {

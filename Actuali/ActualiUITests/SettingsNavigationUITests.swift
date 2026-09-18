@@ -45,7 +45,7 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testHubOpensEverySettingsDestination() throws {
+    func testHubOpensEverySettingsDestination() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -61,7 +61,7 @@ final class SettingsNavigationUITests: XCTestCase {
             "Bank Sync (SimpleFIN & Wallet)",
             "History",
             "About",
-            "Support"
+            "Support",
         ] {
             let row = app.buttons[destination]
             XCTAssertTrue(row.waitForExistence(timeout: 5), "\(destination) row not found")
@@ -80,14 +80,14 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() throws {
+    func testBudgetSelectionPickerShowsOtherBudgetsAndDismissesOnSelection() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-connectedServerSettings",
             "-budgetSelectionFixture",
             "-initialTab",
-            "4"
+            "4",
         ]
         app.launch()
 
@@ -117,14 +117,14 @@ final class SettingsNavigationUITests: XCTestCase {
     }
 
     @MainActor
-    func testBudgetSelectionLongPressShowsManagementActions() throws {
+    func testBudgetSelectionLongPressShowsManagementActions() {
         let app = XCUIApplication()
         app.launchArguments = [
             "-loadDemoData",
             "-connectedServerSettings",
             "-budgetSelectionFixture",
             "-initialTab",
-            "4"
+            "4",
         ]
         app.launch()
 

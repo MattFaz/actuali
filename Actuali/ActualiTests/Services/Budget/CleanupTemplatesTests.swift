@@ -2,7 +2,6 @@ import Testing
 @testable import Actuali
 
 struct CleanupTemplatesTests {
-
     @Test func parsesCleanupNoteLines() {
         let note = """
         #cleanup source
@@ -24,7 +23,8 @@ struct CleanupTemplatesTests {
 
     @Test func parsesCRLFNoteLines() {
         let rows = CleanupNotes.parseRows(
-            fromNote: "#cleanup source\r\n#cleanup Vacation sink\r\n")
+            fromNote: "#cleanup source\r\n#cleanup Vacation sink\r\n"
+        )
         #expect(rows == [
             .init(kind: .source, groupName: nil),
             .init(kind: .sink(weight: 1), groupName: "Vacation"),

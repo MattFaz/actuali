@@ -1,6 +1,5 @@
 import SwiftUI
 import Testing
-
 @testable import Actuali
 
 /// The Credit Cards list orders by urgency rather than by name, and colors each

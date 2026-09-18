@@ -8,8 +8,13 @@ import Testing
 private final class PostWriteCaptureTransport: URLProtocol {
     nonisolated(unsafe) static var capturedBodies: [Data] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         // URLSession delivers POST bodies to URLProtocol as a stream, not httpBody.
@@ -60,46 +65,45 @@ private final class PostWriteCaptureTransport: URLProtocol {
 /// triggers firing at once); it must never swallow a local write.
 @Suite(.serialized)
 struct SyncClientPostWritePushTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY,
-                    starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0,
-                    isChild INTEGER DEFAULT 0,
-                    acct TEXT,
-                    category TEXT,
-                    amount INTEGER,
-                    description TEXT,
-                    notes TEXT,
-                    date INTEGER,
-                    imported_description TEXT,
-                    financial_id TEXT,
-                    transferred_id TEXT,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0,
-                    cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0,
-                    parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY,
+                starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
+                acct TEXT,
+                category TEXT,
+                amount INTEGER,
+                description TEXT,
+                notes TEXT,
+                date INTEGER,
+                imported_description TEXT,
+                financial_id TEXT,
+                transferred_id TEXT,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeSyncClient(database: BudgetDatabase) async throws -> SyncClient {

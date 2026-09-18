@@ -20,7 +20,8 @@ struct DiscoverSchedulesView: View {
                 ContentUnavailableView(
                     "Nothing Found",
                     systemImage: "magnifyingglass",
-                    description: Text("No repeating transactions were found in your history."))
+                    description: Text("No repeating transactions were found in your history.")
+                )
             } else {
                 List(proposals, selection: $selected) { proposal in
                     VStack(alignment: .leading, spacing: 4) {
@@ -53,8 +54,12 @@ struct DiscoverSchedulesView: View {
         .task { await search() }
         .alert("Couldn't Create Schedules", isPresented: Binding(
             get: { errorMessage != nil },
-            set: { if !$0 { errorMessage = nil } })
-        ) {
+            set: {
+                if !$0 {
+                    errorMessage = nil
+                }
+            }
+        )) {
             Button("OK") {}
         } message: {
             Text(errorMessage ?? "")
@@ -80,7 +85,8 @@ struct DiscoverSchedulesView: View {
         defer { isCreating = false }
         do {
             try await budgetStore.createSchedules(
-                proposals.filter { selected.contains($0.id) }.map(\.formFields))
+                proposals.filter { selected.contains($0.id) }.map(\.formFields)
+            )
             dismiss()
         } catch {
             errorMessage = error.localizedDescription

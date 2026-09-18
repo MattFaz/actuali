@@ -16,7 +16,6 @@ struct AccountEntity: AppEntity, Identifiable {
 }
 
 struct AccountEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [AccountEntity.ID]) async throws -> [AccountEntity] {
         // Use accountsForIntent() so a cold/headless Shortcut launch can still

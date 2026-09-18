@@ -4,9 +4,8 @@ import XCTest
 /// database (not the loaded page), the no-match state renders, and clearing
 /// the search restores the paged list.
 final class TransactionSearchUITests: XCTestCase {
-
     @MainActor
-    func testSearchFindsPayeeShowsNoMatchAndRestores() throws {
+    func testSearchFindsPayeeShowsNoMatchAndRestores() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-resetStatusFilterState"]
         app.launch()

@@ -1,10 +1,9 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 struct BudgetDatabaseApplyMessagesTests {
-
     /// accounts and messages_crdt normally come from the downloaded budget
     /// file, so create them with the upstream schema.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -13,26 +12,26 @@ struct BudgetDatabaseApplyMessagesTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func message(
@@ -78,7 +77,7 @@ struct BudgetDatabaseApplyMessagesTests {
         let (database, path) = try makeDatabase()
         try database.applyMessages([
             message(millis: 1_700_000_000_000, row: "acct-1", value: "S:Checking"),
-            message(millis: 1_700_000_000_001, row: "acct-2", value: "S:Savings")
+            message(millis: 1_700_000_000_001, row: "acct-2", value: "S:Savings"),
         ])
 
         let malicious = message(

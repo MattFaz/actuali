@@ -1,10 +1,9 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 struct SyncMerkleDedupTests {
-
     /// messages_crdt normally comes from the downloaded budget file, so create
     /// it with the upstream schema (timestamp UNIQUE drives the dedup).
     private func makeDatabase() throws -> BudgetDatabase {
@@ -13,15 +12,15 @@ struct SyncMerkleDedupTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                )
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
         return try BudgetDatabase(path: tempURL)
     }
@@ -96,16 +95,16 @@ struct SyncMerkleDedupTests {
         #expect(try database.applyMessagesAndInsertMessages([existing]).count == 1)
 
         let before = try database.dbQueueForTesting.read { db in
-            (
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(try database.applyMessagesAndInsertMessages([]).isEmpty)
         let after = try database.dbQueueForTesting.read { db in
-            (
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(after.0 == before.0)
@@ -124,13 +123,13 @@ struct SyncMerkleDedupTests {
 
         try database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                CREATE TRIGGER fail_incoming_message_insert
-                BEFORE INSERT ON messages_crdt
-                WHEN NEW.timestamp = '\(incoming.timestamp.toString())'
-                BEGIN
-                    SELECT RAISE(ABORT, 'forced message insert failure');
-                END;
-                """)
+            CREATE TRIGGER fail_incoming_message_insert
+            BEFORE INSERT ON messages_crdt
+            WHEN NEW.timestamp = '\(incoming.timestamp.toString())'
+            BEGIN
+                SELECT RAISE(ABORT, 'forced message insert failure');
+            END;
+            """)
         }
 
         #expect(throws: (any Error).self) {
@@ -138,10 +137,10 @@ struct SyncMerkleDedupTests {
         }
 
         let rolledBack = try database.dbQueueForTesting.read { db in
-            (
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(rolledBack.0 == "old")
@@ -155,10 +154,10 @@ struct SyncMerkleDedupTests {
         #expect(inserted.map(\.timestamp) == [incoming.timestamp])
 
         let finalState = try database.dbQueueForTesting.read { db in
-            (
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
-                try String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
-                try Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
+            try (
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'existing'"),
+                String.fetchOne(db, sql: "SELECT value FROM preferences WHERE id = 'incoming'"),
+                Int.fetchOne(db, sql: "SELECT COUNT(*) FROM messages_crdt") ?? 0
             )
         }
         #expect(finalState.0 == "old")
@@ -175,19 +174,19 @@ struct SyncMerkleDedupTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE preferences (
-                    id TEXT PRIMARY KEY,
-                    value TEXT
-                );
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE preferences (
+                id TEXT PRIMARY KEY,
+                value TEXT
+            );
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
         }
         return try BudgetDatabase(path: tempURL)
     }

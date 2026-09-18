@@ -7,7 +7,6 @@ import Testing
 /// child amounts, and malformed splits are rejected before any write.
 @MainActor
 struct BudgetStoreSplitPlanTests {
-
     private func form(
         type: TransactionType = .expense,
         amount: String = "10.00",
@@ -38,7 +37,7 @@ struct BudgetStoreSplitPlanTests {
         ))
         #expect(plan == .split(amountCents: -1000, lines: [
             .init(categoryId: "cat-a", amountCents: -600, notes: nil),
-            .init(categoryId: "cat-b", amountCents: -400, notes: "half")
+            .init(categoryId: "cat-b", amountCents: -400, notes: "half"),
         ]))
     }
 
@@ -49,7 +48,7 @@ struct BudgetStoreSplitPlanTests {
         ))
         #expect(plan == .split(amountCents: 1000, lines: [
             .init(categoryId: "cat-a", amountCents: 600, notes: nil),
-            .init(categoryId: "cat-b", amountCents: 400, notes: nil)
+            .init(categoryId: "cat-b", amountCents: 400, notes: nil),
         ]))
     }
 
@@ -101,7 +100,7 @@ struct BudgetStoreSplitPlanTests {
         ))
         #expect(plan == .split(amountCents: -2000, lines: [
             .init(categoryId: "cat-a", amountCents: -3000, notes: nil),
-            .init(categoryId: "cat-b", amountCents: 1000, notes: nil)
+            .init(categoryId: "cat-b", amountCents: 1000, notes: nil),
         ]))
     }
 
@@ -126,7 +125,7 @@ struct BudgetStoreSplitPlanTests {
         ))
         #expect(plan == .split(amountCents: -1000, lines: [
             .init(categoryId: "cat-a", amountCents: -600, notes: nil, payeeName: "Pharmacy"),
-            .init(categoryId: "cat-b", amountCents: -400, notes: nil, payeeName: nil)
+            .init(categoryId: "cat-b", amountCents: -400, notes: nil, payeeName: nil),
         ]))
     }
 
@@ -139,7 +138,7 @@ struct BudgetStoreSplitPlanTests {
         ))
         #expect(plan == .split(amountCents: -1000, lines: [
             .init(categoryId: "cat-a", amountCents: -600, notes: nil, childId: "child-1"),
-            .init(categoryId: "cat-b", amountCents: -400, notes: nil, childId: nil)
+            .init(categoryId: "cat-b", amountCents: -400, notes: nil, childId: nil),
         ]))
     }
 

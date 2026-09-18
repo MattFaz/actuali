@@ -81,7 +81,6 @@ struct BankSyncSetupView: View {
 
     // MARK: - Apple Wallet
 
-    @ViewBuilder
     private var walletSection: some View {
         Section {
             switch budgetStore.appleWalletAvailability {
@@ -332,7 +331,11 @@ struct BankSyncSetupView: View {
     // MARK: - Actions
 
     private var errorAlertBinding: Binding<Bool> {
-        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+        Binding(get: { errorMessage != nil }, set: {
+            if !$0 {
+                errorMessage = nil
+            }
+        })
     }
 
     private func connect() {
@@ -492,7 +495,11 @@ struct BankAccountLinkView: View {
     }
 
     private var errorAlertBinding: Binding<Bool> {
-        Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })
+        Binding(get: { errorMessage != nil }, set: {
+            if !$0 {
+                errorMessage = nil
+            }
+        })
     }
 
     private func createAndLink() {

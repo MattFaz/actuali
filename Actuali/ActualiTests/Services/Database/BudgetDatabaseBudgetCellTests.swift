@@ -1,10 +1,9 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 struct BudgetDatabaseBudgetCellTests {
-
     private enum BudgetTable {
         case zero
         case reflect
@@ -20,23 +19,22 @@ struct BudgetDatabaseBudgetCellTests {
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
-            let tableNames: [String]
-            switch table {
-            case .zero: tableNames = ["zero_budgets"]
-            case .reflect: tableNames = ["reflect_budgets"]
-            case .both: tableNames = ["zero_budgets", "reflect_budgets"]
-            case .none: tableNames = []
+            let tableNames: [String] = switch table {
+            case .zero: ["zero_budgets"]
+            case .reflect: ["reflect_budgets"]
+            case .both: ["zero_budgets", "reflect_budgets"]
+            case .none: []
             }
             for tableName in tableNames {
                 try db.execute(sql: """
-                    CREATE TABLE \(tableName) (
-                        id TEXT PRIMARY KEY,
-                        month INTEGER,
-                        category TEXT,
-                        amount INTEGER DEFAULT 0,
-                        carryover INTEGER DEFAULT 0
-                    )
-                    """)
+                CREATE TABLE \(tableName) (
+                    id TEXT PRIMARY KEY,
+                    month INTEGER,
+                    category TEXT,
+                    amount INTEGER DEFAULT 0,
+                    carryover INTEGER DEFAULT 0
+                )
+                """)
             }
             if let budgetTypePref {
                 try db.execute(sql: "CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT)")
@@ -46,7 +44,7 @@ struct BudgetDatabaseBudgetCellTests {
                 )
             }
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func cleanup(_ url: URL) {
@@ -60,7 +58,7 @@ struct BudgetDatabaseBudgetCellTests {
         let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))
         #expect(cell.table == "zero_budgets")
         #expect(cell.rowId == "202607-cat-1")
-        #expect(cell.monthInt == 202607)
+        #expect(cell.monthInt == 202_607)
         #expect(cell.exists == false)
         // No row yet means nothing budgeted — transfers start from zero.
         #expect(cell.amount == 0)
@@ -74,8 +72,8 @@ struct BudgetDatabaseBudgetCellTests {
         defer { cleanup(path) }
         try database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES ('legacy-id', 202607, 'cat-1', 500)
-                """)
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES ('legacy-id', 202607, 'cat-1', 500)
+            """)
         }
 
         let cell = try #require(try database.budgetCell(month: "2026-07", categoryId: "cat-1"))

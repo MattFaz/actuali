@@ -13,7 +13,9 @@ struct PayeeLocation: Identifiable, Hashable {
 }
 
 extension PayeeLocation: CRDTSyncable {
-    static var datasetName: String { "payee_locations" }
+    static var datasetName: String {
+        "payee_locations"
+    }
 
     var syncableFields: [String: Any?] {
         [
@@ -21,7 +23,7 @@ extension PayeeLocation: CRDTSyncable {
             "latitude": latitude,
             "longitude": longitude,
             "created_at": createdAt,
-            "tombstone": tombstone ? 1 : 0
+            "tombstone": tombstone ? 1 : 0,
         ]
     }
 }
@@ -32,7 +34,9 @@ struct PayeeLocationSummary: Identifiable, Hashable {
     let payee: Payee
     let locationCount: Int
 
-    var id: String { payee.id }
+    var id: String {
+        payee.id
+    }
 }
 
 /// A payee paired with its closest recorded location relative to the query
@@ -42,5 +46,7 @@ struct NearbyPayee: Identifiable, Hashable {
     let location: PayeeLocation
     let distanceMeters: Double
 
-    var id: String { payee.id }
+    var id: String {
+        payee.id
+    }
 }

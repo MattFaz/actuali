@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct TransactionNotificationSettingsTests {
-
     private func makeDefaults() -> UserDefaults {
         let name = "TransactionNotificationSettingsTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: name)!
@@ -24,5 +23,4 @@ struct TransactionNotificationSettingsTests {
 
         #expect(TransactionNotificationSettings(defaults: defaults).isEnabled == true)
     }
-
 }

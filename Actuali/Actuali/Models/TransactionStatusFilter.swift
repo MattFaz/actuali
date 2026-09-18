@@ -12,7 +12,9 @@ enum TransactionStatusFilter: String, CaseIterable, Identifiable {
     case cleared
     case reconciled
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Chip label. Reuses the keys the row status dot and the Uncategorized
     /// list already localize, so the chips ship in every existing language.
@@ -22,11 +24,11 @@ enum TransactionStatusFilter: String, CaseIterable, Identifiable {
 
     var key: String {
         switch self {
-        case .all: return "All"
-        case .uncategorized: return "Uncategorized"
-        case .uncleared: return "Uncleared"
-        case .cleared: return "Cleared"
-        case .reconciled: return "Reconciled"
+        case .all: "All"
+        case .uncategorized: "Uncategorized"
+        case .uncleared: "Uncleared"
+        case .cleared: "Cleared"
+        case .reconciled: "Reconciled"
         }
     }
 

@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetDatabaseDashboardTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -26,9 +25,9 @@ struct BudgetDatabaseDashboardTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO dashboard (id, type, x, y, meta, tombstone, dashboard_page_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """, arguments: [id, type, x, y, meta, tombstone, pageId])
+            INSERT INTO dashboard (id, type, x, y, meta, tombstone, dashboard_page_id)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, arguments: [id, type, x, y, meta, tombstone, pageId])
         }
     }
 
@@ -41,9 +40,9 @@ struct BudgetDatabaseDashboardTests {
         let queue = try DatabaseQueue(path: path.path)
         try queue.write { db in
             try db.execute(sql: """
-                INSERT INTO dashboard_pages (id, name, tombstone)
-                VALUES (?, ?, ?)
-                """, arguments: [id, name, tombstone])
+            INSERT INTO dashboard_pages (id, name, tombstone)
+            VALUES (?, ?, ?)
+            """, arguments: [id, name, tombstone])
         }
     }
 
@@ -87,9 +86,9 @@ struct BudgetDatabaseDashboardTests {
         #expect(widgets.map(\.id) == ["top-left", "top-right", "bottom"])
     }
 
-    // The web app lists dashboard pages in table order with tombstoned rows
-    // filtered (AQL `q('dashboard_pages').select('*')`); a null name renders
-    // as an empty string upstream.
+    /// The web app lists dashboard pages in table order with tombstoned rows
+    /// filtered (AQL `q('dashboard_pages').select('*')`); a null name renders
+    /// as an empty string upstream.
     @Test func fetchDashboardPagesReturnsLivePagesInInsertionOrder() async throws {
         let (database, path) = try makeDatabase()
         try insertPage(path: path, id: "page-main", name: "Main")
@@ -107,11 +106,11 @@ struct BudgetDatabaseDashboardTests {
         #expect(pages.isEmpty)
     }
 
-    // Each dashboard page is a separate dashboard (GH #120: multiple
-    // dashboards were merged into one). Fetching a page must return only
-    // that page's live widgets, in reading order (y, then x) — never
-    // widgets from other pages, deleted pages, orphaned page ids, or
-    // pageless rows.
+    /// Each dashboard page is a separate dashboard (GH #120: multiple
+    /// dashboards were merged into one). Fetching a page must return only
+    /// that page's live widgets, in reading order (y, then x) — never
+    /// widgets from other pages, deleted pages, orphaned page ids, or
+    /// pageless rows.
     @Test func fetchWidgetsForPageFiltersToThatPageInYXOrder() async throws {
         let (database, path) = try makeDatabase()
         try insertPage(path: path, id: "page-main", name: "Main")
@@ -138,9 +137,9 @@ struct BudgetDatabaseDashboardTests {
         #expect(secondWidgets.map(\.id) == ["second-page"])
     }
 
-    // Budgets from servers that predate multiple dashboards have no page
-    // rows; their widgets carry no page id and must still render. Widgets
-    // pointing at a page that no longer exists stay hidden, matching the web.
+    /// Budgets from servers that predate multiple dashboards have no page
+    /// rows; their widgets carry no page id and must still render. Widgets
+    /// pointing at a page that no longer exists stay hidden, matching the web.
     @Test func nilPageIdReturnsOnlyPagelessWidgets() async throws {
         let (database, path) = try makeDatabase()
         try insertPage(path: path, id: "page-deleted", name: "Old", tombstone: 1)
@@ -168,15 +167,14 @@ struct BudgetDatabaseDashboardTests {
     }
 }
 
-// Resolution of which dashboard page the Reports tab shows: a still-live
-// explicit selection wins, then the dashboard configured in Settings, then the
-// first live page (matching the web's ReportsDashboardRouter redirect to
-// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback applies.
+/// Resolution of which dashboard page the Reports tab shows: a still-live
+/// explicit selection wins, then the dashboard configured in Settings, then the
+/// first live page (matching the web's ReportsDashboardRouter redirect to
+/// dashboardPages[0]), otherwise nil so the pre-pages pageless fallback applies.
 struct ReportsPageSelectionTests {
-
     private let pages = [
         DashboardPage(id: "page-main", name: "Main"),
-        DashboardPage(id: "page-second", name: "Second")
+        DashboardPage(id: "page-second", name: "Second"),
     ]
 
     @Test func keepsSelectionWhenStillLive() {
@@ -203,8 +201,8 @@ struct ReportsPageSelectionTests {
         ) == "page-second")
     }
 
-    // A live in-session selection is a deliberate switch, so it outranks the
-    // setting until the tab is rebuilt.
+    /// A live in-session selection is a deliberate switch, so it outranks the
+    /// setting until the tab is rebuilt.
     @Test func selectionOutranksConfiguredDefault() {
         #expect(ReportsTabView.resolvePageId(
             selected: "page-main",
@@ -231,7 +229,6 @@ struct ReportsPageSelectionTests {
 }
 
 struct ReportsLoadRequestTests {
-
     @Test func cancelledRequestCannotPublish() {
         let request = ReportsLoadRequest(databaseID: nil, dataVersion: 1, generation: 1)
 
@@ -296,7 +293,6 @@ struct ReportsLoadRequestTests {
 }
 
 struct DashboardLoadRequestTests {
-
     @Test func localeChangeInvalidatesWidgetComputation() {
         let english = WidgetComputationRequest(transactions: [], localeIdentifier: "en_US", dataVersion: 1)
         let french = WidgetComputationRequest(transactions: [], localeIdentifier: "fr_FR", dataVersion: 1)
@@ -312,7 +308,9 @@ struct DashboardLoadRequestTests {
     }
 
     private struct TestError: LocalizedError {
-        var errorDescription: String? { "report fetch failed" }
+        var errorDescription: String? {
+            "report fetch failed"
+        }
     }
 
     @Test func cancelledRequestCannotPublish() {

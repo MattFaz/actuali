@@ -39,19 +39,22 @@ struct DashboardView: View {
 
     private var hasUnsupportedWidgets: Bool {
         widgets.contains {
-            if case .unsupported = $0 { return true }
+            if case .unsupported = $0 {
+                return true
+            }
             return false
         }
     }
 
     private var visibleWidgets: [DashboardWidget] {
         widgets.filter {
-            if case .unsupported = $0 { return false }
+            if case .unsupported = $0 {
+                return false
+            }
             return true
         }
     }
 
-    @ViewBuilder
     private var widgetCards: some View {
         ForEach(visibleWidgets, id: \.id) { widget in
             widgetView(for: widget)
@@ -151,7 +154,9 @@ struct DashboardView: View {
             // WidgetCard recomputes when the transactions change and the compute
             // closures read these, so they must land first.
             let reportIds = widgets.compactMap { widget -> String? in
-                if case .customReport(_, let meta) = widget { return meta?.id }
+                if case .customReport(_, let meta) = widget {
+                    return meta?.id
+                }
                 return nil
             }
             let loadedConfigs = try await database.fetchCustomReportConfigs(ids: reportIds)
@@ -162,12 +167,12 @@ struct DashboardView: View {
 
             let needsBudgets = widgets.contains {
                 switch $0 {
-                case .budgetAnalysis, .sankey, .balanceForecast: return true
-                case .spending(_, let meta): return meta?.mode == .budget
+                case .budgetAnalysis, .sankey, .balanceForecast: true
+                case .spending(_, let meta): meta?.mode == .budget
                 // Budgeted custom reports read budget cells instead of transactions.
                 case .customReport(_, let meta):
-                    return (meta?.id).flatMap { loadedConfigs[$0] }?.balanceType == "Budgeted"
-                default: return false
+                    (meta?.id).flatMap { loadedConfigs[$0] }?.balanceType == "Budgeted"
+                default: false
                 }
             }
             let loadedReportBudgets = needsBudgets
@@ -176,7 +181,9 @@ struct DashboardView: View {
             try Task.checkCancellation()
 
             let needsForecast = widgets.contains {
-                if case .balanceForecast = $0 { return true }
+                if case .balanceForecast = $0 {
+                    return true
+                }
                 return false
             }
             let loadedForecastSchedules: [Schedule] = if needsForecast {
@@ -430,23 +437,23 @@ struct DashboardView: View {
     /// Match WebUI spending-spreadsheet.ts default exclusions: drop
     /// off-budget accounts and income categories before computing.
     private func spendingScope(_ transactions: [Transaction]) -> [Transaction] {
-        let offBudget = Set(budgetStore.accounts.filter { $0.offBudget }.map(\.id))
+        let offBudget = Set(budgetStore.accounts.filter(\.offBudget).map(\.id))
         let income = Set(
             budgetStore.categoryGroups.flatMap(\.categories).filter(\.isIncome).map(\.id)
         )
         return transactions.filter { transaction in
             !offBudget.contains(transaction.accountId)
-            && !(transaction.categoryId.map { income.contains($0) } ?? false)
+                && !(transaction.categoryId.map { income.contains($0) } ?? false)
         }
     }
 
     private func comparisonLabel(for meta: SpendingMeta?) -> String {
         // nil mode defaults to single-month upstream (SpendingCard.tsx).
         switch meta?.mode ?? .singleMonth {
-        case .budget: return ReportStrings.text("vs budget", locale: locale)
+        case .budget: ReportStrings.text("vs budget", locale: locale)
         case .singleMonth:
-            return ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
-        case .average: return ReportStrings.text("vs avg", locale: locale)
+            ReportStrings.format("vs %@", meta?.compareTo ?? "prior", locale: locale)
+        case .average: ReportStrings.text("vs avg", locale: locale)
         }
     }
 }
@@ -476,11 +483,11 @@ private struct WidgetCard<Value, Content: View>: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
             }
         }
-            .task(id: WidgetComputationRequest(
-                transactions: transactions,
-                localeIdentifier: locale.identifier,
-                dataVersion: budgetStore.dataVersion
-            )) {
+        .task(id: WidgetComputationRequest(
+            transactions: transactions,
+            localeIdentifier: locale.identifier,
+            dataVersion: budgetStore.dataVersion
+        )) {
             guard let transactions else { return }
             value = compute(transactions)
         }
@@ -496,7 +503,7 @@ private struct WidgetCard<Value, Content: View>: View {
                                               timeFrame: nil, conditions: nil,
                                               conditionsOp: nil,
                                               interval: .monthly, mode: nil)),
-        .unsupported(id: "3", type: "sankey-card")
+        .unsupported(id: "3", type: "sankey-card"),
     ])
     .environmentObject(BudgetStore.previewInstance())
 }

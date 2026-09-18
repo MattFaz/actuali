@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreCreditCardStatementDueTests {
-
     private func makeStore() throws -> (BudgetStore, BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-due-\(UUID().uuidString).sqlite")
@@ -129,7 +128,7 @@ struct BudgetStoreCreditCardStatementDueTests {
             """, arguments: [
                 older.end.yyyymmdd,
                 older.end.adding(days: 1).yyyymmdd,
-                newer.end.yyyymmdd
+                newer.end.yyyymmdd,
             ])
         }
 
@@ -141,7 +140,7 @@ struct BudgetStoreCreditCardStatementDueTests {
         #expect(dues?.first { $0.dueDate == newer.dueDate }?.remainingDue == 30000)
     }
 
-    @Test func loadCreditCardStatementDuesClearsOnMissingDatabase() async throws {
+    @Test func loadCreditCardStatementDuesClearsOnMissingDatabase() async {
         let store = BudgetStore.previewInstance()
         store.creditCardStatementDues = [
             "card1": [CreditCardCycle.StatementDue(
@@ -149,7 +148,7 @@ struct BudgetStoreCreditCardStatementDueTests {
                 paymentsSince: 0,
                 remainingDue: 1000,
                 dueDate: .today()
-            )]
+            )],
         ]
         await store.loadCreditCardStatementDues()
         #expect(store.creditCardStatementDues.isEmpty)

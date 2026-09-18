@@ -13,7 +13,7 @@ struct HistoryStoreTests {
         Transaction(
             id: id,
             accountId: "account",
-            date: 20260906,
+            date: 20_260_906,
             amount: amount,
             payeeId: "payee",
             payeeName: "Groceries",
@@ -163,13 +163,13 @@ struct HistoryStoreTests {
             before: [
                 oldParent,
                 oldChild,
-                absentAddedChild
+                absentAddedChild,
             ],
             after: [
                 newParent,
                 newChild,
                 addedChild,
-                removedChild
+                removedChild,
             ]
         )
 
@@ -268,7 +268,7 @@ struct HistoryStoreTests {
             { $0.parentId = "parent" },
             { $0.tombstone = true },
             { $0.importedPayee = "imported" },
-            { $0.schedule = "schedule" }
+            { $0.schedule = "schedule" },
         ]
 
         for mutate in mutators {

@@ -10,13 +10,15 @@ struct Payee: Identifiable, Hashable {
 // MARK: - CRDTSyncable
 
 extension Payee: CRDTSyncable {
-    static var datasetName: String { "payees" }
+    static var datasetName: String {
+        "payees"
+    }
 
     var syncableFields: [String: Any?] {
         [
             "name": name,
             "transfer_acct": transferAccountId,
-            "tombstone": tombstone ? 1 : 0
+            "tombstone": tombstone ? 1 : 0,
         ]
     }
 }
@@ -29,11 +31,13 @@ struct PayeeMapping: Identifiable, Hashable {
 }
 
 extension PayeeMapping: CRDTSyncable {
-    static var datasetName: String { "payee_mapping" }
+    static var datasetName: String {
+        "payee_mapping"
+    }
 
     var syncableFields: [String: Any?] {
         [
-            "targetId": targetId
+            "targetId": targetId,
         ]
     }
 }

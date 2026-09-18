@@ -5,14 +5,14 @@ import Testing
 
 @MainActor
 struct ParseAndQueueTransactionIntentTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func formatsAmountWithLocaleAndTwoFractionalDigits() {
         let dialog = ParseAndQueueTransactionIntent.dialogText(
             amount: 12.5,
             payee: "Cafe",
-            locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        )
         #expect(dialog == "12,50 chez Cafe a été mis en attente pour vérification")
     }
 
@@ -20,9 +20,11 @@ struct ParseAndQueueTransactionIntentTests {
         let dialog = ParseAndQueueTransactionIntent.dialogText(
             amount: nil,
             payee: nil,
-            locale: Locale(identifier: "en_US"), bundle: appBundle)
+            locale: Locale(identifier: "en_US"), bundle: appBundle
+        )
         #expect(dialog == "Queued ? at Unknown for review")
     }
+
     private func makeOnDiskBudget() throws -> String {
         let budgetId = "test-parse-queue-\(UUID().uuidString)"
         let directory = BudgetFileManager.shared.budgetDirectory(for: budgetId)
@@ -31,16 +33,16 @@ struct ParseAndQueueTransactionIntentTests {
         let queue = try DatabaseQueue(path: BudgetFileManager.shared.databasePath(for: budgetId).path)
         try queue.write { database in
             try database.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    type TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    sort_order REAL,
-                    tombstone INTEGER DEFAULT 0
-                );
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                type TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                sort_order REAL,
+                tombstone INTEGER DEFAULT 0
+            );
+            """)
         }
         return budgetId
     }

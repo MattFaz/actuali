@@ -26,28 +26,28 @@ struct Transaction: Identifiable, Hashable, Codable {
     var sortOrder: Double? // Timestamp in ms, determines order within same date
     var importedPayee: String? // Original payee text from import / Shortcut entry
     var schedule: String? = nil // Id of the schedule that posted this transaction, nil if entered manually
-    // Bank-import dedup key (Actual's imported_id, stored as financial_id).
-    // Set at creation time by the Wallet import; not read back by the fetch
-    // paths, so it is nil on fetched rows — dedup queries the column directly.
+    /// Bank-import dedup key (Actual's imported_id, stored as financial_id).
+    /// Set at creation time by the Wallet import; not read back by the fetch
+    /// paths, so it is nil on fetched rows — dedup queries the column directly.
     var financialId: String? = nil
-    // Marks the special "opening balance" transaction created alongside a
-    // new account (Actual's starting_balance_flag). Only ever set at
-    // creation, matching financialId's write-only shape below.
+    /// Marks the special "opening balance" transaction created alongside a
+    /// new account (Actual's starting_balance_flag). Only ever set at
+    /// creation, matching financialId's write-only shape below.
     var startingBalanceFlag: Bool = false
-    // Payee's transfer_acct: the account on the other side when the payee is a
-    // transfer payee, nil otherwise. Populated by the display and reports
-    // fetches so rows can render transfers as transfers and engines can
-    // exclude them the way the WebUI does. Not synced (it lives on the payee,
-    // not the transaction).
+    /// Payee's transfer_acct: the account on the other side when the payee is a
+    /// transfer payee, nil otherwise. Populated by the display and reports
+    /// fetches so rows can render transfers as transfers and engines can
+    /// exclude them the way the WebUI does. Not synced (it lives on the payee,
+    /// not the transaction).
     var transferAcct: String? = nil
-    // One entry per live child of a split parent, in entry order. Only
-    // populated by fetchTransactions for isParent rows, so the list row can
-    // show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
+    /// One entry per live child of a split parent, in entry order. Only
+    /// populated by fetchTransactions for isParent rows, so the list row can
+    /// show the breakdown ("Food $6.00, Fun $4.00"). Display-only, not synced.
     var splitPortions: [SplitPortion]? = nil
 
     struct SplitPortion: Hashable, Codable {
         var categoryName: String?
-        var amount: Int  // cents, signed like the parent
+        var amount: Int // cents, signed like the parent
     }
 
     static func formattedDate(from dateInt: Int, style: Date.FormatStyle.DateStyle = .abbreviated) -> String {
@@ -84,7 +84,9 @@ struct Transaction: Identifiable, Hashable, Codable {
     func needsCategory(offBudgetAccountIds: Set<String>) -> Bool {
         guard categoryId == nil, !isParent else { return false }
         guard !offBudgetAccountIds.contains(accountId) else { return false }
-        if let transferAcct { return offBudgetAccountIds.contains(transferAcct) }
+        if let transferAcct {
+            return offBudgetAccountIds.contains(transferAcct)
+        }
         return transferId == nil
     }
 
@@ -119,13 +121,15 @@ struct Transaction: Identifiable, Hashable, Codable {
 // MARK: - CRDTSyncable
 
 extension Transaction: CRDTSyncable {
-    static var datasetName: String { "transactions" }
+    static var datasetName: String {
+        "transactions"
+    }
 
     var syncableFields: [String: Any?] {
         var fields: [String: Any?] = [
             "acct": accountId,
             "date": date,
-            "description": payeeId,      // payeeId maps to "description" column
+            "description": payeeId, // payeeId maps to "description" column
             "category": categoryId,
             "amount": amount,
             "notes": notes,
@@ -138,7 +142,7 @@ extension Transaction: CRDTSyncable {
             "tombstone": tombstone ? 1 : 0,
             "sort_order": sortOrder ?? Date().timeIntervalSince1970 * 1000,
             "imported_description": importedPayee,
-            "schedule": schedule
+            "schedule": schedule,
         ]
         // Only present on imported transactions — keeps inserts for ordinary
         // transactions identical (messagesForInsert emits every listed field,
@@ -157,15 +161,20 @@ extension Transaction: CRDTSyncable {
 
 struct TransactionDateGroup: Identifiable {
     let date: Int
-    var id: Int { date }
+    var id: Int {
+        date
+    }
+
     var transactions: [Transaction]
 
     /// Section header for the group. Spelled out in full because the rows
     /// underneath drop their own date once they're grouped.
-    var title: String { Transaction.formattedDate(from: date, style: .long) }
+    var title: String {
+        Transaction.formattedDate(from: date, style: .long)
+    }
 }
 
-extension Array where Element == Transaction {
+extension [Transaction] {
     /// Groups transactions by date, preserving the array's existing encounter
     /// order. Every list that calls this fetches `ORDER BY date DESC`, so the
     /// groups come out newest-first and each date appears exactly once.

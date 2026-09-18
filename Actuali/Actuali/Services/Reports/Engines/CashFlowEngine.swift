@@ -3,7 +3,7 @@ import Foundation
 struct CashFlowPoint: Equatable {
     let periodStart: Date
     let incomeCents: Int
-    let expenseCents: Int  // positive value
+    let expenseCents: Int // positive value
 }
 
 struct CashFlowData: Equatable {
@@ -11,7 +11,6 @@ struct CashFlowData: Equatable {
 }
 
 enum CashFlowEngine {
-
     static func compute(
         meta: CashFlowMeta?,
         transactions: [Transaction],
@@ -46,8 +45,11 @@ enum CashFlowEngine {
             var income = 0
             var expense = 0
             for tx in filtered where tx.date >= startYMD && tx.date <= endYMD {
-                if tx.amount >= 0 { income += tx.amount }
-                else { expense += -tx.amount }
+                if tx.amount >= 0 {
+                    income += tx.amount
+                } else {
+                    expense += -tx.amount
+                }
             }
             return CashFlowPoint(periodStart: monthStart, incomeCents: income, expenseCents: expense)
         }

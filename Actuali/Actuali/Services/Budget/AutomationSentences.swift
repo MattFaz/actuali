@@ -5,7 +5,6 @@ import Foundation
 /// note-line renderer (port of template-notes.ts `unparse`) used by the
 /// un-migrate flow.
 enum AutomationSentences {
-
     private static func localized(
         _ value: String.LocalizationValue, locale: Locale, bundle: Bundle
     ) -> String {
@@ -85,11 +84,13 @@ enum AutomationSentences {
                 let repeats = template.repeatCount ?? 1
                 sentence = localized(
                     "Save \(value) by \(repeatTarget), repeating every \(repeats) years",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             } else if let repeats = template.repeatCount, repeats > 0 {
                 sentence = localized(
                     "Save \(value) by \(repeatTarget), repeating every \(repeats) months",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             }
             return sentence
 
@@ -169,14 +170,13 @@ enum AutomationSentences {
     }
 
     private static func limitToString(_ limit: GoalTemplate.Limit) -> String {
-        let base: String
-        switch limit.period {
+        let base = switch limit.period {
         case .weekly:
-            base = "up to \(trimTrailingZeros(limit.amount)) per week starting \(limit.start ?? "")"
+            "up to \(trimTrailingZeros(limit.amount)) per week starting \(limit.start ?? "")"
         case .daily:
-            base = "up to \(trimTrailingZeros(limit.amount)) per day"
+            "up to \(trimTrailingZeros(limit.amount)) per day"
         case .monthly:
-            base = "up to \(trimTrailingZeros(limit.amount))"
+            "up to \(trimTrailingZeros(limit.amount))"
         }
         return limit.hold ? "\(base) hold" : base
     }
@@ -211,12 +211,18 @@ enum AutomationSentences {
             return "#goal \(trimTrailingZeros(template.amount ?? 0))"
         case .simple:
             var line = prefix
-            if let monthly = template.monthly { line += " \(trimTrailingZeros(monthly))" }
-            if let limit = template.limit { line += " \(limitToString(limit))" }
+            if let monthly = template.monthly {
+                line += " \(trimTrailingZeros(monthly))"
+            }
+            if let limit = template.limit {
+                line += " \(limitToString(limit))"
+            }
             return line
         case .schedule:
             var line = "\(prefix) schedule"
-            if template.full == true { line += " full" }
+            if template.full == true {
+                line += " full"
+            }
             line += " \(template.name ?? "")"
             line += adjustmentToString(template)
             return line
@@ -228,7 +234,9 @@ enum AutomationSentences {
         case .periodic:
             let period = template.period ?? .init(period: .month, amount: 1)
             var line = "\(prefix) \(trimTrailingZeros(template.amount ?? 0)) repeat every \(period.amount) \(period.period.rawValue)s starting \(template.starting ?? "")"
-            if let limit = template.limit { line += " \(limitToString(limit))" }
+            if let limit = template.limit {
+                line += " \(limitToString(limit))"
+            }
             return line
         case .by, .spend:
             var line = "\(prefix) \(trimTrailingZeros(template.amount ?? 0)) by \(template.month ?? "")"
@@ -244,7 +252,9 @@ enum AutomationSentences {
             if let weight = template.weight, weight != 1 {
                 line += " \(trimTrailingZeros(weight))"
             }
-            if let limit = template.limit { line += " \(limitToString(limit))" }
+            if let limit = template.limit {
+                line += " \(limitToString(limit))"
+            }
             return line
         case .average:
             var line = "\(prefix) average \(template.numMonths ?? 0) months"
@@ -275,7 +285,8 @@ enum AutomationSentences {
             .filter { $0.type != .refill }
             .flatMap { template -> [String] in
                 guard let line = noteLine(
-                    for: template, refill: refill, categoryName: categoryName)
+                    for: template, refill: refill, categoryName: categoryName
+                )
                 else { return [] }
                 let descriptionLines = (template.description ?? "")
                     .components(separatedBy: "\n")
@@ -297,17 +308,22 @@ enum AutomationSentences {
     /// logic in UnmigrateBudgetAutomationsModal.
     static func mergeIntoNote(existingNote: String, rendered: String) -> String {
         var base = existingNote
-        while let last = base.last, last.isWhitespace { base.removeLast() }
+        while let last = base.last, last.isWhitespace {
+            base.removeLast()
+        }
         guard !rendered.isEmpty else { return base }
 
         let existingLines = Set(
             base.components(separatedBy: "\n")
                 .map { $0.trimmingCharacters(in: .whitespaces) }
-                .filter { !$0.isEmpty })
+                .filter { !$0.isEmpty }
+        )
         let newLines = rendered.components(separatedBy: "\n")
             .map { line -> String in
                 var trimmed = line
-                while let last = trimmed.last, last == " " || last == "\t" { trimmed.removeLast() }
+                while let last = trimmed.last, last == " " || last == "\t" {
+                    trimmed.removeLast()
+                }
                 return trimmed
             }
             .filter { !$0.isEmpty && !existingLines.contains($0.trimmingCharacters(in: .whitespaces)) }

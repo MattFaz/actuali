@@ -4,9 +4,8 @@ import XCTest
 /// payee pre-fills the search field with the old name. The whole string must
 /// be selected so the first keystroke replaces it instead of appending to it.
 final class PayeePickerSelectAllUITests: XCTestCase {
-
     @MainActor
-    func testTypingReplacesPrefilledPayeeName() throws {
+    func testTypingReplacesPrefilledPayeeName() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
         app.launch()
@@ -49,6 +48,6 @@ final class PayeePickerSelectAllUITests: XCTestCase {
         let refocusedValue = (searchField.value as? String) ?? ""
         XCTAssertTrue(["xy", "yx"].contains(refocusedValue),
                       "after refocus the keystroke should append (got \(refocusedValue); "
-                      + "\"y\" alone means re-select-all)")
+                          + "\"y\" alone means re-select-all)")
     }
 }

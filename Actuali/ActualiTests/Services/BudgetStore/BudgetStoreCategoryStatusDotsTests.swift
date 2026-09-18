@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreCategoryStatusDotsTests {
-
     @Test func categoryStatusDotsShowByDefault() {
         #expect(BudgetStore.previewInstance().showCategoryStatusDots)
     }

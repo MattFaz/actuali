@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct TransactionLocalizationTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func transactionFallbackLabelsMatchTheAppCatalog() {
@@ -21,7 +20,7 @@ struct TransactionLocalizationTests {
             "Outflow": ["Outflow", "Sortie", "Saída"],
             "Inflow": ["Inflow", "Entrée", "Entrada"],
             "Payee (optional)": ["Payee (optional)", "Bénéficiaire (facultatif)", "Beneficiário (opcional)"],
-            "Notes (optional)": ["Notes (optional)", "Notes (facultatif)", "Notas (opcional)"]
+            "Notes (optional)": ["Notes (optional)", "Notes (facultatif)", "Notas (opcional)"],
         ]
 
         for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {
@@ -40,7 +39,7 @@ struct TransactionLocalizationTests {
         let expected = [
             (Locale(identifier: "en_US"), ["Cleared", "Reconciled", "Uncleared"]),
             (Locale(identifier: "fr_FR"), ["Pointée", "Rapproché", "Non pointée"]),
-            (Locale(identifier: "pt_BR"), ["Compensado", "Conciliado", "Não compensado"])
+            (Locale(identifier: "pt_BR"), ["Compensado", "Conciliado", "Não compensado"]),
         ]
 
         for (locale, values) in expected {
@@ -56,7 +55,7 @@ struct TransactionLocalizationTests {
             (.uncategorized, ["Uncategorized", "Sans catégorie", "Sem categoria"]),
             (.uncleared, ["Uncleared", "Non pointée", "Não compensado"]),
             (.cleared, ["Cleared", "Pointée", "Compensado"]),
-            (.reconciled, ["Reconciled", "Rapproché", "Conciliado"])
+            (.reconciled, ["Reconciled", "Rapproché", "Conciliado"]),
         ]
 
         for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {
@@ -70,14 +69,14 @@ struct TransactionLocalizationTests {
     @Test func transactionFilterEmptyStateUsesTheAppCatalog() {
         let expected: [String: [String]] = [
             "No Matching Transactions": [
-                "No Matching Transactions", "Aucune transaction correspondante", "Nenhuma transação correspondente"
+                "No Matching Transactions", "Aucune transaction correspondante", "Nenhuma transação correspondente",
             ],
             "Try another status filter.": [
-                "Try another status filter.", "Essayez un autre filtre de statut.", "Tente outro filtro de status."
+                "Try another status filter.", "Essayez un autre filtre de statut.", "Tente outro filtro de status.",
             ],
             "Show All Transactions": [
-                "Show All Transactions", "Afficher toutes les transactions", "Mostrar todas as transações"
-            ]
+                "Show All Transactions", "Afficher toutes les transactions", "Mostrar todas as transações",
+            ],
         ]
 
         for (index, localeIdentifier) in ["en_US", "fr_FR", "pt_BR"].enumerated() {
@@ -91,7 +90,7 @@ struct TransactionLocalizationTests {
     @Test func transactionSelectionLabelsUseTheRequestedLocale() {
         let expected = [
             (Locale(identifier: "en_US"), ["Selected", "Not selected"]),
-            (Locale(identifier: "fr_FR"), ["Sélectionnées", "Non sélectionné"])
+            (Locale(identifier: "fr_FR"), ["Sélectionnées", "Non sélectionné"]),
         ]
 
         for (locale, values) in expected {
@@ -117,17 +116,23 @@ struct TransactionLocalizationTests {
         count: Int, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(TransactionBulkActionLocalization.duplicateLabel(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english.replacingOccurrences(of: "Duplicate", with: "Delete"))
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english.replacingOccurrences(of: "Duplicate", with: "Delete"))
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french.replacingOccurrences(of: "Dupliquer", with: "Supprimer"))
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french.replacingOccurrences(of: "Dupliquer", with: "Supprimer"))
         #expect(TransactionBulkActionLocalization.deleteLabel(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese.replacingOccurrences(of: "Duplicar", with: "Excluir"))
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese.replacingOccurrences(of: "Duplicar", with: "Excluir"))
     }
 
     @Test(arguments: [
@@ -139,11 +144,14 @@ struct TransactionLocalizationTests {
         count: Int, english: String, french: String, brazilianPortuguese: String
     ) {
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle) == english)
+            count: count, locale: Locale(identifier: "en_US"), bundle: appBundle
+        ) == english)
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle) == french)
+            count: count, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        ) == french)
         #expect(TransactionBulkActionLocalization.deleteConfirmationTitle(
-            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle) == brazilianPortuguese)
+            count: count, locale: Locale(identifier: "pt_BR"), bundle: appBundle
+        ) == brazilianPortuguese)
     }
 
     @Test func ruleOperatorsMatchTheAppCatalog() {
@@ -156,7 +164,7 @@ struct TransactionLocalizationTests {
             ("pt_BR", "isNot", "não é"),
             ("en_US", "gt", "is greater than"),
             ("fr_FR", "gt", "est supérieur à"),
-            ("pt_BR", "gt", "é maior que")
+            ("pt_BR", "gt", "é maior que"),
         ]
 
         for (localeIdentifier, key, expectedValue) in expected {
@@ -173,7 +181,7 @@ struct TransactionLocalizationTests {
         let expected = [
             ("fr_FR", "groupe de catégories"),
             ("es_ES", "grupo de categorías"),
-            ("it_IT", "gruppo di categorie")
+            ("it_IT", "gruppo di categorie"),
         ]
 
         for (localeIdentifier, expectedValue) in expected {

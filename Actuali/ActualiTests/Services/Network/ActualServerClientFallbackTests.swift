@@ -10,7 +10,7 @@ private final class FallbackTransport: URLProtocol {
     }
 
     private static let lock = NSLock()
-    nonisolated(unsafe) private static var state = State()
+    private nonisolated(unsafe) static var state = State()
 
     static var requestedURLs: [URL] {
         lock.withLock { state.requestedURLs }
@@ -34,8 +34,13 @@ private final class FallbackTransport: URLProtocol {
         }
     }
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let host = request.url?.host ?? ""
@@ -92,7 +97,7 @@ struct ActualServerClientFallbackTests {
 
         #expect(token == "fallback-token")
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
-            "primary.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com",
         ])
     }
 
@@ -125,7 +130,7 @@ struct ActualServerClientFallbackTests {
         _ = try await client.login(password: "password")
 
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
-            "primary.example.com", "fallback.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com", "fallback.example.com",
         ])
     }
 
@@ -140,7 +145,7 @@ struct ActualServerClientFallbackTests {
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
             "fallback.example.com", "primary.example.com",
-            "primary.example.com"
+            "primary.example.com",
         ])
     }
 
@@ -154,7 +159,7 @@ struct ActualServerClientFallbackTests {
 
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
-            "primary.example.com", "primary.example.com"
+            "primary.example.com", "primary.example.com",
         ])
         #expect(FallbackTransport.requestedURLs[2].path == "/info")
     }
@@ -168,7 +173,7 @@ struct ActualServerClientFallbackTests {
 
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
-            "primary.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com",
         ])
     }
 
@@ -206,7 +211,7 @@ struct ActualServerClientFallbackTests {
 
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
-            "primary.example.com", "primary.example.com"
+            "primary.example.com", "primary.example.com",
         ])
     }
 
@@ -221,7 +226,7 @@ struct ActualServerClientFallbackTests {
 
         #expect(FallbackTransport.requestedURLs.map(\.host) == [
             "primary.example.com", "fallback.example.com",
-            "primary.example.com", "fallback.example.com"
+            "primary.example.com", "fallback.example.com",
         ])
     }
 

@@ -68,7 +68,7 @@ struct PayeePickerViewTests {
         let result = PayeePickerView.allowedPayees([
             live,
             tombstoned,
-            transfer
+            transfer,
         ])
 
         #expect(result.map(\.id) == ["1"])
@@ -107,7 +107,8 @@ struct PayeePickerViewTests {
 
         let result = PayeePickerView.filteredPayees(
             from: standard + [transfer], accounts: accounts,
-            transferFromAccountId: "checking", searchText: "")
+            transferFromAccountId: "checking", searchText: ""
+        )
 
         #expect(result.contains { $0.id == "transfer" })
     }

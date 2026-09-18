@@ -8,7 +8,9 @@ struct DisplaySettingsLoadRequest: Equatable {
 private struct CurrencyOption: Identifiable, Sendable {
     let symbol: String
     let code: String
-    var id: String { code }
+    var id: String {
+        code
+    }
 }
 
 /// Every currency in Actual's loot-core currencies list, plus a few
@@ -70,7 +72,7 @@ private let currencyOptions = [
     CurrencyOption(symbol: "$", code: "USD"),
     CurrencyOption(symbol: "$U", code: "UYU"),
     CurrencyOption(symbol: "UZS", code: "UZS"),
-    CurrencyOption(symbol: "R", code: "ZAR")
+    CurrencyOption(symbol: "R", code: "ZAR"),
 ]
 
 struct DisplaySettingsView: View {

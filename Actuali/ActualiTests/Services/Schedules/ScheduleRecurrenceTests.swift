@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct ScheduleRecurrenceTests {
-
     private struct Fixture {
         let name: String
         let config: [String: Any]
@@ -92,7 +91,7 @@ struct ScheduleRecurrenceTests {
         func config(patterns: [[String: Any]]) -> RecurConfig? {
             RecurConfig(json: ["frequency": "monthly", "start": "2026-01-01", "patterns": patterns])
         }
-        #expect(config(patterns: [["type": "TU", "value": 0]]) == nil)   // nth=0 weekday
+        #expect(config(patterns: [["type": "TU", "value": 0]]) == nil) // nth=0 weekday
         #expect(config(patterns: [["type": "day", "value": 0]]) == nil)
         #expect(config(patterns: [["type": "day", "value": 32]]) == nil)
         #expect(config(patterns: [["type": "day", "value": -32]]) == nil)
@@ -130,13 +129,12 @@ struct ScheduleRecurrenceTests {
 }
 
 struct DayDateTests {
-
     @Test func invalidInputsReturnNil() {
         #expect(DayDate(iso: "not-a-date") == nil)
         #expect(DayDate(iso: "2026-02-30") == nil)
         #expect(DayDate(iso: "2026-00-10") == nil)
-        #expect(DayDate(yyyymmdd: 20260230) == nil)
-        #expect(DayDate(yyyymmdd: 20261301) == nil)
+        #expect(DayDate(yyyymmdd: 20_260_230) == nil)
+        #expect(DayDate(yyyymmdd: 20_261_301) == nil)
     }
 
     @Test func parsesLongerISOStrings() {
@@ -159,10 +157,10 @@ struct DayDateTests {
     }
 
     @Test func yyyymmddRoundTrip() {
-        let d = DayDate(yyyymmdd: 20260717)
-        #expect(d?.yyyymmdd == 20260717)
+        let d = DayDate(yyyymmdd: 20_260_717)
+        #expect(d?.yyyymmdd == 20_260_717)
         #expect(d?.iso == "2026-07-17")
-        #expect(DayDate(iso: "2026-07-17")?.yyyymmdd == 20260717)
+        #expect(DayDate(iso: "2026-07-17")?.yyyymmdd == 20_260_717)
     }
 
     @Test func comparableOrdering() {

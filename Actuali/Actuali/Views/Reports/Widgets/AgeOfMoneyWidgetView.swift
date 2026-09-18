@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct AgeOfMoneyWidgetView: View {
     @Environment(\.locale) private var locale
@@ -8,9 +8,9 @@ struct AgeOfMoneyWidgetView: View {
 
     private var trendSymbol: (name: String, color: Color)? {
         switch data.trend {
-        case .up: return ("arrow.up.right", .green)
-        case .down: return ("arrow.down.right", .red)
-        case .stable: return nil
+        case .up: ("arrow.up.right", .green)
+        case .down: ("arrow.down.right", .red)
+        case .stable: nil
         }
     }
 
@@ -64,8 +64,8 @@ struct AgeOfMoneyWidgetView: View {
                     "Some expenses predate the income history; ages are approximate.",
                     locale: locale
                 ))
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                .font(.caption2)
+                .foregroundStyle(.secondary)
             }
         }
         .padding()

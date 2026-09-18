@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the balance semantics of `fetchAccounts()`: every non-tombstoned,
@@ -9,7 +9,6 @@ import GRDB
 /// double-counted), and accounts with no transactions report 0.
 @MainActor
 struct BudgetDatabaseAccountBalanceTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

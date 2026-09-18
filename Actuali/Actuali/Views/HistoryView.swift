@@ -90,7 +90,11 @@ struct HistoryView: View {
         }
         .alert(historyStore.errorTitle, isPresented: Binding(
             get: { historyStore.errorMessage != nil },
-            set: { if !$0 { historyStore.clearError() } }
+            set: {
+                if !$0 {
+                    historyStore.clearError()
+                }
+            }
         )) {
             Button("OK", role: .cancel) { historyStore.clearError() }
         } message: {
@@ -171,17 +175,23 @@ struct HistoryView: View {
         }
 
         var parts: [String] = []
-        if let category { parts.append(category) }
-        if let account { parts.append(account) }
-        if hasNotes { parts.append(String(localized: "Note")) }
+        if let category {
+            parts.append(category)
+        }
+        if let account {
+            parts.append(account)
+        }
+        if hasNotes {
+            parts.append(String(localized: "Note"))
+        }
         return parts.isEmpty ? action.detail : parts.joined(separator: " · ")
     }
 
     private func symbol(for kind: HistoryActionKind) -> String {
         switch kind {
-        case .created: return "plus.circle"
-        case .edited: return "pencil.circle"
-        case .deleted: return "trash.circle"
+        case .created: "plus.circle"
+        case .edited: "pencil.circle"
+        case .deleted: "trash.circle"
         }
     }
 }

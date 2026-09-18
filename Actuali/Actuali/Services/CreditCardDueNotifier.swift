@@ -1,6 +1,6 @@
 import Foundation
-import UserNotifications
 import os
+import UserNotifications
 
 private let notifLog = Logger(subsystem: "com.mfazz.Actuali", category: "CreditCardDueNotifier")
 

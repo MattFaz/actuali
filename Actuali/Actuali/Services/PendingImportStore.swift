@@ -8,7 +8,6 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "PendingIm
 /// directory. Observable so the toolbar badge and review sheet react to changes.
 @MainActor
 final class PendingImportStore: ObservableObject {
-
     enum StoreError: LocalizedError, Equatable {
         case saveFailed(String)
 
@@ -19,7 +18,7 @@ final class PendingImportStore: ObservableObject {
         nonisolated func message(locale: Locale, bundle: Bundle = .main) -> String {
             switch self {
             case .saveFailed(let message):
-                return ReportStrings.format(
+                ReportStrings.format(
                     "Failed to save pending imports: %@",
                     message,
                     locale: locale,
@@ -33,7 +32,9 @@ final class PendingImportStore: ObservableObject {
 
     @Published private(set) var imports: [PendingImport] = []
 
-    var count: Int { imports.count }
+    var count: Int {
+        imports.count
+    }
 
     func visibleImports() -> [PendingImport] {
         imports

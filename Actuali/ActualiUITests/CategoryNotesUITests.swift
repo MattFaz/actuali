@@ -7,9 +7,8 @@ import XCTest
 /// back on the row after saving — proving the read, the write and the refresh
 /// are wired together, not just individually correct.
 final class CategoryNotesUITests: XCTestCase {
-
     @MainActor
-    func testViewsAndEditsCategoryNote() throws {
+    func testViewsAndEditsCategoryNote() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1"]
         app.launch()
@@ -24,7 +23,7 @@ final class CategoryNotesUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Transactions for Groceries in'")
         ).firstMatch
         var scrollsLeft = 8
-        while !groceries.isHittable && scrollsLeft > 0 {
+        while !groceries.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }
@@ -69,7 +68,7 @@ final class CategoryNotesUITests: XCTestCase {
     /// row — and rather than hiding, which is reserved for files whose schema
     /// can't store notes at all.
     @MainActor
-    func testUnannotatedCategoryOffersAddNote() throws {
+    func testUnannotatedCategoryOffersAddNote() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-budgetDisplayStyle", "clean", "-initialTab", "1"]
         app.launch()
@@ -81,7 +80,7 @@ final class CategoryNotesUITests: XCTestCase {
             NSPredicate(format: "label BEGINSWITH 'Transactions for Rent in'")
         ).firstMatch
         var scrollsLeft = 8
-        while !rent.isHittable && scrollsLeft > 0 {
+        while !rent.isHittable, scrollsLeft > 0 {
             app.swipeUp()
             scrollsLeft -= 1
         }

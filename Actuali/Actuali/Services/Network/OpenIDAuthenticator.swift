@@ -1,5 +1,5 @@
-import Foundation
 import AuthenticationServices
+import Foundation
 import UIKit
 
 enum OpenIDAuthError: LocalizedError {
@@ -28,19 +28,19 @@ enum OpenIDAuthError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .cancelled:
-            return Self.localizedString("Sign-in was cancelled")
+            Self.localizedString("Sign-in was cancelled")
         case .missingToken:
-            return Self.localizedString("The server did not return a sign-in token")
+            Self.localizedString("The server did not return a sign-in token")
         case .noWindow:
-            return Self.localizedString("Sign-in needs an open window. Try again with the app in the foreground.")
+            Self.localizedString("Sign-in needs an open window. Try again with the app in the foreground.")
         case .server(let reason):
-            return String(
+            String(
                 format: Self.localizedString("Sign-in failed: %@"),
                 locale: .current,
                 reason
             )
         case .sessionFailed(let error):
-            return String(
+            String(
                 format: Self.localizedString("Sign-in failed: %@"),
                 locale: .current,
                 error.localizedDescription

@@ -8,9 +8,8 @@ import XCTest
 /// isolate Coffee in the budget table; covering it from Coffee's own balance
 /// must empty the filter again.
 final class OverspentCategoriesUITests: XCTestCase {
-
     @MainActor
-    func testOverspentFilterIsolatesAndResolvesOverspentCategories() throws {
+    func testOverspentFilterIsolatesAndResolvesOverspentCategories() {
         let app = XCUIApplication()
         // Pin both preferences this test reads. Earlier suites leave their own
         // values behind in UserDefaults: "compact" for the style (whose row

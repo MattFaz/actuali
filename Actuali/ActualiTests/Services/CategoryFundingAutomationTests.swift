@@ -286,7 +286,7 @@ struct CategoryFundingAutomationTests {
         Transaction(
             id: UUID().uuidString,
             accountId: accountId,
-            date: 20260825,
+            date: 20_260_825,
             amount: amount,
             payeeId: nil,
             payeeName: nil,

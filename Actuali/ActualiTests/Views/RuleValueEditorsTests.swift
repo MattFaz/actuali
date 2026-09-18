@@ -6,7 +6,6 @@ import Testing
 /// entities, but a rule can reference hidden categories, closed accounts, or
 /// ids authored on another client — toggling one item must never drop them.
 struct RuleValueEditorsTests {
-
     private let visible = ["cat-a", "cat-b", "cat-c"]
 
     @MainActor @Test func togglingAddsAndRemovesAVisibleId() {
@@ -44,7 +43,7 @@ struct RuleValueEditorsTests {
         let expected: [Locale: [String]] = [
             Locale(identifier: "en_US"): ["0 selected", "1 selected", "2 selected"],
             Locale(identifier: "fr_FR"): ["0 sélectionné", "1 sélectionné", "2 sélectionnés"],
-            Locale(identifier: "pt_BR"): ["0 selecionado", "1 selecionado", "2 selecionados"]
+            Locale(identifier: "pt_BR"): ["0 selecionado", "1 selecionado", "2 selecionados"],
         ]
 
         for (locale, values) in expected {

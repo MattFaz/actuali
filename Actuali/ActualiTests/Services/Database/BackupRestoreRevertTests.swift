@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 struct BackupRestoreRevertTests {
@@ -59,9 +58,9 @@ struct BackupRestoreRevertTests {
 
         #expect(try note(manager: manager, id: "b") == "backup-state")
         let restoredMeta = try metadata(manager: manager, id: "b")
-        #expect(restoredMeta.groupId == nil)              // detached
+        #expect(restoredMeta.groupId == nil) // detached
         #expect(restoredMeta.lastUploaded == nil)
-        #expect(restoredMeta.cloudFileId == "cf-1")       // identity kept
+        #expect(restoredMeta.cloudFileId == "cf-1") // identity kept
         #expect(restoredMeta.encryptKeyId == "k-1")
         #expect(FileManager.default.fileExists(atPath: manager.latestDatabasePath(for: "b").path))
 
@@ -136,9 +135,9 @@ struct BackupRestoreRevertTests {
         #expect(try metadata(manager: manager, id: "b").groupId == "g-1")
     }
 
-    // A crash between the baseline's two writes leaves only the metadata half
-    // (the db is written last as the marker). The next restore sweeps the
-    // orphan and builds a fresh, consistent pair.
+    /// A crash between the baseline's two writes leaves only the metadata half
+    /// (the db is written last as the marker). The next restore sweeps the
+    /// orphan and builds a fresh, consistent pair.
     @Test func restoreSweepsOrphanedBaselineMetadata() async throws {
         let (manager, root) = makeManager()
         defer { try? FileManager.default.removeItem(at: root) }

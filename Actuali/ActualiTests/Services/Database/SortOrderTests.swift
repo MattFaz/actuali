@@ -5,7 +5,6 @@ import Testing
 /// (packages/loot-core/src/server/db/sort.ts), which decides where a new
 /// category lands and which siblings have to move for it.
 struct SortOrderTests {
-
     private func position(_ id: String, _ sortOrder: Double) -> SortOrder.Position {
         SortOrder.Position(id: id, sortOrder: sortOrder)
     }
@@ -74,7 +73,7 @@ struct SortOrderTests {
         #expect(placement.moved == [
             SortOrder.Position(id: "a", sortOrder: 16385),
             SortOrder.Position(id: "b", sortOrder: 32769),
-            SortOrder.Position(id: "c", sortOrder: 49153)
+            SortOrder.Position(id: "c", sortOrder: 49153),
         ])
         #expect(placement.sortOrder == 0.5)
     }

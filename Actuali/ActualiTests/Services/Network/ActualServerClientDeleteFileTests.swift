@@ -11,8 +11,13 @@ private final class DeleteFileTransport: URLProtocol {
     nonisolated(unsafe) static var responseBody = Data(#"{"status":"ok"}"#.utf8)
     nonisolated(unsafe) static var responseContentType = "application/json"
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         Self.capturedRequests.append(request)
@@ -42,7 +47,9 @@ private final class DeleteFileTransport: URLProtocol {
         defer { buffer.deallocate() }
         while stream.hasBytesAvailable {
             let read = stream.read(buffer, maxLength: bufferSize)
-            if read <= 0 { break }
+            if read <= 0 {
+                break
+            }
             body.append(buffer, count: read)
         }
         return body
@@ -82,7 +89,7 @@ struct ActualServerClientDeleteFileTests {
         #expect(request.value(forHTTPHeaderField: "X-ACTUAL-TOKEN") == "test-token")
         let body = try JSONDecoder().decode(
             [String: String].self,
-            from: try #require(DeleteFileTransport.capturedBodies.first)
+            from: #require(DeleteFileTransport.capturedBodies.first)
         )
         #expect(body == ["token": "test-token", "fileId": "file-123"])
     }

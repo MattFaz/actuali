@@ -1,8 +1,8 @@
 // Actuali/Actuali/Services/Sync/SyncClient.swift
 
-import Foundation
 import Combine
 import CryptoKit
+import Foundation
 import os
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "SyncClient")
@@ -20,21 +20,21 @@ enum SyncError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConfigured:
-            return String(localized: "Sync isn't configured. Open a budget first.")
+            String(localized: "Sync isn't configured. Open a budget first.")
         case .offline:
-            return String(localized: "You're offline. Sync will resume automatically.")
+            String(localized: "You're offline. Sync will resume automatically.")
         case .outOfSync:
-            return String(localized: "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover.")
+            String(localized: "Local data has drifted from the server and couldn't reconcile after several attempts. Tap \"Reset Sync State\" below to recover.")
         case .encodingFailed:
-            return String(localized: "Failed to encode the sync request.")
+            String(localized: "Failed to encode the sync request.")
         case .serverError(let message):
-            return String(localized: "Server error: \(message)")
+            String(localized: "Server error: \(message)")
         case .budgetTableMissing:
-            return String(localized: "This budget file has no budget table to write to.")
+            String(localized: "This budget file has no budget table to write to.")
         case .notesTableMissing:
-            return String(localized: "This budget file has no notes table to write to.")
+            String(localized: "This budget file has no notes table to write to.")
         case .rulesTableMissing:
-            return String(localized: "This budget file has no rules table to write to.")
+            String(localized: "This budget file has no rules table to write to.")
         }
     }
 }
@@ -61,7 +61,7 @@ actor SyncClient {
     private var encoder: SyncEncoder
     private var syncTask: Task<Void, Never>?
     private var retryDelay: TimeInterval = 5
-    private let maxRetryDelay: TimeInterval = 300  // 5 min cap
+    private let maxRetryDelay: TimeInterval = 300 // 5 min cap
 
     /// The detached push kicked off by the most recent local write (see
     /// `scheduleAutomaticSync`). Nil when no push is in flight.
@@ -90,7 +90,9 @@ actor SyncClient {
 
     /// This device's HLC node id — the suffix stamped on every message this
     /// client authors. NewTransactionDetector uses it to skip local writes.
-    nonisolated var nodeId: String { clock.node }
+    nonisolated var nodeId: String {
+        clock.node
+    }
 
     // CurrentValueSubject synchronizes send/subscribe internally, so it's safe to
     // touch from any isolation domain — but it isn't Sendable, so Swift 6 needs the
@@ -130,7 +132,7 @@ actor SyncClient {
             // Restore merkle tree
             merkle = MerkleTree(root: clockRecord.merkle)
             // Only set lastSyncedTimestamp if it's valid (non-empty and not epoch)
-            if !clockRecord.timestamp.isEmpty && !clockRecord.timestamp.hasPrefix("1970-") {
+            if !clockRecord.timestamp.isEmpty, !clockRecord.timestamp.hasPrefix("1970-") {
                 lastSyncedTimestamp = clockRecord.timestamp
             } else {
                 // Recover from invalid/legacy state by taking the high-water mark
@@ -138,7 +140,7 @@ actor SyncClient {
                 // the server's messages, so any new local writes will have
                 // timestamps strictly greater than this and are the only thing
                 // we should be pushing on the next sync.
-                let recovered = (try? database.getMaxMessageTimestamp()).flatMap { $0 }
+                let recovered = (try? database.getMaxMessageTimestamp()).flatMap(\.self)
                 if let recovered, !recovered.isEmpty, !recovered.hasPrefix("1970-") {
                     lastSyncedTimestamp = recovered
                     logger.notice("Recovered lastSyncedTimestamp from messages_crdt: \(recovered, privacy: .public)")
@@ -173,7 +175,7 @@ actor SyncClient {
             }
         }
     }
-    
+
     /// Everything a rules pass needs, fetched once. The import path builds this
     /// before its loop instead of paying for a full categories/payees/accounts
     /// scan per transaction.
@@ -257,7 +259,9 @@ actor SyncClient {
         var pendingPayees: [Payee] = []
         var pendingPayeesByName = pendingPayeesByName
         let result = RulesEngine.apply(transaction, rules: prepared.rules, context: prepared.context)
-        if result.isDeleted { return nil }
+        if result.isDeleted {
+            return nil
+        }
         finalTransaction = result.transaction
         if let name = result.pendingPayeeName {
             finalTransaction.payeeId = try await resolvePayee(
@@ -310,10 +314,10 @@ actor SyncClient {
         expectedAmount: Int,
         expectedInsertedIds: Set<String>
     ) async throws -> BankSyncOpeningUpdate {
-        BankSyncOpeningUpdate(
+        try await BankSyncOpeningUpdate(
             expectedAmount: expectedAmount,
             transaction: transaction,
-            messages: try await messageGenerator.messagesForUpdate(
+            messages: messageGenerator.messagesForUpdate(
                 transaction, changedFields: ["amount"]
             ),
             expectedInsertedIds: expectedInsertedIds
@@ -346,11 +350,10 @@ actor SyncClient {
         var pendingPayees: [Payee] = []
         var pendingPayeesByName: [String: Payee] = [:]
         if applyRules, transaction.transferId == nil {
-            let preparedRules: PreparedRules
-            if let prepared {
-                preparedRules = prepared
+            let preparedRules: PreparedRules = if let prepared {
+                prepared
             } else {
-                preparedRules = try await prepareRules()
+                try await prepareRules()
             }
             let result = RulesEngine.apply(transaction, rules: preparedRules.rules, context: preparedRules.context)
 
@@ -638,7 +641,7 @@ actor SyncClient {
 
         // Note: Don't schedule sync here - let the transaction sync handle it
     }
-    
+
     /// Turn a `payee_name` a rule set into a payee id, creating the payee when
     /// it's new — upstream `resolvePayeeNameForRules`.
     private func resolvePayee(
@@ -656,7 +659,9 @@ actor SyncClient {
             pendingPayees.append(pending)
             return pending.id
         }
-        if let existing = try database.payee(named: trimmed) { return existing.id }
+        if let existing = try database.payee(named: trimmed) {
+            return existing.id
+        }
 
         let payee = Payee(id: UUID().uuidString, name: trimmed, transferAccountId: nil)
         if deferCreation {
@@ -718,7 +723,7 @@ actor SyncClient {
         // 6. Sync to push the new account to the server (rate-limited)
         await automaticSync()
     }
-    
+
     // MARK: - Bank Sync
 
     /// Point an account at a provider's account, so later syncs know where to
@@ -753,7 +758,7 @@ actor SyncClient {
                 fields: [
                     ("account_id", externalAccountId),
                     ("account_sync_source", source.rawValue),
-                    ("bank", link.bank.id)
+                    ("bank", link.bank.id),
                 ]
             )
             if link.created {
@@ -806,7 +811,7 @@ actor SyncClient {
                     ("balance_current", nil),
                     ("balance_available", nil),
                     ("balance_limit", nil),
-                    ("bank_sync_status", nil)
+                    ("bank_sync_status", nil),
                 ]
             )
         }
@@ -844,7 +849,7 @@ actor SyncClient {
                 ("balance_current", nil),
                 ("balance_available", nil),
                 ("balance_limit", nil),
-                ("bank_sync_status", nil)
+                ("bank_sync_status", nil),
             ]
         )
 
@@ -881,7 +886,7 @@ actor SyncClient {
         for entry in statuses {
             guard entry.accountId == entry.expectedLink.accountId else { continue }
             var fields: [(column: String, value: (any Sendable)?)] = [
-                ("bank_sync_status", entry.status)
+                ("bank_sync_status", entry.status),
             ]
             // Only stamp last_sync when there was a sync to stamp — see
             // BudgetDatabase.applyBankSyncStatus.
@@ -927,7 +932,7 @@ actor SyncClient {
                     ("description", update.payeeId),
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
-                    ("cleared", update.cleared ? 1 : 0)
+                    ("cleared", update.cleared ? 1 : 0),
                 ]
             )
         }
@@ -967,7 +972,7 @@ actor SyncClient {
                     ("description", update.payeeId),
                     ("imported_description", update.importedPayee),
                     ("notes", update.notes),
-                    ("cleared", update.cleared ? 1 : 0)
+                    ("cleared", update.cleared ? 1 : 0),
                 ]
             )
         }
@@ -1199,7 +1204,7 @@ actor SyncClient {
         // 2. Generate one tombstone CRDT message per location
         var messages: [CRDTMessage] = []
         for location in locations {
-            messages.append(try await messageGenerator.messageForDelete(location))
+            try await messages.append(messageGenerator.messageForDelete(location))
         }
 
         // 3. Store the messages and update merkle
@@ -1340,8 +1345,11 @@ actor SyncClient {
         }
         guard try database.zeroBudgetMonthsTableExists() else { throw SyncError.budgetTableMissing }
         let messages = try await messageGenerator.messages(
-            dataset: "zero_budget_months", row: month, fields: [("buffered", amount)])
-        for msg in try database.applyMessagesAndInsertMessages(messages) { merkle = merkle.inserting(msg.timestamp) }
+            dataset: "zero_budget_months", row: month, fields: [("buffered", amount)]
+        )
+        for msg in try database.applyMessagesAndInsertMessages(messages) {
+            merkle = merkle.inserting(msg.timestamp)
+        }
         merkle = merkle.pruned()
         try saveClock()
         scheduleAutomaticSync()
@@ -1442,7 +1450,7 @@ actor SyncClient {
         guard let database else { throw SyncError.notConfigured }
         try await setBudgetCarryover(
             months: [month],
-            categoryIds: try database.incomeCategoryIds(),
+            categoryIds: database.incomeCategoryIds(),
             flag: false
         )
     }
@@ -1465,7 +1473,8 @@ actor SyncClient {
                 ("template_settings", "{\"source\": \"\(update.source)\"}"),
             ]
             messages += try await messageGenerator.messages(
-                dataset: "categories", row: update.categoryId, fields: fields)
+                dataset: "categories", row: update.categoryId, fields: fields
+            )
         }
 
         for msg in try database.applyMessagesAndInsertMessages(messages) {
@@ -1487,7 +1496,8 @@ actor SyncClient {
         for update in updates {
             messages += try await messageGenerator.messages(
                 dataset: "categories", row: update.categoryId,
-                fields: [("cleanup_def", update.cleanupDef)])
+                fields: [("cleanup_def", update.cleanupDef)]
+            )
         }
         for message in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(message.timestamp)
@@ -1517,7 +1527,8 @@ actor SyncClient {
             ("template_settings", "{\"source\": \"\(source)\"}"),
         ]
         let messages = try await messageGenerator.messages(
-            dataset: "categories", row: categoryId, fields: fields)
+            dataset: "categories", row: categoryId, fields: fields
+        )
 
         for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
@@ -1540,7 +1551,8 @@ actor SyncClient {
             ("tombstone", 0),
         ]
         let messages = try await messageGenerator.messages(
-            dataset: "cleanup_groups", row: id, fields: fields)
+            dataset: "cleanup_groups", row: id, fields: fields
+        )
 
         for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
@@ -1593,7 +1605,8 @@ actor SyncClient {
                 ))
             }
             messages += try await messageGenerator.messages(
-                dataset: cell.table, row: cell.rowId, fields: fields)
+                dataset: cell.table, row: cell.rowId, fields: fields
+            )
         }
 
         for msg in try database.applyMessagesAndInsertMessages(messages) {
@@ -1614,7 +1627,8 @@ actor SyncClient {
         logger.debug("setPreference() - id: \(id, privacy: .public)")
 
         let messages = try await messageGenerator.messages(
-            dataset: "preferences", row: id, fields: [("value", value)])
+            dataset: "preferences", row: id, fields: [("value", value)]
+        )
 
         for msg in try database.applyMessagesAndInsertMessages(messages) {
             merkle = merkle.inserting(msg.timestamp)
@@ -1648,7 +1662,8 @@ actor SyncClient {
         // 1. Generate CRDT messages (before any DB write, so an HLC failure
         //    leaves nothing stranded)
         let messages = try await messageGenerator.messages(
-            dataset: "notes", row: id, fields: [("note", note)])
+            dataset: "notes", row: id, fields: [("note", note)]
+        )
 
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
         //    messages use, so a local edit and the identical edit arriving from
@@ -1665,7 +1680,7 @@ actor SyncClient {
         //    an unreachable server must not hold the sheet open (issue #125).
         scheduleAutomaticSync()
     }
-    
+
     /// Create or update a rule (optimistic local-first). Mirrors upstream
     /// `rule-add` / `rule-update` (loot-core server/rules/app.ts): the whole row
     /// is written every time — stage, conditionsOp, conditions and actions — so
@@ -1754,7 +1769,7 @@ actor SyncClient {
         // 4. Push to the server in the background
         scheduleAutomaticSync()
     }
-    
+
     /// Skip the current occurrence. Port of loot-core `skipNextDate`: search
     /// for the next occurrence starting the day AFTER the current one, and
     /// move only the local override.
@@ -1765,7 +1780,8 @@ actor SyncClient {
 
         guard let next = ScheduleRecurrence.nextOccurrence(
             config: config,
-            onOrAfter: ScheduleRecurrence.skipSearchStart(from: currentNextDate, config: config)),
+            onOrAfter: ScheduleRecurrence.skipSearchStart(from: currentNextDate, config: config)
+        ),
             next != currentNextDate
         else { return }
 
@@ -1800,13 +1816,15 @@ actor SyncClient {
             parentId: nil,
             tombstone: false,
             sortOrder: nil,
-            importedPayee: nil)
+            importedPayee: nil
+        )
         transaction.schedule = schedule.id
         if try database.transferAccountId(forPayeeId: transaction.payeeId) != nil {
             let actionResult = RulesEngine.apply(
                 actions: ScheduleConditions.actions(from: schedule.actionsJSON),
                 to: transaction,
-                ruleId: schedule.id)
+                ruleId: schedule.id
+            )
             guard !actionResult.isDeleted else { return }
             transaction = actionResult.transaction
             transaction.schedule = schedule.id
@@ -1832,7 +1850,8 @@ actor SyncClient {
     ) async throws {
         try await updateScheduleColumns(
             scheduleId: schedule.id,
-            fields: [("completed", completed ? 1 : 0)])
+            fields: [("completed", completed ? 1 : 0)]
+        )
 
         guard !completed,
               let date = schedule.dateCondition,
@@ -1855,7 +1874,8 @@ actor SyncClient {
         var messages: [CRDTMessage] = []
         for write in plan.writes {
             messages += try await messageGenerator.messages(
-                dataset: write.dataset, row: write.row, fields: write.fields)
+                dataset: write.dataset, row: write.row, fields: write.fields
+            )
         }
 
         // 2. Apply locally (optimistic) through the same LWW upsert incoming
@@ -1871,7 +1891,8 @@ actor SyncClient {
         // 4. Local-only derived cache; never synced (see BudgetDatabase).
         if let conditions = plan.conditions {
             try database.writeScheduleJSONPaths(
-                scheduleId: plan.scheduleId, conditions: conditions)
+                scheduleId: plan.scheduleId, conditions: conditions
+            )
         }
 
         // 5. Push in the background — the save button awaits this write, and
@@ -1896,7 +1917,8 @@ actor SyncClient {
             ruleId: UUID().uuidString.lowercased(),
             nextDateRowId: UUID().uuidString.lowercased(),
             now: Self.nowMilliseconds(),
-            today: today)
+            today: today
+        )
 
         logger.debug("createSchedule() - id: \(plan.scheduleId, privacy: .private)")
         try await commit(plan)
@@ -1923,7 +1945,8 @@ actor SyncClient {
             fields: fields,
             now: Self.nowMilliseconds(),
             today: today,
-            resetRequested: resetNextDate)
+            resetRequested: resetNextDate
+        )
 
         logger.debug("updateSchedule() - id: \(schedule.id, privacy: .private)")
         try await commit(plan)
@@ -1946,7 +1969,8 @@ actor SyncClient {
             schedule: schedule,
             newNextDate: newNextDate,
             reset: reset,
-            now: Self.nowMilliseconds())
+            now: Self.nowMilliseconds()
+        )
         else { return }
         try await commit(plan)
     }
@@ -1957,7 +1981,8 @@ actor SyncClient {
         fields: [(column: String, value: (any Sendable)?)]
     ) async throws {
         try await commit(ScheduleWriteBuilder.scheduleColumnsPlan(
-            scheduleId: scheduleId, fields: fields))
+            scheduleId: scheduleId, fields: fields
+        ))
     }
 
     /// Millisecond epoch, the unit `schedules_next_date` timestamps use.
@@ -2107,10 +2132,10 @@ actor SyncClient {
     /// app was opened (issue #139).
     private func shouldSkipAutomaticSync() -> Bool {
         guard let lastSync = lastSuccessfulSyncTime else {
-            return false  // No previous sync, allow it
+            return false // No previous sync, allow it
         }
         guard Date().timeIntervalSince(lastSync) < 1.0 else {
-            return false  // Outside the window
+            return false // Outside the window
         }
         return !hasUnsyncedLocalMessages()
     }
@@ -2121,10 +2146,10 @@ actor SyncClient {
     private func hasUnsyncedLocalMessages() -> Bool {
         guard let database else { return false }
         guard let maxTimestamp = try? database.getMaxMessageTimestamp(), !maxTimestamp.isEmpty else {
-            return false  // Nothing recorded locally, nothing to push
+            return false // Nothing recorded locally, nothing to push
         }
         guard let lastSynced = lastSyncedTimestamp, !lastSynced.isEmpty else {
-            return true  // Never reconciled — assume there's something to send
+            return true // Never reconciled — assume there's something to send
         }
         return maxTimestamp > lastSynced
     }
@@ -2139,7 +2164,7 @@ actor SyncClient {
             try await fullSync(since: nil, attemptCount: 0)
             logger.info("performSync() completed successfully")
             stateSubject.send(.idle)
-            retryDelay = 5  // reset on success
+            retryDelay = 5 // reset on success
             lastSuccessfulSyncTime = Date()
             return true
         } catch SyncError.offline {
@@ -2202,7 +2227,7 @@ actor SyncClient {
         // Use provided 'since', then lastSyncedTimestamp (if non-empty), then fallback
         let effectiveLastSynced = lastSyncedTimestamp.flatMap { $0.isEmpty ? nil : $0 }
         let sinceTimestamp: String
-        if let since = since {
+        if let since {
             sinceTimestamp = since
         } else if let lastSynced = effectiveLastSynced {
             sinceTimestamp = lastSynced
@@ -2353,9 +2378,9 @@ actor SyncClient {
         }
     }
 
-    // Synchronous on purpose: callers must be able to persist
-    // lastSyncedTimestamp in the same actor-isolated section that computed it,
-    // with no suspension point a local write could interleave into.
+    /// Synchronous on purpose: callers must be able to persist
+    /// lastSyncedTimestamp in the same actor-isolated section that computed it,
+    /// with no suspension point a local write could interleave into.
     private func saveClock() throws {
         guard let database else { return }
 

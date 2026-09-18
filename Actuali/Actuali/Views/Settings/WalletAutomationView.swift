@@ -16,7 +16,7 @@ struct WalletAutomationView: View {
         "Tap Add Action and search for Log Transaction from Actuali.",
         "Tap the action's Amount field, tap Select Variable, then choose Shortcut Input. Tap the Shortcut Input variable and change it to Amount.",
         "Repeat for Payee: tap the Shortcut Input variable and change it to Merchant (or Name).",
-        "Tap Account and select the account that matches this card."
+        "Tap Account and select the account that matches this card.",
     ]
 
     var body: some View {
