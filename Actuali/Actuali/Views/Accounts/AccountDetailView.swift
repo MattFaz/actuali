@@ -25,6 +25,8 @@ struct AccountDetailView: View {
     @State private var isSelecting = false
     @State private var selectedTransactionIds: Set<String> = []
     @State private var cycleSpend: Int = 0
+    @AppStorage("showAccountRunningBalance") private var showRunningBalance = true
+    @State private var loadedFullHistory = false
     @State private var recentStatements: [CreditCardCycle.StatementRecord] = []
     @State private var selectedStatement: CreditCardCycle.StatementRecord? = nil
 
@@ -37,6 +39,20 @@ struct AccountDetailView: View {
 
     private var currentBalance: Int {
         budgetStore.accounts.first { $0.id == account.id }?.balance ?? account.balance
+    }
+
+    /// Running balances are shown only when the register is unfiltered (no search,
+    /// status chip, and not hiding cleared/reconciled rows). Filtered/search results
+    /// omit rows that would otherwise contribute to the balance, so showing a running
+    /// balance in those states would make it look like the account balance changed when
+    /// the user only changed the visible filter.
+    private var shouldShowRunningBalance: Bool {
+        showRunningBalance && loadedFullHistory
+    }
+
+    private var transactionsForDisplay: [Transaction] {
+        guard shouldShowRunningBalance else { return pager?.transactions ?? [] }
+        return (pager?.transactions ?? []).withRunningBalances(startingAt: currentBalance)
     }
 
     /// Limit and headroom for a tracked card with a limit set, else nil. Read
@@ -120,11 +136,17 @@ struct AccountDetailView: View {
     }
 
     private func reload() async {
+        let fullHistory = searchQuery == nil
+            && budgetStore.transactionStatusFilter == .all
+            && !budgetStore.hideClearedTransactions
+            && !budgetStore.hideReconciledTransactions
+        loadedFullHistory = false
         breakdown = await budgetStore.balanceBreakdown(accountId: account.id)
         await reloadNote()
         await reloadCycleSpend()
         await reloadRecentStatements()
         await currentPager().loadFirstPage(search: searchQuery)
+        loadedFullHistory = fullHistory
     }
 
     private func reloadRecentStatements() async {
@@ -426,8 +448,9 @@ struct AccountDetailView: View {
 
     @ViewBuilder private var transactionSection: some View {
         if let pager, !pager.transactions.isEmpty {
+            let displayedTransactions = transactionsForDisplay
             if budgetStore.transactionDisplayMode == .groupedByDate {
-                let groups = pager.transactions.groupedByDate()
+                let groups = displayedTransactions.groupedByDate()
                 ForEach(groups) { group in
                     Section(group.title) {
                         ForEach(group.transactions) { transaction in
@@ -443,7 +466,7 @@ struct AccountDetailView: View {
                 }
             } else {
                 Section("Recent Transactions") {
-                    ForEach(pager.transactions) { transaction in
+                    ForEach(displayedTransactions) { transaction in
                         transactionRow(transaction)
                     }
                     if pager.hasMore {
@@ -459,6 +482,111 @@ struct AccountDetailView: View {
                     Text(emptyTransactionsText)
                         .foregroundStyle(.secondary)
                 }
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var runningBalanceToolbarItem: some ToolbarContent {
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $showRunningBalance) {
+                Label(
+                    "Show Running Balance",
+                    systemImage: showRunningBalance ? "eye" : "eye.slash"
+                )
+            }
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var accountToolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .primaryAction) {
+            if isSelecting {
+                Button("Done") {
+                    withAnimation {
+                        isSelecting = false
+                        selectedTransactionIds.removeAll()
+                    }
+                }
+            } else {
+                Button {
+                    showingAddTransaction = true
+                } label: {
+                    Image(systemName: "plus")
+                }
+                .accessibilityLabel("Add Transaction")
+            }
+        }
+        if !isSelecting {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    withAnimation { isSelecting = true }
+                } label: {
+                    Label("Select Transactions", systemImage: "checkmark.circle")
+                }
+            }
+        }
+        if WalletImportView.isSupported {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    showingWalletImport = true
+                } label: {
+                    Label("Import from Wallet", systemImage: "wallet.pass")
+                }
+            }
+        }
+        if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    Task { await budgetStore.runBankSync(accountIds: [account.id]) }
+                } label: {
+                    Label("Sync from Bank", systemImage: "building.columns")
+                }
+                .disabled(budgetStore.isBankSyncing)
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
+                Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            TransactionGroupingToggle()
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.hideClearedTransactions) {
+                Label(
+                    "Hide Cleared Transactions",
+                    systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
+                )
+            }
+        }
+        ToolbarItem(placement: .secondaryAction) {
+            Toggle(isOn: $budgetStore.hideReconciledTransactions) {
+                Label(
+                    "Hide Reconciled Transactions",
+                    systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
+                )
+            }
+        }
+
+        if note.supported {
+            ToolbarItem(placement: .secondaryAction) {
+                Toggle(isOn: $hideNotes) {
+                    Label(
+                        "Hide Notes",
+                        systemImage: hideNotes ? "eye.slash" : "eye"
+                    )
+                }
+                .accessibilityIdentifier("accountDetails.notesVisibility")
+            }
+        }
+
+        ToolbarItem(placement: .secondaryAction) {
+            Button {
+                showingReconcile = true
+            } label: {
+                Label("Reconcile", systemImage: "lock.fill")
             }
         }
     }
@@ -480,95 +608,8 @@ struct AccountDetailView: View {
         .navigationTitle(account.name)
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search transactions")
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                if isSelecting {
-                    Button("Done") {
-                        withAnimation {
-                            isSelecting = false
-                            selectedTransactionIds.removeAll()
-                        }
-                    }
-                } else {
-                    Button {
-                        showingAddTransaction = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .accessibilityLabel("Add Transaction")
-                }
-            }
-            if !isSelecting {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        withAnimation { isSelecting = true }
-                    } label: {
-                        Label("Select Transactions", systemImage: "checkmark.circle")
-                    }
-                }
-            }
-            if WalletImportView.isSupported {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        showingWalletImport = true
-                    } label: {
-                        Label("Import from Wallet", systemImage: "wallet.pass")
-                    }
-                }
-            }
-            if budgetStore.bankSyncAccount(forAccountId: account.id) != nil {
-                ToolbarItem(placement: .secondaryAction) {
-                    Button {
-                        Task { await budgetStore.runBankSync(accountIds: [account.id]) }
-                    } label: {
-                        Label("Sync from Bank", systemImage: "building.columns")
-                    }
-                    .disabled(budgetStore.isBankSyncing)
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.showTransactionStatusFilters) {
-                    Label("Status Filters", systemImage: "line.3.horizontal.decrease.circle")
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                TransactionGroupingToggle()
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideClearedTransactions) {
-                    Label(
-                        "Hide Cleared Transactions",
-                        systemImage: budgetStore.hideClearedTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-            ToolbarItem(placement: .secondaryAction) {
-                Toggle(isOn: $budgetStore.hideReconciledTransactions) {
-                    Label(
-                        "Hide Reconciled Transactions",
-                        systemImage: budgetStore.hideReconciledTransactions ? "eye.slash" : "eye"
-                    )
-                }
-            }
-
-            if note.supported {
-                ToolbarItem(placement: .secondaryAction) {
-                    Toggle(isOn: $hideNotes) {
-                        Label(
-                            "Hide Notes",
-                            systemImage: hideNotes ? "eye.slash" : "eye"
-                        )
-                    }
-                    .accessibilityIdentifier("accountDetails.notesVisibility")
-                }
-            }
-
-            ToolbarItem(placement: .secondaryAction) {
-                Button {
-                    showingReconcile = true
-                } label: {
-                    Label("Reconcile", systemImage: "lock.fill")
-                }
-            }
+            accountToolbarContent
+            runningBalanceToolbarItem
         }
         .safeAreaInset(edge: .bottom) {
             if isSelecting, let pager {
@@ -620,6 +661,7 @@ struct AccountDetailView: View {
         // account in the key nothing would reload — the previous account's
         // rows would sit under the new one's name and balance.
         .task(id: [account.id, searchText]) {
+            loadedFullHistory = false
             if pagerAccountId != account.id {
                 // Drop the previous account's page and balance split rather
                 // than showing them while the new ones load — and its
@@ -650,9 +692,11 @@ struct AccountDetailView: View {
         .onChange(of: budgetStore.hideClearedTransactions) {
             // The pager's fetch closure reads the flag, so a reload is all a
             // toggle flip needs.
+            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.hideReconciledTransactions) {
+            loadedFullHistory = false
             Task { await reload() }
         }
         .onChange(of: budgetStore.transactionStatusFilter) {
