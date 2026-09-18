@@ -183,6 +183,38 @@ final class BudgetViewSettingsUITests: XCTestCase {
         let toggle = app.switches["Category Status Dots"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Category Status Dots toggle not found")
 
+        let colorPickerSection = app.descendants(matching: .any)["categoryStatusColorPickerSection"].firstMatch
+        XCTAssertTrue(
+            colorPickerSection.waitForExistence(timeout: 5),
+            "Category colour picker section not found"
+        )
+        colorPickerSection.tap()
+
+        for state in ["overspent", "spent", "spending", "funded", "unassigned"] {
+            XCTAssertTrue(
+                app.descendants(matching: .any)["categoryStatusColorPicker.\(state)"].waitForExistence(timeout: 5),
+                "\(state) colour picker not found"
+            )
+        }
+
+        let infoButton = app.buttons["categoryStatusColorPickerInfo"]
+        XCTAssertTrue(infoButton.waitForExistence(timeout: 5), "Colour picker info button not found")
+        infoButton.tap()
+
+        let infoAlert = app.alerts["Colour picker"]
+        XCTAssertTrue(infoAlert.waitForExistence(timeout: 5), "Colour picker info alert not found")
+        XCTAssertTrue(
+            infoAlert.staticTexts["Picked colour will be used for both category status dots and progress bars."].exists,
+            "Colour picker info message not found"
+        )
+        infoAlert.buttons["OK"].tap()
+
+        colorPickerSection.tap()
+        XCTAssertTrue(
+            app.descendants(matching: .any)["categoryStatusColorPicker.overspent"].waitForNonExistence(timeout: 5),
+            "Category colour picker should collapse"
+        )
+
         app.tabBars.buttons["Budget"].tap()
         let statusDot = app.descendants(matching: .any)["categoryStatusDot"].firstMatch
         XCTAssertTrue(

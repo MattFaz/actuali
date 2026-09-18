@@ -1904,15 +1904,20 @@ extension CategoryProgressState {
     }
 }
 
-/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
-/// Available amount: green while money remains, red once overspent.
+/// Spent-vs-available bar for a budget row. Its fill and funded track use
+/// the selected color for the row's status.
 struct CategoryProgressBar: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let fraction: Double
     let state: CategoryProgressState
 
+    private var statusColor: Color {
+        budgetStore.categoryStatusDotColor(for: state)
+    }
+
     private var trackTint: Color {
-        state == .funded ? state.tint.opacity(0.25) : Color(.systemFill)
+        state == .funded ? statusColor.opacity(0.25) : Color(.systemFill)
     }
 
     var body: some View {
@@ -1921,7 +1926,7 @@ struct CategoryProgressBar: View {
                 Capsule()
                     .fill(trackTint)
                 Capsule()
-                    .fill(state.tint)
+                    .fill(statusColor)
                     .frame(width: geometry.size.width * fraction)
             }
         }
@@ -1943,12 +1948,13 @@ struct CategoryProgressBar: View {
 /// A deliberately quiet status cue for budget rows. The category detail sheet
 /// carries the full plain-language status so the main budget remains scannable.
 struct CompactCategoryStatusDot: View {
+    @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
     let state: CategoryProgressState
 
     var body: some View {
         Circle()
-            .fill(state.tint)
+            .fill(budgetStore.categoryStatusDotColor(for: state))
             .frame(width: 7, height: 7)
             .accessibilityLabel(state.statusText(locale: locale, bundle: .main))
             .accessibilityIdentifier("categoryStatusDot")

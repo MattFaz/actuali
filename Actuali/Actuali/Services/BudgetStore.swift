@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import Combine
 import os
 
@@ -462,6 +463,38 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
         }
+    }
+
+    private static let categoryStatusDotColorsDefaultsKey = "categoryStatusDotColors"
+
+    /// User-selected colors for category status dots and their progress bars.
+    /// Unset states fall back to the status' existing system tint.
+    @Published private var categoryStatusDotColors: [String: Data] = [:] {
+        didSet {
+            UserDefaults.standard.set(
+                categoryStatusDotColors,
+                forKey: Self.categoryStatusDotColorsDefaultsKey
+            )
+        }
+    }
+
+    func categoryStatusDotColor(for state: CategoryProgressState) -> Color {
+        guard let data = categoryStatusDotColors[state.rawValue],
+              let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: UIColor.self, from: data) else {
+            return state.tint
+        }
+        return Color(color)
+    }
+
+    func setCategoryStatusDotColor(_ color: Color, for state: CategoryProgressState) {
+        let uiColor = UIColor(color)
+        guard let data = try? NSKeyedArchiver.archivedData(
+            withRootObject: uiColor,
+            requiringSecureCoding: true
+        ) else {
+            return
+        }
+        categoryStatusDotColors[state.rawValue] = data
     }
 
     /// Whether Budget shows the status filter strip above the category list.
@@ -1417,6 +1450,10 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showBudgetProgressBars", default: true))
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true))
+        _categoryStatusDotColors = Published(
+            initialValue: defaults.dictionary(
+                forKey: Self.categoryStatusDotColorsDefaultsKey
+            ) as? [String: Data] ?? [:])
         _showGroupTotals = Published(
             initialValue: persistedBool("showGroupTotals", default: true))
         _showBudgetCheckInStrip = Published(
