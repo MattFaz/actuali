@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct PendingImportApproverTests {
-
     private func makeStore() -> BudgetStore {
         let store = BudgetStore.previewInstance()
         // Unique per test: `defaultAccountId` is UserDefaults keyed by budget id,
@@ -22,48 +21,48 @@ struct PendingImportApproverTests {
         let queue = try DatabaseQueue(path: url.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE transactions (
-                    id TEXT PRIMARY KEY, starting_balance_flag INTEGER DEFAULT 0,
-                    isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
-                    acct TEXT, category TEXT, amount INTEGER, description TEXT,
-                    notes TEXT, date INTEGER, imported_description TEXT,
-                    financial_id TEXT, transferred_id TEXT, sort_order REAL,
-                    tombstone INTEGER DEFAULT 0, cleared INTEGER DEFAULT 0,
-                    reconciled INTEGER DEFAULT 0, parent_id TEXT
-                )
-                """)
+            CREATE TABLE transactions (
+                id TEXT PRIMARY KEY, starting_balance_flag INTEGER DEFAULT 0,
+                isParent INTEGER DEFAULT 0, isChild INTEGER DEFAULT 0,
+                acct TEXT, category TEXT, amount INTEGER, description TEXT,
+                notes TEXT, date INTEGER, imported_description TEXT,
+                financial_id TEXT, transferred_id TEXT, sort_order REAL,
+                tombstone INTEGER DEFAULT 0, cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0, parent_id TEXT
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT,
-                    transfer_acct TEXT, tombstone INTEGER DEFAULT 0)
-                """)
+            CREATE TABLE payees (id TEXT PRIMARY KEY, name TEXT,
+                transfer_acct TEXT, tombstone INTEGER DEFAULT 0)
+            """)
             try db.execute(sql: "CREATE TABLE payee_mapping (id TEXT PRIMARY KEY, targetId TEXT)")
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY, name TEXT, offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0, tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
-                """)
+            CREATE TABLE category_mapping (id TEXT PRIMARY KEY, transferId TEXT)
+            """)
             try db.execute(sql: """
-                CREATE TABLE categories (
-                    id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY, name TEXT, cat_group TEXT,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try db.execute(sql: """
-                CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL,
-                    row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL)
-                """)
+            CREATE TABLE messages_crdt (id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE, dataset TEXT NOT NULL,
+                row TEXT NOT NULL, column TEXT NOT NULL, value BLOB NOT NULL)
+            """)
             try db.execute(sql: """
-                CREATE TABLE rules (id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
-                    actions TEXT, tombstone INTEGER DEFAULT 0,
-                    conditions_op TEXT DEFAULT 'and')
-                """)
+            CREATE TABLE rules (id TEXT PRIMARY KEY, stage TEXT, conditions TEXT,
+                actions TEXT, tombstone INTEGER DEFAULT 0,
+                conditions_op TEXT DEFAULT 'and')
+            """)
         }
-        return (try BudgetDatabase(path: url), url)
+        return try (BudgetDatabase(path: url), url)
     }
 
     /// A store with a real (temp-file) budget database wired, so the approve
@@ -122,7 +121,8 @@ struct PendingImportApproverTests {
 
         await #expect(throws: PendingImportApprover.ApproveError.budgetIdentityRequired) {
             try await PendingImportApprover(store: store).approve(
-                PendingImport(amount: 25.0, payee: "Coffee", rawText: "msg"))
+                PendingImport(amount: 25.0, payee: "Coffee", rawText: "msg")
+            )
         }
     }
 
@@ -133,7 +133,8 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.budgetMismatch) {
             try await PendingImportApprover(store: store).approve(
                 PendingImport(originBudgetId: "different-budget", amount: 25.0,
-                              payee: "Coffee", rawText: "msg"))
+                              payee: "Coffee", rawText: "msg")
+            )
         }
     }
 
@@ -154,7 +155,7 @@ struct PendingImportApproverTests {
             budgetCurrency: store.currencyCode
         ) == [
             .adoptIntoActiveBudget,
-            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
+            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD"),
         ])
     }
 
@@ -166,7 +167,8 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.sourceCurrencyMismatch(source: "EUR", budget: "USD")) {
             try await PendingImportApprover(store: store).approve(
                 PendingImport(originBudgetId: store.currentBudgetId, amount: 25.0,
-                              sourceCurrencyCode: "EUR", payee: "Coffee", rawText: "msg"))
+                              sourceCurrencyCode: "EUR", payee: "Coffee", rawText: "msg")
+            )
         }
     }
 
@@ -178,7 +180,8 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.noAccountAvailable) {
             try await PendingImportApprover(store: store).approve(
                 PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
-                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown"))
+                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown")
+            )
         }
     }
 
@@ -190,7 +193,8 @@ struct PendingImportApproverTests {
 
         let result = try await PendingImportApprover(store: store).approve(
             PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
-                          sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown"))
+                          sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "unknown")
+        )
 
         #expect(result.transaction.accountId == "acct_cash")
     }
@@ -202,7 +206,8 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.sourceCurrencyRequired) {
             try await PendingImportApprover(store: store).approve(
                 PendingImport(originBudgetId: store.currentBudgetId, amount: 25.0,
-                              payee: "Coffee", rawText: "msg"))
+                              payee: "Coffee", rawText: "msg")
+            )
         }
     }
 
@@ -215,7 +220,8 @@ struct PendingImportApproverTests {
         await #expect(throws: PendingImportApprover.ApproveError.noAccountAvailable) {
             try await PendingImportApprover(store: store).approve(
                 PendingImport(originBudgetId: store.currentBudgetId, amount: 12.50,
-                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "1234"))
+                              sourceCurrencyCode: "USD", payee: "Coffee", cardHint: "1234")
+            )
         }
     }
 
@@ -352,7 +358,9 @@ struct PendingImportApproverTests {
         let results = [firstResult, secondResult]
 
         #expect(results.filter {
-            if case .inserted = $0 { return true }
+            if case .inserted = $0 {
+                return true
+            }
             return false
         }.count == 1)
         #expect(results.filter { $0 == .duplicate }.count == 1)
@@ -366,11 +374,11 @@ struct PendingImportApproverTests {
         let queue = try DatabaseQueue(path: url.path)
         try await queue.write { db in
             try db.execute(sql: """
-                INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
-                VALUES ('delete-coffee',
-                    '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
-                    '[{"op":"delete-transaction","value":null}]', 0, 'and')
-                """)
+            INSERT INTO rules (id, conditions, actions, tombstone, conditions_op)
+            VALUES ('delete-coffee',
+                '[{"op":"contains","field":"imported_description","value":"Coffee"}]',
+                '[{"op":"delete-transaction","value":null}]', 0, 'and')
+            """)
         }
         let item = PendingImport(
             originBudgetId: store.currentBudgetId, amount: 12.50,
@@ -401,21 +409,25 @@ struct PendingImportApproverTests {
         async let first = approver.approve(item)
         async let second = approver.approve(item)
         let firstOutcome: Result<TransactionLogger.Result, any Error>
-        do { firstOutcome = .success(try await first) }
+        do { firstOutcome = try await .success(first) }
         catch { firstOutcome = .failure(error) }
         let secondOutcome: Result<TransactionLogger.Result, any Error>
-        do { secondOutcome = .success(try await second) }
+        do { secondOutcome = try await .success(second) }
         catch { secondOutcome = .failure(error) }
         let outcomes = [firstOutcome, secondOutcome]
 
         #expect(outcomes.filter {
-            if case .success = $0 { return true }
+            if case .success = $0 {
+                return true
+            }
             return false
         }.count == 1)
         #expect(outcomes.filter {
-            if case let .failure(error) = $0,
+            if case .failure(let error) = $0,
                let approveError = error as? PendingImportApprover.ApproveError,
-               approveError == .alreadyApproved { return true }
+               approveError == .alreadyApproved {
+                return true
+            }
             return false
         }.count == 1)
         #expect(try databaseRowCount(at: url) == 1)
@@ -642,9 +654,9 @@ struct PendingImportApproverTests {
         let queue = try DatabaseQueue(path: url.path)
         return try queue.read { db in
             try Int.fetchOne(db, sql: """
-                SELECT COUNT(*) FROM messages_crdt
-                WHERE dataset = 'transactions' AND row = ?
-                """, arguments: [transactionId]) ?? 0
+            SELECT COUNT(*) FROM messages_crdt
+            WHERE dataset = 'transactions' AND row = ?
+            """, arguments: [transactionId]) ?? 0
         }
     }
 }

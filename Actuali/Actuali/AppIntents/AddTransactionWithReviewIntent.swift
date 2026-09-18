@@ -19,8 +19,8 @@ struct AddTransactionWithReviewIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
-    // String, not Double, for the same reason as LogTransactionIntent:
-    // Wallet's amount coerces to 0 as a Number for some cards (issue #41).
+    /// String, not Double, for the same reason as LogTransactionIntent:
+    /// Wallet's amount coerces to 0 as a Number for some cards (issue #41).
     @Parameter(title: LocalizedStringResource("Amount"), default: "")
     var amount: String
 

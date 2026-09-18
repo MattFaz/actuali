@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetDatabaseRolloverTests {
-
     private func makeDatabase(envelope: Bool = true) throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -102,8 +101,8 @@ struct BudgetDatabaseRolloverTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO \(table) (id, month, category, amount, carryover) VALUES (?, ?, ?, ?, ?)
-                """, arguments: [UUID().uuidString, month, category, amount, carryover ? 1 : 0])
+            INSERT INTO \(table) (id, month, category, amount, carryover) VALUES (?, ?, ?, ?, ?)
+            """, arguments: [UUID().uuidString, month, category, amount, carryover ? 1 : 0])
         }
     }
 
@@ -119,12 +118,12 @@ struct BudgetDatabaseRolloverTests {
         let parentId = UUID().uuidString
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, amount, date, tombstone) VALUES (?, 'acct-1', ?, ?, 1)
-                """, arguments: [parentId, amount, date])
+            INSERT INTO transactions (id, acct, amount, date, tombstone) VALUES (?, 'acct-1', ?, ?, 1)
+            """, arguments: [parentId, amount, date])
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
-                VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
-                """, arguments: [UUID().uuidString, category, amount, date, parentId])
+            INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
+            VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
+            """, arguments: [UUID().uuidString, category, amount, date, parentId])
         }
     }
 
@@ -143,14 +142,14 @@ struct BudgetDatabaseRolloverTests {
         let parentAmount = childSpends.reduce(0) { $0 + $1.amount }
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, isParent, tombstone)
-                VALUES (?, 'acct-1', ?, ?, ?, 1, 0)
-                """, arguments: [parentId, parentCategory, parentAmount, date])
+            INSERT INTO transactions (id, acct, category, amount, date, isParent, tombstone)
+            VALUES (?, 'acct-1', ?, ?, ?, 1, 0)
+            """, arguments: [parentId, parentCategory, parentAmount, date])
             for child in childSpends {
                 try conn.execute(sql: """
-                    INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
-                    VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
-                    """, arguments: [UUID().uuidString, child.category, child.amount, date, parentId])
+                INSERT INTO transactions (id, acct, category, amount, date, parent_id, isChild, tombstone)
+                VALUES (?, 'acct-1', ?, ?, ?, ?, 1, 0)
+                """, arguments: [UUID().uuidString, child.category, child.amount, date, parentId])
             }
         }
     }
@@ -162,8 +161,8 @@ struct BudgetDatabaseRolloverTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO category_mapping (id, transferId) VALUES (?, ?)
-                """, arguments: [oldId, newId])
+            INSERT INTO category_mapping (id, transferId) VALUES (?, ?)
+            """, arguments: [oldId, newId])
         }
     }
 
@@ -177,9 +176,9 @@ struct BudgetDatabaseRolloverTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date, transferred_id, tombstone)
-                VALUES (?, ?, ?, ?, ?, ?, 0)
-                """, arguments: [UUID().uuidString, account, category, amount, date, transferId])
+            INSERT INTO transactions (id, acct, category, amount, date, transferred_id, tombstone)
+            VALUES (?, ?, ?, ?, ?, ?, 0)
+            """, arguments: [UUID().uuidString, account, category, amount, date, transferId])
         }
     }
 
@@ -192,9 +191,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202604, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -4000)
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -4000)
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -212,9 +211,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202604, category: "cat-groceries", amount: 5000, carryover: false)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -6000)
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: false)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -6000)
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -229,9 +228,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202604, category: "cat-groceries", amount: 5000, carryover: true)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -6000)
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: true)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -6000)
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -246,11 +245,11 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202602, category: "cat-groceries", amount: 1000)
-        try insertSpend(db, date: 20260214, category: "cat-groceries", amount: -200)
-        try insertBudget(db, table: "zero_budgets", month: 202603, category: "cat-groceries", amount: 1000)
-        try insertBudget(db, table: "zero_budgets", month: 202604, category: "cat-groceries", amount: 1000)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -500)
+        try insertBudget(db, table: "zero_budgets", month: 202_602, category: "cat-groceries", amount: 1000)
+        try insertSpend(db, date: 20_260_214, category: "cat-groceries", amount: -200)
+        try insertBudget(db, table: "zero_budgets", month: 202_603, category: "cat-groceries", amount: 1000)
+        try insertBudget(db, table: "zero_budgets", month: 202_604, category: "cat-groceries", amount: 1000)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -500)
 
         let apr = try await db.fetchBudgetMonth(month: "2026-04")
         let groceries = apr.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -265,8 +264,8 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertSpend(db, date: 20260314, category: "cat-groceries", amount: -500)
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 2000)
+        try insertSpend(db, date: 20_260_314, category: "cat-groceries", amount: -500)
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 2000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -282,9 +281,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: false)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "reflect_budgets", month: 202604, category: "cat-groceries", amount: 5000, carryover: false)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -4000)
-        try insertBudget(db, table: "reflect_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: false)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -4000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -296,9 +295,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: false)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "reflect_budgets", month: 202604, category: "cat-groceries", amount: 5000, carryover: true)
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -4000)
-        try insertBudget(db, table: "reflect_budgets", month: 202605, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_604, category: "cat-groceries", amount: 5000, carryover: true)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -4000)
+        try insertBudget(db, table: "reflect_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -312,9 +311,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000) // real
-        try insertSpend(db, date: 20260512, category: nil, amount: -1000, transferId: "t-other") // uncategorized transfer leg
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000) // real
+        try insertSpend(db, date: 20_260_512, category: nil, amount: -1000, transferId: "t-other") // uncategorized transfer leg
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -329,9 +328,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000) // real
-        try insertSpend(db, date: 20260512, category: "cat-groceries", amount: -1000, transferId: "t-off") // transfer to off-budget
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000) // real
+        try insertSpend(db, date: 20_260_512, category: "cat-groceries", amount: -1000, transferId: "t-off") // transfer to off-budget
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -345,9 +344,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000) // on-budget, counts
-        try insertSpend(db, date: 20260512, category: "cat-groceries", amount: -1500, account: "acct-off") // off-budget, ignored
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000) // on-budget, counts
+        try insertSpend(db, date: 20_260_512, category: "cat-groceries", amount: -1500, account: "acct-off") // off-budget, ignored
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -363,9 +362,9 @@ struct BudgetDatabaseRolloverTests {
         defer { cleanup(url) }
 
         try insertCategoryMapping(db, from: "cat-old-food", to: "cat-groceries")
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000) // current id
-        try insertSpend(db, date: 20260512, category: "cat-old-food", amount: -1000) // merged-away id
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000) // current id
+        try insertSpend(db, date: 20_260_512, category: "cat-old-food", amount: -1000) // merged-away id
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -381,8 +380,8 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertCategorizedSplit(db, date: 20260510, parentCategory: "cat-groceries", childSpends: [
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertCategorizedSplit(db, date: 20_260_510, parentCategory: "cat-groceries", childSpends: [
             (category: "cat-groceries", amount: -2000),
             (category: "cat-groceries", amount: -1000),
         ])
@@ -402,12 +401,12 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertCategorizedSplit(db, date: 20260510, parentCategory: "cat-groceries", childSpends: [
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertCategorizedSplit(db, date: 20_260_510, parentCategory: "cat-groceries", childSpends: [
             (category: "cat-groceries", amount: -2000),
             (category: "cat-groceries", amount: -1000),
         ])
-        try insertBudget(db, table: "zero_budgets", month: 202606, category: "cat-groceries", amount: 5000)
+        try insertBudget(db, table: "zero_budgets", month: 202_606, category: "cat-groceries", amount: 5000)
 
         let june = try await db.fetchBudgetMonth(month: "2026-06")
         let groceries = june.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -425,9 +424,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000)
-        try insertSpend(db, date: 20260512, category: "cat-groceries", amount: 500)
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000)
+        try insertSpend(db, date: 20_260_512, category: "cat-groceries", amount: 500)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -441,8 +440,8 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertSpend(db, date: 20260415, category: "cat-groceries", amount: -4000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -1000)
+        try insertSpend(db, date: 20_260_415, category: "cat-groceries", amount: -4000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -1000)
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }
@@ -456,9 +455,9 @@ struct BudgetDatabaseRolloverTests {
         let (db, url) = try makeDatabase(envelope: true)
         defer { cleanup(url) }
 
-        try insertBudget(db, table: "zero_budgets", month: 202605, category: "cat-groceries", amount: 5000)
-        try insertSpend(db, date: 20260510, category: "cat-groceries", amount: -2000) // real
-        try insertOrphanedSplitChild(db, date: 20260512, category: "cat-groceries", amount: -500) // deleted split
+        try insertBudget(db, table: "zero_budgets", month: 202_605, category: "cat-groceries", amount: 5000)
+        try insertSpend(db, date: 20_260_510, category: "cat-groceries", amount: -2000) // real
+        try insertOrphanedSplitChild(db, date: 20_260_512, category: "cat-groceries", amount: -500) // deleted split
 
         let may = try await db.fetchBudgetMonth(month: "2026-05")
         let groceries = may.categoryBudgets.first { $0.categoryId == "cat-groceries" }

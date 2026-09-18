@@ -4,7 +4,6 @@ import XCTest
 /// must open the sheet in edit mode, pre-filled with the existing keyword and
 /// target account, and saving must update the mapping in place.
 final class CardMappingEditUITests: XCTestCase {
-
     @MainActor
     private func openCardMappings(in app: XCUIApplication) {
         let automationRow = app.buttons["Transactions & Automation"]
@@ -29,7 +28,9 @@ final class CardMappingEditUITests: XCTestCase {
         // "Neither element nor any descendant has keyboard focus". The
         // software keyboard is the focus signal: re-tap until it shows.
         for attempt in 1...3 {
-            if app.keyboards.firstMatch.exists { break }
+            if app.keyboards.firstMatch.exists {
+                break
+            }
             if attempt > 1 {
                 field.tap()
             }
@@ -66,7 +67,7 @@ final class CardMappingEditUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingRowOpensEditSheetPrefilledAndSavingUpdatesTarget() throws {
+    func testTappingRowOpensEditSheetPrefilledAndSavingUpdatesTarget() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()
@@ -100,7 +101,7 @@ final class CardMappingEditUITests: XCTestCase {
     }
 
     @MainActor
-    func testAddingAndRemovingMultipleKeywords() throws {
+    func testAddingAndRemovingMultipleKeywords() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4"]
         app.launch()

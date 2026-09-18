@@ -7,23 +7,23 @@ import Foundation
 struct CustomReportConfig: Equatable {
     var id: String
     var name: String
-    var mode: String          // "total" | "time"
-    var groupBy: String       // "Category" | "Group" | "Interval" | "Payee" | ...
-    var balanceType: String   // "Payment" | "Deposit" | "Net" | ...
-    var interval: String      // "Daily" | "Weekly" | "Monthly" | "Yearly"
-    var graphType: String     // "BarGraph" | "StackedBarGraph" | "TableGraph" | ...
-    var dateRange: String?    // "All time", "Year to date", ... (dynamic ranges)
+    var mode: String // "total" | "time"
+    var groupBy: String // "Category" | "Group" | "Interval" | "Payee" | ...
+    var balanceType: String // "Payment" | "Deposit" | "Net" | ...
+    var interval: String // "Daily" | "Weekly" | "Monthly" | "Yearly"
+    var graphType: String // "BarGraph" | "StackedBarGraph" | "TableGraph" | ...
+    var dateRange: String? // "All time", "Year to date", ... (dynamic ranges)
     var dateStatic: Bool
-    var startDate: String?    // "yyyy-MM-dd" (used when dateStatic)
+    var startDate: String? // "yyyy-MM-dd" (used when dateStatic)
     var endDate: String?
     var includeCurrent: Bool
     var showEmpty: Bool
     var showOffBudget: Bool
     var showHidden: Bool
     var showUncategorized: Bool
-    var sortBy: String        // "desc" | "asc" | "name" | "budget"
-    var showTrendLines: Bool   // LineGraph only (upstream show_trend_lines)
-    var trimIntervals: Bool    // drop empty leading/trailing intervals (upstream trim_intervals)
+    var sortBy: String // "desc" | "asc" | "name" | "budget"
+    var showTrendLines: Bool // LineGraph only (upstream show_trend_lines)
+    var trimIntervals: Bool // drop empty leading/trailing intervals (upstream trim_intervals)
     var conditions: [WidgetRuleCondition]?
     var conditionsOp: String?
 }

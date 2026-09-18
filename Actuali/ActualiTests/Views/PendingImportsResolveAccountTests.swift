@@ -7,21 +7,24 @@ import Testing
 /// account. The strict matcher itself is covered by
 /// `BudgetStoreAccountMappingTests`.
 struct PendingImportsResolveAccountTests {
-
     private let appBundle = Bundle(identifier: "com.mfazz.ActualiOS")!
 
     @Test func approvalFailureMessageInterpolatesTheCount() {
         #expect(PendingImportsView.approvalFailureMessage(
-            count: 0, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            count: 0, locale: Locale(identifier: "en_US"), bundle: appBundle
+        )
             == "0 transactions could not be approved. Please check their details.")
         #expect(PendingImportsView.approvalFailureMessage(
-            count: 1, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            count: 1, locale: Locale(identifier: "en_US"), bundle: appBundle
+        )
             == "1 transaction could not be approved. Please check its details.")
         #expect(PendingImportsView.approvalFailureMessage(
-            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle)
+            count: 2, locale: Locale(identifier: "en_US"), bundle: appBundle
+        )
             == "2 transactions could not be approved. Please check their details.")
         #expect(PendingImportsView.approvalFailureMessage(
-            count: 2, locale: Locale(identifier: "fr_FR"), bundle: appBundle)
+            count: 2, locale: Locale(identifier: "fr_FR"), bundle: appBundle
+        )
             == "2 transactions n’ont pas pu être approuvées. Vérifiez leurs détails.")
     }
 
@@ -51,7 +54,8 @@ struct PendingImportsResolveAccountTests {
         let locale = Locale(identifier: "fr_FR")
         #expect(PendingImportApprover.localizedErrorMessage(
             for: PendingImportApprover.ApproveError.sourceCurrencyMismatch(
-                source: "EUR", budget: "USD"),
+                source: "EUR", budget: "USD"
+            ),
             locale: locale,
             bundle: appBundle
         ) == "Cette importation est en EUR, mais le budget actif utilise USD. Vérifiez et confirmez la transaction avant de l’enregistrer.")
@@ -102,7 +106,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
-            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil
+        )
         #expect(result == "acct_hsbc")
     }
 
@@ -111,7 +116,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
-            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: "acct_cash")
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: "acct_cash"
+        )
         #expect(result == "acct_hsbc")
     }
 
@@ -120,7 +126,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "9999", accounts: accounts,
-            cardMappings: [:], defaultAccountId: "acct_hsbc")
+            cardMappings: [:], defaultAccountId: "acct_hsbc"
+        )
         #expect(result == "acct_hsbc")
     }
 
@@ -129,7 +136,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
-            cardMappings: [:], defaultAccountId: "acct_hsbc")
+            cardMappings: [:], defaultAccountId: "acct_hsbc"
+        )
         #expect(result == "acct_hsbc")
     }
 
@@ -140,7 +148,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
-            cardMappings: ["1234": "acct_old"], defaultAccountId: nil)
+            cardMappings: ["1234": "acct_old"], defaultAccountId: nil
+        )
         #expect(result == "acct_cash")
     }
 
@@ -149,7 +158,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
-            cardMappings: [:], defaultAccountId: "acct_old")
+            cardMappings: [:], defaultAccountId: "acct_old"
+        )
         #expect(result == "acct_cash")
     }
 
@@ -158,7 +168,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: nil, accounts: accounts,
-            cardMappings: [:], defaultAccountId: nil)
+            cardMappings: [:], defaultAccountId: nil
+        )
         #expect(result == "acct_cash")
     }
 
@@ -167,7 +178,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
-            cardMappings: ["1234": "acct_old"], defaultAccountId: "acct_old")
+            cardMappings: ["1234": "acct_old"], defaultAccountId: "acct_old"
+        )
         #expect(result == nil)
     }
 
@@ -181,7 +193,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.seedAccountId(
             cardHint: "1234", accounts: accounts,
-            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil)
+            cardMappings: ["1234": "acct_hsbc"], defaultAccountId: nil
+        )
         #expect(result == "acct_hsbc")
     }
 
@@ -190,7 +203,8 @@ struct PendingImportsResolveAccountTests {
 
         let result = PendingImportApprover.resolveAccountId(
             cardHint: "unknown", accounts: accounts,
-            cardMappings: [:], defaultAccountId: nil)
+            cardMappings: [:], defaultAccountId: nil
+        )
 
         #expect(result == nil)
         #expect(PendingImportApprover.seedAccountId(
@@ -220,7 +234,7 @@ struct PendingImportsResolveAccountTests {
 
         #expect(requirements == [
             .adoptIntoActiveBudget,
-            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD")
+            .confirmActiveBudgetCurrency(source: "EUR", budget: "USD"),
         ])
         #expect(requirements.count == 2)
         #expect(requirements[1].prompt(
@@ -250,19 +264,24 @@ struct PendingImportsResolveAccountTests {
     @Test func amountUsesBudgetCurrencyAndLocale() {
         #expect(PendingImportsView.amountString(
             1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
-            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")) == "-1.234,50 €")
+            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")
+        ) == "-1.234,50 €")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: "EUR", narrowSymbol: false,
-            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")) == "-12,34 €")
+            numberFormat: .dotComma, locale: Locale(identifier: "de_DE")
+        ) == "-12,34 €")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: true, currencyCode: "EUR", sourceCurrencyCode: "USD", narrowSymbol: true,
-            numberFormat: .commaDot, locale: Locale(identifier: "en_US")) == "$12.34")
+            numberFormat: .commaDot, locale: Locale(identifier: "en_US")
+        ) == "$12.34")
         #expect(PendingImportsView.amountString(
             12.34, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
-            numberFormat: .commaDot, locale: Locale(identifier: "en_US")) == "-$12.34")
+            numberFormat: .commaDot, locale: Locale(identifier: "en_US")
+        ) == "-$12.34")
         #expect(PendingImportsView.amountString(
             1234.5, isIncome: false, currencyCode: "USD", sourceCurrencyCode: nil, narrowSymbol: false,
-            numberFormat: .dotComma, locale: Locale(identifier: "en_US")) == "-$1.234,50")
+            numberFormat: .dotComma, locale: Locale(identifier: "en_US")
+        ) == "-$1.234,50")
     }
 
     @Test func bulkApprovalOutcomeDefersFailuresWhenReviewIsNeeded() {

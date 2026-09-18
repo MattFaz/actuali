@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetDatabaseCreditCardStatementTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -95,7 +94,7 @@ struct BudgetDatabaseCreditCardStatementTests {
 
         // Case 1: Before payment, statement balance is $500, remaining due is $500, live balance is $700.
         let resultsBefore = try await db.fetchCreditCardStatementDues(for: [
-            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -70000)
+            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -70000),
         ])
         let dueBeforePayment = resultsBefore["card1"]!.first!
         #expect(dueBeforePayment.statementBalance == 50000)
@@ -112,7 +111,7 @@ struct BudgetDatabaseCreditCardStatementTests {
         }
 
         let resultsAfter = try await db.fetchCreditCardStatementDues(for: [
-            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -20000)
+            (accountId: "card1", statementDate: statementDate, dueDate: dueDate, liveBalance: -20000),
         ])
         let dueAfterPayment = resultsAfter["card1"]!.first!
         #expect(dueAfterPayment.statementBalance == 50000)
@@ -135,7 +134,7 @@ struct BudgetDatabaseCreditCardStatementTests {
 
         let results = try await db.fetchCreditCardStatementDues(for: [
             (accountId: "card1", statementDate: DayDate(year: 2026, month: 1, day: 15), dueDate: DayDate(year: 2026, month: 2, day: 1), liveBalance: -40000),
-            (accountId: "card2", statementDate: DayDate(year: 2026, month: 1, day: 10), dueDate: DayDate(year: 2026, month: 1, day: 25), liveBalance: -15000)
+            (accountId: "card2", statementDate: DayDate(year: 2026, month: 1, day: 10), dueDate: DayDate(year: 2026, month: 1, day: 25), liveBalance: -15000),
         ])
 
         #expect(results["card1"]?.first?.statementBalance == 40000)
@@ -164,7 +163,7 @@ struct BudgetDatabaseCreditCardStatementTests {
         let cycles = [
             (start: DayDate(year: 2026, month: 7, day: 16), end: DayDate(year: 2026, month: 8, day: 15), dueDate: DayDate(year: 2026, month: 9, day: 9)),
             (start: DayDate(year: 2026, month: 6, day: 16), end: DayDate(year: 2026, month: 7, day: 15), dueDate: DayDate(year: 2026, month: 8, day: 9)),
-            (start: DayDate(year: 2026, month: 5, day: 16), end: DayDate(year: 2026, month: 6, day: 15), dueDate: DayDate(year: 2026, month: 7, day: 10))
+            (start: DayDate(year: 2026, month: 5, day: 16), end: DayDate(year: 2026, month: 6, day: 15), dueDate: DayDate(year: 2026, month: 7, day: 10)),
         ]
 
         let records = try await db.fetchRecentStatements(
@@ -209,8 +208,8 @@ struct BudgetDatabaseCreditCardStatementTests {
 
         let txs = try await db.fetchTransactions(
             accountId: "card1",
-            startDate: 20260616,
-            endDate: 20260715
+            startDate: 20_260_616,
+            endDate: 20_260_715
         )
 
         #expect(txs.count == 3)

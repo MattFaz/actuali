@@ -6,8 +6,7 @@ import Testing
 /// schedule looks like on the server, so the cases that matter most are the
 /// ones about NOT destroying data the phone can't display.
 struct ScheduleConditionsTests {
-
-    private let fixedDate = ScheduleDateCondition.fixed(DayDate(yyyymmdd: 20260813)!)
+    private let fixedDate = ScheduleDateCondition.fixed(DayDate(yyyymmdd: 20_260_813)!)
 
     @Test func amountOperatorLabelUsesRequestedLocale() {
         let bundle = Bundle(identifier: "com.mfazz.ActualiOS")!
@@ -24,7 +23,8 @@ struct ScheduleConditionsTests {
     ) -> ScheduleFormFields {
         ScheduleFormFields(
             name: "Rent", payeeId: payee, accountId: account,
-            amount: amount, amountOp: amountOp, date: fixedDate)
+            amount: amount, amountOp: amountOp, date: fixedDate
+        )
     }
 
     // MARK: - extract
@@ -101,7 +101,8 @@ struct ScheduleConditionsTests {
             ["op": "isbetween", "field": "amount", "value": ["num1": 1, "num2": 2]],
         ]
         let built = try ScheduleConditions.build(
-            fields: fields(amountOp: .isExactly), existing: existing)
+            fields: fields(amountOp: .isExactly), existing: existing
+        )
         let amount = try #require(built.first { $0["field"] as? String == "amount" })
         #expect(amount["op"] as? String == "is")
         #expect((amount["value"] as? NSNumber)?.intValue == -1250)
@@ -132,9 +133,11 @@ struct ScheduleConditionsTests {
             ["op": "is", "field": "amount", "value": -1],
         ]
         let scheduleConditions = try ScheduleConditions.build(
-            fields: fields(), existing: existing)
+            fields: fields(), existing: existing
+        )
         let merged = ScheduleConditions.merge(
-            existing: existing, scheduleConditions: scheduleConditions)
+            existing: existing, scheduleConditions: scheduleConditions
+        )
 
         // The custom condition kept both its content and its position.
         #expect(merged[1]["field"] as? String == "notes")
@@ -223,9 +226,10 @@ struct ScheduleConditionsTests {
     // MARK: - next date
 
     @Test func oneOffDatesAreReturnedEvenWhenPast() {
-        let past = DayDate(yyyymmdd: 20200101)!
+        let past = DayDate(yyyymmdd: 20_200_101)!
         #expect(ScheduleConditions.nextDate(
-            for: .fixed(past), from: DayDate(yyyymmdd: 20260813)!) == past)
+            for: .fixed(past), from: DayDate(yyyymmdd: 20_260_813)!
+        ) == past)
     }
 
     @Test func recurringDatesAdvanceToTheNextOccurrence() throws {
@@ -233,7 +237,8 @@ struct ScheduleConditionsTests {
             "frequency": "monthly", "start": "2026-01-15", "interval": 1,
         ]))
         let next = ScheduleConditions.nextDate(
-            for: .recurring(config), from: DayDate(yyyymmdd: 20260813)!)
-        #expect(next == DayDate(yyyymmdd: 20260815))
+            for: .recurring(config), from: DayDate(yyyymmdd: 20_260_813)!
+        )
+        #expect(next == DayDate(yyyymmdd: 20_260_815))
     }
 }

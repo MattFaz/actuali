@@ -25,12 +25,12 @@ struct ReconcileView: View {
         guard let clearedBalance, let targetCents else { return nil }
         return targetCents - clearedBalance
     }
-    
+
     /// Signed so a shortfall and a surplus read differently at a glance.
     private func differenceText(_ cents: Int) -> String {
         (cents > 0 ? "+" : "") + budgetStore.formatCurrency(cents)
     }
-    
+
     /// Which of the mutually exclusive sections below the entry fields is
     /// showing. The section swap is animated off this rather than off
     /// `difference`, which recomputes on every keystroke — an implicit
@@ -126,7 +126,7 @@ struct ReconcileView: View {
                             Text(String(format: String(localized: "Your cleared balance needs %@ to match the bank. The adjustment is a cleared transaction for that amount; you can lock afterwards."), budgetStore.formatCurrency(difference)))
                         }
                     }
-                } else if clearedBalance != nil && !balanceText.isEmpty {
+                } else if clearedBalance != nil, !balanceText.isEmpty {
                     Section {
                         Text("Enter a valid amount to compare balances.")
                             .foregroundStyle(.secondary)
@@ -187,7 +187,7 @@ struct ReconcileView: View {
             offBudget: false,
             closed: false,
             sortOrder: 0,
-            balance: 245073
+            balance: 245_073
         )
     )
     .environmentObject(BudgetStore.previewInstance())

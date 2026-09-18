@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 /// The bundled blank-budget template (GH #387) must look exactly like a file
@@ -22,7 +21,7 @@ struct BlankBudgetTemplateTests {
     private func templateCopy() throws -> URL {
         let copy = FileManager.default.temporaryDirectory
             .appendingPathComponent("blank-\(UUID().uuidString).sqlite")
-        try FileManager.default.copyItem(at: try templateURL(), to: copy)
+        try FileManager.default.copyItem(at: templateURL(), to: copy)
         return copy
     }
 
@@ -39,7 +38,7 @@ struct BlankBudgetTemplateTests {
             // default-db.sqlite's base schema.
             let ids = try Int64.fetchAll(db, sql: "SELECT id FROM __migrations__ ORDER BY id")
             #expect(ids.count >= 57)
-            #expect(ids.contains(1780606215001))
+            #expect(ids.contains(1_780_606_215_001))
             #expect(Set(ids).isDisjoint(with: BudgetDatabase.actualiOnlyMigrationIds))
 
             // No sync history and no clock: the first client to open the file

@@ -7,7 +7,9 @@ import Foundation
 enum AutomationDisplayType: String, CaseIterable, Identifiable, Sendable {
     case fixed, schedule, by, percentage, historical, limit, refill, remainder, goal
 
-    var id: String { rawValue }
+    var id: String {
+        rawValue
+    }
 
     /// Types managed in the Options section rather than as contributions.
     static let nonContribution: Set<AutomationDisplayType> = [.limit, .goal]
@@ -239,10 +241,12 @@ enum BudgetAutomations {
                     // A description on a limit-only simple template belongs
                     // to the limit; with a monthly amount it goes there.
                     entries.append(limitEntry(
-                        limit, description: hasMonthly ? nil : template.description))
+                        limit, description: hasMonthly ? nil : template.description
+                    ))
                     if monthly == nil {
                         let refill = GoalTemplate(
-                            type: .refill, directive: .template, priority: template.priority)
+                            type: .refill, directive: .template, priority: template.priority
+                        )
                         entries.append(AutomationEntry(template: refill, displayType: .refill))
                     }
                 }
@@ -250,11 +254,13 @@ enum BudgetAutomations {
                     ? monthly : (monthly == 0 && template.limit == nil ? 0 : nil)
                 if let contribution {
                     var periodic = GoalTemplate(
-                        type: .periodic, directive: .template, priority: template.priority)
+                        type: .periodic, directive: .template, priority: template.priority
+                    )
                     periodic.amount = contribution
                     periodic.period = .init(period: .month, amount: 1)
                     periodic.starting = BudgetMonthMath.firstDayOfMonth(
-                        BudgetMonthMath.currentMonth())
+                        BudgetMonthMath.currentMonth()
+                    )
                     periodic.description = template.description
                     entries.append(AutomationEntry(template: periodic, displayType: .fixed))
                 }

@@ -2,7 +2,6 @@ import Testing
 @testable import Actuali
 
 struct AmountParserTests {
-
     @Test func parsesPlainDecimal() {
         #expect(AmountParser.parse("4.00") == 4.0)
         #expect(AmountParser.parse("4.5") == 4.5)
@@ -25,18 +24,18 @@ struct AmountParserTests {
     @Test func parsesGroupedThousands() {
         #expect(AmountParser.parse("1,234.56") == 1234.56)
         #expect(AmountParser.parse("1.234,56") == 1234.56)
-        #expect(AmountParser.parse("1,234,567.89") == 1234567.89)
+        #expect(AmountParser.parse("1,234,567.89") == 1_234_567.89)
     }
 
     @Test func treatsSingleSeparatorWithThreeDigitTailAsGrouping() {
         #expect(AmountParser.parse("1,234") == 1234.0)
-        #expect(AmountParser.parse("1.234.567") == 1234567.0)
+        #expect(AmountParser.parse("1.234.567") == 1_234_567.0)
     }
 
     @Test func selectedCommaDotTreatsCommaAsGrouping() {
         #expect(AmountParser.parse("1,234", numberFormat: .commaDot) == 1234.0)
         #expect(AmountParser.parse("1,234.56", numberFormat: .commaDot) == 1234.56)
-        #expect(AmountParser.parse("10,00,000.33", numberFormat: .commaDot) == 1000000.33)
+        #expect(AmountParser.parse("10,00,000.33", numberFormat: .commaDot) == 1_000_000.33)
         #expect(AmountParser.parse("12,34", numberFormat: .commaDot) == nil)
     }
 
@@ -58,7 +57,7 @@ struct AmountParserTests {
     }
 
     @Test func selectedIndianFormatUsesIndianGrouping() {
-        #expect(AmountParser.parse("12,34,567.89", numberFormat: .commaDotIn) == 1234567.89)
+        #expect(AmountParser.parse("12,34,567.89", numberFormat: .commaDotIn) == 1_234_567.89)
         #expect(AmountParser.parse("1,234.56", numberFormat: .commaDotIn) == 1234.56)
     }
 

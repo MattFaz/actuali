@@ -32,9 +32,10 @@ struct AgeOfMoneyEngineTests {
         // Income Jan 1, spent Jan 31 → age 30 days.
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("i", date: 20260101, amount: 100_000),
-                           tx("e", date: 20260131, amount: -50_000)],
-            today: today, context: .empty)
+            transactions: [tx("i", date: 20_260_101, amount: 100_000),
+                           tx("e", date: 20_260_131, amount: -50000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == 30)
         #expect(data.insufficientData == false)
     }
@@ -44,19 +45,21 @@ struct AgeOfMoneyEngineTests {
         // age comes from the LAST bucket touched (Feb 1) → 28 days.
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("i1", date: 20260101, amount: 50_000),
-                           tx("i2", date: 20260201, amount: 50_000),
-                           tx("e", date: 20260301, amount: -80_000)],
-            today: today, context: .empty)
+            transactions: [tx("i1", date: 20_260_101, amount: 50000),
+                           tx("i2", date: 20_260_201, amount: 50000),
+                           tx("e", date: 20_260_301, amount: -80000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == 28)
     }
 
     @Test func expensesExceedingIncomeFlagInsufficientData() {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("i", date: 20260101, amount: 10_000),
-                           tx("e", date: 20260201, amount: -50_000)],
-            today: today, context: .empty)
+            transactions: [tx("i", date: 20_260_101, amount: 10000),
+                           tx("e", date: 20_260_201, amount: -50000)],
+            today: today, context: .empty
+        )
         #expect(data.insufficientData == true)
     }
 
@@ -67,20 +70,21 @@ struct AgeOfMoneyEngineTests {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
             transactions: [
-                tx("i", date: 20260101, amount: 100_000),
-                tx("t-on", date: 20260110, amount: -30_000, transferAcct: "on2"),   // excluded
-                tx("t-off", date: 20260215, amount: -20_000, transferAcct: "off1"), // counts, age 45
+                tx("i", date: 20_260_101, amount: 100_000),
+                tx("t-on", date: 20_260_110, amount: -30000, transferAcct: "on2"), // excluded
+                tx("t-off", date: 20_260_215, amount: -20000, transferAcct: "off1"), // counts, age 45
             ],
-            today: today, context: context)
+            today: today, context: context
+        )
         #expect(data.currentAge == 45)
     }
 
     @Test func headlineAveragesOnlyLastTenAgesInDisplayRange() {
         // 12 expenses, one/day starting Feb 1, all from a Jan 1 income bucket.
         // Ages: 31,32,...,42. Last 10 = 33...42, avg = 37.5 → rounds to 38.
-        var txs = [tx("i", date: 20260101, amount: 1_200_000)]
+        var txs = [tx("i", date: 20_260_101, amount: 1_200_000)]
         for day in 1...12 {
-            txs.append(tx("e\(day)", date: 20260200 + day, amount: -100_000))
+            txs.append(tx("e\(day)", date: 20_260_200 + day, amount: -100_000))
         }
         let data = AgeOfMoneyEngine.compute(meta: meta(), transactions: txs,
                                             today: today, context: .empty)
@@ -92,17 +96,18 @@ struct AgeOfMoneyEngineTests {
         // upstream date-only stable sort preserves that order. Reversing it
         // changes which of the last ten ages is retained.
         var txs = [
-            tx("i1", date: 20260101, amount: 50),
-            tx("i2", date: 20260201, amount: 110)
+            tx("i1", date: 20_260_101, amount: 50),
+            tx("i2", date: 20_260_201, amount: 110),
         ]
         for index in 1...11 {
-            txs.append(tx("e\(index)", date: 20260301, amount: index == 1 ? -60 : -10))
+            txs.append(tx("e\(index)", date: 20_260_301, amount: index == 1 ? -60 : -10))
             txs[txs.count - 1].sortOrder = Double(index)
         }
 
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2026-03", end: "2026-03", mode: .static),
-            transactions: txs, today: today, context: .empty)
+            transactions: txs, today: today, context: .empty
+        )
         #expect(data.currentAge == 40)
     }
 
@@ -110,16 +115,17 @@ struct AgeOfMoneyEngineTests {
         // SQLite puts NULL last under sort_order DESC. A missing sort order
         // must therefore drain after a same-day row with a real sort order.
         var txs = [
-            tx("i1", date: 20260101, amount: 100),
-            tx("i2", date: 20260201, amount: 100),
-            tx("no-order", date: 20260301, amount: -150),
-            tx("ordered", date: 20260301, amount: -50)
+            tx("i1", date: 20_260_101, amount: 100),
+            tx("i2", date: 20_260_201, amount: 100),
+            tx("no-order", date: 20_260_301, amount: -150),
+            tx("ordered", date: 20_260_301, amount: -50),
         ]
         txs[3].sortOrder = 5
 
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2026-03", end: "2026-03", mode: .static),
-            transactions: txs, today: today, context: .empty)
+            transactions: txs, today: today, context: .empty
+        )
         #expect(data.currentAge == 44)
         #expect(data.insufficientData == false)
     }
@@ -133,16 +139,18 @@ struct AgeOfMoneyEngineTests {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
             transactions: [
-                tx("i1", date: 20250101, amount: 100_000),
-                tx("e1", date: 20260301, amount: -50_000),
-                tx("i2", date: 20260601, amount: 100_000),
-                tx("e2", date: 20260710, amount: -60_000),
+                tx("i1", date: 20_250_101, amount: 100_000),
+                tx("e1", date: 20_260_301, amount: -50000),
+                tx("i2", date: 20_260_601, amount: 100_000),
+                tx("e2", date: 20_260_710, amount: -60000),
             ],
-            today: today, context: .empty)
+            today: today, context: .empty
+        )
         #expect(data.trend == .down)
     }
 
     // MARK: - Vectors ported verbatim from upstream
+
     // actual/packages/desktop-client/src/components/reports/spreadsheets/
     // age-of-money-spreadsheet.test.ts (amounts used as cents; scale is
     // irrelevant to the FIFO math).
@@ -154,12 +162,13 @@ struct AgeOfMoneyEngineTests {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-01", end: "2024-01", mode: .static),
             transactions: [
-                tx("1", date: 20240101, amount: 1000),
-                tx("2", date: 20240110, amount: -300),
-                tx("3", date: 20240120, amount: -300),
-                tx("4", date: 20240130, amount: -300),
+                tx("1", date: 20_240_101, amount: 1000),
+                tx("2", date: 20_240_110, amount: -300),
+                tx("3", date: 20_240_120, amount: -300),
+                tx("4", date: 20_240_130, amount: -300),
             ],
-            today: today, context: .empty, locale: Locale(identifier: "en_US"))
+            today: today, context: .empty, locale: Locale(identifier: "en_US")
+        )
         #expect(data.insufficientData == false)
         // Headline = avg of ages (9 + 19 + 29) / 3 = 19; single Jan point.
         #expect(data.currentAge == 19)
@@ -175,15 +184,16 @@ struct AgeOfMoneyEngineTests {
     @Test func upstreamRoundTripOffBudgetTransfer() {
         let context = ConditionsFilter.Context(offBudgetAccountIds: ["invest"], accountNames: [:])
         let txs = [
-            tx("paycheck", date: 20240101, amount: 3000),
-            tx("to-investment", date: 20240110, amount: -1000, transferAcct: "invest"),
-            tx("from-investment", date: 20240301, amount: 1000, transferAcct: "invest"),
-            tx("groceries", date: 20240315, amount: -2500),
+            tx("paycheck", date: 20_240_101, amount: 3000),
+            tx("to-investment", date: 20_240_110, amount: -1000, transferAcct: "invest"),
+            tx("from-investment", date: 20_240_301, amount: 1000, transferAcct: "invest"),
+            tx("groceries", date: 20_240_315, amount: -2500),
         ]
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-01", end: "2024-03", mode: .static),
             transactions: txs, today: today, context: context,
-            locale: Locale(identifier: "en_US"))
+            locale: Locale(identifier: "en_US")
+        )
         #expect(data.insufficientData == false)
         // Jan point = 9; Feb carries 9; Mar point = round((9 + 14) / 2) = 12.
         #expect(data.points == [.init(monthLabel: "Jan 2024", age: 9),
@@ -195,7 +205,8 @@ struct AgeOfMoneyEngineTests {
         // the FIFO, and the lone in-range age is exactly 14.
         let marchOnly = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-03", end: "2024-03", mode: .static),
-            transactions: txs, today: today, context: context)
+            transactions: txs, today: today, context: context
+        )
         #expect(marchOnly.currentAge == 14)
         #expect(marchOnly.insufficientData == false)
     }
@@ -207,8 +218,9 @@ struct AgeOfMoneyEngineTests {
         // no graph points), but the uncovered expense flags insufficient data.
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("e", date: 20260115, amount: -50_000)],
-            today: today, context: .empty)
+            transactions: [tx("e", date: 20_260_115, amount: -50000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == nil)
         #expect(data.points.isEmpty)
         #expect(data.insufficientData == true)
@@ -219,9 +231,10 @@ struct AgeOfMoneyEngineTests {
         // is -22 but upstream clamps with max(0, days) → age 0.
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("e", date: 20260110, amount: -50_000),
-                           tx("i", date: 20260201, amount: 100_000)],
-            today: today, context: .empty)
+            transactions: [tx("e", date: 20_260_110, amount: -50000),
+                           tx("i", date: 20_260_201, amount: 100_000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == 0)
         #expect(data.insufficientData == false)
     }
@@ -230,9 +243,10 @@ struct AgeOfMoneyEngineTests {
         // Upstream: "handles income and expenses on the same day (age = 0)".
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("i", date: 20260115, amount: 100_000),
-                           tx("e", date: 20260115, amount: -50_000)],
-            today: today, context: .empty)
+            transactions: [tx("i", date: 20_260_115, amount: 100_000),
+                           tx("e", date: 20_260_115, amount: -50000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == 0)
         #expect(data.insufficientData == false)
     }
@@ -242,9 +256,10 @@ struct AgeOfMoneyEngineTests {
         // (Aug 1 with today = Jul 11) must not reach the FIFO at all.
         let data = AgeOfMoneyEngine.compute(
             meta: meta(),
-            transactions: [tx("i", date: 20260101, amount: 100_000),
-                           tx("e", date: 20260801, amount: -50_000)],
-            today: today, context: .empty)
+            transactions: [tx("i", date: 20_260_101, amount: 100_000),
+                           tx("e", date: 20_260_801, amount: -50000)],
+            today: today, context: .empty
+        )
         #expect(data.currentAge == nil)
         #expect(data.points.isEmpty)
         #expect(data.insufficientData == false)
@@ -253,9 +268,10 @@ struct AgeOfMoneyEngineTests {
     @Test func labelsUseInjectedEnglishLocale() {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-01", end: "2024-01", mode: .static),
-            transactions: [tx("i", date: 20240101, amount: 1000),
-                           tx("e", date: 20240110, amount: -300)],
-            today: today, context: .empty, locale: Locale(identifier: "en_US"))
+            transactions: [tx("i", date: 20_240_101, amount: 1000),
+                           tx("e", date: 20_240_110, amount: -300)],
+            today: today, context: .empty, locale: Locale(identifier: "en_US")
+        )
         #expect(data.points.first?.monthLabel == "Jan 2024")
     }
 
@@ -267,9 +283,10 @@ struct AgeOfMoneyEngineTests {
     func labelsUseInjectedLocale(localeIdentifier: String, expectedLabel: String) {
         let data = AgeOfMoneyEngine.compute(
             meta: meta(start: "2024-01", end: "2024-01", mode: .static),
-            transactions: [tx("i", date: 20240101, amount: 1000),
-                           tx("e", date: 20240110, amount: -300)],
-            today: today, context: .empty, locale: Locale(identifier: localeIdentifier))
+            transactions: [tx("i", date: 20_240_101, amount: 1000),
+                           tx("e", date: 20_240_110, amount: -300)],
+            today: today, context: .empty, locale: Locale(identifier: localeIdentifier)
+        )
         #expect(data.points.first?.monthLabel == expectedLabel)
     }
 
@@ -285,7 +302,8 @@ struct AgeOfMoneyEngineTests {
         localeIdentifier: String, age: Int, expected: String
     ) {
         let resource = LocalizedStringResource(
-            "\(age) days", locale: Locale(identifier: localeIdentifier), bundle: appBundle)
+            "\(age) days", locale: Locale(identifier: localeIdentifier), bundle: appBundle
+        )
         #expect(String(localized: resource) == expected)
     }
 }

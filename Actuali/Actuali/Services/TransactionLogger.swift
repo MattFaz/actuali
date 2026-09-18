@@ -9,7 +9,6 @@ private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "Transacti
 /// via `BudgetStore.createTransaction`.
 @MainActor
 final class TransactionLogger {
-
     enum LoggerError: LocalizedError {
         case noBudgetLoaded
         case transactionAlreadyExists
@@ -26,21 +25,25 @@ final class TransactionLogger {
         ) -> String {
             switch self {
             case .noBudgetLoaded:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "Open Actuali and select a budget first.",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             case .transactionAlreadyExists:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This transaction was already saved.",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             case .transactionSuppressedByRule:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "A transaction rule suppressed this transaction.",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             case .transactionNeedsRecovery:
-                return ReportStrings.text(
+                ReportStrings.text(
                     "This import needs review before it can be approved.",
-                    locale: locale, bundle: bundle)
+                    locale: locale, bundle: bundle
+                )
             }
         }
     }
@@ -137,7 +140,7 @@ final class TransactionLogger {
         // The push is detached, so it can't report its own outcome: ask the
         // queue instead. Anything still pending here means the server wasn't
         // reachable and the row lives only on this device (issue #139).
-        let synced = !(await store.hasPendingLocalWrites(
+        let synced = await !(store.hasPendingLocalWrites(
             dataset: Transaction.datasetName,
             row: persistedTransactionId
         ))

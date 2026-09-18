@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreSetBudgetAmountTests {
-
     /// Full schema fetchBudgetMonth needs (matches BudgetDatabaseRolloverTests)
     /// plus messages_crdt for the sync write path.
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
@@ -84,7 +83,7 @@ struct BudgetStoreSetBudgetAmountTests {
                 INSERT INTO accounts (id, name, offbudget) VALUES ('acct-1', 'Checking', 0);
             """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     private func makeStore(database: BudgetDatabase) async throws -> BudgetStore {
@@ -102,10 +101,10 @@ struct BudgetStoreSetBudgetAmountTests {
     private func seedIncomeCategory(_ database: BudgetDatabase) async throws {
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO category_groups (id, name, is_income) VALUES ('grp-income', 'Income', 1);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-income', 1);
-                INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', 'cat-salary')
-                """)
+            INSERT INTO category_groups (id, name, is_income) VALUES ('grp-income', 'Income', 1);
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-salary', 'Salary', 'grp-income', 1);
+            INSERT INTO category_mapping (id, transferId) VALUES ('cat-salary', 'cat-salary')
+            """)
         }
     }
 
@@ -186,9 +185,9 @@ struct BudgetStoreSetBudgetAmountTests {
         try await seedIncomeCategory(database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date)
-                VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701)
-                """)
+            INSERT INTO transactions (id, acct, category, amount, date)
+            VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701)
+            """)
         }
         let store = try await makeStore(database: database)
         await store.fetchBudgetMonth("2026-07")
@@ -213,11 +212,11 @@ struct BudgetStoreSetBudgetAmountTests {
         try await seedIncomeCategory(database)
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO transactions (id, acct, category, amount, date)
-                VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701);
-                INSERT INTO zero_budgets (id, month, category, carryover)
-                VALUES ('salary-budget', 202607, 'cat-salary', 1)
-                """)
+            INSERT INTO transactions (id, acct, category, amount, date)
+            VALUES ('salary', 'acct-1', 'cat-salary', 10000, 20260701);
+            INSERT INTO zero_budgets (id, month, category, carryover)
+            VALUES ('salary-budget', 202607, 'cat-salary', 1)
+            """)
         }
         let store = try await makeStore(database: database)
         await store.fetchBudgetMonth("2026-07")
@@ -240,13 +239,13 @@ struct BudgetStoreSetBudgetAmountTests {
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES
-                    ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
-                    ('202607-cat-hidden', 202607, 'cat-hidden', 1500),
-                    ('202607-cat-income', 202607, 'cat-income', 5000);
-                """)
+            INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
+                ('202607-cat-hidden', 202607, 'cat-hidden', 1500),
+                ('202607-cat-income', 202607, 'cat-income', 5000);
+            """)
         }
         let store = try await makeStore(database: database)
 
@@ -268,18 +267,18 @@ struct BudgetStoreSetBudgetAmountTests {
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                CREATE TABLE reflect_budgets (
-                    id TEXT PRIMARY KEY, month INTEGER, category TEXT,
-                    amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
-                    goal INTEGER, long_goal INTEGER
-                );
-                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
-                INSERT INTO reflect_budgets (id, month, category, amount) VALUES
-                    ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
-                    ('202607-cat-income', 202607, 'cat-income', 5000);
-                """)
+            CREATE TABLE reflect_budgets (
+                id TEXT PRIMARY KEY, month INTEGER, category TEXT,
+                amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
+                goal INTEGER, long_goal INTEGER
+            );
+            CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+            INSERT INTO reflect_budgets (id, month, category, amount) VALUES
+                ('202607-cat-groceries', 202607, 'cat-groceries', 2500),
+                ('202607-cat-income', 202607, 'cat-income', 5000);
+            """)
         }
         let store = try await makeStore(database: database)
 
@@ -297,15 +296,15 @@ struct BudgetStoreSetBudgetAmountTests {
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO categories (id, name, cat_group) VALUES ('cat-dining', 'Dining', 'grp-1');
-                INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES
-                    ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
-                    ('202606-cat-hidden', 202606, 'cat-hidden', 400),
-                    ('202607-cat-groceries', 202607, 'cat-groceries', 900),
-                    ('202607-cat-dining', 202607, 'cat-dining', 1200),
-                    ('202607-cat-hidden', 202607, 'cat-hidden', 700);
-                """)
+            INSERT INTO categories (id, name, cat_group) VALUES ('cat-dining', 'Dining', 'grp-1');
+            INSERT INTO categories (id, name, cat_group, hidden) VALUES ('cat-hidden', 'Hidden', 'grp-1', 1);
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES
+                ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
+                ('202606-cat-hidden', 202606, 'cat-hidden', 400),
+                ('202607-cat-groceries', 202607, 'cat-groceries', 900),
+                ('202607-cat-dining', 202607, 'cat-dining', 1200),
+                ('202607-cat-hidden', 202607, 'cat-hidden', 700);
+            """)
         }
         let store = try await makeStore(database: database)
 
@@ -329,20 +328,20 @@ struct BudgetStoreSetBudgetAmountTests {
         defer { cleanup(path) }
         try await database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                CREATE TABLE reflect_budgets (
-                    id TEXT PRIMARY KEY, month INTEGER, category TEXT,
-                    amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
-                    goal INTEGER, long_goal INTEGER
-                );
-                CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
-                INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
-                INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
-                INSERT INTO reflect_budgets (id, month, category, amount) VALUES
-                    ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
-                    ('202606-cat-income', 202606, 'cat-income', 5000),
-                    ('202607-cat-groceries', 202607, 'cat-groceries', 900),
-                    ('202607-cat-income', 202607, 'cat-income', 1000);
-                """)
+            CREATE TABLE reflect_budgets (
+                id TEXT PRIMARY KEY, month INTEGER, category TEXT,
+                amount INTEGER DEFAULT 0, carryover INTEGER DEFAULT 0,
+                goal INTEGER, long_goal INTEGER
+            );
+            CREATE TABLE preferences (id TEXT PRIMARY KEY, value TEXT);
+            INSERT INTO preferences (id, value) VALUES ('budgetType', 'tracking');
+            INSERT INTO categories (id, name, cat_group, is_income) VALUES ('cat-income', 'Income', 'grp-1', 1);
+            INSERT INTO reflect_budgets (id, month, category, amount) VALUES
+                ('202606-cat-groceries', 202606, 'cat-groceries', 2500),
+                ('202606-cat-income', 202606, 'cat-income', 5000),
+                ('202607-cat-groceries', 202607, 'cat-groceries', 900),
+                ('202607-cat-income', 202607, 'cat-income', 1000);
+            """)
         }
         let store = try await makeStore(database: database)
 
@@ -369,10 +368,10 @@ struct BudgetStoreSetBudgetAmountTests {
         #expect(store.currentBudgetMonth?.month == "2026-08")
     }
 
-    // A rename runs the shared data refresh, which republishes the *current
-    // calendar* month. Any other displayed month has to survive it, or the
-    // table's rows stop matching its title and the next amount edit lands on
-    // the wrong month.
+    /// A rename runs the shared data refresh, which republishes the *current
+    /// calendar* month. Any other displayed month has to survive it, or the
+    /// table's rows stop matching its title and the next amount edit lands on
+    /// the wrong month.
     @Test func renamingACategoryKeepsTheDisplayedMonthPublished() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }

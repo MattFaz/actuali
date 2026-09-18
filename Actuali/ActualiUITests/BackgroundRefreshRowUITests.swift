@@ -9,9 +9,8 @@ import XCTest
 /// one in behind the -stampBackgroundRefreshOnBackground debug argument: it
 /// writes the same timestamp handle() writes when the app enters background.
 final class BackgroundRefreshRowUITests: XCTestCase {
-
     @MainActor
-    func testRowUpdatesAfterBackgroundStamp() throws {
+    func testRowUpdatesAfterBackgroundStamp() {
         let app = XCUIApplication()
         app.launchArguments = ["-loadDemoData", "-initialTab", "4",
                                "-stampBackgroundRefreshOnBackground"]
@@ -25,7 +24,7 @@ final class BackgroundRefreshRowUITests: XCTestCase {
         // rows on screen, so scroll until the row exists.
         let row = app.staticTexts["Last Background Refresh"]
         var swipes = 0
-        while !row.exists && swipes < 8 {
+        while !row.exists, swipes < 8 {
             app.swipeUp()
             swipes += 1
         }
@@ -46,7 +45,8 @@ final class BackgroundRefreshRowUITests: XCTestCase {
         // BGTaskScheduler always refuses it — exactly the condition the
         // error footnote exists to surface.
         let failure = app.staticTexts.matching(
-            NSPredicate(format: "label BEGINSWITH 'Refresh request failed'")).firstMatch
+            NSPredicate(format: "label BEGINSWITH 'Refresh request failed'")
+        ).firstMatch
         XCTAssertTrue(failure.exists, "refresh request error footnote not shown")
     }
 }

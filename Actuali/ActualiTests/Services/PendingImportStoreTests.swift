@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct PendingImportStoreTests {
-
     /// Creates a store backed by a temp file so tests don't pollute the real queue.
     @MainActor
     private func makeStore() -> (PendingImportStore, URL) {
@@ -69,11 +68,13 @@ struct PendingImportStoreTests {
     @Test @MainActor func legacyRecordWithoutOriginBudgetIdStillDecodes() throws {
         let item = PendingImport(amount: 42, payee: "Legacy", rawText: "msg")
         var object = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(item)) as! [String: Any]
+            with: JSONEncoder().encode(item)
+        ) as! [String: Any]
         object.removeValue(forKey: "originBudgetId")
         let decoded = try JSONDecoder().decode(
             PendingImport.self,
-            from: JSONSerialization.data(withJSONObject: object))
+            from: JSONSerialization.data(withJSONObject: object)
+        )
 
         #expect(decoded.id == item.id)
         #expect(decoded.originBudgetId == nil)
@@ -83,11 +84,13 @@ struct PendingImportStoreTests {
     @Test @MainActor func legacyRecordWithoutSourceCurrencyStillDecodesAsAmbiguous() throws {
         let item = PendingImport(amount: 42, payee: "Legacy", rawText: "msg")
         var object = try JSONSerialization.jsonObject(
-            with: JSONEncoder().encode(item)) as! [String: Any]
+            with: JSONEncoder().encode(item)
+        ) as! [String: Any]
         object.removeValue(forKey: "sourceCurrencyCode")
         let decoded = try JSONDecoder().decode(
             PendingImport.self,
-            from: JSONSerialization.data(withJSONObject: object))
+            from: JSONSerialization.data(withJSONObject: object)
+        )
 
         #expect(decoded.sourceCurrencyCode == nil)
     }
@@ -114,7 +117,7 @@ struct PendingImportStoreTests {
         defer {
             try? FileManager.default.removeItem(at: url)
             for backup in (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil)) ?? []
-            where backup.lastPathComponent.hasPrefix(stem + ".corrupt-") {
+                where backup.lastPathComponent.hasPrefix(stem + ".corrupt-") {
                 try? FileManager.default.removeItem(at: backup)
             }
         }

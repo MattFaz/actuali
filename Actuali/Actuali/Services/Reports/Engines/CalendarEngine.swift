@@ -12,8 +12,8 @@ struct CalendarMeta: Codable, Equatable {
 /// that align the month grid to the configured first weekday.
 struct CalendarDayCell: Equatable {
     let dayOfMonth: Int?
-    let incomeCents: Int    // absolute value
-    let expenseCents: Int   // absolute value
+    let incomeCents: Int // absolute value
+    let expenseCents: Int // absolute value
     /// 0–100: this day's share of the month's income/expense total, matching
     /// upstream `getBarLength` (calendar-spreadsheet.ts).
     let incomeSize: Double
@@ -38,7 +38,6 @@ struct CalendarData: Equatable {
 }
 
 enum CalendarEngine {
-
     static func compute(
         meta: CalendarMeta?,
         transactions: [Transaction],
@@ -65,7 +64,7 @@ enum CalendarEngine {
 
         // Upstream buckets income (amount > 0) and expenses (amount < 0)
         // separately per day; zero-amount transactions land in neither.
-        var incomeByDay: [Int: Int] = [:]   // YYYYMMDD -> cents
+        var incomeByDay: [Int: Int] = [:] // YYYYMMDD -> cents
         var expenseByDay: [Int: Int] = [:]
         for tx in filtered {
             if tx.amount > 0 {
@@ -117,17 +116,19 @@ enum CalendarEngine {
 
         // Leading padding back to the configured first weekday, trailing
         // padding to a whole number of weeks (upstream recalculate()).
-        let jsWeekday = calendar.component(.weekday, from: monthStart) - 1  // 0 = Sunday
+        let jsWeekday = calendar.component(.weekday, from: monthStart) - 1 // 0 = Sunday
         let leading = (jsWeekday - weekStart + 7) % 7
         var totalCells = leading + daysInMonth
-        if totalCells % 7 != 0 { totalCells += 7 - totalCells % 7 }
+        if totalCells % 7 != 0 {
+            totalCells += 7 - totalCells % 7
+        }
 
         let padding = CalendarDayCell(dayOfMonth: nil, incomeCents: 0, expenseCents: 0,
                                       incomeSize: 0, expenseSize: 0)
         var cells: [CalendarDayCell] = []
         for i in 0..<totalCells {
             let day = i - leading + 1
-            guard day >= 1 && day <= daysInMonth else {
+            guard day >= 1, day <= daysInMonth else {
                 cells.append(padding)
                 continue
             }

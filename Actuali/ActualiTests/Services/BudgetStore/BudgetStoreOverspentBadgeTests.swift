@@ -6,7 +6,6 @@ import Testing
 /// setting: the real overspent count when enabled, always 0 when disabled.
 @MainActor
 struct BudgetStoreOverspentBadgeTests {
-
     private func makeMonth(availables: [Int]) -> BudgetMonth {
         BudgetMonth(
             month: "2026-07",

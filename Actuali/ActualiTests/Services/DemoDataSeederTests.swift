@@ -10,7 +10,6 @@ import Testing
 @Suite(.serialized)
 @MainActor
 struct DemoDataSeederTests {
-
     private func seedAndOpen(tracking: Bool = false, now: Date = Date()) throws -> BudgetDatabase {
         try DemoDataSeeder.seed(tracking: tracking, now: now)
         let dbPath = BudgetFileManager.shared.databasePath(for: DemoDataSeeder.budgetId)
@@ -58,8 +57,8 @@ struct DemoDataSeederTests {
         #expect(!newest.cleared)
     }
 
-    // Two pages so the demo exercises the dashboard switcher (GH #120);
-    // "Main" is first so it's the default dashboard on open.
+    /// Two pages so the demo exercises the dashboard switcher (GH #120);
+    /// "Main" is first so it's the default dashboard on open.
     @Test func seedsTwoDashboardPages() async throws {
         let database = try seedAndOpen()
         let pages = try await database.fetchDashboardPages()
@@ -97,8 +96,12 @@ struct DemoDataSeederTests {
         var netWorthMeta: NetWorthMeta?
         var summaryMeta: SummaryMeta?
         for widget in widgets {
-            if case .netWorth(_, let meta) = widget { netWorthMeta = meta }
-            if case .summary(_, let meta) = widget { summaryMeta = meta }
+            if case .netWorth(_, let meta) = widget {
+                netWorthMeta = meta
+            }
+            if case .summary(_, let meta) = widget {
+                summaryMeta = meta
+            }
         }
 
         // Net worth: the seeded starting balance + activity must yield a chartable
@@ -152,7 +155,8 @@ struct DemoDataSeederTests {
         let groups = try await database.fetchCategoryGroups()
 
         let groceries = try #require(
-            groups.flatMap(\.categories).first { $0.name == "Groceries" })
+            groups.flatMap(\.categories).first { $0.name == "Groceries" }
+        )
         let note = try await database.fetchNote(id: groceries.id)
 
         #expect(note.supported)

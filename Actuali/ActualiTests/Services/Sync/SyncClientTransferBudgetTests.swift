@@ -4,7 +4,6 @@ import Testing
 @testable import Actuali
 
 struct SyncClientTransferBudgetTests {
-
     /// The budget table and messages_crdt normally come from the downloaded
     /// budget file, so create them with the upstream schema.
     private func makeDatabase(budgetTable: String? = "zero_budgets") throws -> (BudgetDatabase, URL) {
@@ -14,27 +13,27 @@ struct SyncClientTransferBudgetTests {
         try queue.write { db in
             if let budgetTable {
                 try db.execute(sql: """
-                    CREATE TABLE \(budgetTable) (
-                        id TEXT PRIMARY KEY,
-                        month INTEGER,
-                        category TEXT,
-                        amount INTEGER DEFAULT 0,
-                        carryover INTEGER DEFAULT 0
-                    )
-                    """)
-            }
-            try db.execute(sql: """
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
+                CREATE TABLE \(budgetTable) (
+                    id TEXT PRIMARY KEY,
+                    month INTEGER,
+                    category TEXT,
+                    amount INTEGER DEFAULT 0,
+                    carryover INTEGER DEFAULT 0
                 )
                 """)
+            }
+            try db.execute(sql: """
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            )
+            """)
         }
-        return (try BudgetDatabase(path: tempURL), tempURL)
+        return try (BudgetDatabase(path: tempURL), tempURL)
     }
 
     /// Sync client wired to a real database. The server client is
@@ -53,8 +52,8 @@ struct SyncClientTransferBudgetTests {
     private func seedCell(_ database: BudgetDatabase, id: String, month: Int, category: String, amount: Int) throws {
         try database.dbQueueForTesting.write { db in
             try db.execute(sql: """
-                INSERT INTO zero_budgets (id, month, category, amount) VALUES (?, ?, ?, ?)
-                """, arguments: [id, month, category, amount])
+            INSERT INTO zero_budgets (id, month, category, amount) VALUES (?, ?, ?, ?)
+            """, arguments: [id, month, category, amount])
         }
     }
 
@@ -79,8 +78,8 @@ struct SyncClientTransferBudgetTests {
     @Test func transferBetweenCategoriesMovesBudgetedAmount() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        try seedCell(database, id: "202607-cat-1", month: 202607, category: "cat-1", amount: 5000)
-        try seedCell(database, id: "202607-cat-2", month: 202607, category: "cat-2", amount: 1000)
+        try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
+        try seedCell(database, id: "202607-cat-2", month: 202_607, category: "cat-2", amount: 1000)
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: "cat-2", amount: 2000)
@@ -106,7 +105,7 @@ struct SyncClientTransferBudgetTests {
     @Test func coverFromToBudgetWritesOnlyDestination() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        try seedCell(database, id: "202607-cat-1", month: 202607, category: "cat-1", amount: 500)
+        try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 500)
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: nil, toCategoryId: "cat-1", amount: 3000)
@@ -127,7 +126,7 @@ struct SyncClientTransferBudgetTests {
     @Test func transferToToBudgetWritesOnlySource() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        try seedCell(database, id: "202607-cat-1", month: 202607, category: "cat-1", amount: 5000)
+        try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: nil, amount: 2000)
@@ -147,7 +146,7 @@ struct SyncClientTransferBudgetTests {
     @Test func missingDestinationRowIsCreatedWithFullInsertMessages() async throws {
         let (database, path) = try makeDatabase()
         defer { cleanup(path) }
-        try seedCell(database, id: "202607-cat-1", month: 202607, category: "cat-1", amount: 5000)
+        try seedCell(database, id: "202607-cat-1", month: 202_607, category: "cat-1", amount: 5000)
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.transferBudget(month: "2026-07", fromCategoryId: "cat-1", toCategoryId: "cat-new", amount: 1500)

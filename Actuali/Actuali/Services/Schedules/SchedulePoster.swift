@@ -87,7 +87,9 @@ actor SchedulePoster {
         self.defaults = defaults
     }
 
-    private func gateKey(_ budgetId: String) -> String { "lastScheduleRun-\(budgetId)" }
+    private func gateKey(_ budgetId: String) -> String {
+        "lastScheduleRun-\(budgetId)"
+    }
 
     /// Post every due occurrence of every postable schedule, advancing next
     /// dates as it goes. At most one CLEAN pass per calendar day per budget;
@@ -171,7 +173,8 @@ actor SchedulePoster {
                     let result = RulesEngine.apply(
                         actions: schedule.actions,
                         to: txn,
-                        ruleId: schedule.id)
+                        ruleId: schedule.id
+                    )
                     if !result.isDeleted {
                         txn = result.transaction
                         txn.schedule = schedule.id
@@ -197,12 +200,13 @@ actor SchedulePoster {
 
             guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: current.adding(days: 1)),
                   next > current
-            else { break }   // ended, or weekend-solve pinned the date: treat as not-advanced and stop
+            else { break } // ended, or weekend-solve pinned the date: treat as not-advanced and stop
 
             try await actions.advanceScheduleNextDate(
                 nextDateRowId: schedule.nextDateRowId,
                 newNextDate: next.yyyymmdd,
-                baseNextDateTs: schedule.baseNextDateTs)
+                baseNextDateTs: schedule.baseNextDateTs
+            )
             current = next
         }
         return posted

@@ -34,10 +34,12 @@ struct ParseAndQueueTransactionIntent: AppIntent {
             amountText = "?"
         }
         let payeeText = payee ?? String(localized: LocalizedStringResource(
-            "Unknown", locale: locale, bundle: bundle))
+            "Unknown", locale: locale, bundle: bundle
+        ))
         return String(localized: LocalizedStringResource(
             "Queued \(amountText) at \(payeeText) for review",
-            locale: locale, bundle: bundle))
+            locale: locale, bundle: bundle
+        ))
     }
 
     @MainActor

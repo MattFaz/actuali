@@ -7,8 +7,13 @@ enum BillFilter: String, CaseIterable, Identifiable, Sendable {
     case overdue = "Overdue"
     case paid = "Paid"
 
-    var id: String { rawValue }
-    var label: String { String(localized: String.LocalizationValue(rawValue)) }
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        String(localized: String.LocalizationValue(rawValue))
+    }
 }
 
 /// Tab switcher between Recurring Schedules and Credit Card Bills.
@@ -16,23 +21,26 @@ enum BillsTabMode: String, CaseIterable, Identifiable, Sendable {
     case recurring = "Recurring"
     case cardBills = "Card Bills"
 
-    var id: String { rawValue }
-    var label: String { String(localized: String.LocalizationValue(rawValue)) }
+    var id: String {
+        rawValue
+    }
+
+    var label: String {
+        String(localized: String.LocalizationValue(rawValue))
+    }
 }
 
 /// Month cashflow summary for the bills calendar header.
 struct BillsMonthSummary: Equatable, Sendable {
     let upcomingTotal: Int // cents
-    let overdueTotal: Int  // cents
-    let paidTotal: Int     // cents
+    let overdueTotal: Int // cents
+    let paidTotal: Int // cents
     let clearedCount: Int
     let totalCount: Int
 }
 
 /// Pure functions for generating calendar grid cells, occurrences, and summary statistics.
 enum BillsCalendarEngine: Sendable {
-
-
     /// Number of blank leading cells in a Monday-first monthly calendar grid.
     /// In `DayDate`, 1 = Sunday, 2 = Monday ... 7 = Saturday.
     static func leadingEmptyDays(year: Int, month: Int) -> Int {
@@ -136,7 +144,8 @@ enum BillsCalendarEngine: Sendable {
                         nextDate: date,
                         dateOp: schedule.dateOp,
                         postsTransaction: schedule.postsTransaction,
-                        frequency: config.frequency)
+                        frequency: config.frequency
+                    )
                     let matchStart = prevDate.map { max($0.adding(days: 1), earlyBound) } ?? earlyBound
 
                     let nextDate = sortedDates.dropFirst(index + 1).first
@@ -148,22 +157,22 @@ enum BillsCalendarEngine: Sendable {
                             nextDate: next,
                             dateOp: schedule.dateOp,
                             postsTransaction: schedule.postsTransaction,
-                            frequency: config.frequency))
+                            frequency: config.frequency
+                        ))
                     }
 
-                    let itemStatus: ScheduleStatus
-                    if date == schedule.nextDate {
-                        itemStatus = baseStatus
+                    let itemStatus: ScheduleStatus = if date == schedule.nextDate {
+                        baseStatus
                     } else if paymentDates[schedule.id]?.contains(where: { paymentDate in
                         paymentDate >= matchStart && (nextMatchStart.map { paymentDate < $0 } ?? true)
                     }) == true {
-                        itemStatus = .paid
+                        .paid
                     } else if date < today {
-                        itemStatus = .missed
+                        .missed
                     } else if date == today {
-                        itemStatus = .due
+                        .due
                     } else {
-                        itemStatus = .upcoming
+                        .upcoming
                     }
 
                     items.append(

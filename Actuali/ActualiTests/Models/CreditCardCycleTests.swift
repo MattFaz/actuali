@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct CreditCardCycleTests {
-
     // MARK: - Cycle Date Calculations
 
     @Test func cycleRangeWhenTodayIsAfterStatementDay() {

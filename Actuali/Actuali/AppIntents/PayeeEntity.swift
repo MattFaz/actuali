@@ -16,7 +16,6 @@ struct PayeeEntity: AppEntity, Identifiable {
 }
 
 struct PayeeEntityQuery: EntityQuery {
-
     @MainActor
     func entities(for identifiers: [PayeeEntity.ID]) async throws -> [PayeeEntity] {
         let payees = await BudgetStore.shared.payeesForIntent()

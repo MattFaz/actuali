@@ -117,7 +117,11 @@ struct PayeeLocationDetailView: View {
         }
         .alert("Couldn't Clear Location", isPresented: Binding(
             get: { failureMessage != nil },
-            set: { presented in if !presented { failureMessage = nil } }
+            set: {
+                presented in if !presented {
+                    failureMessage = nil
+                }
+            }
         )) {
             Button("OK", role: .cancel) { failureMessage = nil }
         } message: {

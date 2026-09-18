@@ -150,9 +150,9 @@ final class HistoryObserver {
             previousSplitChildren = currentSplitChildren
             if pendingUndo.budgetID == budgetID,
                Self.matchesPendingUndo(
-                    pendingUndo,
-                    current: current,
-                    splitChildren: currentSplitChildren
+                   pendingUndo,
+                   current: current,
+                   splitChildren: currentSplitChildren
                ) {
                 HistoryStore.finishUndoRecording()
             }
@@ -183,11 +183,10 @@ final class HistoryObserver {
             let oldChildren = previousSplitChildren[parentID] ?? [:]
             let newChildren = currentSplitChildren[parentID] ?? [:]
 
-            let rootChanged: Bool
-            if let oldRoot, let newRoot {
-                rootChanged = !Self.samePersistedState(oldRoot, newRoot)
+            let rootChanged: Bool = if let oldRoot, let newRoot {
+                !Self.samePersistedState(oldRoot, newRoot)
             } else {
-                rootChanged = oldRoot != nil || newRoot != nil
+                oldRoot != nil || newRoot != nil
             }
             let childrenChanged = !Self.samePersistedState(oldChildren, newChildren)
 
@@ -197,7 +196,7 @@ final class HistoryObserver {
             if oldRoot == nil, let newRoot {
                 let after = [newRoot]
                     + newChildren.values
-                        .sorted { Self.isBefore($0, $1) }
+                    .sorted { Self.isBefore($0, $1) }
                 HistoryStore.shared.recordSnapshots(
                     budgetID: budgetID,
                     kind: .created,
@@ -207,7 +206,7 @@ final class HistoryObserver {
             } else if let oldRoot, newRoot == nil {
                 let before = [oldRoot]
                     + oldChildren.values
-                        .sorted { Self.isBefore($0, $1) }
+                    .sorted { Self.isBefore($0, $1) }
                 let after = before.map { snapshot in
                     var tombstoned = snapshot
                     tombstoned.tombstone = true
@@ -364,7 +363,9 @@ final class HistoryObserver {
     private static func isBefore(_ lhs: Transaction, _ rhs: Transaction) -> Bool {
         let lhsSort = lhs.sortOrder ?? 0
         let rhsSort = rhs.sortOrder ?? 0
-        if lhsSort != rhsSort { return lhsSort < rhsSort }
+        if lhsSort != rhsSort {
+            return lhsSort < rhsSort
+        }
         return lhs.id < rhs.id
     }
 }

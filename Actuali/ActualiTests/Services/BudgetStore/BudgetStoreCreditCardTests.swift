@@ -5,7 +5,6 @@ import Testing
 
 @MainActor
 struct BudgetStoreCreditCardTests {
-
     private func makeStore() throws -> (BudgetStore, BudgetFileManager, String, URL) {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("cc-tests-\(UUID().uuidString)", isDirectory: true)
@@ -42,13 +41,13 @@ struct BudgetStoreCreditCardTests {
         // Seed legacy UserDefaults keys
         UserDefaults.standard.set(["acct_chase": 18], forKey: "creditCardStatementDays_\(budgetId)")
         UserDefaults.standard.set(["acct_chase": 25], forKey: "creditCardDueOffsets_\(budgetId)")
-        UserDefaults.standard.set(["acct_chase": 500000], forKey: "creditCardLimits_\(budgetId)")
+        UserDefaults.standard.set(["acct_chase": 500_000], forKey: "creditCardLimits_\(budgetId)")
 
         await store.loadLocalBudget(budgetId)
 
         #expect(store.creditCardStatementDays["acct_chase"] == 18)
         #expect(store.creditCardDueOffsets["acct_chase"] == 25)
-        #expect(store.creditCardLimits["acct_chase"] == 500000)
+        #expect(store.creditCardLimits["acct_chase"] == 500_000)
 
         // Legacy UserDefaults keys must be erased so removed cards don't resurrect
         #expect(UserDefaults.standard.dictionary(forKey: "creditCardStatementDays_\(budgetId)") == nil)
@@ -64,7 +63,7 @@ struct BudgetStoreCreditCardTests {
 
         // Insert directly into preferences table
         let dbQueue = try DatabaseQueue(path: manager.databasePath(for: budgetId).path)
-        let config = CreditCardConfig(statementDay: 20, dueOffsetDays: 30, limit: 1000000)
+        let config = CreditCardConfig(statementDay: 20, dueOffsetDays: 30, limit: 1_000_000)
         let data = try JSONEncoder().encode(config)
         try await dbQueue.write { db in
             try db.execute(
@@ -77,7 +76,7 @@ struct BudgetStoreCreditCardTests {
 
         #expect(store.creditCardStatementDays["acct_apple"] == 20)
         #expect(store.creditCardDueOffsets["acct_apple"] == 30)
-        #expect(store.creditCardLimits["acct_apple"] == 1000000)
+        #expect(store.creditCardLimits["acct_apple"] == 1_000_000)
     }
 
     @Test func cardsAreScopedPerBudgetOnLoad() async throws {
@@ -89,7 +88,7 @@ struct BudgetStoreCreditCardTests {
         try await seedBudget(id: budgetB, in: manager)
 
         let dbQueueA = try DatabaseQueue(path: manager.databasePath(for: budgetA).path)
-        let configA = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500000)
+        let configA = CreditCardConfig(statementDay: 18, dueOffsetDays: 25, limit: 500_000)
         let dataA = try JSONEncoder().encode(configA)
         try await dbQueueA.write { db in
             try db.execute(

@@ -15,9 +15,9 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Card or Account Hint"), default: "")
     var cardHint: String
 
-    // String, not Double: Wallet's amount coerces to 0 as a Number for some
-    // cards, but the text form carries the real value (issue #41). Parsed
-    // via AmountParser, which handles currency symbols and locale separators.
+    /// String, not Double: Wallet's amount coerces to 0 as a Number for some
+    /// cards, but the text form carries the real value (issue #41). Parsed
+    /// via AmountParser, which handles currency symbols and locale separators.
     @Parameter(title: LocalizedStringResource("Amount"))
     var amount: String
 
@@ -36,11 +36,11 @@ struct LogTransactionIntent: AppIntent {
     @Parameter(title: LocalizedStringResource("Cleared"), default: true)
     var cleared: Bool
 
-    // Siri speaks a returned dialog, but Shortcuts and Wallet automations render
-    // it as a card the user must dismiss with "Done" — which #143 turned into the
-    // normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
-    // invocation surface, so the Siri App Shortcut opts in explicitly and every
-    // other caller stays silent; the success notification is the feedback there.
+    /// Siri speaks a returned dialog, but Shortcuts and Wallet automations render
+    /// it as a card the user must dismiss with "Done" — which #143 turned into the
+    /// normal outcome of a tap-to-pay automation. Nothing in AppIntents exposes the
+    /// invocation surface, so the Siri App Shortcut opts in explicitly and every
+    /// other caller stays silent; the success notification is the feedback there.
     @Parameter(title: LocalizedStringResource("Show Confirmation"), default: false)
     var showConfirmation: Bool
 
@@ -67,7 +67,9 @@ struct LogTransactionIntent: AppIntent {
     ) -> IntentResultContainer<Never, Never, Never, IntentDialog> {
         var result = IntentResultContainer<Never, Never, Never, IntentDialog>
             .result(dialog: IntentDialog(stringLiteral: dialogText))
-        if !showConfirmation { result.dialog = nil }
+        if !showConfirmation {
+            result.dialog = nil
+        }
         return result
     }
 
@@ -184,7 +186,8 @@ struct LogTransactionIntent: AppIntent {
         let amountCents = AmountParser.parse(amount).flatMap { Transaction.cents(fromDollars: $0) }
         await TransactionLogNotifier.notifyFailure(
             message: LogTransactionError.localizedString(
-                for: error, locale: .autoupdatingCurrent, bundle: .main),
+                for: error, locale: .autoupdatingCurrent, bundle: .main
+            ),
             payee: payee,
             amountCents: amountCents ?? 0,
             currencyCode: store.currencyCode,

@@ -1,17 +1,17 @@
-import Testing
 import SwiftUI
+import Testing
 import UIKit
 @testable import Actuali
 
 struct CompactBudgetPresentationTests {
-
     private var actualiBundle: Bundle {
         Bundle(identifier: "com.mfazz.ActualiOS")!
     }
+
     @Test @MainActor func groupHeaderHeightDoesNotDependOnTotalsVisibility() throws {
         let store = BudgetStore.previewInstance()
         let totals = CategoryGroupTotals([
-            category(budgeted: 50_000, spent: -31_500, available: 18_500),
+            category(budgeted: 50000, spent: -31500, available: 18500),
         ])
 
         for showsSpent in [false, true] {
@@ -44,9 +44,9 @@ struct CompactBudgetPresentationTests {
         let budget = BudgetMonth(
             month: "2026-08",
             categoryBudgets: [
-                category(budgeted: 50_000, spent: -31_500, available: 18_500),
+                category(budgeted: 50000, spent: -31500, available: 18500),
             ],
-            toBudget: 12_500
+            toBudget: 12500
         )
 
         let overview = CompactBudgetOverview(
@@ -55,10 +55,10 @@ struct CompactBudgetPresentationTests {
             currentMonth: "2026-08"
         )
 
-        #expect(overview.leading == .init(kind: .toBudget, amount: 12_500))
+        #expect(overview.leading == .init(kind: .toBudget, amount: 12500))
         #expect(overview.columns == [
-            .init(kind: .budgeted, amount: 50_000),
-            .init(kind: .balance, amount: 18_500),
+            .init(kind: .budgeted, amount: 50000),
+            .init(kind: .balance, amount: 18500),
         ])
         #expect(CompactBudgetTableLayout(isTrackingBudget: false, showsSpent: false).expenseColumns == [
             .budgeted,
@@ -72,18 +72,18 @@ struct CompactBudgetPresentationTests {
 
     @Test func groupHeaderPresentationOmitsEveryTotalWhenDisabled() {
         let totals = CategoryGroupTotals([
-            category(budgeted: 50_000, spent: -31_500, available: 18_500),
+            category(budgeted: 50000, spent: -31500, available: 18500),
         ])
 
         #expect(CompactBudgetGroupHeaderPresentation(totals: nil, showsSpent: true).columns.isEmpty)
         #expect(CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: false).columns == [
-            .init(type: .budgeted, amount: 50_000),
-            .init(type: .balance, amount: 18_500),
+            .init(type: .budgeted, amount: 50000),
+            .init(type: .balance, amount: 18500),
         ])
         #expect(CompactBudgetGroupHeaderPresentation(totals: totals, showsSpent: true).columns == [
-            .init(type: .budgeted, amount: 50_000),
-            .init(type: .spent, amount: -31_500),
-            .init(type: .balance, amount: 18_500),
+            .init(type: .budgeted, amount: 50000),
+            .init(type: .spent, amount: -31500),
+            .init(type: .balance, amount: 18500),
         ])
     }
 
@@ -91,7 +91,7 @@ struct CompactBudgetPresentationTests {
         let budget = BudgetMonth(
             month: "2026-08",
             categoryBudgets: [
-                category(budgeted: 80_000, spent: -60_000, available: 20_000),
+                category(budgeted: 80000, spent: -60000, available: 20000),
             ],
             incomeCategories: [
                 income(budgeted: 125_000, received: 110_000),
@@ -107,9 +107,9 @@ struct CompactBudgetPresentationTests {
 
         #expect(overview.leading == .init(kind: .income, amount: 110_000))
         #expect(overview.columns == [
-            .init(kind: .budgeted, amount: 80_000),
-            .init(kind: .spent, amount: -60_000),
-            .init(kind: .projected, amount: 45_000),
+            .init(kind: .budgeted, amount: 80000),
+            .init(kind: .spent, amount: -60000),
+            .init(kind: .projected, amount: 45000),
         ])
         #expect(CompactBudgetTableLayout(isTrackingBudget: true, showsSpent: true).incomeColumns == [
             .budgeted,
@@ -122,7 +122,7 @@ struct CompactBudgetPresentationTests {
         let budget = BudgetMonth(
             month: "2026-07",
             categoryBudgets: [
-                category(budgeted: 80_000, spent: -60_000, available: 20_000),
+                category(budgeted: 80000, spent: -60000, available: 20000),
             ],
             incomeCategories: [
                 income(budgeted: 125_000, received: 110_000),
@@ -136,7 +136,7 @@ struct CompactBudgetPresentationTests {
             currentMonth: "2026-08"
         )
 
-        #expect(overview.columns.last == .init(kind: .saved, amount: 50_000))
+        #expect(overview.columns.last == .init(kind: .saved, amount: 50000))
     }
 
     @Test func balanceToneDistinguishesEverySemanticStateAndPrivacyMasking() {
@@ -151,11 +151,11 @@ struct CompactBudgetPresentationTests {
 
     @Test func compactDisplayLabelsLocalizeWithoutChangingStableIdentities() {
         let columnIdentities: [(CompactBudgetColumn, String)] = [
-            (.budgeted, "Budgeted"), (.spent, "Spent"), (.balance, "Balance"), (.received, "Received")
+            (.budgeted, "Budgeted"), (.spent, "Spent"), (.balance, "Balance"), (.received, "Received"),
         ]
         let statIdentities: [(CompactBudgetOverview.Stat.Kind, String)] = [
             (.toBudget, "toBudget"), (.income, "income"), (.budgeted, "budgeted"),
-            (.spent, "spent"), (.saved, "saved"), (.projected, "projected"), (.balance, "balance")
+            (.spent, "spent"), (.saved, "saved"), (.projected, "projected"), (.balance, "balance"),
         ]
         for (column, rawValue) in columnIdentities {
             #expect(column.rawValue == rawValue)
@@ -168,7 +168,7 @@ struct CompactBudgetPresentationTests {
             (.budgeted, ["Budgeted", "Budgété", "Presupuestado", "Orçado", "Budgetiert", "Budgetizzato", "Begroot"]),
             (.spent, ["Spent", "Dépensé", "Gastado", "Gasto", "Ausgegeben", "Speso", "Besteed"]),
             (.balance, ["Balance", "Solde", "Saldo", "Saldo", "Saldo", "Saldo", "Saldo"]),
-            (.received, ["Received", "Reçu", "Recibido", "Recebido", "Erhalten", "Ricevuto", "Ontvangen"])
+            (.received, ["Received", "Reçu", "Recibido", "Recebido", "Erhalten", "Ricevuto", "Ontvangen"]),
         ]
         let stats: [(CompactBudgetOverview.Stat.Kind, [String])] = [
             (.toBudget, ["To Budget", "À budgéter", "Por presupuestar", "A orçar", "Zu budgetieren", "Da assegnare", "Te budgetteren"]),
@@ -177,7 +177,7 @@ struct CompactBudgetPresentationTests {
             (.spent, ["Spent", "Dépensé", "Gastado", "Gasto", "Ausgegeben", "Speso", "Besteed"]),
             (.saved, ["Saved", "Enregistré", "Guardado", "Salvo", "Gespeichert", "Salvato", "Opgeslagen"]),
             (.projected, ["Projected", "Prévisionnel", "Previsto", "Projetado", "Prognose", "Previsto", "Verwacht"]),
-            (.balance, ["Balance", "Solde", "Saldo", "Saldo", "Saldo", "Saldo", "Saldo"])
+            (.balance, ["Balance", "Solde", "Saldo", "Saldo", "Saldo", "Saldo", "Saldo"]),
         ]
         let locales = ["en_US", "fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"]
 
@@ -224,8 +224,8 @@ struct CompactBudgetPresentationTests {
     }
 
     @Test @MainActor func balanceColorUsesGoalStateWhenEnabled() {
-        var underfunded = category(budgeted: 5_000, spent: 0, available: 5_000)
-        underfunded.goal = 10_000
+        var underfunded = category(budgeted: 5000, spent: 0, available: 5000)
+        underfunded.goal = 10000
 
         #expect(balanceColor(underfunded, goalsEnabled: true, zero: .secondary) == .orange)
         #expect(balanceColor(underfunded, goalsEnabled: false, zero: .secondary) == .green)
@@ -260,12 +260,12 @@ struct CompactBudgetPresentationTests {
     }
 
     @MainActor
-    private func renderedHeight<Content: View>(_ view: Content) throws -> Int {
+    private func renderedHeight(_ view: some View) throws -> Int {
         try renderedImage(view).height
     }
 
     @MainActor
-    private func renderedImage<Content: View>(_ view: Content) throws -> CGImage {
+    private func renderedImage(_ view: some View) throws -> CGImage {
         let renderer = ImageRenderer(content: view)
         renderer.scale = 1
         return try #require(renderer.uiImage?.cgImage)

@@ -10,7 +10,6 @@ import Testing
 /// v_schedules CASE rule) until another client resets the base. The base
 /// columns must never be touched.
 struct ScheduleAdvanceTests {
-
     // MARK: - Fixtures
 
     /// Schema mirrors ScheduleFetchTests (schedules tables + the tables
@@ -22,56 +21,56 @@ struct ScheduleAdvanceTests {
         let queue = try DatabaseQueue(path: tempURL.path)
         try queue.write { db in
             try db.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE payee_mapping (
-                    id TEXT PRIMARY KEY,
-                    targetId TEXT
-                );
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            );
 
-                CREATE TABLE rules (
-                    id TEXT PRIMARY KEY,
-                    stage TEXT,
-                    conditions_op TEXT DEFAULT 'and',
-                    conditions TEXT,
-                    actions TEXT,
-                    tombstone INTEGER DEFAULT 0
-                );
+            CREATE TABLE rules (
+                id TEXT PRIMARY KEY,
+                stage TEXT,
+                conditions_op TEXT DEFAULT 'and',
+                conditions TEXT,
+                actions TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
 
-                CREATE TABLE schedules (
-                    id TEXT PRIMARY KEY,
-                    rule TEXT,
-                    active INTEGER DEFAULT 0,
-                    completed INTEGER DEFAULT 0,
-                    posts_transaction INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0,
-                    name TEXT
-                );
+            CREATE TABLE schedules (
+                id TEXT PRIMARY KEY,
+                rule TEXT,
+                active INTEGER DEFAULT 0,
+                completed INTEGER DEFAULT 0,
+                posts_transaction INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0,
+                name TEXT
+            );
 
-                CREATE TABLE schedules_next_date (
-                    id TEXT PRIMARY KEY,
-                    schedule_id TEXT,
-                    local_next_date INTEGER,
-                    local_next_date_ts INTEGER,
-                    base_next_date INTEGER,
-                    base_next_date_ts INTEGER
-                );
+            CREATE TABLE schedules_next_date (
+                id TEXT PRIMARY KEY,
+                schedule_id TEXT,
+                local_next_date INTEGER,
+                local_next_date_ts INTEGER,
+                base_next_date INTEGER,
+                base_next_date_ts INTEGER
+            );
 
-                CREATE TABLE messages_crdt (
-                    id INTEGER PRIMARY KEY,
-                    timestamp TEXT NOT NULL UNIQUE,
-                    dataset TEXT NOT NULL,
-                    row TEXT NOT NULL,
-                    column TEXT NOT NULL,
-                    value BLOB NOT NULL
-                );
-                """)
+            CREATE TABLE messages_crdt (
+                id INTEGER PRIMARY KEY,
+                timestamp TEXT NOT NULL UNIQUE,
+                dataset TEXT NOT NULL,
+                row TEXT NOT NULL,
+                column TEXT NOT NULL,
+                value BLOB NOT NULL
+            );
+            """)
         }
         let database = try BudgetDatabase(path: tempURL)
         try database.dbQueueForTesting.write { db in
@@ -99,31 +98,31 @@ struct ScheduleAdvanceTests {
     private func insertSchedule(
         _ db: BudgetDatabase,
         id: String = "sched-1",
-        localNextDate: Int = 20260801,
-        localNextDateTs: Int64 = 1_000,
-        baseNextDate: Int = 20260801,
-        baseNextDateTs: Int64 = 1_000
+        localNextDate: Int = 20_260_801,
+        localNextDateTs: Int64 = 1000,
+        baseNextDate: Int = 20_260_801,
+        baseNextDateTs: Int64 = 1000
     ) throws {
         let conditionsJSON = """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-1"},
-             {"op":"isapprox","field":"amount","value":-1500},
-             {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}]
-            """
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-1"},
+         {"op":"isapprox","field":"amount","value":-1500},
+         {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}]
+        """
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions)
-                VALUES (?, NULL, 'and', ?, '[]')
-                """, arguments: ["rule-\(id)", conditionsJSON])
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions)
+            VALUES (?, NULL, 'and', ?, '[]')
+            """, arguments: ["rule-\(id)", conditionsJSON])
             try conn.execute(sql: """
-                INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
-                VALUES (?, ?, 0, 1, 0, 'Rent')
-                """, arguments: [id, "rule-\(id)"])
+            INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
+            VALUES (?, ?, 0, 1, 0, 'Rent')
+            """, arguments: [id, "rule-\(id)"])
             try conn.execute(sql: """
-                INSERT INTO schedules_next_date
-                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: ["nd-\(id)", id, localNextDate, localNextDateTs, baseNextDate, baseNextDateTs])
+            INSERT INTO schedules_next_date
+                (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: ["nd-\(id)", id, localNextDate, localNextDateTs, baseNextDate, baseNextDateTs])
         }
     }
 
@@ -150,7 +149,7 @@ struct ScheduleAdvanceTests {
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.advanceScheduleNextDate(
-            nextDateRowId: "nd-sched-1", newNextDate: 20260901, baseNextDateTs: 1_000
+            nextDateRowId: "nd-sched-1", newNextDate: 20_260_901, baseNextDateTs: 1000
         )
 
         let messages = try messageRows(path: path)
@@ -176,20 +175,20 @@ struct ScheduleAdvanceTests {
         // base ts — while never touching the base columns.
         try insertSchedule(
             database,
-            localNextDate: 20260701, localNextDateTs: 500,
-            baseNextDate: 20260801, baseNextDateTs: 1_000
+            localNextDate: 20_260_701, localNextDateTs: 500,
+            baseNextDate: 20_260_801, baseNextDateTs: 1000
         )
         let syncClient = try await makeSyncClient(database: database)
 
         try await syncClient.advanceScheduleNextDate(
-            nextDateRowId: "nd-sched-1", newNextDate: 20260901, baseNextDateTs: 1_000
+            nextDateRowId: "nd-sched-1", newNextDate: 20_260_901, baseNextDateTs: 1000
         )
 
         let row = try nextDateRow(path: path)
-        #expect(row["local_next_date"] == 20260901)
-        #expect(row["local_next_date_ts"] == 1_000)
-        #expect(row["base_next_date"] == 20260801)
-        #expect(row["base_next_date_ts"] == 1_000)
+        #expect(row["local_next_date"] == 20_260_901)
+        #expect(row["local_next_date_ts"] == 1000)
+        #expect(row["base_next_date"] == 20_260_801)
+        #expect(row["base_next_date_ts"] == 1000)
         #expect(row["schedule_id"] == "sched-1")
     }
 
@@ -202,20 +201,20 @@ struct ScheduleAdvanceTests {
         let syncClient = try await makeSyncClient(database: database)
 
         let before = try database.fetchPostableSchedules()
-        #expect(before.first?.nextDate.yyyymmdd == 20260801)
+        #expect(before.first?.nextDate.yyyymmdd == 20_260_801)
         let schedule = try #require(before.first)
 
         try await syncClient.advanceScheduleNextDate(
             nextDateRowId: schedule.nextDateRowId,
-            newNextDate: 20260915,
+            newNextDate: 20_260_915,
             baseNextDateTs: schedule.baseNextDateTs
         )
 
         // local_next_date_ts == base_next_date_ts, so the local override wins.
         let after = try database.fetchPostableSchedules()
         #expect(after.count == 1)
-        #expect(after.first?.nextDate.yyyymmdd == 20260915)
-        #expect(after.first?.baseNextDateTs == 1_000)
+        #expect(after.first?.nextDate.yyyymmdd == 20_260_915)
+        #expect(after.first?.baseNextDateTs == 1000)
     }
 
     // MARK: - Guards
@@ -228,10 +227,10 @@ struct ScheduleAdvanceTests {
 
         await #expect(throws: SyncError.self) {
             try await syncClient.advanceScheduleNextDate(
-                nextDateRowId: "nd-sched-1", newNextDate: 20260901, baseNextDateTs: 1_000
+                nextDateRowId: "nd-sched-1", newNextDate: 20_260_901, baseNextDateTs: 1000
             )
         }
         #expect(try messageRows(path: path).isEmpty)
-        #expect(try nextDateRow(path: path)["local_next_date"] == 20260801)
+        #expect(try nextDateRow(path: path)["local_next_date"] == 20_260_801)
     }
 }

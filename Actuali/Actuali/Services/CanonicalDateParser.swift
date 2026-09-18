@@ -1,7 +1,6 @@
 import Foundation
 
 enum CanonicalDateParser {
-
     private static var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
         c.timeZone = TimeZone(identifier: "UTC")!

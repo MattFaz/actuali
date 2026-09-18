@@ -3,7 +3,6 @@ import Testing
 @testable import Actuali
 
 struct CategoryGroupTotalsTests {
-
     private func makeCategory(
         id: String,
         budgeted: Int,
@@ -37,7 +36,7 @@ struct CategoryGroupTotalsTests {
         let totals = CategoryGroupTotals([
             makeCategory(id: "a", budgeted: 10000, spent: -4000, available: 6000),
             makeCategory(id: "b", budgeted: 5000, spent: -5000, available: 0),
-            makeCategory(id: "c", budgeted: 2500, spent: -3000, available: -500)
+            makeCategory(id: "c", budgeted: 2500, spent: -3000, available: -500),
         ])
         #expect(totals.budgeted == 17500)
         #expect(totals.spent == -12000)
@@ -49,7 +48,7 @@ struct CategoryGroupTotalsTests {
     @Test func balanceFollowsAvailableIncludingCarryover() {
         let totals = CategoryGroupTotals([
             makeCategory(id: "a", budgeted: 10000, spent: -2000, available: 3000, carryover: -5000),
-            makeCategory(id: "b", budgeted: 0, spent: 0, available: 1500, carryover: 1500)
+            makeCategory(id: "b", budgeted: 0, spent: 0, available: 1500, carryover: 1500),
         ])
         #expect(totals.balance == 4500)
     }
@@ -59,7 +58,7 @@ struct CategoryGroupTotalsTests {
     @Test func netsInflowsAgainstOutflows() {
         let totals = CategoryGroupTotals([
             makeCategory(id: "a", budgeted: 0, spent: -3000, available: -3000),
-            makeCategory(id: "b", budgeted: 0, spent: 5000, available: 5000)
+            makeCategory(id: "b", budgeted: 0, spent: 5000, available: 5000),
         ])
         #expect(totals.spent == 2000)
     }

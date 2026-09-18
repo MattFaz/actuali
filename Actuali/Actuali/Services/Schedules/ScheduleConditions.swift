@@ -47,7 +47,6 @@ enum ScheduleWriteError: LocalizedError, Equatable {
 /// builds the four schedule conditions from the form, and the server merges
 /// them into the rule's full condition array so custom conditions survive.
 enum ScheduleConditions {
-
     /// Positions of the four schedule-owned conditions inside a rule's full
     /// conditions array.
     ///
@@ -64,7 +63,9 @@ enum ScheduleConditions {
         /// Upstream's `Object.values()` order. Load-bearing: `merge` pairs the
         /// old and new sets positionally, so reordering this silently writes a
         /// payee into the account slot.
-        var ordered: [Int?] { [payee, account, amount, date] }
+        var ordered: [Int?] {
+            [payee, account, amount, date]
+        }
     }
 
     /// Port of `extractScheduleConds`. Field fallbacks match upstream: a rule
@@ -87,7 +88,8 @@ enum ScheduleConditions {
             payee: find(ops: ["is"], fields: ["payee", "description"]),
             account: find(ops: ["is"], fields: ["account", "acct"]),
             amount: find(ops: ["is", "isapprox", "isbetween"], fields: ["amount"]),
-            date: find(ops: ["is", "isapprox"], fields: ["date"]))
+            date: find(ops: ["is", "isapprox"], fields: ["date"])
+        )
     }
 
     /// Port of `updateScheduleConditions`: the four conditions a schedule
@@ -129,7 +131,7 @@ enum ScheduleConditions {
             update(indices.date, op: "isapprox", field: "date", value: dateValue(date)),
             // Never merged: the operator is part of what the form edits.
             ["op": fields.amountOp.rawValue, "field": "amount", "value": amountValue(amount)],
-        ].compactMap { $0 }
+        ].compactMap(\.self)
     }
 
     /// Port of `updateConditions`: fold the four schedule conditions into the
@@ -198,7 +200,9 @@ enum ScheduleConditions {
         for conditions: [[String: Any]]
     ) -> (payee: String?, account: String?, amount: String?, date: String?) {
         let indices = extract(conditions)
-        func path(_ index: Int?) -> String? { index.map { "$[\($0)]" } }
+        func path(_ index: Int?) -> String? {
+            index.map { "$[\($0)]" }
+        }
         return (path(indices.payee), path(indices.account),
                 path(indices.amount), path(indices.date))
     }
@@ -207,7 +211,9 @@ enum ScheduleConditions {
 
     /// Port of `getScheduledAmount`, reading a raw condition value.
     static func scheduledAmount(_ value: Any?) -> Int {
-        if let number = value as? NSNumber { return number.intValue }
+        if let number = value as? NSNumber {
+            return number.intValue
+        }
         if let range = value as? [String: Any],
            let num1 = (range["num1"] as? NSNumber)?.intValue,
            let num2 = (range["num2"] as? NSNumber)?.intValue {
@@ -241,13 +247,13 @@ enum ScheduleConditions {
     ) -> DayDate? {
         switch date {
         case .fixed(let day):
-            return day
+            day
         case .recurring(let config):
-            return ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: today)
+            ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: today)
         case .unsupported:
             // Can't advance a shape we can't model; the poster already treats
             // these like one-offs and leaves the advance to the web app.
-            return nil
+            nil
         }
     }
 

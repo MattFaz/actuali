@@ -57,5 +57,4 @@ extension BudgetStore {
               (1...12).contains(monthNumber) else { return false }
         return true
     }
-
 }

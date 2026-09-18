@@ -4,8 +4,7 @@ import Testing
 
 @MainActor
 struct BalanceForecastEngineTests {
-
-    // Fixed "now": 2026-05-14 (UTC).
+    /// Fixed "now": 2026-05-14 (UTC).
     private var asOf: Date {
         var c = DateComponents(); c.year = 2026; c.month = 5; c.day = 14
         c.timeZone = TimeZone(identifier: "UTC")
@@ -71,10 +70,10 @@ struct BalanceForecastEngineTests {
     // Upstream: "combines balances across accounts for monthly data".
     @Test func monthlyHistoryCombinesAccounts() {
         let transactions = [
-            tx(date: 20260301, amount: 1000, account: "checking"),
-            tx(date: 20260301, amount: 500, account: "savings"),
-            tx(date: 20260401, amount: -100, account: "checking"),
-            tx(date: 20260401, amount: 200, account: "savings")
+            tx(date: 20_260_301, amount: 1000, account: "checking"),
+            tx(date: 20_260_301, amount: 500, account: "savings"),
+            tx(date: 20_260_401, amount: -100, account: "checking"),
+            tx(date: 20_260_401, amount: 200, account: "savings"),
         ]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-03", end: "2026-04"),
@@ -82,15 +81,15 @@ struct BalanceForecastEngineTests {
         )
         #expect(result.points == [
             BalanceForecastPoint(date: utcDate(2026, 3, 31), balanceCents: 1500, isForecast: false),
-            BalanceForecastPoint(date: utcDate(2026, 4, 30), balanceCents: 1600, isForecast: false)
+            BalanceForecastPoint(date: utcDate(2026, 4, 30), balanceCents: 1600, isForecast: false),
         ])
     }
 
     @Test func accountSelectionRestrictsBalances() {
         let transactions = [
-            tx(date: 20260301, amount: 1000, account: "checking"),
-            tx(date: 20260301, amount: 500, account: "savings"),
-            tx(date: 20260401, amount: -100, account: "checking")
+            tx(date: 20_260_301, amount: 1000, account: "checking"),
+            tx(date: 20_260_301, amount: 500, account: "savings"),
+            tx(date: 20_260_401, amount: -100, account: "checking"),
         ]
         let result = BalanceForecastEngine.compute(
             meta: meta(accounts: ["checking"], start: "2026-03", end: "2026-04"),
@@ -102,8 +101,8 @@ struct BalanceForecastEngineTests {
     // Upstream: "carries monthly balances through the full end month for daily data".
     @Test func dailyCarriesBalanceAcrossDays() {
         let transactions = [
-            tx(date: 20260301, amount: 1000),
-            tx(date: 20260401, amount: 200)
+            tx(date: 20_260_301, amount: 1000),
+            tx(date: 20_260_401, amount: 200),
         ]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-03", end: "2026-04", granularity: .daily),
@@ -111,8 +110,8 @@ struct BalanceForecastEngineTests {
         )
         #expect(result.points.count == 61)
         #expect(result.points[0] == BalanceForecastPoint(date: utcDate(2026, 3, 1), balanceCents: 1000, isForecast: false))
-        #expect(result.points[30].balanceCents == 1000)  // Mar 31
-        #expect(result.points[31].balanceCents == 1200)  // Apr 1
+        #expect(result.points[30].balanceCents == 1000) // Mar 31
+        #expect(result.points[31].balanceCents == 1200) // Apr 1
         #expect(result.points.last == BalanceForecastPoint(date: utcDate(2026, 4, 30), balanceCents: 1200, isForecast: false))
     }
 
@@ -120,8 +119,8 @@ struct BalanceForecastEngineTests {
     // forward from points before a day-shaped start".
     @Test func dailyDayShapedBoundsStayExact() {
         let transactions = [
-            tx(date: 20260301, amount: 1000),
-            tx(date: 20260315, amount: -200)
+            tx(date: 20_260_301, amount: 1000),
+            tx(date: 20_260_315, amount: -200),
         ]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-03-10", end: "2026-03-20", granularity: .daily),
@@ -135,42 +134,42 @@ struct BalanceForecastEngineTests {
     // MARK: - Schedules source
 
     @Test func schedulesSourceProjectsRecurringOccurrences() {
-        let transactions = [tx(date: 20260410, amount: 100_000)]
-        let schedules = [schedule(nextDate: 20260520, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-20"))]
+        let transactions = [tx(date: 20_260_410, amount: 100_000)]
+        let schedules = [schedule(nextDate: 20_260_520, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-20"))]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-04", end: "2026-07"),
             transactions: transactions, schedules: schedules, today: asOf
         )
-        #expect(result.points.map(\.balanceCents) == [100_000, 95_000, 90_000, 85_000])
+        #expect(result.points.map(\.balanceCents) == [100_000, 95000, 90000, 85000])
         #expect(result.points.map(\.isForecast) == [false, true, true, true])
     }
 
     @Test func pastDueOccurrencesDoNotProject() {
         // nextDate 2026-05-01 is before today (2026-05-14): upstream's
         // firstForecastDate excludes it; only Jun/Jul occurrences project.
-        let schedules = [schedule(nextDate: 20260501, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-01"))]
+        let schedules = [schedule(nextDate: 20_260_501, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-01"))]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-05", end: "2026-07"),
             transactions: [], schedules: schedules, today: asOf
         )
-        #expect(result.points.map(\.balanceCents) == [0, -5000, -10_000])
+        #expect(result.points.map(\.balanceCents) == [0, -5000, -10000])
     }
 
     @Test func postedOccurrenceIsNotDoubleCounted() {
         // The May 20 occurrence was already posted (transaction linked to the
         // schedule): only the posted transaction counts, plus the Jun/Jul
         // projections.
-        let transactions = [tx(date: 20260520, amount: -5000, schedule: "s1")]
-        let schedules = [schedule(nextDate: 20260520, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-20"))]
+        let transactions = [tx(date: 20_260_520, amount: -5000, schedule: "s1")]
+        let schedules = [schedule(nextDate: 20_260_520, amount: -5000, dateCondition: monthlyRecurrence(startingOn: "2026-05-20"))]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-05", end: "2026-07"),
             transactions: transactions, schedules: schedules, today: asOf
         )
-        #expect(result.points.map(\.balanceCents) == [-5000, -10_000, -15_000])
+        #expect(result.points.map(\.balanceCents) == [-5000, -10000, -15000])
     }
 
     @Test func transferScheduleProjectsBothLegs() {
-        let schedules = [schedule(nextDate: 20260520, payee: "p-transfer", amount: -25_000, dateCondition: .fixed(DayDate(yyyymmdd: 20260520)!))]
+        let schedules = [schedule(nextDate: 20_260_520, payee: "p-transfer", amount: -25000, dateCondition: .fixed(DayDate(yyyymmdd: 20_260_520)!))]
         let transferMap = ["p-transfer": "savings"]
 
         // Both accounts included: the legs cancel out.
@@ -187,19 +186,19 @@ struct BalanceForecastEngineTests {
             transactions: [], schedules: schedules,
             transferAccountsByPayeeId: transferMap, today: asOf
         )
-        #expect(savingsOnly.points.map(\.balanceCents) == [25_000])
+        #expect(savingsOnly.points.map(\.balanceCents) == [25000])
     }
 
     // MARK: - Tracking-budget source
 
     @Test func trackingBudgetSourceProjectsFromBudgetedTotals() {
         let transactions = [
-            tx(date: 20260110, amount: 100_000, account: "checking"),
-            tx(date: 20260110, amount: 999, account: "offbudget")  // excluded from starting balance
+            tx(date: 20_260_110, amount: 100_000, account: "checking"),
+            tx(date: 20_260_110, amount: 999, account: "offbudget"), // excluded from starting balance
         ]
         let months = [
-            BalanceForecastBudgetMonth(month: 202605, budgetedIncomeCents: 20_000, budgetedExpensesCents: 15_000),
-            BalanceForecastBudgetMonth(month: 202606, budgetedIncomeCents: 0, budgetedExpensesCents: 10_000)
+            BalanceForecastBudgetMonth(month: 202_605, budgetedIncomeCents: 20000, budgetedExpensesCents: 15000),
+            BalanceForecastBudgetMonth(month: 202_606, budgetedIncomeCents: 0, budgetedExpensesCents: 10000),
         ]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-05", end: "2026-07", source: .trackingBudget),
@@ -207,15 +206,15 @@ struct BalanceForecastEngineTests {
             offBudgetAccountIds: ["offbudget"], today: asOf
         )
         // May: 100000 + 5000; Jun: -10000; Jul has no budget rows → carries.
-        #expect(result.points.map(\.balanceCents) == [105_000, 95_000, 95_000])
+        #expect(result.points.map(\.balanceCents) == [105_000, 95000, 95000])
         #expect(result.points.map(\.isForecast) == [true, true, true])
     }
 
     // MARK: - Boundaries and edge cases
 
     @Test func dailyBoundaryBetweenHistoryAndForecast() {
-        let transactions = [tx(date: 20260512, amount: 1000)]
-        let schedules = [schedule(nextDate: 20260516, amount: -300, dateCondition: .fixed(DayDate(yyyymmdd: 20260516)!))]
+        let transactions = [tx(date: 20_260_512, amount: 1000)]
+        let schedules = [schedule(nextDate: 20_260_516, amount: -300, dateCondition: .fixed(DayDate(yyyymmdd: 20_260_516)!))]
         let result = BalanceForecastEngine.compute(
             meta: meta(start: "2026-05-10", end: "2026-05-18", granularity: .daily),
             transactions: transactions, schedules: schedules, today: asOf
@@ -231,7 +230,7 @@ struct BalanceForecastEngineTests {
     @Test func emptyAccountSelectionYieldsNoPoints() {
         let result = BalanceForecastEngine.compute(
             meta: meta(accounts: [], start: "2026-05", end: "2026-07"),
-            transactions: [tx(date: 20260501, amount: 1000)], today: asOf
+            transactions: [tx(date: 20_260_501, amount: 1000)], today: asOf
         )
         #expect(result.points.isEmpty)
     }
@@ -239,7 +238,7 @@ struct BalanceForecastEngineTests {
     @Test func defaultTimeFrameIsCurrentMonthPlusElevenMonths() {
         // Card default (BalanceForecastCard.tsx): current month → +11 months.
         let result = BalanceForecastEngine.compute(
-            meta: nil, transactions: [tx(date: 20260101, amount: 4200)], today: asOf
+            meta: nil, transactions: [tx(date: 20_260_101, amount: 4200)], today: asOf
         )
         #expect(result.points.count == 12)
         #expect(result.points.first?.date == utcDate(2026, 5, 31))

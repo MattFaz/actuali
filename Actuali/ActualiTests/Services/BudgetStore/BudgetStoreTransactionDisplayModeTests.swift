@@ -11,7 +11,6 @@ import Testing
 /// settings suites.
 @MainActor
 struct BudgetStoreTransactionDisplayModeTests {
-
     @Test func listsAreFlatByDefault() {
         #expect(BudgetStore.previewInstance().transactionDisplayMode == .flat)
     }

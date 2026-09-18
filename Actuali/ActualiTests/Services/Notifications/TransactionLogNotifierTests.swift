@@ -4,10 +4,9 @@ import Testing
 
 @MainActor
 struct TransactionLogNotifierTests {
-
-    // Locale is pinned: the composers format via the runner's locale by
-    // default, and symbol placement differs by locale (de_DE renders
-    // "12,50 €").
+    /// Locale is pinned: the composers format via the runner's locale by
+    /// default, and symbol placement differs by locale (de_DE renders
+    /// "12,50 €").
     private let enUS = Locale(identifier: "en_US")
 
     @Test func composeFailureBodyUsesConfiguredCurrencyCode() {

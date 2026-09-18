@@ -91,7 +91,9 @@ struct BudgetView: View {
         hasIncome: Bool
     ) -> Set<String> {
         var ids = Set(groupIDs)
-        if hasIncome { ids.insert(incomeGroupCollapseID) }
+        if hasIncome {
+            ids.insert(incomeGroupCollapseID)
+        }
         return ids
     }
 
@@ -138,8 +140,8 @@ struct BudgetView: View {
         collapsedGroupsStorage = groups.sorted().joined(separator: ",")
     }
 
-    // Expand/collapse all touch only the displayed budget's groups; ids
-    // remembered for other budget files stay put (GH #130).
+    /// Expand/collapse all touch only the displayed budget's groups; ids
+    /// remembered for other budget files stay put (GH #130).
     private func collapseAllGroups() {
         let displayedGroupIDs = Self.displayedGroupIDs(
             groupIDs: groupedCategories.map(\.id),
@@ -182,7 +184,7 @@ struct BudgetView: View {
                 if let budget = budgetStore.currentBudgetMonth {
                     loadedBudgetContent(budget)
                 } else if !budgetStore.isLoading {
-                    if budgetStore.isConnected && budgetStore.currentBudgetId == nil {
+                    if budgetStore.isConnected, budgetStore.currentBudgetId == nil {
                         ContentUnavailableView(
                             "Select a Budget",
                             systemImage: "chart.pie",
@@ -222,7 +224,9 @@ struct BudgetView: View {
             // Hiding the strip takes its filter with it — otherwise the table
             // stays filtered with no visible control to clear it.
             .onChange(of: budgetStore.showBudgetCheckInStrip) { _, isShown in
-                if !isShown { categoryFilter = .all }
+                if !isShown {
+                    categoryFilter = .all
+                }
             }
             .sheet(item: $editingCategory) { category in
                 EditBudgetAmountSheet(category: category)
@@ -238,7 +242,11 @@ struct BudgetView: View {
             }
             .inspector(isPresented: Binding(
                 get: { usesInspector && selectedCategory != nil },
-                set: { if !$0 { selectedCategory = nil } }
+                set: {
+                    if !$0 {
+                        selectedCategory = nil
+                    }
+                }
             )) {
                 if let category = selectedCategory {
                     // .id resets the editor's @State (name draft, history) when
@@ -547,7 +555,8 @@ struct BudgetView: View {
             } catch {
                 templateResult = .init(
                     title: ReportStrings.text("Error", locale: locale, bundle: .main),
-                    message: error.localizedDescription)
+                    message: error.localizedDescription
+                )
             }
             isRunningBudgetAction = false
         }
@@ -562,7 +571,8 @@ struct BudgetView: View {
             } catch {
                 templateResult = .init(
                     title: ReportStrings.text("Error", locale: locale, bundle: .main),
-                    message: error.localizedDescription)
+                    message: error.localizedDescription
+                )
             }
             isRunningBudgetAction = false
         }
@@ -580,23 +590,28 @@ struct BudgetView: View {
             case .applied(let count):
                 templateResult = .init(
                     title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
-                    message: String(localized: "Successfully applied templates to \(count) categories.", bundle: .main, locale: locale))
+                    message: String(localized: "Successfully applied templates to \(count) categories.", bundle: .main, locale: locale)
+                )
             case .upToDate:
                 templateResult = .init(
                     title: ReportStrings.text("Templates Applied", locale: locale, bundle: .main),
-                    message: ReportStrings.text("All templates are up to date.", locale: locale, bundle: .main))
+                    message: ReportStrings.text("All templates are up to date.", locale: locale, bundle: .main)
+                )
             case .checkPassed:
                 templateResult = .init(
                     title: ReportStrings.text("Check Passed", locale: locale, bundle: .main),
-                    message: ReportStrings.text("All templates passed the check.", locale: locale, bundle: .main))
+                    message: ReportStrings.text("All templates passed the check.", locale: locale, bundle: .main)
+                )
             case .errors(let errors):
                 templateResult = .init(
                     title: ReportStrings.text("Template Errors", locale: locale, bundle: .main),
-                    message: errors.joined(separator: "\n\n"))
+                    message: errors.joined(separator: "\n\n")
+                )
             case .failed(let message):
                 templateResult = .init(
                     title: ReportStrings.text("Template Error", locale: locale, bundle: .main),
-                    message: message)
+                    message: message
+                )
             }
         }
     }
@@ -607,22 +622,24 @@ struct BudgetView: View {
         Task {
             let outcome = await budgetStore.runCleanup(month: selectedMonth)
             isRunningBudgetAction = false
-            let message: String
-            switch outcome {
+            let message: String = switch outcome {
             case .completed(.applied):
-                message = ReportStrings.text(
-                    "End of month cleanup completed.", locale: locale, bundle: .main)
+                ReportStrings.text(
+                    "End of month cleanup completed.", locale: locale, bundle: .main
+                )
             case .completed(.upToDate):
-                message = ReportStrings.text(
-                    "End of month cleanup is up to date.", locale: locale, bundle: .main)
+                ReportStrings.text(
+                    "End of month cleanup is up to date.", locale: locale, bundle: .main
+                )
             case .completed(.warning(let warnings)):
-                message = warnings.map(cleanupWarningMessage).joined(separator: "\n\n")
+                warnings.map(cleanupWarningMessage).joined(separator: "\n\n")
             case .failed(let error):
-                message = error
+                error
             }
             templateResult = .init(
                 title: ReportStrings.text("End of Month Cleanup", locale: locale, bundle: .main),
-                message: message)
+                message: message
+            )
         }
     }
 
@@ -631,21 +648,23 @@ struct BudgetView: View {
         case .noAvailableFunds(let category):
             ReportStrings.format(
                 "%@ does not have available funds.", category,
-                locale: locale, bundle: .main)
+                locale: locale, bundle: .main
+            )
         case .noMatchingSinks(let group):
             ReportStrings.format(
                 "Cleanup pool \"%@\" has no matching sink categories.", group,
-                locale: locale, bundle: .main)
+                locale: locale, bundle: .main
+            )
         case .noGlobalFunds:
             ReportStrings.text(
-                "No funds are available to reallocate.", locale: locale, bundle: .main)
+                "No funds are available to reallocate.", locale: locale, bundle: .main
+            )
         }
     }
 
     /// The pinned summary plus the scrolling budget table, shown once a
     /// budget month has loaded. Extracted from `body` so the whole screen
     /// stays within the compiler's type-check budget.
-    @ViewBuilder
     private func loadedBudgetContent(_ budget: BudgetMonth) -> some View {
         VStack(spacing: 0) {
             if isCompact, budgetStore.showBudgetCheckInStrip {
@@ -790,7 +809,7 @@ struct BudgetView: View {
                     LinearGradient(
                         colors: [
                             Color(.systemGroupedBackground),
-                            Color(.systemGroupedBackground).opacity(0)
+                            Color(.systemGroupedBackground).opacity(0),
                         ],
                         startPoint: .top,
                         endPoint: .bottom
@@ -819,6 +838,7 @@ struct BudgetView: View {
         .readableWidth()
         .background(Color(.systemGroupedBackground).ignoresSafeArea())
     }
+
     /// Open the move-money sheet for a tapped balance (GH #128): cover
     /// overspending when red, move the surplus when green. The month is
     /// captured alongside so the picker lists its sibling categories.
@@ -826,7 +846,7 @@ struct BudgetView: View {
         guard let budget = budgetStore.currentBudgetMonth else { return }
         transferContext = BudgetTransferContext(category: category, budget: budget)
     }
-    
+
     /// The group a new category starts out filed under: the first one the
     /// table would draw. Nil when the budget has no group to file it in.
     private var firstSelectableGroupId: String? {
@@ -1016,7 +1036,7 @@ struct BudgetCheckInStrip: View {
                             isTrackingBudget: budget.isTrackingBudget,
                             locale: locale
                         ))
-                            .filterChip(isSelected: selection == filter)
+                        .filterChip(isSelected: selection == filter)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(ReportStrings.format("Show %@ categories", filter.title(
@@ -1045,21 +1065,21 @@ extension BudgetCategoryFilter {
         locale: Locale = .autoupdatingCurrent,
         bundle: Bundle = .main
     ) -> String {
-        let key: String.LocalizationValue
-        switch self {
-        case .all: key = String.LocalizationValue("budget.filter.all \(count)")
-        case .overspent where isTrackingBudget: key = String.LocalizationValue("budget.filter.overBudget \(count)")
-        case .overspent: key = String.LocalizationValue("budget.filter.overspent \(count)")
-        case .unassigned where isTrackingBudget: key = String.LocalizationValue("budget.filter.noBudget \(count)")
-        case .unassigned: key = String.LocalizationValue("budget.filter.notFunded \(count)")
-        case .approachingLimit where isTrackingBudget: key = String.LocalizationValue("budget.filter.nearBudget \(count)")
-        case .approachingLimit: key = String.LocalizationValue("budget.filter.almostSpent \(count)")
-        case .onTrack where isTrackingBudget: key = String.LocalizationValue("budget.filter.withinBudget \(count)")
-        case .onTrack: key = String.LocalizationValue("budget.filter.onTrack \(count)")
+        let key = switch self {
+        case .all: String.LocalizationValue("budget.filter.all \(count)")
+        case .overspent where isTrackingBudget: String.LocalizationValue("budget.filter.overBudget \(count)")
+        case .overspent: String.LocalizationValue("budget.filter.overspent \(count)")
+        case .unassigned where isTrackingBudget: String.LocalizationValue("budget.filter.noBudget \(count)")
+        case .unassigned: String.LocalizationValue("budget.filter.notFunded \(count)")
+        case .approachingLimit where isTrackingBudget: String.LocalizationValue("budget.filter.nearBudget \(count)")
+        case .approachingLimit: String.LocalizationValue("budget.filter.almostSpent \(count)")
+        case .onTrack where isTrackingBudget: String.LocalizationValue("budget.filter.withinBudget \(count)")
+        case .onTrack: String.LocalizationValue("budget.filter.onTrack \(count)")
         }
         return String(localized: LocalizedStringResource(key, locale: locale, bundle: bundle))
     }
 }
+
 /// Clean-style category row, matching the App Store screenshots: name and a
 /// large Available amount up top, the progress bar beneath, then tappable
 /// Budgeted/Spent captions.
@@ -1207,7 +1227,7 @@ struct CategoryRowContextMenu: ViewModifier {
             // the balance pill.
             if category.available != 0 {
                 Button { onMoveMoney(category) } label: {
-                      Label(BudgetCategoryAccessibility.contextMoveAction(isOverspent: category.isOverspent, locale: locale),
+                    Label(BudgetCategoryAccessibility.contextMoveAction(isOverspent: category.isOverspent, locale: locale),
                           systemImage: "arrow.left.arrow.right")
                 }
             }
@@ -1226,7 +1246,9 @@ struct CategoryRowContextMenu: ViewModifier {
 /// enabled and a goal on the row, orange marks an underfunded goal and green
 /// a funded one; otherwise the caller's zero-balance color applies.
 func balanceColor(_ category: CategoryBudget, goalsEnabled: Bool, zero: Color) -> Color {
-    if category.isOverspent { return .red }
+    if category.isOverspent {
+        return .red
+    }
     if goalsEnabled, category.goal != nil {
         return category.isGoalUnderfunded ? .orange : .green
     }
@@ -1331,7 +1353,7 @@ struct SummaryStat: View {
 
     let label: String
     let value: String
-    var budget: BudgetMonth? = nil
+    var budget: BudgetMonth?
     var valueColor: Color = .primary
     var alignment: HorizontalAlignment = .leading
 
@@ -1389,9 +1411,9 @@ struct BudgetGroupHeader: View {
     let isCollapsed: Bool
     var isHidden = false
     var onSetHidden: ((Bool) -> Void)?
-    var onRename: (() -> Void)? = nil
+    var onRename: (() -> Void)?
     /// Income groups show the money received beside their name.
-    var receivedTotal: Int? = nil
+    var receivedTotal: Int?
     let onToggleCollapse: () -> Void
     var body: some View {
         HStack(spacing: 8) {
@@ -1626,24 +1648,24 @@ struct CategoryBudgetDetailSheet: View {
 
                 Section(
                     content: {
-                    // A suggestion overwrites this month's amount, so name the
-                    // month and show what's there now — otherwise the user
-                    // confirms a budget write blind.
-                    LabeledContent(MonthPicker.title(for: category.month, locale: locale)) {
-                        Text(budgetStore.displayBalance(category.budgeted))
-                            .monospacedDigit()
-                    }
-                    .accessibilityIdentifier("categoryEditor.currentAmount")
+                        // A suggestion overwrites this month's amount, so name the
+                        // month and show what's there now — otherwise the user
+                        // confirms a budget write blind.
+                        LabeledContent(MonthPicker.title(for: category.month, locale: locale)) {
+                            Text(budgetStore.displayBalance(category.budgeted))
+                                .monospacedDigit()
+                        }
+                        .accessibilityIdentifier("categoryEditor.currentAmount")
 
-                    if quickAssignSuggestions.isEmpty {
-                        Text("No suggestions available")
-                            .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(quickAssignSuggestions) { suggestion in
-                            Button {
-                                Task { await apply(suggestion) }
-                            } label: {
-                                HStack {
+                        if quickAssignSuggestions.isEmpty {
+                            Text("No suggestions available")
+                                .foregroundStyle(.secondary)
+                        } else {
+                            ForEach(quickAssignSuggestions) { suggestion in
+                                Button {
+                                    Task { await apply(suggestion) }
+                                } label: {
+                                    HStack {
                                         Text(Self.quickAssignTitle(
                                             for: suggestion.kind,
                                             isTracking: isTracking,
@@ -1652,18 +1674,18 @@ struct CategoryBudgetDetailSheet: View {
                                             bundle: .main
                                         ))
                                         .foregroundStyle(.tint)
-                                    Spacer(minLength: 12)
-                                    Text(budgetStore.displayBalance(suggestion.amount))
-                                        .foregroundStyle(.primary)
-                                        .monospacedDigit()
-                                        .fixedSize(horizontal: true, vertical: false)
+                                        Spacer(minLength: 12)
+                                        Text(budgetStore.displayBalance(suggestion.amount))
+                                            .foregroundStyle(.primary)
+                                            .monospacedDigit()
+                                            .fixedSize(horizontal: true, vertical: false)
+                                    }
                                 }
+                                .buttonStyle(.plain)
+                                .disabled(isApplyingSuggestion)
+                                .accessibilityIdentifier("categoryEditor.quickAssign.\(suggestion.kind.rawValue)")
                             }
-                            .buttonStyle(.plain)
-                            .disabled(isApplyingSuggestion)
-                            .accessibilityIdentifier("categoryEditor.quickAssign.\(suggestion.kind.rawValue)")
                         }
-                    }
                     },
                     header: {
                         Text(ReportStrings.text(isTracking ? "Quick Budget" : "Quick Assign", locale: locale, bundle: .main))
@@ -1716,7 +1738,7 @@ struct CategoryBudgetDetailSheet: View {
     /// the goal, the goal type (long-term `#goal` vs template automation), and
     /// the tracked amount. Templates are set in the category note (`#template`
     /// / `#goal` lines) and applied from the month's template actions.
-    @ViewBuilder private var goalSection: some View {
+    private var goalSection: some View {
         Section(
             content: {
                 if let goal = category.goal, let difference = category.differenceToGoal {
@@ -1769,7 +1791,8 @@ struct CategoryBudgetDetailSheet: View {
         isApplyingTemplate = true
         errorMessage = nil
         let outcome = await budgetStore.runGoalTemplates(
-            month: category.month, action: .apply, categoryId: category.categoryId)
+            month: category.month, action: .apply, categoryId: category.categoryId
+        )
         switch outcome {
         case .applied:
             dismiss()
@@ -2091,7 +2114,7 @@ struct MonthPicker: View {
     }
 
     nonisolated static func date(fromMonth month: String) -> Date? {
-          let parts = month.split(separator: "-", omittingEmptySubsequences: false)
+        let parts = month.split(separator: "-", omittingEmptySubsequences: false)
         guard parts.count == 2,
               parts[0].count == 4,
               parts[1].count == 2,

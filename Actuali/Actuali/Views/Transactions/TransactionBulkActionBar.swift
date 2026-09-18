@@ -6,7 +6,8 @@ enum TransactionBulkActionLocalization {
     ) -> String {
         String(localized: LocalizedStringResource(
             String.LocalizationValue("Duplicate \(count) selected transactions"),
-            locale: locale, bundle: bundle))
+            locale: locale, bundle: bundle
+        ))
     }
 
     nonisolated static func deleteLabel(
@@ -14,7 +15,8 @@ enum TransactionBulkActionLocalization {
     ) -> String {
         String(localized: LocalizedStringResource(
             String.LocalizationValue("Delete \(count) selected transactions"),
-            locale: locale, bundle: bundle))
+            locale: locale, bundle: bundle
+        ))
     }
 
     nonisolated static func deleteConfirmationTitle(
@@ -22,7 +24,8 @@ enum TransactionBulkActionLocalization {
     ) -> String {
         String(localized: LocalizedStringResource(
             String.LocalizationValue("Delete \(count) transactions?"),
-            locale: locale, bundle: bundle))
+            locale: locale, bundle: bundle
+        ))
     }
 
     nonisolated static func deleteConfirmationAction(
@@ -41,8 +44,14 @@ struct TransactionBulkActionBar: View {
 
     @State private var showingConfirmDelete = false
 
-    private var totalCount: Int { transactions.count }
-    private var selectedCount: Int { selectedIds.count }
+    private var totalCount: Int {
+        transactions.count
+    }
+
+    private var selectedCount: Int {
+        selectedIds.count
+    }
+
     private var allSelected: Bool {
         totalCount > 0 && selectedCount == totalCount
     }
@@ -100,8 +109,9 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "plus.square.on.square")
                     .font(.subheadline.weight(.semibold))
             }
-                .accessibilityLabel(TransactionBulkActionLocalization.duplicateLabel(
-                    count: selectedCount, locale: locale))
+            .accessibilityLabel(TransactionBulkActionLocalization.duplicateLabel(
+                count: selectedCount, locale: locale
+            ))
             .disabled(selectedCount == 0)
 
             Button(role: .destructive) {
@@ -110,8 +120,9 @@ struct TransactionBulkActionBar: View {
                 Label(selectedCount > 0 ? "(\(selectedCount))" : "", systemImage: "trash")
                     .font(.subheadline.weight(.semibold))
             }
-                .accessibilityLabel(TransactionBulkActionLocalization.deleteLabel(
-                    count: selectedCount, locale: locale))
+            .accessibilityLabel(TransactionBulkActionLocalization.deleteLabel(
+                count: selectedCount, locale: locale
+            ))
             .disabled(selectedCount == 0)
         }
         .padding(.horizontal, 16)
@@ -128,12 +139,14 @@ struct TransactionBulkActionBar: View {
         }
         .confirmationDialog(
             TransactionBulkActionLocalization.deleteConfirmationTitle(
-                count: selectedCount, locale: locale),
+                count: selectedCount, locale: locale
+            ),
             isPresented: $showingConfirmDelete,
             titleVisibility: .visible
         ) {
             Button(TransactionBulkActionLocalization.deleteConfirmationAction(
-                count: selectedCount, locale: locale), role: .destructive) {
+                count: selectedCount, locale: locale
+            ), role: .destructive) {
                 let selected = selectedTransactions
                 Task {
                     await budgetStore.deleteTransactions(selected)

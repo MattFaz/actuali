@@ -9,7 +9,6 @@ import Foundation
 /// (`com.apple.developer.financekit` in Actuali.entitlements) — unlike the
 /// Tier-1 transaction picker, which works in any build.
 struct FinanceKitWalletStore: AppleWalletReading {
-
     func availability() async -> AppleWalletAvailability {
         #if targetEnvironment(simulator)
         // FinanceStore.shared traps in unsigned simulator builds before it can throw.
@@ -117,9 +116,9 @@ struct FinanceKitWalletStore: AppleWalletReading {
         let cents = isRemainingCredit
             ? signedCents(balance).flatMap {
                 AppleWalletAccount.owedBalance(
-                fromRemainingCredit: $0,
-                creditLimitCents: account.liabilityAccount?.creditInformation.creditLimit
-                    .flatMap { WalletImportMapper.cents(from: $0.amount) }
+                    fromRemainingCredit: $0,
+                    creditLimitCents: account.liabilityAccount?.creditInformation.creditLimit
+                        .flatMap { WalletImportMapper.cents(from: $0.amount) }
                 )
             }
             : signedCents(balance)

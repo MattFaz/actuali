@@ -5,17 +5,17 @@ struct MarkdownWidgetView: View {
 
     private var frameAlignment: Alignment {
         switch meta.textAlign {
-        case .center: return .center
-        case .right: return .trailing
-        default: return .leading
+        case .center: .center
+        case .right: .trailing
+        default: .leading
         }
     }
 
     private var textAlignment: TextAlignment {
         switch meta.textAlign {
-        case .center: return .center
-        case .right: return .trailing
-        default: return .leading
+        case .center: .center
+        case .right: .trailing
+        default: .leading
         }
     }
 

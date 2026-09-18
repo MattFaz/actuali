@@ -7,7 +7,6 @@ import Testing
 /// Swift Testing runs a suite's tests in parallel — two tests sharing one key
 /// race each other.
 struct TransactionDisplayModeTests {
-
     @Test func resolvesDefaultWhenUnset() {
         #expect(TransactionDisplayMode.resolved(from: nil) == .flat)
     }

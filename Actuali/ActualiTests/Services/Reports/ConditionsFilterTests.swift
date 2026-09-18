@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct ConditionsFilterTests {
-
     private func makeTransaction(
         category: String? = nil,
         account: String = "acc1",
@@ -14,7 +13,7 @@ struct ConditionsFilterTests {
         Transaction(
             id: UUID().uuidString,
             accountId: account,
-            date: 20260301,
+            date: 20_260_301,
             amount: amount,
             payeeId: payee,
             payeeName: nil,
@@ -77,7 +76,7 @@ struct ConditionsFilterTests {
         let tx = makeTransaction(category: "groceries", account: "checking")
         let conds = [
             WidgetRuleCondition.makeMock(op: "is", field: "category", stringValue: "groceries"),
-            WidgetRuleCondition.makeMock(op: "is", field: "account", stringValue: "savings")
+            WidgetRuleCondition.makeMock(op: "is", field: "account", stringValue: "savings"),
         ]
         #expect(!ConditionsFilter.matches(transaction: tx, conditions: conds, op: "and"))
     }
@@ -86,7 +85,7 @@ struct ConditionsFilterTests {
         let tx = makeTransaction(category: "groceries", account: "checking")
         let conds = [
             WidgetRuleCondition.makeMock(op: "is", field: "category", stringValue: "rent"),
-            WidgetRuleCondition.makeMock(op: "is", field: "account", stringValue: "checking")
+            WidgetRuleCondition.makeMock(op: "is", field: "account", stringValue: "checking"),
         ]
         #expect(ConditionsFilter.matches(transaction: tx, conditions: conds, op: "or"))
     }
@@ -138,7 +137,7 @@ struct ConditionsFilterTests {
 
     @Test func containsIsCaseInsensitive() {
         let tx = Transaction(
-            id: "1", accountId: "a", date: 20260301, amount: -100,
+            id: "1", accountId: "a", date: 20_260_301, amount: -100,
             payeeId: nil, payeeName: nil, categoryId: nil, categoryName: nil,
             notes: "Coffee at Bluebird Cafe", cleared: false, reconciled: false,
             transferId: nil, isParent: false, parentId: nil,
@@ -307,14 +306,14 @@ struct ConditionsFilterTests {
         #expect(ConditionsFilter.matches(transaction: makeTransaction(category: "groceries"), conditions: [cond], op: "and", context: groupContext))
         #expect(!ConditionsFilter.matches(transaction: makeTransaction(category: "rent"), conditions: [cond], op: "and", context: groupContext))
     }
-    
+
     /// Two days either side of a US DST change must still be "approximately"
     /// the same date — the bug a local calendar reintroduces.
     @Test func approxDateSpansDaylightSavingBoundaries() {
         // 2026-11-01 is a US fall-back date.
-        #expect(RuleDateMatcher.matches(transactionDate: 20261101, op: "isapprox",
+        #expect(RuleDateMatcher.matches(transactionDate: 20_261_101, op: "isapprox",
                                         value: "2026-10-30") == true)
-        #expect(RuleDateMatcher.matches(transactionDate: 20260308, op: "isapprox",
+        #expect(RuleDateMatcher.matches(transactionDate: 20_260_308, op: "isapprox",
                                         value: "2026-03-10") == true)
     }
 }

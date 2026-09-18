@@ -4,7 +4,6 @@ import Testing
 
 @MainActor
 struct NotificationRouterRouteTests {
-
     @Test func successMarkerSetsNavigationFlagOnly() {
         let router = NotificationRouter()
         router.route(userInfo: TransactionLoggedMarker.userInfo)

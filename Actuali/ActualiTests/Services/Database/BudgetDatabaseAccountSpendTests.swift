@@ -1,11 +1,10 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 @MainActor
 struct BudgetDatabaseAccountSpendTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")
@@ -65,8 +64,8 @@ struct BudgetDatabaseAccountSpendTests {
         // most likely date for a charge to land on, so t1 and t8 pin the ends.
         let spend = try await db.fetchAccountSpend(
             accountId: "card1",
-            fromDate: 20260216,
-            toDate: 20260315
+            fromDate: 20_260_216,
+            toDate: 20_260_315
         )
 
         // 5000 + 2500 + 1000 + 6000 + 3000 = 17500 cents ($175.00)

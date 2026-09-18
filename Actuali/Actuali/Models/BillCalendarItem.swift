@@ -23,12 +23,16 @@ struct BillCalendarItem: Identifiable, Equatable, Sendable {
     let relativeDueText: String
 
     var isCreditCard: Bool {
-        if case .creditCard = kind { return true }
+        if case .creditCard = kind {
+            return true
+        }
         return false
     }
 
     var scheduleSummary: ScheduleSummary? {
-        if case .schedule(let summary) = kind { return summary }
+        if case .schedule(let summary) = kind {
+            return summary
+        }
         return nil
     }
 

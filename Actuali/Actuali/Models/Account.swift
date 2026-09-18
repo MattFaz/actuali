@@ -33,7 +33,9 @@ enum AccountType: String, CaseIterable {
 // MARK: - CRDTSyncable
 
 extension Account: CRDTSyncable {
-    static var datasetName: String { "accounts" }
+    static var datasetName: String {
+        "accounts"
+    }
 
     /// Only the fields a manually-created (non-bank-linked) account sets.
     /// Bank-sync columns (account_id, balance_current, mask, official_name,
@@ -46,7 +48,7 @@ extension Account: CRDTSyncable {
             "offbudget": offBudget ? 1 : 0,
             "closed": closed ? 1 : 0,
             "tombstone": 0,
-            "sort_order": sortOrder
+            "sort_order": sortOrder,
         ]
     }
 }

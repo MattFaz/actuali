@@ -101,7 +101,11 @@ struct RuleEditorView: View {
         }
         .alert("Couldn't Save Rule", isPresented: Binding(
             get: { failureMessage != nil },
-            set: { if !$0 { failureMessage = nil } }
+            set: {
+                if !$0 {
+                    failureMessage = nil
+                }
+            }
         )) {
             Button("OK") { failureMessage = nil }
         } message: {

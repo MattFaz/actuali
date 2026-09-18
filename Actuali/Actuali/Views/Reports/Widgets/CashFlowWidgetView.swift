@@ -1,5 +1,5 @@
-import SwiftUI
 import Charts
+import SwiftUI
 
 struct CashFlowWidgetView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -12,14 +12,16 @@ struct CashFlowWidgetView: View {
         let kind: String
         let amount: Double
 
-        var id: String { "\(kind)-\(period.timeIntervalSinceReferenceDate)" }
+        var id: String {
+            "\(kind)-\(period.timeIntervalSinceReferenceDate)"
+        }
     }
 
     private var bars: [Bar] {
         data.points.flatMap { p in
             [
                 Bar(period: p.periodStart, kind: ReportStrings.text("Income", locale: locale), amount: Double(p.incomeCents) / 100),
-                Bar(period: p.periodStart, kind: ReportStrings.text("Expense", locale: locale), amount: Double(p.expenseCents) / 100)
+                Bar(period: p.periodStart, kind: ReportStrings.text("Expense", locale: locale), amount: Double(p.expenseCents) / 100),
             ]
         }
     }
@@ -47,7 +49,7 @@ struct CashFlowWidgetView: View {
                 }
                 .chartForegroundStyleScale([
                     ReportStrings.text("Income", locale: locale): Color.green,
-                    ReportStrings.text("Expense", locale: locale): Color.red
+                    ReportStrings.text("Expense", locale: locale): Color.red,
                 ])
                 .frame(height: 200)
                 // The bars retain their trend, but hiding the numeric axis
@@ -57,7 +59,8 @@ struct CashFlowWidgetView: View {
                     currencyCode: budgetStore.currencyCode,
                     narrowSymbol: budgetStore.useNarrowCurrencySymbol,
                     locale: locale,
-                    hidden: budgetStore.hideBalances))
+                    hidden: budgetStore.hideBalances
+                ))
                 .accessibilityHidden(budgetStore.hideBalances)
             }
         }

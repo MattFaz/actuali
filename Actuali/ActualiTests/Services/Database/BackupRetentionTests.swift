@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 struct BackupRetentionTests {
@@ -10,15 +9,17 @@ struct BackupRetentionTests {
         Calendar.current.date(from: DateComponents(year: y, month: m, day: d))!
     }
 
-    private var today: Date { day(2017, 1, 1) }
+    private var today: Date {
+        day(2017, 1, 1)
+    }
 
-    // Upstream vector 1: keeps 3 backups on the current day.
+    /// Upstream vector 1: keeps 3 backups on the current day.
     @Test func keepsThreeOnCurrentDay() {
         let backups = (1...4).map { (id: "backup\($0)", date: day(2017, 1, 1)) }
         #expect(BackupService.backupsToRemove(backups, today: today) == ["backup4"])
     }
 
-    // Upstream vector 2: nothing to delete — ≤3 today, 1 per prior day.
+    /// Upstream vector 2: nothing to delete — ≤3 today, 1 per prior day.
     @Test func keepsOnePerPriorDay() {
         let backups = [
             (id: "backup1", date: day(2017, 1, 1)),
@@ -29,7 +30,7 @@ struct BackupRetentionTests {
         #expect(BackupService.backupsToRemove(backups, today: today).isEmpty)
     }
 
-    // Upstream vector 3: extra copies on a prior day are deleted.
+    /// Upstream vector 3: extra copies on a prior day are deleted.
     @Test func deletesExtrasOnPriorDays() {
         let backups = [
             (id: "backup1", date: day(2017, 1, 1)),
@@ -42,7 +43,7 @@ struct BackupRetentionTests {
         #expect(Set(removed) == ["backup4", "backup5"])
     }
 
-    // Upstream vector 4: cap at 10 total (12 in → backup11/12 out).
+    /// Upstream vector 4: cap at 10 total (12 in → backup11/12 out).
     @Test func capsAtTenTotal() {
         var backups = [
             (id: "backup1", date: day(2017, 1, 1)),
@@ -68,7 +69,7 @@ struct BackupRetentionTests {
         #expect(BackupService.backupsToRemove(backups, today: today) == ["late2"])
     }
 
-    // Retention runs as part of makeBackup (end-to-end over real files).
+    /// Retention runs as part of makeBackup (end-to-end over real files).
     @Test func makeBackupPrunes() async throws {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)

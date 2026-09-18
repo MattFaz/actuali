@@ -6,7 +6,6 @@ import Foundation
 /// comparisons, arithmetic, and concatenation — and surface anything else as
 /// `.unsupported` so the card explains itself instead of guessing.
 enum FormulaEngine {
-
     enum Result: Equatable {
         /// Currency units (upstream integerToAmount: cents / 100).
         case value(Double)
@@ -96,21 +95,22 @@ enum FormulaEngine {
         case .number(let n): return .number(n)
         case .string(let value): return .text(value)
         case .function(let name, let args): return try evaluateFunction(name, args: args, query: query)
-        case .add(let l, let r): return .number(try number(l, query: query) + number(r, query: query))
-        case .sub(let l, let r): return .number(try number(l, query: query) - number(r, query: query))
-        case .mul(let l, let r): return .number(try number(l, query: query) * number(r, query: query))
+        case .add(let l, let r): return try .number(number(l, query: query) + number(r, query: query))
+        case .sub(let l, let r): return try .number(number(l, query: query) - number(r, query: query))
+        case .mul(let l, let r): return try .number(number(l, query: query) * number(r, query: query))
         case .div(let l, let r):
             let divisor = try number(r, query: query)
             guard abs(divisor) > .ulpOfOne else { throw EvalError.divisionByZero }
-            return .number(try number(l, query: query) / divisor)
-        case .neg(let e): return .number(try -number(e, query: query))
+            return try .number(number(l, query: query) / divisor)
+        case .neg(let e): return try .number(-number(e, query: query))
         case .compare(let op, let left, let right):
-            return .boolean(try compare(
+            return try .boolean(compare(
                 op,
                 left: evaluate(left, query: query),
-                right: evaluate(right, query: query)))
+                right: evaluate(right, query: query)
+            ))
         case .concat(let left, let right):
-            return .text(stringValue(try evaluate(left, query: query)) + stringValue(try evaluate(right, query: query)))
+            return try .text(stringValue(evaluate(left, query: query)) + stringValue(evaluate(right, query: query)))
         }
     }
 
@@ -129,10 +129,10 @@ enum FormulaEngine {
         case "if":
             guard args.count == 3 else { throw EvalError.invalidArguments }
             let condition = try evaluate(args[0], query: query)
-            return try evaluate(try isTruthy(condition) ? args[1] : args[2], query: query)
+            return try evaluate(isTruthy(condition) ? args[1] : args[2], query: query)
         case "abs":
             guard args.count == 1 else { throw EvalError.invalidArguments }
-            return .number(abs(try number(args[0], query: query)))
+            return try .number(abs(number(args[0], query: query)))
         case "round":
             guard args.count == 1 || args.count == 2 else { throw EvalError.invalidArguments }
             let value = try number(args[0], query: query)
@@ -166,7 +166,8 @@ enum FormulaEngine {
             let result = left.compare(
                 right,
                 options: [.caseInsensitive, .diacriticInsensitive],
-                locale: Locale(identifier: "en"))
+                locale: Locale(identifier: "en")
+            )
             switch op {
             case "=": return result == .orderedSame
             case "<>": return result != .orderedSame
@@ -199,13 +200,18 @@ enum FormulaEngine {
         case .number(let value):
             guard value.isFinite else { return "" }
             var result = String(format: "%.12f", locale: Locale(identifier: "en_US_POSIX"), value)
-            while result.last == "0" { result.removeLast() }
-            if result.last == "." { result.removeLast() }
+            while result.last == "0" {
+                result.removeLast()
+            }
+            if result.last == "." {
+                result.removeLast()
+            }
             return result == "-0" ? "0" : result
         }
     }
 
     // MARK: - Recursive-descent parser
+
     //
     //   expression    := concatenation (comparison-op concatenation)*
     //   concatenation := arithmetic ("&" arithmetic)*
@@ -217,7 +223,9 @@ enum FormulaEngine {
         private let chars: [Character]
         private var pos = 0
 
-        init(_ input: String) { chars = Array(input) }
+        init(_ input: String) {
+            chars = Array(input)
+        }
 
         mutating func parseExpression() -> Expr? {
             guard let expr = expression(), atEnd() else { return nil }
@@ -270,9 +278,15 @@ enum FormulaEngine {
                 advance(); guard let inner = expression(), consume(")") else { return nil }
                 return inner
             }
-            if c == "\"" { return string() }
-            if c.isNumber || c == "." { return number() }
-            if c.isLetter { return functionCall() }
+            if c == "\"" {
+                return string()
+            }
+            if c.isNumber || c == "." {
+                return number()
+            }
+            if c.isLetter {
+                return functionCall()
+            }
             return nil
         }
 
@@ -293,11 +307,15 @@ enum FormulaEngine {
             }
             guard consume("(") else { return nil }
             var args: [Expr] = []
-            if consume(")") { return .function(ident.lowercased(), args) }
+            if consume(")") {
+                return .function(ident.lowercased(), args)
+            }
             while true {
                 guard let arg = expression() else { return nil }
                 args.append(arg)
-                if consume(")") { break }
+                if consume(")") {
+                    break
+                }
                 guard consume(",") else { return nil }
             }
             return .function(ident.lowercased(), args)
@@ -313,11 +331,18 @@ enum FormulaEngine {
             return .string(value)
         }
 
-        private func peek() -> Character? { pos < chars.count ? chars[pos] : nil }
-        private mutating func advance() { pos += 1 }
+        private func peek() -> Character? {
+            pos < chars.count ? chars[pos] : nil
+        }
+
+        private mutating func advance() {
+            pos += 1
+        }
 
         private mutating func skipWhitespace() {
-            while let c = peek(), c.isWhitespace { advance() }
+            while let c = peek(), c.isWhitespace {
+                advance()
+            }
         }
 
         private mutating func peekOperator(_ ops: [Character]) -> Character? {

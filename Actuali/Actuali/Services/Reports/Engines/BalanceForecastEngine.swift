@@ -34,7 +34,7 @@ struct BalanceForecastMeta: Codable, Equatable {
 /// `budgetedExpensesCents` = 'total-budgeted' (sum across expense
 /// categories, positive). Months missing from the array count as zero.
 struct BalanceForecastBudgetMonth: Equatable {
-    let month: Int  // YYYYMM
+    let month: Int // YYYYMM
     let budgetedIncomeCents: Int
     let budgetedExpensesCents: Int
 }
@@ -83,7 +83,6 @@ struct BalanceForecastData: Equatable {
 /// - Accountless schedules are excluded (the app's schedule model requires
 ///   an account condition; upstream's `includeAccountlessSchedules`).
 enum BalanceForecastEngine {
-
     static func compute(
         meta: BalanceForecastMeta?,
         transactions: [Transaction],
@@ -159,7 +158,9 @@ enum BalanceForecastEngine {
         context: ConditionsFilter.Context
     ) -> [Int: Int] {
         let selected = meta?.accounts.map { Set($0) }
-        func inSelection(_ accountId: String) -> Bool { selected?.contains(accountId) ?? true }
+        func inSelection(_ accountId: String) -> Bool {
+            selected?.contains(accountId) ?? true
+        }
 
         let filtered = transactions
             .filter { !$0.tombstone }
@@ -253,7 +254,7 @@ enum BalanceForecastEngine {
             var seen: Set<DayDate> = [schedule.nextDate]
             var day = schedule.nextDate
             var iterations = 0
-            while day <= endDate, iterations < 10_000 {
+            while day <= endDate, iterations < 10000 {
                 iterations += 1
                 guard let next = ScheduleRecurrence.nextOccurrence(config: config, onOrAfter: day),
                       next <= endDate
@@ -290,7 +291,9 @@ enum BalanceForecastEngine {
             .reduce(0) { $0 + $1.amount }
 
         var byMonth: [Int: BalanceForecastBudgetMonth] = [:]
-        for month in months { byMonth[month.month] = month }
+        for month in months {
+            byMonth[month.month] = month
+        }
 
         var series: [Int: Int] = [:]
         for (year, month) in monthsInclusive(from: forecastStart, to: forecastEnd) {
@@ -324,7 +327,9 @@ enum BalanceForecastEngine {
             var points: [BalanceForecastPoint] = []
             var day = chartStart
             while day <= chartEnd {
-                if let balance = combinedByDay[day.yyyymmdd] { running = balance }
+                if let balance = combinedByDay[day.yyyymmdd] {
+                    running = balance
+                }
                 points.append(BalanceForecastPoint(date: date(from: day), balanceCents: running, isForecast: day > today))
                 day = day.adding(days: 1)
             }
@@ -337,7 +342,9 @@ enum BalanceForecastEngine {
             var latestKeyByMonth: [Int: Int] = [:]
             for key in combinedByDay.keys {
                 let month = key / 100
-                if key > latestKeyByMonth[month] ?? 0 { latestKeyByMonth[month] = key }
+                if key > latestKeyByMonth[month] ?? 0 {
+                    latestKeyByMonth[month] = key
+                }
             }
             var running = 0
             return monthsInclusive(from: chartStart, to: chartEnd).map { year, month in
@@ -375,7 +382,9 @@ enum BalanceForecastEngine {
         while year < end.year || (year == end.year && month <= end.month) {
             result.append((year, month))
             month += 1
-            if month > 12 { month = 1; year += 1 }
+            if month > 12 {
+                month = 1; year += 1
+            }
         }
         return result
     }

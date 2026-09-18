@@ -5,7 +5,6 @@ import XCTest
 /// without opening the edit sheet, and the account Reconcile flow locks
 /// cleared transactions once the bank balance matches.
 final class ReconciliationUITests: XCTestCase {
-
     @MainActor
     private func openChaseChecking() -> XCUIApplication {
         let app = XCUIApplication()
@@ -20,7 +19,7 @@ final class ReconciliationUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingDotTogglesClearedStatus() throws {
+    func testTappingDotTogglesClearedStatus() {
         let app = openChaseChecking()
 
         // Demo data leaves the newest transactions pending (uncleared).
@@ -44,7 +43,7 @@ final class ReconciliationUITests: XCTestCase {
     }
 
     @MainActor
-    func testReconcileLocksClearedTransactions() throws {
+    func testReconcileLocksClearedTransactions() {
         let app = openChaseChecking()
 
         // Wait for the pushed detail screen (rows + toolbar) to settle.
@@ -88,7 +87,7 @@ final class ReconciliationUITests: XCTestCase {
     }
 
     @MainActor
-    func testTappingBalanceRevealsBreakdown() throws {
+    func testTappingBalanceRevealsBreakdown() {
         let app = openChaseChecking()
 
         let balanceToggle = app.buttons["accountBalance.toggle"].firstMatch

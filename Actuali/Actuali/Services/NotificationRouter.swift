@@ -11,8 +11,8 @@ enum NotificationDestination: Identifiable, Equatable {
 
     var id: String {
         switch self {
-        case .editor(let transaction): return "editor-\(transaction.id)"
-        case .uncategorized: return "uncategorized"
+        case .editor(let transaction): "editor-\(transaction.id)"
+        case .uncategorized: "uncategorized"
         }
     }
 }
@@ -26,7 +26,6 @@ enum NotificationDestination: Identifiable, Equatable {
 /// so taps that cold-start the app are delivered.
 @MainActor
 final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCenterDelegate {
-
     static let shared = NotificationRouter()
 
     /// From a tapped log-failure notification (Wallet automation).
@@ -82,11 +81,11 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
         }
     }
 
-    // These async delegate methods must stay MainActor-isolated: the bridged
-    // completion handler runs on whatever executor the method finishes on,
-    // and UIKit's post-response work (state restoration, snapshotting)
-    // asserts it is on the main thread. Marking them nonisolated crashes the
-    // app on every notification tap.
+    /// These async delegate methods must stay MainActor-isolated: the bridged
+    /// completion handler runs on whatever executor the method finishes on,
+    /// and UIKit's post-response work (state restoration, snapshotting)
+    /// asserts it is on the main thread. Marking them nonisolated crashes the
+    /// app on every notification tap.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
@@ -116,11 +115,11 @@ final class NotificationRouter: NSObject, ObservableObject, UNUserNotificationCe
         }
     }
 
-    // Show banners even while the app is foregrounded — without this, iOS
-    // silently drops them and in-app users never see them. Union of both
-    // notification kinds' needs: the automation banners carry sound,
-    // new-transaction summaries are silent and should also land in
-    // Notification Center's list.
+    /// Show banners even while the app is foregrounded — without this, iOS
+    /// silently drops them and in-app users never see them. Union of both
+    /// notification kinds' needs: the automation banners carry sound,
+    /// new-transaction summaries are silent and should also land in
+    /// Notification Center's list.
     func userNotificationCenter(
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification

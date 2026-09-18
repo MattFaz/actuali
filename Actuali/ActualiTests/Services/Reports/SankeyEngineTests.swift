@@ -5,10 +5,9 @@ import Testing
 /// Scenarios ported from upstream sankey-spreadsheet.test.ts, plus
 /// engine-level compute coverage.
 struct SankeyEngineTests {
-
     private let englishLocale = Locale(identifier: "en_US")
 
-    // 2024-01-15 UTC, so the default (nil) time frame is 2024-01.
+    /// 2024-01-15 UTC, so the default (nil) time frame is 2024-01.
     private var asOf: Date {
         var c = DateComponents(); c.year = 2024; c.month = 1; c.day = 15
         c.timeZone = TimeZone(identifier: "UTC")
@@ -33,13 +32,13 @@ struct SankeyEngineTests {
     private var groups: [CategoryGroup] {
         [
             CategoryGroup(id: "g_income", name: "Income", isIncome: true, hidden: false, sortOrder: 0, categories: [
-                Category(id: "c_salary", name: "Salary", groupId: "g_income", isIncome: true, hidden: false, sortOrder: 0)
+                Category(id: "c_salary", name: "Salary", groupId: "g_income", isIncome: true, hidden: false, sortOrder: 0),
             ]),
             CategoryGroup(id: "g_food", name: "Food", isIncome: false, hidden: false, sortOrder: 1, categories: [
                 Category(id: "c_groceries", name: "Groceries", groupId: "g_food", isIncome: false, hidden: false, sortOrder: 0),
                 Category(id: "c_restaurants", name: "Restaurants", groupId: "g_food", isIncome: false, hidden: false, sortOrder: 1),
-                Category(id: "c_coffee", name: "Coffee", groupId: "g_food", isIncome: false, hidden: false, sortOrder: 2)
-            ])
+                Category(id: "c_coffee", name: "Coffee", groupId: "g_food", isIncome: false, hidden: false, sortOrder: 2),
+            ]),
         ]
     }
 
@@ -273,7 +272,7 @@ struct SankeyEngineTests {
                                 value: 5000, isIncome: true, isNegative: false),
             SankeyCategoryEntry(categoryGroup: "Food", categoryGroupId: "g_food",
                                 category: "Groceries", categoryId: "c_groceries",
-                                value: 500, isIncome: false, isNegative: false)
+                                value: 500, isIncome: false, isNegative: false),
         ]
         let input = SankeyBudgetInput(entries: [], toBudgetCents: 1000,
                                       fromPreviousMonthCents: 200,
@@ -315,7 +314,7 @@ struct SankeyEngineTests {
                                 category: "Salary", categoryId: "c_salary",
                                 value: 5000, isIncome: true, isNegative: false,
                                 accountName: "Checking", accountId: "a_checking",
-                                payeeName: "Employer", payeeId: "p_employer")
+                                payeeName: "Employer", payeeId: "p_employer"),
         ]
 
         let graph = SankeyEngine.createTransactionsGraph(entries)
@@ -351,9 +350,9 @@ struct SankeyEngineTests {
 
     @Test func spentModeBuildsPayeeIncomeAccountAndCategoryFlows() {
         let transactions = [
-            tx(date: 20240105, amount: 500000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
-            tx(date: 20240110, amount: -10000, category: "c_groceries"),
-            tx(date: 20240112, amount: -2000, category: "c_groceries")
+            tx(date: 20_240_105, amount: 500_000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
+            tx(date: 20_240_110, amount: -10000, category: "c_groceries"),
+            tx(date: 20_240_112, amount: -2000, category: "c_groceries"),
         ]
 
         let data = SankeyEngine.compute(
@@ -367,17 +366,17 @@ struct SankeyEngineTests {
         #expect(node(data, key: "g_food")?.name == "Food")
         #expect(node(data, key: "c_groceries")?.name == "Groceries")
 
-        #expect(linkValue(data, from: "p_employer", to: "c_salary") == 500000)
-        #expect(linkValue(data, from: "c_salary", to: "a_checking") == 500000)
+        #expect(linkValue(data, from: "p_employer", to: "c_salary") == 500_000)
+        #expect(linkValue(data, from: "c_salary", to: "a_checking") == 500_000)
         #expect(linkValue(data, from: "a_checking", to: "g_food") == 12000)
         #expect(linkValue(data, from: "g_food", to: "c_groceries") == 12000)
     }
 
     @Test func topNBucketsSmallestCategoriesIntoOther() {
         let transactions = [
-            tx(date: 20240102, amount: -30000, category: "c_groceries"),
-            tx(date: 20240103, amount: -20000, category: "c_restaurants"),
-            tx(date: 20240104, amount: -10000, category: "c_coffee")
+            tx(date: 20_240_102, amount: -30000, category: "c_groceries"),
+            tx(date: 20_240_103, amount: -20000, category: "c_restaurants"),
+            tx(date: 20_240_104, amount: -10000, category: "c_coffee"),
         ]
 
         let data = SankeyEngine.compute(
@@ -396,8 +395,8 @@ struct SankeyEngineTests {
 
     @Test func groupAccountsCollapsesAccountsIntoIncomeNode() {
         let transactions = [
-            tx(date: 20240105, amount: 300000, account: "a_checking", category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
-            tx(date: 20240106, amount: 200000, account: "a_savings", category: "c_salary", payeeId: "p_employer", payeeName: "Employer")
+            tx(date: 20_240_105, amount: 300_000, account: "a_checking", category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
+            tx(date: 20_240_106, amount: 200_000, account: "a_savings", category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
         ]
 
         let grouped = SankeyEngine.compute(
@@ -406,7 +405,7 @@ struct SankeyEngineTests {
         )
         #expect(node(grouped, key: "all_income")?.name == "Income")
         #expect(node(grouped, key: "a_checking") == nil)
-        #expect(linkValue(grouped, from: "c_salary", to: "all_income") == 500000)
+        #expect(linkValue(grouped, from: "c_salary", to: "all_income") == 500_000)
 
         let ungrouped = SankeyEngine.compute(
             meta: meta(), transactions: transactions, categoryGroups: groups,
@@ -419,8 +418,8 @@ struct SankeyEngineTests {
 
     @Test func layerTrimmingDropsOutOfRangeLayers() {
         let transactions = [
-            tx(date: 20240105, amount: 500000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
-            tx(date: 20240110, amount: -10000, category: "c_groceries")
+            tx(date: 20_240_105, amount: 500_000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
+            tx(date: 20_240_110, amount: -10000, category: "c_groceries"),
         ]
 
         let data = SankeyEngine.compute(
@@ -438,9 +437,9 @@ struct SankeyEngineTests {
 
     @Test func globalSortOrdersCategoriesByValue() {
         let transactions = [
-            tx(date: 20240102, amount: -10000, category: "c_groceries"),
-            tx(date: 20240103, amount: -30000, category: "c_restaurants"),
-            tx(date: 20240104, amount: -20000, category: "c_coffee")
+            tx(date: 20_240_102, amount: -10000, category: "c_groceries"),
+            tx(date: 20_240_103, amount: -30000, category: "c_restaurants"),
+            tx(date: 20_240_104, amount: -20000, category: "c_coffee"),
         ]
 
         let data = SankeyEngine.compute(
@@ -456,11 +455,11 @@ struct SankeyEngineTests {
 
     @Test func budgetedModeBuildsEnvelopeGraph() {
         let transactions = [
-            tx(date: 20240105, amount: 500000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer")
+            tx(date: 20_240_105, amount: 500_000, category: "c_salary", payeeId: "p_employer", payeeName: "Employer"),
         ]
         let budget = SankeyBudgetInput(
-            entries: [SankeyBudgetInput.Entry(month: 202401, categoryId: "c_groceries", amountCents: 50000)],
-            toBudgetCents: 100000, fromPreviousMonthCents: 20000,
+            entries: [SankeyBudgetInput.Entry(month: 202_401, categoryId: "c_groceries", amountCents: 50000)],
+            toBudgetCents: 100_000, fromPreviousMonthCents: 20000,
             lastMonthOverspentCents: 0, forNextMonthCents: 30000
         )
 
@@ -474,11 +473,11 @@ struct SankeyEngineTests {
         #expect(node(data, key: "to_budget")?.name == "To budget")
         #expect(node(data, key: "from_previous_month")?.name == "From Dec 2023")
 
-        #expect(linkValue(data, from: "c_salary", to: "available_income") == 500000)
+        #expect(linkValue(data, from: "c_salary", to: "available_income") == 500_000)
         #expect(linkValue(data, from: "available_income", to: "budgeted") == 50000)
         #expect(linkValue(data, from: "budgeted", to: "g_food") == 50000)
         #expect(linkValue(data, from: "g_food", to: "c_groceries") == 50000)
-        #expect(linkValue(data, from: "available_income", to: "to_budget") == 100000)
+        #expect(linkValue(data, from: "available_income", to: "to_budget") == 100_000)
         #expect(linkValue(data, from: "from_previous_month", to: "available_income") == 20000)
 
         // Zero-value overspent flow is cleaned up entirely.

@@ -8,7 +8,9 @@ enum BudgetDisplayStyle: String, CaseIterable {
 
     /// Detailed was removed in GH #442; keep its saved value opening Compact.
     static func resolved(from raw: String?) -> BudgetDisplayStyle {
-        if raw == "detailed" { return .compact }
+        if raw == "detailed" {
+            return .compact
+        }
         return raw.flatMap(BudgetDisplayStyle.init(rawValue:)) ?? .clean
     }
 }

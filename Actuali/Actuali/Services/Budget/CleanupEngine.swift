@@ -138,7 +138,8 @@ enum CleanupEngine {
                     ? remainingPool
                     : min(
                         BudgetMonthMath.jsRound(weight / totalWeight * Double(pool)),
-                        remainingPool)
+                        remainingPool
+                    )
                 state.setBudget(state.budget(category.id) + share, for: category.id)
                 remainingPool -= share
             }
@@ -172,7 +173,9 @@ enum CleanupEngine {
         }
 
         let budgetAvailable = state.available
-        if budgetAvailable < 0 { warnings.append(.noGlobalFunds) }
+        if budgetAvailable < 0 {
+            warnings.append(.noGlobalFunds)
+        }
 
         let totalWeight = globalSinks.reduce(0.0) { $0 + $1.1 }
         var remainingBudget = max(budgetAvailable, 0)
@@ -181,19 +184,20 @@ enum CleanupEngine {
                 ? remainingBudget
                 : min(
                     BudgetMonthMath.jsRound(
-                        sink.1 / totalWeight * Double(budgetAvailable)),
-                    remainingBudget)
+                        sink.1 / totalWeight * Double(budgetAvailable)
+                    ),
+                    remainingBudget
+                )
             state.setBudget(state.budget(sink.0.id) + share, for: sink.0.id)
             remainingBudget -= share
         }
 
-        let notification: Notification
-        if !warnings.isEmpty {
-            notification = .warning(warnings)
-        } else if state.writes.isEmpty && goals.isEmpty {
-            notification = .upToDate
+        let notification: Notification = if !warnings.isEmpty {
+            .warning(warnings)
+        } else if state.writes.isEmpty, goals.isEmpty {
+            .upToDate
         } else {
-            notification = .applied(sourceCount: sourceCount, sinkCount: globalSinks.count)
+            .applied(sourceCount: sourceCount, sinkCount: globalSinks.count)
         }
         return Result(budgets: state.writes, goals: goals, notification: notification)
     }

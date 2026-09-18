@@ -6,7 +6,6 @@ import Foundation
 /// The rule engine matches case-insensitively (it lowercases both sides);
 /// AQL filters stay case-sensitive — callers pick via `caseSensitive`.
 enum TagFilter {
-
     /// Every whitespace-separated token (leading `#`s stripped) becomes a
     /// `#token` tag, deduped preserving order:
     /// "one #one ##one ##two three" → ["#one", "#two", "#three"]
@@ -15,7 +14,9 @@ enum TagFilter {
         var tags: [String] = []
         for token in value.split(whereSeparator: { $0.isWhitespace || $0 == "#" }) {
             let tag = "#" + token
-            if seen.insert(tag).inserted { tags.append(tag) }
+            if seen.insert(tag).inserted {
+                tags.append(tag)
+            }
         }
         return tags
     }

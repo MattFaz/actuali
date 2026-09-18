@@ -17,8 +17,13 @@ struct BudgetTransferContext: Identifiable {
         self.budget = budget
     }
 
-    var id: String { category?.id ?? "\(budget.id)-to-budget" }
-    var amount: Int { category?.available ?? budget.toBudget ?? 0 }
+    var id: String {
+        category?.id ?? "\(budget.id)-to-budget"
+    }
+
+    var amount: Int {
+        category?.available ?? budget.toBudget ?? 0
+    }
 
     /// Covering ranks sources that can fully solve the problem first, then
     /// prefers the same group and the smallest sufficient balance. Partial
@@ -36,10 +41,14 @@ struct BudgetTransferContext: Identifiable {
         return candidates.sorted { lhs, rhs in
             let lhsCovers = lhs.available >= needed
             let rhsCovers = rhs.available >= needed
-            if lhsCovers != rhsCovers { return lhsCovers }
+            if lhsCovers != rhsCovers {
+                return lhsCovers
+            }
             let lhsSameGroup = lhs.groupId == category?.groupId
             let rhsSameGroup = rhs.groupId == category?.groupId
-            if lhsSameGroup != rhsSameGroup { return lhsSameGroup }
+            if lhsSameGroup != rhsSameGroup {
+                return lhsSameGroup
+            }
             if lhs.available != rhs.available {
                 return lhsCovers ? lhs.available < rhs.available : lhs.available > rhs.available
             }
@@ -99,8 +108,8 @@ struct BudgetTransferSheet: View {
 
         var categoryId: String? {
             switch self {
-            case .toBudget: return nil
-            case .category(let id): return id
+            case .toBudget: nil
+            case .category(let id): id
             }
         }
     }
@@ -148,7 +157,9 @@ struct BudgetTransferSheet: View {
     }
 
     private var sourceAvailable: Int? {
-        if !isCovering { return context.amount }
+        if !isCovering {
+            return context.amount
+        }
         if case .category(let id) = endpoint {
             return eligibleCategories.first(where: { $0.categoryId == id })?.available
         }
@@ -193,7 +204,7 @@ struct BudgetTransferSheet: View {
                                     isRecommended: index == 0 && isCovering,
                                     locale: locale
                                 ))
-                                    .tag(Endpoint.category(candidate.categoryId))
+                                .tag(Endpoint.category(candidate.categoryId))
                             }
                         }
                     } else {
@@ -207,8 +218,8 @@ struct BudgetTransferSheet: View {
                 } footer: {
                     if let category = context.category {
                         Text(isCovering
-                             ? "\(category.categoryName) is overspent by \(budgetStore.displayBalance(abs(category.available))) in \(MonthPicker.title(for: category.month))."
-                             : "\(category.categoryName) has \(budgetStore.displayBalance(category.available)) available in \(MonthPicker.title(for: category.month)).")
+                            ? "\(category.categoryName) is overspent by \(budgetStore.displayBalance(abs(category.available))) in \(MonthPicker.title(for: category.month))."
+                            : "\(category.categoryName) has \(budgetStore.displayBalance(category.available)) available in \(MonthPicker.title(for: category.month)).")
                     }
                 }
 

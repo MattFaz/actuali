@@ -17,7 +17,6 @@ struct WidgetCategoryEntity: AppEntity, Identifiable {
 }
 
 struct WidgetCategoryEntityQuery: EntityQuery {
-
     private func allCategories() -> [WidgetCategoryEntity] {
         guard let snapshot = WidgetSnapshotStore.standard()?.read() else { return [] }
         return snapshot.categories.map { WidgetCategoryEntity(id: $0.id, name: $0.name) }

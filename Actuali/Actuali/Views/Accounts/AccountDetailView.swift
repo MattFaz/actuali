@@ -72,9 +72,15 @@ struct AccountDetailView: View {
         hideCleared: Bool,
         hideReconciled: Bool
     ) -> LocalizedStringKey {
-        if isSearching || statusFilter != .all { return "No matching transactions" }
-        if hideCleared { return "No uncleared transactions" }
-        if hideReconciled { return "No unreconciled transactions" }
+        if isSearching || statusFilter != .all {
+            return "No matching transactions"
+        }
+        if hideCleared {
+            return "No uncleared transactions"
+        }
+        if hideReconciled {
+            return "No unreconciled transactions"
+        }
         return "No transactions"
     }
 
@@ -103,7 +109,9 @@ struct AccountDetailView: View {
     /// until body/task time. Rebuilt when the account changes: the closure
     /// captures the id, so a reused pager would keep paging the old account.
     private func currentPager() -> TransactionPager {
-        if let pager, pagerAccountId == account.id { return pager }
+        if let pager, pagerAccountId == account.id {
+            return pager
+        }
         let store = budgetStore
         let accountId = account.id
         let created = TransactionPager { offset, limit, search in
@@ -310,7 +318,7 @@ struct AccountDetailView: View {
         }
     }
 
-    @ViewBuilder private var balanceSection: some View {
+    private var balanceSection: some View {
         Section {
             balanceHeader
 
@@ -593,7 +601,7 @@ struct AccountDetailView: View {
                 accountId: account.id,
                 onSaved: handleManualTransactionSaved
             )
-                .environmentObject(budgetStore)
+            .environmentObject(budgetStore)
         }
         .sheet(item: $editingTransaction) { transaction in
             AddTransactionView(editing: transaction)
@@ -635,7 +643,9 @@ struct AccountDetailView: View {
                 // Debounce keystrokes; the initial (empty) load and account
                 // switches run immediately.
                 try? await Task.sleep(for: .milliseconds(250))
-                if Task.isCancelled { return }
+                if Task.isCancelled {
+                    return
+                }
             }
             await reload()
         }
@@ -683,7 +693,7 @@ struct AccountDetailView: View {
                 offBudget: false,
                 closed: false,
                 sortOrder: 0,
-                balance: 245073
+                balance: 245_073
             )
         )
         .environmentObject(BudgetStore.previewInstance())

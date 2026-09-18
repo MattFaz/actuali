@@ -1,7 +1,7 @@
 import Foundation
-import Testing
 import GRDB
 import Synchronization
+import Testing
 @testable import Actuali
 
 /// Recording fake for SchedulePostingActions. Mirrors the real SyncClient's
@@ -25,14 +25,22 @@ private final class RecordingActions: SchedulePostingActions {
         /// the concurrency test can force an overlap window.
         var createDelayNanos: UInt64 = 0
     }
+
     private let state = Mutex(State())
 
-    var created: [Transaction] { state.withLock { $0.created } }
-    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] { state.withLock { $0.advances } }
+    var created: [Transaction] {
+        state.withLock { $0.created }
+    }
+
+    var advances: [(rowId: String, newNextDate: Int, baseTs: Int64?)] {
+        state.withLock { $0.advances }
+    }
+
     var failingScheduleIds: Set<String> {
         get { state.withLock { $0.failingScheduleIds } }
         set { state.withLock { $0.failingScheduleIds = newValue } }
     }
+
     var createDelayNanos: UInt64 {
         get { state.withLock { $0.createDelayNanos } }
         set { state.withLock { $0.createDelayNanos = newValue } }
@@ -54,13 +62,13 @@ private final class RecordingActions: SchedulePostingActions {
         }
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, description, schedule, cleared, tombstone)
-                VALUES (?, ?, ?, ?, ?, ?, ?, 0)
-                """, arguments: [
-                    transaction.id, transaction.accountId, transaction.date,
-                    transaction.amount, transaction.payeeId, transaction.schedule,
-                    transaction.cleared ? 1 : 0,
-                ])
+            INSERT INTO transactions (id, acct, date, amount, description, schedule, cleared, tombstone)
+            VALUES (?, ?, ?, ?, ?, ?, ?, 0)
+            """, arguments: [
+                transaction.id, transaction.accountId, transaction.date,
+                transaction.amount, transaction.payeeId, transaction.schedule,
+                transaction.cleared ? 1 : 0,
+            ])
         }
         state.withLock { $0.created.append(transaction) }
     }
@@ -72,14 +80,14 @@ private final class RecordingActions: SchedulePostingActions {
         try await database.dbQueueForTesting.write { conn in
             for transaction in [source, target] {
                 try conn.execute(sql: """
-                    INSERT INTO transactions
-                        (id, acct, date, amount, description, transferred_id, schedule, cleared, tombstone)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
-                    """, arguments: [
-                        transaction.id, transaction.accountId, transaction.date,
-                        transaction.amount, transaction.payeeId, transaction.transferId,
-                        transaction.schedule, transaction.cleared ? 1 : 0,
-                    ])
+                INSERT INTO transactions
+                    (id, acct, date, amount, description, transferred_id, schedule, cleared, tombstone)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)
+                """, arguments: [
+                    transaction.id, transaction.accountId, transaction.date,
+                    transaction.amount, transaction.payeeId, transaction.transferId,
+                    transaction.schedule, transaction.cleared ? 1 : 0,
+                ])
             }
         }
         state.withLock { $0.created.append(contentsOf: [source, target]) }
@@ -88,10 +96,10 @@ private final class RecordingActions: SchedulePostingActions {
     func advanceScheduleNextDate(nextDateRowId: String, newNextDate: Int, baseNextDateTs: Int64?) async throws {
         try await database.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                UPDATE schedules_next_date
-                SET local_next_date = ?, local_next_date_ts = ?
-                WHERE id = ?
-                """, arguments: [newNextDate, baseNextDateTs, nextDateRowId])
+            UPDATE schedules_next_date
+            SET local_next_date = ?, local_next_date_ts = ?
+            WHERE id = ?
+            """, arguments: [newNextDate, baseNextDateTs, nextDateRowId])
         }
         state.withLock { $0.advances.append((rowId: nextDateRowId, newNextDate: newNextDate, baseTs: baseNextDateTs)) }
     }
@@ -107,13 +115,12 @@ private struct PostedTransactionRow: Sendable {
 
 @MainActor
 struct SchedulePosterTests {
-
     // MARK: - Fixtures
 
     private static let budgetId = "budget-1"
     /// Fixed "today" for every test: 2026-07-15 (an occurrence day of the
     /// monthly fixtures, which start 2026-01-15).
-    private static let today = DayDate(yyyymmdd: 20260715)!
+    private static let today = DayDate(yyyymmdd: 20_260_715)!
 
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
@@ -236,8 +243,8 @@ struct SchedulePosterTests {
     }
 
     private static let monthlyDateJSON = """
-        {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}
-        """
+    {"op":"is","field":"date","value":{"frequency":"monthly","start":"2026-01-15","interval":1}}
+    """
 
     /// Inserts a postable schedule (rule + schedule + next-date row).
     /// Defaults: recurring monthly on the 15th, acct-1, payee-1, -1500.
@@ -250,25 +257,25 @@ struct SchedulePosterTests {
         nextDateTs: Int64? = 1000
     ) throws {
         let conditionsJSON = conditions ?? """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-1"},
-             {"op":"isapprox","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-1"},
+         {"op":"isapprox","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO rules (id, stage, conditions_op, conditions, actions)
-                VALUES (?, NULL, 'and', ?, ?)
-                """, arguments: ["rule-\(id)", conditionsJSON, actions])
+            INSERT INTO rules (id, stage, conditions_op, conditions, actions)
+            VALUES (?, NULL, 'and', ?, ?)
+            """, arguments: ["rule-\(id)", conditionsJSON, actions])
             try conn.execute(sql: """
-                INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
-                VALUES (?, ?, 0, 1, 0, ?)
-                """, arguments: [id, "rule-\(id)", "Schedule \(id)"])
+            INSERT INTO schedules (id, rule, completed, posts_transaction, tombstone, name)
+            VALUES (?, ?, 0, 1, 0, ?)
+            """, arguments: [id, "rule-\(id)", "Schedule \(id)"])
             try conn.execute(sql: """
-                INSERT INTO schedules_next_date
-                    (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
-                VALUES (?, ?, ?, ?, ?, ?)
-                """, arguments: ["nd-\(id)", id, nextDate, nextDateTs, nextDate, nextDateTs])
+            INSERT INTO schedules_next_date
+                (id, schedule_id, local_next_date, local_next_date_ts, base_next_date, base_next_date_ts)
+            VALUES (?, ?, ?, ?, ?, ?)
+            """, arguments: ["nd-\(id)", id, nextDate, nextDateTs, nextDate, nextDateTs])
         }
     }
 
@@ -277,9 +284,9 @@ struct SchedulePosterTests {
     ) throws {
         try db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
-                VALUES (?, 'acct-1', ?, -1500, ?, 0)
-                """, arguments: [id, date, schedule])
+            INSERT INTO transactions (id, acct, date, amount, schedule, tombstone)
+            VALUES (?, 'acct-1', ?, -1500, ?, 0)
+            """, arguments: [id, date, schedule])
         }
     }
 
@@ -290,19 +297,19 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
-                INSERT INTO payees (id, name, transfer_acct) VALUES
-                    ('payee-source', '', 'acct-1'),
-                    ('payee-target', '', 'acct-2');
-                INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
-                """)
+            INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
+            INSERT INTO payees (id, name, transfer_acct) VALUES
+                ('payee-source', '', 'acct-1'),
+                ('payee-target', '', 'acct-2');
+            INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
+            """)
         }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"transfer-payee"},
-             {"op":"is","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"transfer-payee"},
+         {"op":"is","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -327,19 +334,19 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
-                INSERT INTO payees (id, name, transfer_acct) VALUES
-                    ('payee-source', '', 'acct-1'),
-                    ('payee-target', '', 'acct-2');
-                INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
-                """)
+            INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
+            INSERT INTO payees (id, name, transfer_acct) VALUES
+                ('payee-source', '', 'acct-1'),
+                ('payee-target', '', 'acct-2');
+            INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
+            """)
         }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"transfer-payee"},
-             {"op":"is","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"transfer-payee"},
+         {"op":"is","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """, nextDate: 20_260_715)
         let schedule = try #require(await db.fetchSchedules().first)
         let client = try await makeSyncClient(db)
 
@@ -347,16 +354,17 @@ struct SchedulePosterTests {
 
         let rows: [PostedTransactionRow] = try await db.dbQueueForTesting.read { conn in
             try Row.fetchAll(conn, sql: """
-                SELECT id, acct, amount, transferred_id, schedule
-                FROM transactions ORDER BY acct
-                """).map { row in
-                    PostedTransactionRow(
-                        id: row["id"],
-                        accountId: row["acct"],
-                        amount: row["amount"],
-                        transferId: row["transferred_id"],
-                        schedule: row["schedule"])
-                }
+            SELECT id, acct, amount, transferred_id, schedule
+            FROM transactions ORDER BY acct
+            """).map { row in
+                PostedTransactionRow(
+                    id: row["id"],
+                    accountId: row["acct"],
+                    amount: row["amount"],
+                    transferId: row["transferred_id"],
+                    schedule: row["schedule"]
+                )
+            }
         }
         #expect(rows.count == 2)
         #expect(rows[0].accountId == "acct-1")
@@ -371,7 +379,7 @@ struct SchedulePosterTests {
     @Test func manualOrdinaryScheduleKeepsScheduleLink() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
         let schedule = try #require(await db.fetchSchedules().first)
         let client = try await makeSyncClient(db)
 
@@ -392,24 +400,24 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
-                INSERT INTO payees (id, name, transfer_acct) VALUES
-                    ('payee-source', '', 'acct-1'),
-                    ('payee-target', '', 'acct-2');
-                INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
-                """)
+            INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
+            INSERT INTO payees (id, name, transfer_acct) VALUES
+                ('payee-source', '', 'acct-1'),
+                ('payee-target', '', 'acct-2');
+            INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
+            """)
         }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"transfer-payee"},
-             {"op":"is","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """, actions: """
-            [{"op":"link-schedule","value":"sched-1"},
-             {"op":"set","field":"amount","value":-2200},
-             {"op":"set","field":"notes","value":"scheduled transfer"},
-             {"op":"set","field":"cleared","value":true}]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"transfer-payee"},
+         {"op":"is","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"amount","value":-2200},
+         {"op":"set","field":"notes","value":"scheduled transfer"},
+         {"op":"set","field":"cleared","value":true}]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -430,22 +438,22 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
-                INSERT INTO payees (id, name, transfer_acct) VALUES
-                    ('payee-source', '', 'acct-1'),
-                    ('payee-target', '', 'acct-2');
-                INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
-                """)
+            INSERT INTO accounts (id, name) VALUES ('acct-2', 'Savings');
+            INSERT INTO payees (id, name, transfer_acct) VALUES
+                ('payee-source', '', 'acct-1'),
+                ('payee-target', '', 'acct-2');
+            INSERT INTO payee_mapping (id, targetId) VALUES ('transfer-payee', 'payee-target');
+            """)
         }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"transfer-payee"},
-             {"op":"is","field":"amount","value":-1500},
-             \(Self.monthlyDateJSON)]
-            """, actions: """
-            [{"op":"link-schedule","value":"sched-1"},
-             {"op":"delete-transaction","value":null}]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"transfer-payee"},
+         {"op":"is","field":"amount","value":-1500},
+         \(Self.monthlyDateJSON)]
+        """, actions: """
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"delete-transaction","value":null}]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -457,7 +465,7 @@ struct SchedulePosterTests {
     @Test func singleDueSchedulePostsOnceAndAdvancesPastToday() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -469,7 +477,7 @@ struct SchedulePosterTests {
         #expect(txn.accountId == "acct-1")
         #expect(txn.payeeId == "payee-1")
         #expect(txn.amount == -1500)
-        #expect(txn.date == 20260715)
+        #expect(txn.date == 20_260_715)
         #expect(txn.schedule == "sched-1")
         #expect(txn.cleared == false)
         #expect(txn.reconciled == false)
@@ -478,7 +486,7 @@ struct SchedulePosterTests {
         #expect(actions.advances.count == 1)
         let advance = try #require(actions.advances.first)
         #expect(advance.rowId == "nd-sched-1")
-        #expect(advance.newNextDate == 20260815)
+        #expect(advance.newNextDate == 20_260_815)
         #expect(advance.newNextDate > Self.today.yyyymmdd)
         #expect(advance.baseTs == 1000)
     }
@@ -487,9 +495,9 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, actions: """
-            [{"op":"link-schedule","value":"sched-1"},
-             {"op":"set","field":"category","value":"cat-rent"}]
-            """, nextDate: 20260715)
+        [{"op":"link-schedule","value":"sched-1"},
+         {"op":"set","field":"category","value":"cat-rent"}]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -502,22 +510,22 @@ struct SchedulePosterTests {
     @Test func threeMissedMonthsCatchUpWithAdvancesBetweenEach() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260515)
+        try insertSchedule(db, nextDate: 20_260_515)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
         #expect(posted == 3)
-        #expect(actions.created.map(\.date) == [20260515, 20260615, 20260715])
-        #expect(actions.advances.map(\.newNextDate) == [20260615, 20260715, 20260815])
+        #expect(actions.created.map(\.date) == [20_260_515, 20_260_615, 20_260_715])
+        #expect(actions.advances.map(\.newNextDate) == [20_260_615, 20_260_715, 20_260_815])
     }
 
     @Test func alreadyPaidOccurrenceAdvancesWithoutPosting() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
-        try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
+        try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -525,37 +533,37 @@ struct SchedulePosterTests {
 
         #expect(posted == 0)
         #expect(actions.created.isEmpty)
-        #expect(actions.advances.map(\.newNextDate) == [20260815])
+        #expect(actions.advances.map(\.newNextDate) == [20_260_815])
     }
 
     // MARK: - One-off schedules
 
     private static let oneOffConditions = """
-        [{"op":"is","field":"acct","value":"acct-1"},
-         {"op":"is","field":"description","value":"payee-1"},
-         {"op":"is","field":"amount","value":-1500},
-         {"op":"is","field":"date","value":"2026-07-01"}]
-        """
+    [{"op":"is","field":"acct","value":"acct-1"},
+     {"op":"is","field":"description","value":"payee-1"},
+     {"op":"is","field":"amount","value":-1500},
+     {"op":"is","field":"date","value":"2026-07-01"}]
+    """
 
     @Test func dueOneOffPostsOnceAndNeverAdvances() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20260701)
+        try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20_260_701)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
         #expect(posted == 1)
-        #expect(actions.created.map(\.date) == [20260701])
+        #expect(actions.created.map(\.date) == [20_260_701])
         #expect(actions.advances.isEmpty)
     }
 
     @Test func paidOneOffNeitherPostsNorAdvances() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20260701)
-        try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20260701)
+        try insertSchedule(db, conditions: Self.oneOffConditions, nextDate: 20_260_701)
+        try insertTransaction(db, id: "t-paid", schedule: "sched-1", date: 20_260_701)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -574,15 +582,15 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"date","value":{"frequency":"fortnightly","start":"2026-01-15"}}]
-            """, nextDate: 20260710)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"date","value":{"frequency":"fortnightly","start":"2026-01-15"}}]
+        """, nextDate: 20_260_710)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(posted == 1)
-        #expect(actions.created.map(\.date) == [20260710])
+        #expect(actions.created.map(\.date) == [20_260_710])
         #expect(actions.advances.isEmpty)
 
         // Next day: the posted transaction marks the occurrence paid, so
@@ -600,15 +608,15 @@ struct SchedulePosterTests {
     @Test func nullBaseNextDateTsPostsAndAdvancesWithNullTs() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715, nextDateTs: nil)
+        try insertSchedule(db, nextDate: 20_260_715, nextDateTs: nil)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let posted = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
 
         #expect(posted == 1)
-        #expect(actions.created.map(\.date) == [20260715])
-        #expect(actions.advances.map(\.newNextDate) == [20260815])
+        #expect(actions.created.map(\.date) == [20_260_715])
+        #expect(actions.advances.map(\.newNextDate) == [20_260_815])
         #expect(actions.advances.first?.baseTs == nil)
     }
 
@@ -617,7 +625,7 @@ struct SchedulePosterTests {
     @Test func nothingDueDoesNothingButStillSetsGate() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260815)
+        try insertSchedule(db, nextDate: 20_260_815)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -626,23 +634,23 @@ struct SchedulePosterTests {
         #expect(posted == 0)
         #expect(actions.created.isEmpty)
         #expect(actions.advances.isEmpty)
-        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20260715)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20_260_715)
     }
 
     @Test func secondRunSameDayIsGatedButNextDayRunsAgain() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
         let first = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(first == 1)
-        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20260715)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20_260_715)
 
         let second = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(second == 0)
-        #expect(actions.created.count == 1)   // no new posts on the gated run
+        #expect(actions.created.count == 1) // no new posts on the gated run
 
         // Next calendar day: the gate no longer matches, so the pass runs
         // (nothing is due — the fake applied the advance to the nd row — but
@@ -659,7 +667,7 @@ struct SchedulePosterTests {
     @Test func overlappingRunsPostExactlyOnce() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
         // Suspend inside createTransaction so the second call arrives while
@@ -682,7 +690,7 @@ struct SchedulePosterTests {
     @Test func fetchErrorReturnsZeroAndLeavesGateUnset() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, nextDate: 20260715)
+        try insertSchedule(db, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -707,26 +715,26 @@ struct SchedulePosterTests {
         // Gate untouched: same day, DB repaired, the pass runs and posts.
         try await db.dbQueueForTesting.write { conn in
             try conn.execute(sql: """
-                CREATE TABLE accounts (
-                    id TEXT PRIMARY KEY,
-                    name TEXT,
-                    offbudget INTEGER DEFAULT 0,
-                    closed INTEGER DEFAULT 0,
-                    tombstone INTEGER DEFAULT 0
-                )
-                """)
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                closed INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            )
+            """)
             try conn.execute(sql: "INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking')")
         }
         let retried = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(retried == 1)
-        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20260715)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20_260_715)
     }
 
     @Test func scheduleErrorSkipsGateButOtherSchedulesStillProcess() async throws {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
-        try insertSchedule(db, id: "sched-a", nextDate: 20260715)
-        try insertSchedule(db, id: "sched-b", nextDate: 20260715)
+        try insertSchedule(db, id: "sched-a", nextDate: 20_260_715)
+        try insertSchedule(db, id: "sched-b", nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
         actions.failingScheduleIds = ["sched-a"]
@@ -744,7 +752,7 @@ struct SchedulePosterTests {
         let second = await poster.runIfNeeded(budgetId: Self.budgetId, today: Self.today)
         #expect(second == 1)
         #expect(actions.created.map(\.schedule) == ["sched-b", "sched-a"])
-        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20260715)
+        #expect(defaults.integer(forKey: "lastScheduleRun-budget-1") == 20_260_715)
     }
 
     // MARK: - Iteration cap
@@ -754,11 +762,11 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         let start = Self.today.adding(days: -300)
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"is","field":"description","value":"payee-1"},
-             {"op":"is","field":"amount","value":-1500},
-             {"op":"is","field":"date","value":{"frequency":"daily","start":"\(start.iso)","interval":1}}]
-            """, nextDate: start.yyyymmdd)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"is","field":"description","value":"payee-1"},
+         {"op":"is","field":"amount","value":-1500},
+         {"op":"is","field":"date","value":{"frequency":"daily","start":"\(start.iso)","interval":1}}]
+        """, nextDate: start.yyyymmdd)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -777,10 +785,10 @@ struct SchedulePosterTests {
         defer { cleanup(url) }
         // JS Math.round((-3 + -4) / 2) == -3 (half rounds toward +∞).
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             {"op":"isbetween","field":"amount","value":{"num1":-3,"num2":-4}},
-             \(Self.monthlyDateJSON)]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         {"op":"isbetween","field":"amount","value":{"num1":-3,"num2":-4}},
+         \(Self.monthlyDateJSON)]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 
@@ -794,9 +802,9 @@ struct SchedulePosterTests {
         let (db, url) = try makeDatabase()
         defer { cleanup(url) }
         try insertSchedule(db, conditions: """
-            [{"op":"is","field":"acct","value":"acct-1"},
-             \(Self.monthlyDateJSON)]
-            """, nextDate: 20260715)
+        [{"op":"is","field":"acct","value":"acct-1"},
+         \(Self.monthlyDateJSON)]
+        """, nextDate: 20_260_715)
         let (poster, actions, defaults, suite) = makePoster(db)
         defer { defaults.removePersistentDomain(forName: suite) }
 

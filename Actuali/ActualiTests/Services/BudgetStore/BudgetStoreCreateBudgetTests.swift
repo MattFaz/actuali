@@ -1,7 +1,6 @@
 import Foundation
 import GRDB
 import Testing
-
 @testable import Actuali
 
 /// In-app budget creation (GH #387): name validation mirrors upstream's
@@ -16,8 +15,13 @@ private final class CreateBudgetTransport: URLProtocol {
     nonisolated(unsafe) static var committedName: String?
     nonisolated(unsafe) static var afterUpload: (@Sendable () -> Void)?
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         let path = request.url?.path ?? ""
@@ -70,7 +74,6 @@ private final class CreateBudgetTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreCreateBudgetTests {
-
     // MARK: - Name validation (upstream validateBudgetName)
 
     @Test func nameValidationMirrorsUpstream() {
@@ -86,7 +89,7 @@ struct BudgetStoreCreateBudgetTests {
         let (store, _, root) = try await makeStore()
         defer { try? FileManager.default.removeItem(at: root) }
         store.remoteBudgets = [
-            .init(id: "f1", name: "Existing", groupId: "g1", isEncrypted: false)
+            .init(id: "f1", name: "Existing", groupId: "g1", isEncrypted: false),
         ]
 
         await store.createBudget(named: "  Existing  ")
@@ -212,7 +215,7 @@ struct BudgetStoreCreateBudgetTests {
             .init(
                 id: "old", name: "Old", type: .checking, offBudget: false,
                 closed: false, sortOrder: 0, balance: 0
-            )
+            ),
         ]
         CreateBudgetTransport.afterUpload = {
             guard let budgetId = manager.listLocalBudgets().first?.id else { return }
@@ -238,9 +241,9 @@ struct BudgetStoreCreateBudgetTests {
             else { return }
             try? queue.write { db in
                 try db.execute(sql: """
-                    DROP TABLE messages_clock;
-                    CREATE TABLE messages_clock (bad TEXT);
-                    """)
+                DROP TABLE messages_clock;
+                CREATE TABLE messages_clock (bad TEXT);
+                """)
             }
         }
 

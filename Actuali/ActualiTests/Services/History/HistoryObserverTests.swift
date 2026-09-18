@@ -12,7 +12,7 @@ struct HistoryObserverTests {
         Transaction(
             id: id,
             accountId: "account",
-            date: 20260906,
+            date: 20_260_906,
             amount: amount,
             payeeId: "payee",
             payeeName: "Groceries",

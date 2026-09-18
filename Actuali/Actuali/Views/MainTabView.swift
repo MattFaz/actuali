@@ -52,12 +52,16 @@ struct MainTabView: View {
             }
         }
         .onChange(of: notificationRouter.pendingAllAccountsNavigation) { _, pending in
-            if pending { selectedTab = 0 }
+            if pending {
+                selectedTab = 0
+            }
         }
         // A save in the tab-hosted add flow routes to the account's
         // transaction list, which lives on the Accounts tab.
         .onChange(of: notificationRouter.pendingAccountNavigation) { _, accountId in
-            if accountId != nil { selectedTab = 0 }
+            if accountId != nil {
+                selectedTab = 0
+            }
         }
         // Cancel in the tab-hosted add flow returns to the user's Start Page.
         .onChange(of: notificationRouter.pendingTabNavigation) { _, tab in
@@ -132,17 +136,17 @@ struct AddTransactionTabView: View {
                 accountId: account.id,
                 onSaved: handleManualTransactionSaved
             )
-                .onAppear {
-                    if configuredId != nil && validDefaultAccount == nil {
-                        budgetStore.defaultAccountId = nil
-                        showingDefaultAccountAlert = true
-                    }
+            .onAppear {
+                if configuredId != nil, validDefaultAccount == nil {
+                    budgetStore.defaultAccountId = nil
+                    showingDefaultAccountAlert = true
                 }
-                .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
-                    Button(String(localized: "OK")) {}
-                } message: {
-                    Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
-                }
+            }
+            .alert(String(localized: "Default Account Unavailable"), isPresented: $showingDefaultAccountAlert) {
+                Button(String(localized: "OK")) {}
+            } message: {
+                Text(String(localized: "Your default account is no longer available. Please configure a new default in More → Transactions & Automation."))
+            }
         } else {
             ContentUnavailableView(
                 "No Accounts",

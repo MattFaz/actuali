@@ -1,6 +1,6 @@
 import Foundation
-import Testing
 import GRDB
+import Testing
 @testable import Actuali
 
 /// Pins the row set and fields of `fetchTransactionsForReports()`, which feeds
@@ -13,7 +13,6 @@ import GRDB
 ///   rule `fetchAccounts()` already applies to balances).
 @MainActor
 struct BudgetDatabaseReportsFetchTests {
-
     private func makeDatabase() throws -> (BudgetDatabase, URL) {
         let tempURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("test-\(UUID().uuidString).sqlite")

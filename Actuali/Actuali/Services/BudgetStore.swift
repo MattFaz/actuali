@@ -1,7 +1,7 @@
-import Foundation
-import SwiftUI
 import Combine
+import Foundation
 import os
+import SwiftUI
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
@@ -46,61 +46,67 @@ enum BudgetStoreError: LocalizedError, Equatable {
     func message(locale: Locale, bundle: Bundle = .main) -> String {
         switch self {
         case .syncNotConfigured:
-            return ReportStrings.text("error.syncNotConfigured", locale: locale, bundle: bundle)
+            ReportStrings.text("error.syncNotConfigured", locale: locale, bundle: bundle)
         case .transferAccountsMatch:
-            return ReportStrings.text("error.transferAccountsMatch", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferAccountsMatch", locale: locale, bundle: bundle)
         case .transferAmountNotPositive:
-            return ReportStrings.text("error.transferAmountNotPositive", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferAmountNotPositive", locale: locale, bundle: bundle)
         case .transferPayeeMissing:
-            return ReportStrings.text("error.transferPayeeMissing", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferPayeeMissing", locale: locale, bundle: bundle)
         case .transferCategoriesMatch:
-            return ReportStrings.text("error.transferCategoriesMatch", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferCategoriesMatch", locale: locale, bundle: bundle)
         case .transferAmountExceedsSource:
-            return ReportStrings.text("error.transferAmountExceedsSource", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferAmountExceedsSource", locale: locale, bundle: bundle)
         case .invalidAmount:
-            return ReportStrings.text("error.invalidAmount", locale: locale, bundle: bundle)
+            ReportStrings.text("error.invalidAmount", locale: locale, bundle: bundle)
         case .missingTransferDestination:
-            return ReportStrings.text("error.missingTransferDestination", locale: locale, bundle: bundle)
+            ReportStrings.text("error.missingTransferDestination", locale: locale, bundle: bundle)
         case .payeeCreationFailed(let message):
-            return ReportStrings.format(
-                "error.payeeCreationFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.payeeCreationFailed %@", message, locale: locale, bundle: bundle
+            )
         case .transferPartnerMissing:
-            return ReportStrings.text("error.transferPartnerMissing", locale: locale, bundle: bundle)
+            ReportStrings.text("error.transferPartnerMissing", locale: locale, bundle: bundle)
         case .cannotConvertToTransfer:
-            return ReportStrings.text("error.cannotConvertToTransfer", locale: locale, bundle: bundle)
+            ReportStrings.text("error.cannotConvertToTransfer", locale: locale, bundle: bundle)
         case .cannotConvertToSplit:
-            return ReportStrings.text("error.cannotConvertToSplit", locale: locale, bundle: bundle)
+            ReportStrings.text("error.cannotConvertToSplit", locale: locale, bundle: bundle)
         case .splitNeedsTwoLines:
-            return ReportStrings.text("error.splitNeedsTwoLines", locale: locale, bundle: bundle)
+            ReportStrings.text("error.splitNeedsTwoLines", locale: locale, bundle: bundle)
         case .splitAmountMismatch:
-            return ReportStrings.text("error.splitAmountMismatch", locale: locale, bundle: bundle)
+            ReportStrings.text("error.splitAmountMismatch", locale: locale, bundle: bundle)
         case .invalidAccountName:
-            return ReportStrings.text("error.invalidAccountName", locale: locale, bundle: bundle)
+            ReportStrings.text("error.invalidAccountName", locale: locale, bundle: bundle)
         case .accountCreationFailed(let message):
-            return ReportStrings.format(
-                "error.accountCreationFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.accountCreationFailed %@", message, locale: locale, bundle: bundle
+            )
         case .invalidCategoryName:
-            return ReportStrings.text("error.invalidCategoryName", locale: locale, bundle: bundle)
+            ReportStrings.text("error.invalidCategoryName", locale: locale, bundle: bundle)
         case .invalidCategoryGroupName:
-            return ReportStrings.text("error.invalidCategoryGroupName", locale: locale, bundle: bundle)
+            ReportStrings.text("error.invalidCategoryGroupName", locale: locale, bundle: bundle)
         case .categoryCreationFailed(let message):
-            return ReportStrings.format(
-                "error.categoryCreationFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.categoryCreationFailed %@", message, locale: locale, bundle: bundle
+            )
         case .categoryUpdateFailed(let message):
-            return ReportStrings.format(
-                "error.categoryUpdateFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.categoryUpdateFailed %@", message, locale: locale, bundle: bundle
+            )
         case .categoryGroupCreationFailed(let message):
-            return ReportStrings.format(
-                "error.categoryGroupCreationFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.categoryGroupCreationFailed %@", message, locale: locale, bundle: bundle
+            )
         case .categoryGroupUpdateFailed(let message):
-            return ReportStrings.format(
-                "error.categoryGroupUpdateFailed %@", message, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.categoryGroupUpdateFailed %@", message, locale: locale, bundle: bundle
+            )
         case .ruleNeedsCondition:
-            return ReportStrings.text("error.ruleNeedsCondition", locale: locale, bundle: bundle)
+            ReportStrings.text("error.ruleNeedsCondition", locale: locale, bundle: bundle)
         case .ruleNeedsAction:
-            return ReportStrings.text("error.ruleNeedsAction", locale: locale, bundle: bundle)
+            ReportStrings.text("error.ruleNeedsAction", locale: locale, bundle: bundle)
         case .ruleInvalidCondition(let field, let op):
-            return ReportStrings.format(
+            ReportStrings.format(
                 "error.ruleInvalidCondition %@ %@",
                 RuleSchema.label(
                     op: op,
@@ -113,25 +119,27 @@ enum BudgetStoreError: LocalizedError, Equatable {
                 bundle: bundle
             )
         case .ruleInvalidAction:
-            return ReportStrings.text("error.ruleInvalidAction", locale: locale, bundle: bundle)
+            ReportStrings.text("error.ruleInvalidAction", locale: locale, bundle: bundle)
         case .ruleEmptyValue(let field):
-            return ReportStrings.format(
+            ReportStrings.format(
                 "error.ruleEmptyValue %@",
                 RuleSchema.sentenceCased(
                     RuleSchema.label(field: field, locale: locale, bundle: bundle),
-                    locale: locale),
+                    locale: locale
+                ),
                 locale: locale,
                 bundle: bundle
             )
         case .ruleInvalidPattern(let pattern):
-            return ReportStrings.format(
-                "error.ruleInvalidPattern %@", pattern, locale: locale, bundle: bundle)
+            ReportStrings.format(
+                "error.ruleInvalidPattern %@", pattern, locale: locale, bundle: bundle
+            )
         case .ruleOwnedBySchedule:
-            return ReportStrings.text("error.ruleOwnedBySchedule", locale: locale, bundle: bundle)
+            ReportStrings.text("error.ruleOwnedBySchedule", locale: locale, bundle: bundle)
         case .ruleNotSerializable:
-            return ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
+            ReportStrings.text("error.ruleNotSerializable", locale: locale, bundle: bundle)
         case .bankSyncNotConfigured:
-            return ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
+            ReportStrings.text("error.bankSyncNotConfigured", locale: locale, bundle: bundle)
         }
     }
 }
@@ -165,6 +173,7 @@ final class BudgetStore: ObservableObject {
             )
         }
     }
+
     // MARK: - Published State
 
     @Published var isLoading = false
@@ -264,9 +273,9 @@ final class BudgetStore: ObservableObject {
     /// keep a second sync from starting on top of the first.
     @Published private(set) var isBankSyncing = false
 
-#if DEBUG
+    #if DEBUG
     var bankSyncBeforeMaterializationHook: (() -> Void)?
-#endif
+    #endif
 
     /// The current calendar month's budget, tracked separately from
     /// `currentBudgetMonth` (which follows whatever month BudgetView is
@@ -765,7 +774,9 @@ final class BudgetStore: ObservableObject {
         if let accountId, !accountId.isEmpty {
             for raw in keywords {
                 let cleaned = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !cleaned.isEmpty { updated[cleaned] = accountId }
+                if !cleaned.isEmpty {
+                    updated[cleaned] = accountId
+                }
             }
         }
         await persistCardAccountMappings(updated)
@@ -933,12 +944,12 @@ final class BudgetStore: ObservableObject {
                     : nil
             }
             if let db {
-                mappings = (try? await db.fetchCardAccountMappings()) ?? [:]
+                mappings = await (try? db.fetchCardAccountMappings()) ?? [:]
             }
         }
-        return Self.resolveAccountId(
+        return await Self.resolveAccountId(
             hint: hint,
-            accounts: await accountsForIntent(),
+            accounts: accountsForIntent(),
             cardMappings: mappings
         )
     }
@@ -969,7 +980,7 @@ final class BudgetStore: ObservableObject {
             .filter { !$0.key.isEmpty }
             .sorted { $0.key.count != $1.key.count ? $0.key.count > $1.key.count : $0.key < $1.key }
         for mapping in mappingsByLongestKey
-        where trimmed.contains(mapping.key) && activeIds.contains(mapping.accountId) {
+            where trimmed.contains(mapping.key) && activeIds.contains(mapping.accountId) {
             return mapping.accountId
         }
 
@@ -1008,7 +1019,9 @@ final class BudgetStore: ObservableObject {
     /// direct DB access for queries that don't fit the @Published cache. The
     /// underlying `database` remains private to enforce that writes go through
     /// store methods.
-    var databaseForLogger: BudgetDatabase? { database }
+    var databaseForLogger: BudgetDatabase? {
+        database
+    }
 
     /// Shared provider — one position cache for the whole app.
     static let locationProvider = LocationProvider()
@@ -1024,7 +1037,7 @@ final class BudgetStore: ObservableObject {
             return []
         }
     }
-    
+
     /// Most frequently used payees from the last 12 weeks, for the
     /// Add Transaction payee picker. Failures degrade to no suggestions.
     func fetchCommonPayees() async -> [Payee] {
@@ -1091,7 +1104,7 @@ final class BudgetStore: ObservableObject {
         }
     }
 
-#if DEBUG
+    #if DEBUG
     /// Records two locations against a known demo payee so PayeeLocationsUITests
     /// can exercise the clear paths. A UI test can't record a real coordinate —
     /// Core Location isn't drivable from XCUITest — so the app stands one in,
@@ -1128,7 +1141,7 @@ final class BudgetStore: ObservableObject {
             }
         }
     }
-#endif
+    #endif
 
     /// Accounts for App Intents (the Log Transaction Shortcut).
     ///
@@ -1152,7 +1165,9 @@ final class BudgetStore: ObservableObject {
     /// in-flight load here (or start one if none is running) so the write path
     /// sees a fully configured store.
     func ensureBudgetReady() async {
-        if syncClient != nil { return }
+        if syncClient != nil {
+            return
+        }
         if let loadTask {
             await loadTask.value
             // A completed load that produced no database *failed* — e.g. a
@@ -1160,7 +1175,9 @@ final class BudgetStore: ObservableObject {
             // entity query's temporary connection (actios-tq4w). Never cache
             // that failure for the process lifetime: fall through and retry,
             // so every automation run gets a fresh attempt.
-            if database != nil { return }
+            if database != nil {
+                return
+            }
         }
         // No in-flight load (e.g. a freshly spawned headless process where the
         // init() Task hasn't been retained), or the last load failed. Start a
@@ -1172,7 +1189,9 @@ final class BudgetStore: ObservableObject {
     }
 
     func accountsForIntent() async -> [Account] {
-        if !accounts.isEmpty { return accounts }
+        if !accounts.isEmpty {
+            return accounts
+        }
         do {
             let db: BudgetDatabase
             if let database {
@@ -1235,7 +1254,9 @@ final class BudgetStore: ObservableObject {
     }
 
     func payeesForIntent() async -> [Payee] {
-        if !payees.isEmpty { return payees }
+        if !payees.isEmpty {
+            return payees
+        }
         do {
             let db: BudgetDatabase
             if let database {
@@ -1254,7 +1275,7 @@ final class BudgetStore: ObservableObject {
 
     private var syncClient: SyncClient?
     private var syncStateCancellable: AnyCancellable?
-    
+
     // MARK: - Backups
 
     @Published private(set) var backups: [Backup] = []
@@ -1262,7 +1283,9 @@ final class BudgetStore: ObservableObject {
     /// True while the user is viewing a restored backup — the revert baseline
     /// (db.latest.sqlite) exists. Taking a new backup consumes it, so the UI
     /// confirms first (backupOnBackground skips entirely for the same reason).
-    var isViewingBackup: Bool { backups.contains(where: \.isLatest) }
+    var isViewingBackup: Bool {
+        backups.contains(where: \.isLatest)
+    }
 
     /// True when metadata carries a cloudFileId but no groupId (a backup was restored over a synced budget).
     /// Sync can't run again until the user re-downloads the server copy.
@@ -1348,7 +1371,9 @@ final class BudgetStore: ObservableObject {
 
     /// Test-only: whether loadLocalBudget wired a sync client (it must not
     /// for a budget detached by a backup restore).
-    var isSyncConfiguredForTesting: Bool { syncClient != nil }
+    var isSyncConfiguredForTesting: Bool {
+        syncClient != nil
+    }
 
     /// Test-only: pause a load after its month snapshots are fetched so a
     /// month request can race the final publish deterministically.
@@ -1372,9 +1397,9 @@ final class BudgetStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        // Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
-        // same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
-        // overrides as strings; checking for existence first preserves non-false defaults.
+        /// Read stored Bool values and UI-test `YES`/`NO` launch overrides through the
+        /// same path. We migrated from `as? Bool` because NSArgumentDomain exposes those
+        /// overrides as strings; checking for existence first preserves non-false defaults.
         func persistedBool(_ key: String, default defaultValue: Bool) -> Bool {
             defaults.object(forKey: key) == nil ? defaultValue : defaults.bool(forKey: key)
         }
@@ -1387,18 +1412,23 @@ final class BudgetStore: ObservableObject {
         // launch-argument (NSArgumentDomain) overrides like
         // `-startTab budget` from test runs (actios-96wa).
         _serverURL = Published(
-            initialValue: defaults.string(forKey: "serverURL") ?? "")
+            initialValue: defaults.string(forKey: "serverURL") ?? ""
+        )
         _fallbackServerURL = Published(
-            initialValue: defaults.string(forKey: "fallbackServerURL") ?? "")
+            initialValue: defaults.string(forKey: "fallbackServerURL") ?? ""
+        )
         // customHeaders intentionally assigns through the property: its
         // didSet also pushes the headers onto the live network client.
         customHeaders = Self.loadPersistedCustomHeaders()
         _currentBudgetId = Published(
-            initialValue: defaults.string(forKey: "currentBudgetId"))
+            initialValue: defaults.string(forKey: "currentBudgetId")
+        )
         _currencyCode = Published(
-            initialValue: defaults.string(forKey: "currencyCode") ?? "USD")
+            initialValue: defaults.string(forKey: "currencyCode") ?? "USD"
+        )
         _useNarrowCurrencySymbol = Published(
-            initialValue: persistedBool("useNarrowCurrencySymbol", default: false))
+            initialValue: persistedBool("useNarrowCurrencySymbol", default: false)
+        )
         if let raw = defaults.string(forKey: "appearanceMode"),
            let mode = AppearanceMode(rawValue: raw) {
             _appearanceMode = Published(initialValue: mode)
@@ -1408,36 +1438,51 @@ final class BudgetStore: ObservableObject {
             from: defaults.string(forKey: "budgetDisplayStyle")
         ))
         _showCompactBudgetOverview = Published(
-            initialValue: persistedBool("showCompactBudgetOverview", default: true))
+            initialValue: persistedBool("showCompactBudgetOverview", default: true)
+        )
         _showCompactSpentColumn = Published(
-            initialValue: persistedBool("showCompactSpentColumn", default: false))
+            initialValue: persistedBool("showCompactSpentColumn", default: false)
+        )
         _transactionDisplayMode = Published(initialValue: TransactionDisplayMode.persisted)
         _uncategorizedTapAction = Published(initialValue: UncategorizedTapAction.persisted)
         _showBudgetProgressBars = Published(
-            initialValue: persistedBool("showBudgetProgressBars", default: true))
+            initialValue: persistedBool("showBudgetProgressBars", default: true)
+        )
         _showCategoryStatusDots = Published(
-            initialValue: persistedBool("showCategoryStatusDots", default: true))
+            initialValue: persistedBool("showCategoryStatusDots", default: true)
+        )
         _showGroupTotals = Published(
-            initialValue: persistedBool("showGroupTotals", default: true))
+            initialValue: persistedBool("showGroupTotals", default: true)
+        )
         _showBudgetCheckInStrip = Published(
-            initialValue: persistedBool("showBudgetCheckInStrip", default: true))
+            initialValue: persistedBool("showBudgetCheckInStrip", default: true)
+        )
         _showTransactionStatusFilters = Published(
             initialValue: persistedBool(
-                TransactionStatusFilter.stripVisibilityDefaultsKey, default: true))
+                TransactionStatusFilter.stripVisibilityDefaultsKey, default: true
+            )
+        )
         _transactionStatusFilter = Published(initialValue: TransactionStatusFilter.resolved(
-            from: defaults.string(forKey: TransactionStatusFilter.defaultsKey)))
+            from: defaults.string(forKey: TransactionStatusFilter.defaultsKey)
+        ))
         _showOverspentBadge = Published(
-            initialValue: persistedBool("showOverspentBadge", default: true))
+            initialValue: persistedBool("showOverspentBadge", default: true)
+        )
         _conventionalAmountEntry = Published(
-            initialValue: persistedBool("conventionalAmountEntry", default: false))
+            initialValue: persistedBool("conventionalAmountEntry", default: false)
+        )
         _hideBalances = Published(
-            initialValue: persistedBool("hideBalances", default: false))
+            initialValue: persistedBool("hideBalances", default: false)
+        )
         _shakeToHideBalances = Published(
-            initialValue: persistedBool("shakeToHideBalances", default: false))
+            initialValue: persistedBool("shakeToHideBalances", default: false)
+        )
         _hideDecimalPlaces = Published(
-            initialValue: persistedBool("hideDecimalPlaces", default: false))
+            initialValue: persistedBool("hideDecimalPlaces", default: false)
+        )
         _recordPayeeLocations = Published(
-            initialValue: persistedBool("recordPayeeLocations", default: true))
+            initialValue: persistedBool("recordPayeeLocations", default: true)
+        )
         // bool(forKey:) defaults to false — the correct opt-in default.
         _hideZeroBudgetCategories = Published(initialValue: defaults
             .bool(forKey: "hideZeroBudgetCategories"))
@@ -1460,7 +1505,9 @@ final class BudgetStore: ObservableObject {
             // numbers it is about to draw are provisional (GH #126).
             isInitialSyncing = true
             loadTask = Task {
-                if let token { await configureSavedSession(token: token) }
+                if let token {
+                    await configureSavedSession(token: token)
+                }
                 await loadLocalBudget(budgetId)
                 // On a cold launch the scene becomes .active before
                 // loadLocalBudget has wired syncClient, so the scenePhase
@@ -1666,7 +1713,7 @@ final class BudgetStore: ObservableObject {
     /// The login methods a server is assumed to offer when the probe can't tell
     /// us — password auth is the safe assumption and keeps the flow usable.
     private static let passwordOnlyLoginMethods = [
-        LoginMethod(method: "password", displayName: "Password", active: 1)
+        LoginMethod(method: "password", displayName: "Password", active: 1),
     ]
 
     /// Probe the configured server for its available login methods so the UI can
@@ -1882,7 +1929,9 @@ final class BudgetStore: ObservableObject {
         // This UI test seeds a connected session without a server behind it.
         // Keep the production view lifecycle intact while avoiding a request
         // that can only time out and raise an unrelated alert.
-        if CommandLine.arguments.contains("-connectedServerSettings") { return }
+        if CommandLine.arguments.contains("-connectedServerSettings") {
+            return
+        }
         #endif
         isLoading = true
         error = nil
@@ -1977,7 +2026,9 @@ final class BudgetStore: ObservableObject {
 
         // Outside the download spinner: the budget is on screen from here, it
         // just isn't caught up yet.
-        if opened { await runInitialSync() }
+        if opened {
+            await runInitialSync()
+        }
     }
 
     /// The first sync after a budget is opened. A downloaded budget is a server
@@ -2004,14 +2055,18 @@ final class BudgetStore: ObservableObject {
             return error.localizedDescription
         }
         await downloadBudget(remoteBudget)
-        return error   // any download error surfaced by downloadBudget
+        return error // any download error surfaced by downloadBudget
     }
 
     /// Mirror of upstream's validateBudgetName (util/budget-name.ts:23),
     /// checked against the names already on the server (and local files).
     nonisolated static func budgetNameError(_ name: String, existingNames: [String]) -> String? {
-        if name.isEmpty { return String(localized: "Budget name cannot be blank") }
-        if name.count > 100 { return String(localized: "Budget name is too long (max length 100)") }
+        if name.isEmpty {
+            return String(localized: "Budget name cannot be blank")
+        }
+        if name.count > 100 {
+            return String(localized: "Budget name is too long (max length 100)")
+        }
         if existingNames.contains(name) {
             return String(format: String(localized: "\u{201C}%@\u{201D} already exists"), name)
         }
@@ -2080,11 +2135,10 @@ final class BudgetStore: ObservableObject {
                 try saveRegistration(groupId: groupId)
             } catch {
                 let uploadError = error
-                let files: [ListFilesResponse.RemoteFile]?
-                if uploadStarted {
-                    files = try? await serverClient.listFiles()
+                let files: [ListFilesResponse.RemoteFile]? = if uploadStarted {
+                    try? await serverClient.listFiles()
                 } else {
-                    files = []
+                    []
                 }
                 if let remote = files?.first(where: { $0.fileId == cloudFileId }) {
                     registeredOnServer = true
@@ -2111,7 +2165,9 @@ final class BudgetStore: ObservableObject {
             await loadLocalBudget(metadata.id)
             let loadError = error
             await fetchRemoteBudgets()
-            if let loadError { self.error = loadError }
+            if let loadError {
+                self.error = loadError
+            }
         } catch {
             if registeredOnServer {
                 // The file exists server-side; surface it in the picker so one
@@ -2169,9 +2225,11 @@ final class BudgetStore: ObservableObject {
             await budgetMonthsFetchedForTesting?()
             #endif
             let fetchedGoalTemplatesFlag = try await openedDb.fetchPreference(
-                id: "flags.goalTemplatesEnabled") == "true"
+                id: "flags.goalTemplatesEnabled"
+            ) == "true"
             let fetchedGoalTemplatesUIFlag = try await openedDb.fetchPreference(
-                id: "flags.goalTemplatesUIEnabled") == "true"
+                id: "flags.goalTemplatesUIEnabled"
+            ) == "true"
 
             // If a concurrent load replaced the database while we were
             // fetching (e.g. demo seed during launch), drop our stale snapshot.
@@ -2197,7 +2255,7 @@ final class BudgetStore: ObservableObject {
             } else {
                 numberFormat = .commaDot
             }
-            
+
             upcomingScheduledTransactionLength = fetchedUpcomingLength
 
             // Read the legacy keys on every load. A card already in the synced table
@@ -2225,7 +2283,7 @@ final class BudgetStore: ObservableObject {
                 }
             }
             cardAccountMappings = fetchedCardMappings.merging(legacyCardMappings) { synced, _ in synced }
-            
+
             accounts = fetchedAccounts
             // Let observers establish their baseline before the transaction
             // publication is visible as a user change.
@@ -2257,7 +2315,7 @@ final class BudgetStore: ObservableObject {
             // Note: budgetId is the internal ID (from metadata.json), but remoteBudgets uses server fileId
             // So we need to load the local metadata to get the cloudFileId for lookup
             let metadataPath = fileManager.metadataPath(for: budgetId)
-            var groupId: String = ""
+            var groupId = ""
             var fileId: String = budgetId
 
             if let metadataData = try? Data(contentsOf: metadataPath),
@@ -2362,7 +2420,7 @@ final class BudgetStore: ObservableObject {
                 dataVersion += 1
                 clearWidgetSnapshot()
             }
-                self.error = String(format: String(localized: "Failed to load budget: %@"), error.localizedDescription)
+            self.error = String(format: String(localized: "Failed to load budget: %@"), error.localizedDescription)
         }
 
         isLoading = false
@@ -2379,7 +2437,7 @@ final class BudgetStore: ObservableObject {
         Task { [weak self] in
             guard let self else { return }
             guard let version = await self.serverClient.fetchServerVersion() else {
-                return  // capabilities unknown — keep the cached answer
+                return // capabilities unknown — keep the cached answer
             }
             // The user may have switched servers while the probe was in
             // flight; a stale answer must not flip the flag for — or be
@@ -2442,11 +2500,10 @@ final class BudgetStore: ObservableObject {
             // the user's selection (GH #328).
             let displayedMonth = requestedBudgetMonth ?? currentMonth
             let fetchedBudgetMonth = try await database.fetchBudgetMonth(month: displayedMonth)
-            let fetchedWidgetBudgetMonth: BudgetMonth
-            if displayedMonth == currentMonth {
-                fetchedWidgetBudgetMonth = fetchedBudgetMonth
+            let fetchedWidgetBudgetMonth: BudgetMonth = if displayedMonth == currentMonth {
+                fetchedBudgetMonth
             } else {
-                fetchedWidgetBudgetMonth = try await database.fetchBudgetMonth(month: currentMonth)
+                try await database.fetchBudgetMonth(month: currentMonth)
             }
             // Re-read here as well as on load: a sync can bring in a changed
             // upcoming window, and the status badges below are computed from it.
@@ -2460,9 +2517,11 @@ final class BudgetStore: ObservableObject {
             // Same story for the goal-templates flags — the web's Experimental
             // settings toggles arrive as synced preferences.
             let fetchedGoalTemplatesFlag = try await database.fetchPreference(
-                id: "flags.goalTemplatesEnabled") == "true"
+                id: "flags.goalTemplatesEnabled"
+            ) == "true"
             let fetchedGoalTemplatesUIFlag = try await database.fetchPreference(
-                id: "flags.goalTemplatesUIEnabled") == "true"
+                id: "flags.goalTemplatesUIEnabled"
+            ) == "true"
 
             // If the budget was switched while we were fetching, this
             // snapshot belongs to the old database — drop it.
@@ -2544,7 +2603,7 @@ final class BudgetStore: ObservableObject {
             self.error = error.localizedDescription
         }
     }
-    
+
     /// Automatic backup on app-background. Skipped while viewing a backup.
     /// Backgrounding happens seconds after a restore (the user checks another app),
     /// and makeBackup's first step would destroy the revert baseline.
@@ -2594,7 +2653,7 @@ final class BudgetStore: ObservableObject {
         await refreshBackups()
         isLoading = false
     }
-    
+
     /// On-disk location of a stored backup archive, so the user can export it via the share sheet (Save to Files, AirDrop, etc.) and import it into
     /// Actual on the web or desktop . The archive is already in Actual's import format (db.sqlite + metadata.json, CRDT state stripped).
     func backupFileURL(_ backupId: String) -> URL? {
@@ -2738,7 +2797,7 @@ final class BudgetStore: ObservableObject {
         return incomeCategories.first { $0.name.lowercased() == "starting balances" }
             ?? incomeCategories.first
     }
-    
+
     /// Create a category group, mirroring the web UI's "Add group": it lands
     /// after every existing group and starts out empty. Duplicate names are
     /// refused the way upstream refuses them.
@@ -2878,7 +2937,7 @@ final class BudgetStore: ObservableObject {
         await refreshDataOnly()
         await fetchBudgetMonth(month)
     }
-    
+
     /// Money in and out across every account for one "yyyy-MM" month, for the
     /// accounts tab's summary group (GH #256). Nil when there's no budget open
     /// or the query failed, so the card keeps its last figures rather than
@@ -2995,10 +3054,10 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         var existing = try database.existingFinancialIds(accountId: accountId)
-        
+
         // One rules/context fetch for the whole import, not one per row.
         let prepared = try await syncClient.prepareRules()
-        
+
         var imported = 0
         var skipped = 0
         for candidate in candidates {
@@ -3024,7 +3083,7 @@ final class BudgetStore: ObservableObject {
                 isParent: false,
                 parentId: nil,
                 tombstone: false,
-                sortOrder: nil,  // Set to Date.now() during insert
+                sortOrder: nil, // Set to Date.now() during insert
                 importedPayee: payeeName,
                 financialId: candidate.id
             )
@@ -3097,8 +3156,12 @@ final class BudgetStore: ObservableObject {
     /// own: the person's chosen day, else the day the budget file began, else
     /// the 90-day lookback several bank integrations won't serve more than.
     func resolvedBankSyncImportStartDay() async -> Int {
-        if let chosen = storedBankSyncImportStartDay { return chosen }
-        if let began = try? await database?.earliestMessageDay() { return began }
+        if let chosen = storedBankSyncImportStartDay {
+            return chosen
+        }
+        if let began = try? await database?.earliestMessageDay() {
+            return began
+        }
         return DayDate.today().adding(days: -Self.bankSyncMaxLookbackDays).yyyymmdd
     }
 
@@ -3267,7 +3330,9 @@ final class BudgetStore: ObservableObject {
 
     /// Whether a bank sync can run at all — through the server's connection or
     /// one claimed on this device.
-    var canSyncBanks: Bool { serverProvidesBankSync || isSimpleFINConfigured }
+    var canSyncBanks: Bool {
+        serverProvidesBankSync || isSimpleFINConfigured
+    }
 
     /// Ask the server whether it does SimpleFIN, so the setup screen knows
     /// which half of itself to show. Failures leave the flag alone: an
@@ -3368,10 +3433,10 @@ final class BudgetStore: ObservableObject {
                 && self.bankSyncLoadGeneration == capturedGeneration
         }
 
-        var synced = (try? await database.fetchBankSyncAccounts()) ?? []
-#if DEBUG
+        var synced = await (try? database.fetchBankSyncAccounts()) ?? []
+        #if DEBUG
         await bankSyncAccountsFetchedForTesting?()
-#endif
+        #endif
         guard isCurrentRequest() else { return }
 
         // UserDefaults was the original Wallet-link store. Copy it into the
@@ -3398,7 +3463,7 @@ final class BudgetStore: ObservableObject {
                 // Retain the legacy key so a later load can retry the batch.
             }
         }
-        var localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? []
+        var localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? []
         guard isCurrentRequest() else { return }
 
         // Early builds wrote financeKit links into the synced columns, where
@@ -3440,7 +3505,7 @@ final class BudgetStore: ObservableObject {
                         )
                         guard isCurrentRequest() else { return }
                     }
-                    synced = (try? await database.fetchBankSyncAccounts()) ?? []
+                    synced = await (try? database.fetchBankSyncAccounts()) ?? []
                     guard isCurrentRequest() else { return }
                 } else {
                     // No sync client yet (restored budget): serve adopted
@@ -3448,7 +3513,7 @@ final class BudgetStore: ObservableObject {
                     let adoptedIds = adopted.map(\.id)
                     synced.removeAll { adoptedIds.contains($0.id) }
                 }
-                localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? localLinks
+                localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? localLinks
                 guard isCurrentRequest() else { return }
             } catch {
                 // Keep the synced columns intact so a later load can retry.
@@ -3471,8 +3536,8 @@ final class BudgetStore: ObservableObject {
                 localLinks.removeAll { $0 == link }
             } else if !refetchedAfterStaleCleanup {
                 refetchedAfterStaleCleanup = true
-                synced = (try? await database.fetchBankSyncAccounts()) ?? synced
-                localLinks = (try? await database.fetchBankSyncLocalLinks()) ?? localLinks
+                synced = await (try? database.fetchBankSyncAccounts()) ?? synced
+                localLinks = await (try? database.fetchBankSyncLocalLinks()) ?? localLinks
                 guard isCurrentRequest() else { return }
             }
         }
@@ -3486,10 +3551,12 @@ final class BudgetStore: ObservableObject {
             return
         }
         let syncedById = Dictionary(uniqueKeysWithValues: synced.map { ($0.id, $0) })
-        let budgetAccounts = (try? await database.fetchAccounts()) ?? accounts
+        let budgetAccounts = await (try? database.fetchAccounts()) ?? accounts
         guard isCurrentRequest() else { return }
         bankSyncAccounts = budgetAccounts.compactMap { account in
-            if let linked = syncedById[account.id] { return linked }
+            if let linked = syncedById[account.id] {
+                return linked
+            }
             guard let externalId = walletLinks[account.id] else { return nil }
             return BankSyncAccount(
                 id: account.id,
@@ -3578,13 +3645,13 @@ final class BudgetStore: ObservableObject {
 
     func unlinkBankAccount(accountId: String) async throws {
         guard let linked = bankSyncAccount(forAccountId: accountId),
-                            !linked.syncSource.isEmpty else {
+              !linked.syncSource.isEmpty else {
             return
         }
         let expectedLink = ExpectedBankSyncLink(
             accountId: accountId,
             externalAccountId: linked.externalAccountId,
-                        source: linked.syncSource
+            source: linked.syncSource
         )
         do {
             try migrateLegacyAppleWalletLinksIfNeeded()
@@ -3627,10 +3694,10 @@ final class BudgetStore: ObservableObject {
     @discardableResult
     func syncBankAccounts(accountIds: [String] = []) async throws -> BankSyncResult {
         var bankSyncHook: (() -> Void)?
-    #if DEBUG
+        #if DEBUG
         bankSyncHook = bankSyncBeforeMaterializationHook
         bankSyncBeforeMaterializationHook = nil
-    #endif
+        #endif
         func takeBankSyncHook() -> (() -> Void)? {
             defer { bankSyncHook = nil }
             return bankSyncHook
@@ -3690,7 +3757,7 @@ final class BudgetStore: ObservableObject {
         for target in targets {
             // Both "the read failed" and "the account has no transactions"
             // mean the same thing here: start at the chosen day.
-            oldestDates[target.id] = (try? await database.oldestTransactionDate(accountId: target.id)) ?? nil
+            oldestDates[target.id] = await (try? database.oldestTransactionDate(accountId: target.id)) ?? nil
         }
         func downloadTargets(_ accounts: [BankSyncAccount]) -> [BankSyncTarget] {
             accounts.map {
@@ -3772,7 +3839,7 @@ final class BudgetStore: ObservableObject {
                 let sourceHasProblems = target.source == .financeKit
                     ? !walletProblems.isEmpty
                     : !simpleFinProblems.isEmpty
-                if target.source == .simpleFin && !sourceHasProblems {
+                if target.source == .simpleFin, !sourceHasProblems {
                     result.problems.append(
                         "\(target.name): SimpleFIN didn't return this account. Unlink it and link it again."
                     )
@@ -3780,7 +3847,7 @@ final class BudgetStore: ObservableObject {
                 // Missing Wallet data is device-local state, so don't stamp it
                 // into synced status columns. SimpleFIN is a shared feed, so
                 // its missing/failed state belongs there.
-                if target.source != .financeKit && !simpleFinFailureIsDeviceLocal {
+                if target.source != .financeKit, !simpleFinFailureIsDeviceLocal {
                     statuses.append((
                         target.id, nil, sourceHasProblems ? "failed" : "account-missing",
                         ExpectedBankSyncLink(
@@ -3903,8 +3970,8 @@ final class BudgetStore: ObservableObject {
         // 90-day first sync is hundreds of rows. Keyed case-insensitively, the
         // same way `findOrCreatePayee` and upstream's `getPayeeByName` match,
         // so a bank that shouts "AMAZON" still resolves the budget's "Amazon".
-        let payeeIdsByName = Dictionary(
-            (try? await database.fetchPayees())?.map { ($0.name.lowercased(), $0.id) } ?? [],
+        let payeeIdsByName = await Dictionary(
+            (try? database.fetchPayees())?.map { ($0.name.lowercased(), $0.id) } ?? [],
             uniquingKeysWith: { first, _ in first }
         )
         for index in candidates.indices {
@@ -3927,7 +3994,7 @@ final class BudgetStore: ObservableObject {
         // Upgrade path: a per-account toggle on the Wallet setup screen that
         // writes this same preference, which this lookup already honors.
         let reimportDefault = target.source == .financeKit ? "false" : "true"
-        let reimportDeleted = (try await database.fetchPreference(
+        let reimportDeleted = try await (database.fetchPreference(
             id: "sync-reimport-deleted-\(target.id)"
         ) ?? reimportDefault) == "true"
         let window = try await database.bankSyncWindow(
@@ -3969,7 +4036,7 @@ final class BudgetStore: ObservableObject {
                 isParent: false,
                 parentId: nil,
                 tombstone: false,
-                sortOrder: nil,  // Set to Date.now() during insert
+                sortOrder: nil, // Set to Date.now() during insert
                 importedPayee: candidate.payeeName,
                 financialId: candidate.importedId
             )
@@ -4208,8 +4275,8 @@ final class BudgetStore: ObservableObject {
         }
 
         let offBudgetIds = offBudgetAccountIds
-        // The edited leg takes the form's category, the partner keeps its own —
-        // then both are cleared unless that leg is the categorizable side.
+        /// The edited leg takes the form's category, the partner keeps its own —
+        /// then both are cleared unless that leg is the categorizable side.
         func resolvedCategory(for leg: Transaction, accountId: String,
                               otherAccountId: String) -> String? {
             guard !offBudgetIds.contains(accountId),
@@ -4335,7 +4402,7 @@ final class BudgetStore: ObservableObject {
     /// old read-only form (amount/category protected by the standard path).
     func fetchSplitChildren(parentId: String) async -> [Transaction] {
         guard let database else { return [] }
-        return (try? await database.fetchChildTransactions(parentId: parentId)) ?? []
+        return await (try? database.fetchChildTransactions(parentId: parentId)) ?? []
     }
 
     /// Soft-delete a transaction by setting its tombstone flag (CRDT-compatible).
@@ -4535,7 +4602,7 @@ final class BudgetStore: ObservableObject {
                 // Reconciled children are locked for the same reason as
                 // their parents.
                 for child in try await database.fetchChildTransactions(parentId: tx.id)
-                where !child.reconciled && child.cleared != cleared {
+                    where !child.reconciled && child.cleared != cleared {
                     var childCopy = child
                     childCopy.cleared = cleared
                     batch.append(childCopy)
@@ -4623,7 +4690,7 @@ final class BudgetStore: ObservableObject {
     /// Total charges in cents for an account within a billing cycle window.
     func fetchCycleSpend(accountId: String, start: DayDate, end: DayDate) async -> Int {
         guard let database else { return 0 }
-        return (try? await database.fetchAccountSpend(
+        return await (try? database.fetchAccountSpend(
             accountId: accountId,
             fromDate: start.yyyymmdd,
             toDate: end.yyyymmdd
@@ -4636,7 +4703,7 @@ final class BudgetStore: ObservableObject {
               let cycle = activeCreditCardCycle(for: accountId),
               let account = accounts.first(where: { $0.id == accountId }) else { return [] }
         let cycles = cycle.recentStatementCycles()
-        return (try? await database.fetchRecentStatements(
+        return await (try? database.fetchRecentStatements(
             accountId: accountId,
             cycles: cycles,
             liveBalance: account.balance
@@ -4646,7 +4713,7 @@ final class BudgetStore: ObservableObject {
     /// Transactions within a credit card billing statement date range [startDate, endDate].
     func fetchStatementTransactions(accountId: String, startDate: Int, endDate: Int) async -> [Transaction] {
         guard let database else { return [] }
-        return (try? await database.fetchTransactions(
+        return await (try? database.fetchTransactions(
             accountId: accountId,
             startDate: startDate,
             endDate: endDate,
@@ -4746,7 +4813,7 @@ final class BudgetStore: ObservableObject {
         var reviewConfirmations: Set<PendingImportReviewRequirement> = []
         /// True for a picker choice or prefill; false for payee-history suggestions.
         var categoryIsExplicit: Bool = false
-        var automaticCategoryPreview: AutomaticCategoryPreview? = nil
+        var automaticCategoryPreview: AutomaticCategoryPreview?
     }
 
     /// Category the add form should show before the user makes an explicit
@@ -4766,11 +4833,10 @@ final class BudgetStore: ObservableObject {
             !$0.tombstone && $0.transferAccountId == nil &&
                 $0.name.caseInsensitiveCompare(trimmedPayee) == .orderedSame
         }?.id
-        let historyCategoryId: String?
-        if let payeeId, let database {
-            historyCategoryId = try await database.mostRecentCategoryId(forPayeeId: payeeId)
+        let historyCategoryId: String? = if let payeeId, let database {
+            try await database.mostRecentCategoryId(forPayeeId: payeeId)
         } else {
-            historyCategoryId = nil
+            nil
         }
 
         let unsignedCents = Double(form.amount)
@@ -4849,9 +4915,9 @@ final class BudgetStore: ObservableObject {
         var categoryId: String?
         var amountCents: Int
         var notes: String?
-        var payeeName: String? = nil
-        var payeeId: String? = nil
-        var childId: String? = nil
+        var payeeName: String?
+        var payeeId: String?
+        var childId: String?
     }
 
     /// The store-side action a form resolves to. Validation and routing are
@@ -4921,7 +4987,7 @@ final class BudgetStore: ObservableObject {
     /// Save the add/edit form: transfers become a paired transfer, everything
     /// else resolves its payee and creates or (when `original` is non-nil)
     /// updates the transaction.
-      @discardableResult
+    @discardableResult
     func saveTransaction(_ form: TransactionForm, editing original: Transaction? = nil) async throws -> String? {
         var form = form
         // The form hides categories for off-budget accounts; normalize
@@ -5004,7 +5070,7 @@ final class BudgetStore: ObservableObject {
                 amount: amountCents,
                 payeeId: payeeId,
                 payeeName: payeeName,
-                categoryId: nil,  // split parents never carry a category
+                categoryId: nil, // split parents never carry a category
                 categoryName: nil,
                 notes: notes,
                 cleared: form.cleared,
@@ -5143,17 +5209,17 @@ final class BudgetStore: ObservableObject {
                 try await updateTransaction(updated, original: original)
                 if original.isParent {
                     try await cascadeSharedFieldsToChildren(
-                        of: updated, originalPayeeId: original.payeeId)
+                        of: updated, originalPayeeId: original.payeeId
+                    )
                 }
                 return nil
             } else {
-                let categoryId: String?
-                if form.categoryIsExplicit {
-                    categoryId = form.categoryId
+                let categoryId: String? = if form.categoryIsExplicit {
+                    form.categoryId
                 } else if let preview = form.automaticCategoryPreview {
-                    categoryId = preview.sourceCategoryId
+                    preview.sourceCategoryId
                 } else {
-                    categoryId = form.categoryId
+                    form.categoryId
                 }
                 let transaction = Transaction(
                     id: UUID().uuidString,
@@ -5171,7 +5237,7 @@ final class BudgetStore: ObservableObject {
                     isParent: false,
                     parentId: nil,
                     tombstone: false,
-                    sortOrder: nil,  // Set to Date.now() during insert
+                    sortOrder: nil, // Set to Date.now() during insert
                     importedPayee: payeeName
                 )
                 try await createTransaction(
@@ -5193,7 +5259,8 @@ final class BudgetStore: ObservableObject {
         editing: Transaction?
     ) async throws -> (id: String?, name: String?, transferAccountId: String?) {
         var resolved = knownSplitPayee(
-            line, inheritedId: inheritedId, inheritedName: inheritedName, editing: editing)
+            line, inheritedId: inheritedId, inheritedName: inheritedName, editing: editing
+        )
         if resolved.id == nil, let name = line.payeeName, name != inheritedName {
             resolved.id = try await resolvePayeeId(name: name, editing: editing)
         }
@@ -5210,9 +5277,13 @@ final class BudgetStore: ObservableObject {
         inheritedName: String?,
         editing: Transaction?
     ) -> (id: String?, name: String?) {
-        if let id = line.payeeId { return (id, line.payeeName) }
+        if let id = line.payeeId {
+            return (id, line.payeeName)
+        }
         if let name = line.payeeName, name != inheritedName {
-            if name == editing?.payeeName { return (editing?.payeeId, name) }
+            if name == editing?.payeeName {
+                return (editing?.payeeId, name)
+            }
             return (payees.first { $0.name.lowercased() == name.lowercased() }?.id, name)
         }
         return (inheritedId, inheritedName)
@@ -5286,9 +5357,11 @@ final class BudgetStore: ObservableObject {
         let transferLines = lines.compactMap { line -> (SplitPlanLine, String)? in
             let editing = line.childId.flatMap { childrenById[$0] }
             let payee = knownSplitPayee(
-                line, inheritedId: inheritedId, inheritedName: inheritedName, editing: editing)
+                line, inheritedId: inheritedId, inheritedName: inheritedName, editing: editing
+            )
             guard let destinationId = splitTransferAccountId(
-                payeeId: payee.id, editing: editing) else {
+                payeeId: payee.id, editing: editing
+            ) else {
                 return nil
             }
             return (line, destinationId)
@@ -5318,7 +5391,7 @@ final class BudgetStore: ObservableObject {
             amount: amountCents,
             payeeId: payeeId,
             payeeName: payeeName,
-            categoryId: nil,  // split parents never carry a category
+            categoryId: nil, // split parents never carry a category
             categoryName: nil,
             notes: notes,
             cleared: form.cleared,
@@ -5348,8 +5421,11 @@ final class BudgetStore: ObservableObject {
             // the parent's loads back as "inherit", so a parent payee edit
             // follows through here just like cascadeSharedFieldsToChildren.
             let resolvedPayee = try await resolveSplitPayee(
-                line, inheritedId: payeeId, inheritedName: payeeName, editing: existing)
-            if existing == nil { nextNewSort -= 1 }
+                line, inheritedId: payeeId, inheritedName: payeeName, editing: existing
+            )
+            if existing == nil {
+                nextNewSort -= 1
+            }
             var updated = Transaction(
                 id: existing?.id ?? UUID().uuidString,
                 accountId: form.accountId,
@@ -5407,7 +5483,8 @@ final class BudgetStore: ObservableObject {
                 } else {
                     let partner = try splitTransferPartner(
                         id: partnerId, child: updated,
-                        destinationAccountId: destinationAccountId)
+                        destinationAccountId: destinationAccountId
+                    )
                     if let existing {
                         try await syncClient.convertToTransfer(
                             leg: updated,
@@ -5580,7 +5657,7 @@ final class BudgetStore: ObservableObject {
             amount: amountCents,
             payeeId: payeeId,
             payeeName: payeeName,
-            categoryId: nil,  // split parents never carry a category
+            categoryId: nil, // split parents never carry a category
             categoryName: nil,
             notes: notes,
             cleared: form.cleared,
@@ -5604,7 +5681,8 @@ final class BudgetStore: ObservableObject {
         for line in lines {
             nextSort -= 1
             let resolvedPayee = try await resolveSplitPayee(
-                line, inheritedId: payeeId, inheritedName: payeeName, editing: nil)
+                line, inheritedId: payeeId, inheritedName: payeeName, editing: nil
+            )
             let partnerId = resolvedPayee.transferAccountId.map { _ in UUID().uuidString }
             let child = Transaction(
                 id: UUID().uuidString,
@@ -5634,7 +5712,8 @@ final class BudgetStore: ObservableObject {
                     source: child,
                     target: splitTransferPartner(
                         id: partnerId, child: child,
-                        destinationAccountId: destinationAccountId)
+                        destinationAccountId: destinationAccountId
+                    )
                 )
             } else {
                 try await syncClient.createTransaction(child, applyRules: false)
@@ -5714,8 +5793,12 @@ final class BudgetStore: ObservableObject {
     /// payee, a name unchanged from the transaction being edited keeps it,
     /// and anything else is matched case-insensitively or created.
     func resolvePayeeId(name: String, editing original: Transaction?) async throws -> String? {
-        if name.isEmpty { return nil }
-        if name == original?.payeeName { return original?.payeeId }
+        if name.isEmpty {
+            return nil
+        }
+        if name == original?.payeeName {
+            return original?.payeeId
+        }
         do {
             return try await findOrCreatePayee(name: name).id
         } catch {
@@ -5745,7 +5828,8 @@ final class BudgetStore: ObservableObject {
             guard await provider.authorizationStatus() == .granted,
                   let position = try? await provider.currentPosition(),
                   LocationUtils.isValidCoordinate(
-                      latitude: position.latitude, longitude: position.longitude),
+                      latitude: position.latitude, longitude: position.longitude
+                  ),
                   let database = self.database,
                   let existing = try? await database.fetchPayeeLocations(payeeId: payeeId),
                   Self.shouldRecordLocation(at: position, existing: existing),
@@ -5770,18 +5854,42 @@ final class BudgetStore: ObservableObject {
 
     private static func changedFields(original: Transaction, updated: Transaction) -> Set<String> {
         var changed = Set<String>()
-        if original.accountId != updated.accountId { changed.insert("acct") }
-        if original.date != updated.date { changed.insert("date") }
-        if original.payeeId != updated.payeeId { changed.insert("description") }
-        if original.categoryId != updated.categoryId { changed.insert("category") }
-        if original.amount != updated.amount { changed.insert("amount") }
-        if original.notes != updated.notes { changed.insert("notes") }
-        if original.cleared != updated.cleared { changed.insert("cleared") }
-        if original.reconciled != updated.reconciled { changed.insert("reconciled") }
-        if original.transferId != updated.transferId { changed.insert("transferred_id") }
-        if original.isParent != updated.isParent { changed.insert("isParent") }
-        if original.parentId != updated.parentId { changed.insert("parent_id") }
-        if original.tombstone != updated.tombstone { changed.insert("tombstone") }
+        if original.accountId != updated.accountId {
+            changed.insert("acct")
+        }
+        if original.date != updated.date {
+            changed.insert("date")
+        }
+        if original.payeeId != updated.payeeId {
+            changed.insert("description")
+        }
+        if original.categoryId != updated.categoryId {
+            changed.insert("category")
+        }
+        if original.amount != updated.amount {
+            changed.insert("amount")
+        }
+        if original.notes != updated.notes {
+            changed.insert("notes")
+        }
+        if original.cleared != updated.cleared {
+            changed.insert("cleared")
+        }
+        if original.reconciled != updated.reconciled {
+            changed.insert("reconciled")
+        }
+        if original.transferId != updated.transferId {
+            changed.insert("transferred_id")
+        }
+        if original.isParent != updated.isParent {
+            changed.insert("isParent")
+        }
+        if original.parentId != updated.parentId {
+            changed.insert("parent_id")
+        }
+        if original.tombstone != updated.tombstone {
+            changed.insert("tombstone")
+        }
         return changed
     }
 
@@ -5856,7 +5964,9 @@ final class BudgetStore: ObservableObject {
         // posted transactions appear in the same refresh. Only after a
         // successful sync: posting against stale data risks double-posting
         // an occurrence another client already covered.
-        if success { await postDueSchedulesIfNeeded() }
+        if success {
+            await postDueSchedulesIfNeeded()
+        }
         await refreshDataOnly()
         // Coming to the foreground is when Wallet has new purchases to hand
         // over, so the feeds import here without anyone pressing sync.
@@ -5888,9 +5998,11 @@ final class BudgetStore: ObservableObject {
     /// Single transaction by id (cache first, then database) for notification
     /// tap-through. Nil when it no longer exists.
     func transaction(withId id: String) async -> Transaction? {
-        if let cached = transactions.first(where: { $0.id == id }) { return cached }
+        if let cached = transactions.first(where: { $0.id == id }) {
+            return cached
+        }
         guard let database else { return nil }
-        return (try? await database.fetchTransaction(id: id)) ?? nil
+        return await (try? database.fetchTransaction(id: id)) ?? nil
     }
 
     /// Detect transactions that arrived via the sync just completed, combine
@@ -5901,7 +6013,7 @@ final class BudgetStore: ObservableObject {
     /// willPresent shows it as a banner in-app) instead of silently consuming
     /// it. Opt-in and permission are enforced inside NewTransactionNotifier.
     func notifyAboutSyncedTransactions(additional: [Transaction] = []) async {
-        await notifyAboutTransactions(await detectNewTransactionsForNotification() + additional)
+        await notifyAboutTransactions(detectNewTransactionsForNotification() + additional)
     }
 
     private func notifyAboutTransactions(_ fresh: [Transaction]) async {
@@ -5927,7 +6039,8 @@ final class BudgetStore: ObservableObject {
         guard let database, let syncClient, let budgetId = currentBudgetId else { return [] }
         do {
             return try await NewTransactionDetector().detectNewTransactions(
-                in: database, budgetId: budgetId, localNode: syncClient.nodeId)
+                in: database, budgetId: budgetId, localNode: syncClient.nodeId
+            )
         } catch {
             logger.error("New-transaction detection failed: \(error.localizedDescription, privacy: .public)")
             return []
@@ -6012,9 +6125,9 @@ final class BudgetStore: ObservableObject {
         }
         return count
     }
-    
+
     // MARK: - Scheduled Transactions
-    
+
     /// Refresh the schedules cache and recompute every status. Statuses depend
     /// on today's date as well as on transactions, so they are derived here on
     /// every refresh rather than cached against a schedule row.
@@ -6038,7 +6151,8 @@ final class BudgetStore: ObservableObject {
                     completed: schedule.completed,
                     hasTransaction: paid.contains(schedule.id),
                     upcomingLength: schedule.customUpcomingLength ?? upcomingScheduledTransactionLength,
-                    today: today)
+                    today: today
+                )
             }
 
             schedules = loaded.sorted(by: Self.scheduleOrder)
@@ -6089,20 +6203,20 @@ final class BudgetStore: ObservableObject {
     /// reads sensibly.
     private static func scheduleOrder(_ a: ScheduleSummary, _ b: ScheduleSummary) -> Bool {
         switch (a.sortOrder, b.sortOrder) {
-        case let (x?, y?) where x != y: return x < y
+        case (let x?, let y?) where x != y: return x < y
         case (nil, _?): return false
         case (_?, nil): return true
         default: break
         }
         switch (a.nextDate, b.nextDate) {
-        case let (x?, y?) where x != y: return x < y
+        case (let x?, let y?) where x != y: return x < y
         case (nil, _?): return false
         case (_?, nil): return true
         default: break
         }
         return (a.name ?? "").localizedCaseInsensitiveCompare(b.name ?? "") == .orderedAscending
     }
-    
+
     @discardableResult
     func createSchedule(fields: ScheduleFormFields) async throws -> String {
         try await createSchedules([fields])[0]
@@ -6118,7 +6232,7 @@ final class BudgetStore: ObservableObject {
         var ids: [String] = []
         do {
             for field in fields {
-                ids.append(try await syncClient.createSchedule(fields: field))
+                try await ids.append(syncClient.createSchedule(fields: field))
             }
         } catch {
             // Whatever got through is already on the server; show it before
@@ -6137,7 +6251,8 @@ final class BudgetStore: ObservableObject {
     ) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.updateSchedule(
-            schedule, fields: fields, resetNextDate: resetNextDate)
+            schedule, fields: fields, resetNextDate: resetNextDate
+        )
         await refreshDataOnly()
     }
 
@@ -6146,7 +6261,7 @@ final class BudgetStore: ObservableObject {
         try await syncClient.deleteSchedule(schedule)
         await refreshDataOnly()
     }
-    
+
     func skipScheduleNextDate(_ schedule: ScheduleSummary) async throws {
         guard let syncClient else { throw BudgetStoreError.syncNotConfigured }
         try await syncClient.skipScheduleNextDate(schedule)
@@ -6178,7 +6293,8 @@ final class BudgetStore: ObservableObject {
         guard !transactions.isEmpty else { return }
 
         try database.setTransactionSchedule(
-            transactionIds: transactions.map(\.id), scheduleId: scheduleId)
+            transactionIds: transactions.map(\.id), scheduleId: scheduleId
+        )
 
         let updated = transactions.map { transaction -> Transaction in
             var copy = transaction
@@ -6188,7 +6304,7 @@ final class BudgetStore: ObservableObject {
         try await syncClient.updateTransactions(updated, changedFields: ["schedule"])
         await refreshDataOnly()
     }
-    
+
     /// Scan transaction history for repeating payments.
     func discoverSchedules() async -> [ScheduleDiscovery.Proposal] {
         guard let database else { return [] }
@@ -6199,7 +6315,7 @@ final class BudgetStore: ObservableObject {
     /// `nonisolated async` runs it on the generic executor without an ad-hoc
     /// detached-task hop; `BudgetDatabase` serialises its own reads through
     /// GRDB's queue, so calling it from here is safe.
-    nonisolated private static func runDiscovery(
+    private nonisolated static func runDiscovery(
         accounts: [Account],
         database: BudgetDatabase
     ) async -> [ScheduleDiscovery.Proposal] {
@@ -6207,9 +6323,11 @@ final class BudgetStore: ObservableObject {
             accounts: accounts,
             loadCandidates: { accountId, notBefore in
                 try database.fetchDiscoveryTransactions(
-                    accountId: accountId, notBefore: notBefore)
+                    accountId: accountId, notBefore: notBefore
+                )
             },
-            latestDate: { try database.latestTransactionDate(accountId: $0) }))
+            latestDate: { try database.latestTransactionDate(accountId: $0) }
+        ))
             ?? []
     }
 
@@ -6343,7 +6461,8 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         try await syncClient.setBudgetCarryover(
-            months: Self.carryoverMonths(from: month, now: now), categoryIds: [categoryId], flag: enabled)
+            months: Self.carryoverMonths(from: month, now: now), categoryIds: [categoryId], flag: enabled
+        )
         await fetchBudgetMonth(month)
     }
 
@@ -6434,7 +6553,8 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else { return }
         do {
             try await syncClient.setPreference(
-                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false")
+                id: "flags.goalTemplatesEnabled", value: enabled ? "true" : "false"
+            )
             goalTemplatesEnabled = enabled
         } catch {
             self.error = String(format: String(localized: "Failed to update goal templates setting: %@"), error.localizedDescription)
@@ -6461,7 +6581,8 @@ final class BudgetStore: ObservableObject {
                 .map {
                     GoalScheduleInfo(
                         id: $0.id, name: $0.name, completed: $0.completed,
-                        amount: $0.amount, dateCondition: $0.dateCondition)
+                        amount: $0.amount, dateCondition: $0.dateCondition
+                    )
                 }
 
             // Notes → templates. UI-managed categories (web template editor)
@@ -6470,7 +6591,9 @@ final class BudgetStore: ObservableObject {
             for row in rows where !row.sourceIsUI {
                 if let note = row.note, GoalTemplateNotes.noteHasTemplates(note) {
                     let templates = GoalTemplateNotes.parseTemplates(fromNote: note)
-                    if !templates.isEmpty { parsedNotes[row.id] = templates }
+                    if !templates.isEmpty {
+                        parsedNotes[row.id] = templates
+                    }
                 }
             }
 
@@ -6478,11 +6601,10 @@ final class BudgetStore: ObservableObject {
                 return checkOutcome(rows: rows, parsedNotes: parsedNotes, schedules: schedules)
             }
 
-            let scope: (String) -> Bool
-            if let categoryId {
-                scope = { $0 == categoryId }
+            let scope: (String) -> Bool = if let categoryId {
+                { $0 == categoryId }
             } else {
-                scope = { _ in true }
+                { _ in true }
             }
 
             // Store the parsed notes into goal_def (upstream storeTemplates),
@@ -6521,13 +6643,12 @@ final class BudgetStore: ObservableObject {
             let allCategories = rows.map {
                 GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome)
             }
-            let processCategories: [GoalTemplateCategory]
-            if let categoryId {
-                processCategories = rows
+            let processCategories: [GoalTemplateCategory] = if let categoryId {
+                rows
                     .filter { $0.id == categoryId }
                     .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
             } else {
-                processCategories = rows
+                rows
                     .filter { !$0.hidden && !$0.groupHidden && (sheet.isTracking || !$0.isIncome) }
                     .map { GoalTemplateCategory(id: $0.id, name: $0.name, isIncome: $0.isIncome) }
             }
@@ -6539,19 +6660,24 @@ final class BudgetStore: ObservableObject {
                 categories: processCategories,
                 allCategories: allCategories,
                 schedules: schedules,
-                sheet: sheet)
+                sheet: sheet
+            )
 
             switch result {
             case .errors(let errors):
                 return .errors(errors)
             case .upToDate(let goalResets):
                 try await syncClient.applyGoalTemplateWrites(
-                    month: month, budgets: [], goals: goalResets)
-                if !goalResets.isEmpty { await fetchBudgetMonth(month) }
+                    month: month, budgets: [], goals: goalResets
+                )
+                if !goalResets.isEmpty {
+                    await fetchBudgetMonth(month)
+                }
                 return .upToDate
             case .applied(let count, let budgets, let goals):
                 try await syncClient.applyGoalTemplateWrites(
-                    month: month, budgets: budgets, goals: goals)
+                    month: month, budgets: budgets, goals: goals
+                )
                 await fetchBudgetMonth(month)
                 return .applied(count)
             }
@@ -6578,10 +6704,12 @@ final class BudgetStore: ObservableObject {
             let existingGroups = try await database.fetchCleanupGroups()
             var groupIdsByName = Dictionary(
                 existingGroups.map { ($0.name.lowercased(), $0.id) },
-                uniquingKeysWith: { first, _ in first })
+                uniquingKeysWith: { first, _ in first }
+            )
             var groupNamesById = Dictionary(
                 existingGroups.map { ($0.id, $0.name) },
-                uniquingKeysWith: { first, _ in first })
+                uniquingKeysWith: { first, _ in first }
+            )
             var parsedByCategory: [String: [CleanupNotes.ParsedRow]] = [:]
             var neededGroupNames: [String: String] = [:]
 
@@ -6624,15 +6752,16 @@ final class BudgetStore: ObservableObject {
             try await syncClient.storeCleanupDefs(updates)
             try await database.tombstoneOrphanCleanupGroups()
 
-            let result = CleanupEngine.run(
+            let result = try await CleanupEngine.run(
                 month: month,
                 categories: rows.map {
                     .init(
                         id: $0.id, name: $0.name, isIncome: $0.isIncome,
-                        cleanup: cleanupByCategory[$0.id] ?? [])
+                        cleanup: cleanupByCategory[$0.id] ?? []
+                    )
                 },
                 groupNames: groupNamesById,
-                sheet: try await database.fetchGoalTemplateSheet(month: month)
+                sheet: database.fetchGoalTemplateSheet(month: month)
             )
             try await syncClient.applyGoalTemplateWrites(
                 month: month,
@@ -6658,7 +6787,8 @@ final class BudgetStore: ObservableObject {
         guard let syncClient else { return }
         do {
             try await syncClient.setPreference(
-                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false")
+                id: "flags.goalTemplatesUIEnabled", value: enabled ? "true" : "false"
+            )
             goalTemplatesUIEnabled = enabled
         } catch {
             self.error = String(format: String(localized: "Failed to update automations setting: %@"), error.localizedDescription)
@@ -6708,10 +6838,12 @@ final class BudgetStore: ObservableObject {
             .map {
                 GoalScheduleInfo(
                     id: $0.id, name: $0.name, completed: $0.completed,
-                    amount: $0.amount, dateCondition: $0.dateCondition)
+                    amount: $0.amount, dateCondition: $0.dateCondition
+                )
             }
         data.categoryNames = Dictionary(
-            uniqueKeysWithValues: rows.map { ($0.id, $0.name) })
+            uniqueKeysWithValues: rows.map { ($0.id, $0.name) }
+        )
         data.incomeSources = rows.filter(\.isIncome).map { ($0.id, $0.name) }
         data.cleanupGroups = try await database.fetchCleanupGroups()
         data.category = GoalTemplateCategory(id: row.id, name: row.name, isIncome: row.isIncome)
@@ -6730,7 +6862,8 @@ final class BudgetStore: ObservableObject {
             let neededNames = Set(parsedRows.compactMap(\.groupName))
             var nameToId = Dictionary(
                 data.cleanupGroups.map { ($0.name.lowercased(), $0.id) },
-                uniquingKeysWith: { first, _ in first })
+                uniquingKeysWith: { first, _ in first }
+            )
             for name in neededNames where nameToId[name.lowercased()] == nil {
                 let id = try await resolveCleanupGroup(name: name)
                 nameToId[name.lowercased()] = id
@@ -6758,7 +6891,8 @@ final class BudgetStore: ObservableObject {
         // resolve to the first match rather than trapping.
         let incomeNameToId = Dictionary(
             data.incomeSources.map { ($0.name.lowercased(), $0.id) },
-            uniquingKeysWith: { first, _ in first })
+            uniquingKeysWith: { first, _ in first }
+        )
         templates = templates.map { template in
             guard template.type == .percentage, let source = template.category,
                   let id = incomeNameToId[source.lowercased()] else { return template }
@@ -6789,7 +6923,8 @@ final class BudgetStore: ObservableObject {
             templates: templates,
             allCategories: data.allCategories,
             schedules: data.schedules,
-            sheet: data.sheet)
+            sheet: data.sheet
+        )
     }
 
     /// Save the editor's automations as UI-managed (source 'ui'), which is
@@ -6808,7 +6943,8 @@ final class BudgetStore: ObservableObject {
             categoryId: categoryId,
             goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
             cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
-            source: "ui")
+            source: "ui"
+        )
         try await database.tombstoneOrphanCleanupGroups()
     }
 
@@ -6830,7 +6966,7 @@ final class BudgetStore: ObservableObject {
             throw BudgetStoreError.syncNotConfigured
         }
         let referenced = Set(cleanup.compactMap(\.groupId))
-        let live = Set(try await database.fetchCleanupGroups().map(\.id))
+        let live = try await Set(database.fetchCleanupGroups().map(\.id))
         for group in groups where referenced.contains(group.id) && !live.contains(group.id) {
             try await syncClient.upsertCleanupGroup(id: group.id, name: group.name)
         }
@@ -6852,7 +6988,8 @@ final class BudgetStore: ObservableObject {
             CleanupNotes.toNotes(cleanup, groupName: groupName),
         ].filter { !$0.isEmpty }.joined(separator: "\n")
         return AutomationSentences.mergeIntoNote(
-            existingNote: data.existingNote, rendered: rendered)
+            existingNote: data.existingNote, rendered: rendered
+        )
     }
 
     /// Hand a UI-managed category back to notes: save the edited note, clear
@@ -6889,7 +7026,8 @@ final class BudgetStore: ObservableObject {
             categoryId: categoryId,
             goalDef: templates.isEmpty ? nil : GoalTemplate.encodeArray(templates),
             cleanupDef: cleanup.isEmpty ? nil : CleanupTemplate.encodeArray(cleanup),
-            source: "notes")
+            source: "notes"
+        )
         try await database?.tombstoneOrphanCleanupGroups()
     }
 
@@ -6946,7 +7084,7 @@ final class BudgetStore: ObservableObject {
         }
         try await syncClient.setNote(id: id, note: note)
     }
-    
+
     // MARK: - Rules
 
     /// Live rules in engine order (GH #222). Loaded on demand by the Rules
@@ -7075,7 +7213,7 @@ final class BudgetStore: ObservableObject {
             }
         }
     }
-    
+
     /// Names for everything a rule summary might reference.
     var ruleSummary: RuleSummary {
         let categories = categoryGroups.flatMap(\.categories)

@@ -9,8 +9,13 @@ private final class DeleteBudgetTransport: URLProtocol {
     nonisolated(unsafe) static var status = 200
     nonisolated(unsafe) static var requestedPaths: [String] = []
 
-    override class func canInit(with request: URLRequest) -> Bool { true }
-    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
 
     override func startLoading() {
         Self.requestedPaths.append(request.url?.path ?? "")
@@ -37,7 +42,6 @@ private final class DeleteBudgetTransport: URLProtocol {
 @MainActor
 @Suite(.serialized)
 struct BudgetStoreDeleteBudgetTests {
-
     /// Store + file manager rooted in a unique temp directory, so parallel
     /// suites that create real budgets in the shared directory stay unaffected.
     private func makeIsolatedStore() throws -> (BudgetStore, BudgetFileManager) {
@@ -117,13 +121,13 @@ struct BudgetStoreDeleteBudgetTests {
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         store.currentBudgetId = "budget-a"
-        store.configureForTesting(
-            database: try makeOpenDatabase(),
+        try store.configureForTesting(
+            database: makeOpenDatabase(),
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
         store.accounts = [
             Account(id: "a1", name: "Checking", type: .checking,
-                    offBudget: false, closed: false, sortOrder: 0, balance: 100)
+                    offBudget: false, closed: false, sortOrder: 0, balance: 100),
         ]
 
         await store.removeLocalBudget(cloudFileId: "file-a")
@@ -141,8 +145,8 @@ struct BudgetStoreDeleteBudgetTests {
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
         try seedBudget(id: "budget-b", cloudFileId: "file-b", in: manager)
         store.currentBudgetId = "budget-a"
-        store.configureForTesting(
-            database: try makeOpenDatabase(),
+        try store.configureForTesting(
+            database: makeOpenDatabase(),
             syncClient: SyncClient(serverClient: ActualServerClient(), nodeId: "89e0e8e90b203f9e")
         )
 
@@ -197,7 +201,7 @@ struct BudgetStoreDeleteBudgetTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
-        store.setServerClientForTesting(try await makeStubbedServerClient())
+        try await store.setServerClientForTesting(makeStubbedServerClient())
         let remote = BudgetStore.RemoteBudget(
             id: "file-a", name: "Test Budget", groupId: nil, isEncrypted: false
         )
@@ -221,7 +225,7 @@ struct BudgetStoreDeleteBudgetTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
-        store.setServerClientForTesting(try await makeStubbedServerClient(status: 400))
+        try await store.setServerClientForTesting(makeStubbedServerClient(status: 400))
         let remote = BudgetStore.RemoteBudget(
             id: "file-a", name: "Test Budget", groupId: nil, isEncrypted: false
         )
@@ -241,7 +245,7 @@ struct BudgetStoreDeleteBudgetTests {
         defer { UserDefaults.standard.set(saved, forKey: "currentBudgetId") }
         let (store, manager) = try makeIsolatedStore()
         try seedBudget(id: "budget-a", cloudFileId: "file-a", in: manager)
-        store.setServerClientForTesting(try await makeStubbedServerClient(status: 500))
+        try await store.setServerClientForTesting(makeStubbedServerClient(status: 500))
         let remote = BudgetStore.RemoteBudget(
             id: "file-a", name: "Test Budget", groupId: nil, isEncrypted: false
         )
