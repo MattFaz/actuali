@@ -35,8 +35,23 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
 /// footer section below the table. The status filters themselves live in the
 /// visible check-in strip rather than in here; only whether that strip is
 /// shown is a view option.
+///
+/// New Category / New Group used to be their own "+" toolbar button next to
+/// this menu. Creation is still not a "how this looks" preference, but it's
+/// the only other trailing-edge control the screen had, so folding it in here
+/// keeps the toolbar down to one button; it sits in its own section at the
+/// top, above the view options, so it reads as the odd one out rather than
+/// blending into the layout controls beneath it.
 struct BudgetOptionsMenu: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+
+    /// nil when no budget is loaded — there's nothing to create a category or
+    /// group into yet.
+    var onNewCategory: (() -> Void)?
+    /// A category needs a group to live in; false disables the action without
+    /// hiding it, matching how the old "+" menu behaved.
+    var canAddCategory = true
+    var onNewGroup: (() -> Void)?
 
     /// Group actions are omitted when no budget is loaded — there are no
     /// groups to act on.
@@ -52,6 +67,21 @@ struct BudgetOptionsMenu: View {
 
     var body: some View {
         Menu {
+            Section {
+                if let onNewCategory {
+                    Button(action: onNewCategory) {
+                        Label("New Category", systemImage: "tag")
+                    }
+                    .disabled(!canAddCategory)
+                }
+                if let onNewGroup {
+                    Button(action: onNewGroup) {
+                        Label("New Group", systemImage: "folder")
+                    }
+                    .accessibilityLabel("New Category Group")
+                }
+            }
+
             Picker("Layout", selection: $budgetStore.budgetDisplayStyle) {
                 Label("Clean", systemImage: "list.bullet.rectangle")
                     .tag(BudgetDisplayStyle.clean)
@@ -152,7 +182,7 @@ struct BudgetOptionsMenu: View {
             Image(systemName: "ellipsis.circle")
         }
         .accessibilityLabel("Budget options")
-        .accessibilityHint("Layout, group and amount display options")
+        .accessibilityHint("Create categories and groups, change layout and display options")
     }
 }
 
@@ -162,6 +192,8 @@ struct BudgetOptionsMenu: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     BudgetOptionsMenu(
+                        onNewCategory: {},
+                        onNewGroup: {},
                         expandAllGroups: {},
                         collapseAllGroups: {}
                     )
