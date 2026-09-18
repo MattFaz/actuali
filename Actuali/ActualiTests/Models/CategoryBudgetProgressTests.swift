@@ -156,6 +156,27 @@ struct CategoryBudgetProgressTests {
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
     }
 
+    @Test(arguments: ["fr_FR", "pt_BR", "it_IT"])
+    func filterTitlesSelectTheCorrectPluralBranchForZeroOneAndTwo(identifier: String) {
+        let expected = [
+            "fr_FR": ["Non financée (0)", "Non financée (1)", "Non financées (2)"],
+            "pt_BR": ["Não financiada (0)", "Não financiada (1)", "Não financiadas (2)"],
+            "it_IT": ["Non finanziate (0)", "Non finanziata (1)", "Non finanziate (2)"],
+        ][identifier]!
+
+        let titles = (0...2).map { count in
+            BudgetCategoryFilter.unassigned.title(
+                count: count,
+                isTrackingBudget: false,
+                locale: Locale(identifier: identifier),
+                bundle: actualiBundle
+            )
+        }
+
+        #expect(titles == expected)
+    }
+
+
     @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
     func everyFilterUsesLocalizedLabelsAndAccessibilityWrapper(identifier: String) {
         let locale = Locale(identifier: identifier)
