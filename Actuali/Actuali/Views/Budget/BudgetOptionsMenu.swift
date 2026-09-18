@@ -2,7 +2,6 @@ import SwiftUI
 
 enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
     case all
-    case needsAttention
     case overspent
     case unassigned
     case approachingLimit
@@ -14,8 +13,6 @@ enum BudgetCategoryFilter: String, CaseIterable, Identifiable {
         switch self {
         case .all:
             true
-        case .needsAttention:
-            category.progressState == .overspent || category.progressState == .unassigned
         case .overspent:
             category.progressState == .overspent
         case .unassigned:

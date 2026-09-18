@@ -149,60 +149,11 @@ struct CategoryBudgetProgressTests {
         #expect(BudgetCategoryFilter.overspent.includes(overspent))
         #expect(!BudgetCategoryFilter.overspent.includes(unassigned))
         #expect(BudgetCategoryFilter.unassigned.includes(unassigned))
-        #expect(BudgetCategoryFilter.needsAttention.includes(overspent))
-        #expect(BudgetCategoryFilter.needsAttention.includes(unassigned))
-        #expect(!BudgetCategoryFilter.needsAttention.includes(funded))
         #expect(BudgetCategoryFilter.onTrack.includes(funded))
         #expect(!BudgetCategoryFilter.onTrack.includes(unassigned))
         #expect(BudgetCategoryFilter.approachingLimit.includes(approaching))
         #expect(!BudgetCategoryFilter.approachingLimit.includes(funded))
         #expect(!BudgetCategoryFilter.approachingLimit.includes(overspent))
-    }
-
-    @Test(arguments: ["en_US", "fr_FR", "pt_BR", "es_ES", "de_DE", "it_IT", "nl_NL"])
-    func filterTitlesSelectTheCorrectPluralBranchForZeroOneAndTwo(identifier: String) {
-        let locale = Locale(identifier: identifier)
-        let titles = (0...2).map { count in
-            BudgetCategoryFilter.needsAttention.title(
-                count: count,
-                isTrackingBudget: false,
-                locale: locale,
-                bundle: actualiBundle
-            )
-        }
-
-        #expect(titles[0].contains("0"))
-        #expect(titles[1].contains("1"))
-        #expect(titles[2].contains("2"))
-        if identifier == "en_US" {
-            #expect(titles[0] == "Needs attention (0)")
-            #expect(titles[1] == "Needs attention (1)")
-            #expect(titles[2] == "Needs attention (2)")
-        } else if identifier == "fr_FR" {
-            #expect(titles[0] == "Nécessite une attention (0)")
-            #expect(titles[1] == "Nécessite une attention (1)")
-            #expect(titles[2] == "Nécessitent une attention (2)")
-        } else if identifier == "pt_BR" {
-            #expect(titles[0] == "Precisa de atenção (0)")
-            #expect(titles[1] == "Precisa de atenção (1)")
-            #expect(titles[2] == "Precisam de atenção (2)")
-        } else if identifier == "es_ES" {
-            #expect(titles[0] == "Requieren atención (0)")
-            #expect(titles[1] == "Requiere atención (1)")
-            #expect(titles[2] == "Requieren atención (2)")
-        } else if identifier == "de_DE" {
-            #expect(titles[0] == "Benötigen Aufmerksamkeit (0)")
-            #expect(titles[1] == "Benötigt Aufmerksamkeit (1)")
-            #expect(titles[2] == "Benötigen Aufmerksamkeit (2)")
-        } else if identifier == "it_IT" {
-            #expect(titles[0] == "Richiedono attenzione (0)")
-            #expect(titles[1] == "Richiede attenzione (1)")
-            #expect(titles[2] == "Richiedono attenzione (2)")
-        } else {
-            #expect(titles[0] == "Hebben aandacht nodig (0)")
-            #expect(titles[1] == "Heeft aandacht nodig (1)")
-            #expect(titles[2] == "Hebben aandacht nodig (2)")
-        }
     }
 
     @Test(arguments: ["fr_FR", "es_ES", "pt_BR", "de_DE", "it_IT", "nl_NL"])
