@@ -1048,7 +1048,6 @@ extension BudgetCategoryFilter {
         let key: String.LocalizationValue
         switch self {
         case .all: key = String.LocalizationValue("budget.filter.all \(count)")
-        case .needsAttention: key = String.LocalizationValue("budget.filter.needsAttention \(count)")
         case .overspent where isTrackingBudget: key = String.LocalizationValue("budget.filter.overBudget \(count)")
         case .overspent: key = String.LocalizationValue("budget.filter.overspent \(count)")
         case .unassigned where isTrackingBudget: key = String.LocalizationValue("budget.filter.noBudget \(count)")
