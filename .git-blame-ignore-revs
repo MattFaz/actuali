@@ -3,4 +3,4 @@
 #   git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 # SwiftFormat adoption: mechanical reformat of the whole codebase
-698f8e01b72e7168a5ab0bdc5a9228838b4aa8fa
+ffd527a6c27c3dbc7a8e32f55ec1650106f0dba5
