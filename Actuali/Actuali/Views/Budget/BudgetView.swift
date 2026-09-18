@@ -206,7 +206,6 @@ struct BudgetView: View {
             // below already occupies the centre, and the tab bar says
             // "Budget" anyway.
             .navigationBarTitleDisplayMode(.inline)
-            .budgetNavigationBarBackground(isCompact: isCompact)
             .toolbar { budgetToolbar }
             .onAppear {
                 selectedMonth = budgetStore.lastViewedBudgetMonth ?? selectedMonth
@@ -970,21 +969,6 @@ struct BudgetView: View {
 
     static func shiftMonth(_ month: String, by offset: Int) -> String {
         BudgetStore.shiftBudgetMonth(month, by: offset) ?? month
-    }
-}
-
-private extension View {
-    @ViewBuilder
-    func budgetNavigationBarBackground(
-        isCompact: Bool
-    ) -> some View {
-        if isCompact {
-            self
-                .toolbarBackground(Color(.secondarySystemBackground), for: .navigationBar)
-                .toolbarBackground(.visible, for: .navigationBar)
-        } else {
-            self
-        }
     }
 }
 
