@@ -59,14 +59,14 @@ final class BudgetViewSettingsUITests: XCTestCase {
 
     @MainActor
     func testViewStyleControlsGroupTotalsAvailabilityAndPresentation() throws {
-        let app = launchSettings(
-            budgetDisplayStyle: "compact",
-            showGroupTotals: true
-        )
+        let app = launchSettings()
         openBudgetViewSettings(in: app)
 
         let groupTotals = app.switches["Group Totals"]
         XCTAssertTrue(groupTotals.waitForExistence(timeout: 5), "Group Totals toggle not found")
+        XCTAssertFalse(groupTotals.isEnabled, "Clean view should disable Group Totals")
+
+        selectViewStyle("Compact", in: app)
         XCTAssertTrue(groupTotals.isEnabled, "Compact view should enable Group Totals")
 
         app.tabBars.buttons["Budget"].tap()

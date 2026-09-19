@@ -541,25 +541,25 @@ final class BudgetStore: ObservableObject {
             )
         }
 
-        var white: CGFloat = 0
         var alpha: CGFloat = 0
-        if color.getWhite(&white, alpha: &alpha) {
-            return encodeCategoryStatusDotColor(
-                colorSpaceName: "extendedGray",
-                components: [white, alpha]
-            )
-        }
-
         var red: CGFloat = 0
         var green: CGFloat = 0
         var blue: CGFloat = 0
-        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+        if color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) {
+            return encodeCategoryStatusDotColor(
+                colorSpaceName: "extendedSRGB",
+                components: [red, green, blue, alpha]
+            )
+        }
+
+        var white: CGFloat = 0
+        guard color.getWhite(&white, alpha: &alpha) else {
             return nil
         }
 
         return encodeCategoryStatusDotColor(
-            colorSpaceName: "extendedSRGB",
-            components: [red, green, blue, alpha]
+            colorSpaceName: "extendedGray",
+            components: [white, alpha]
         )
     }
 

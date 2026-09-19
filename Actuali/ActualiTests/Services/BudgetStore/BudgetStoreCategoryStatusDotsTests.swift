@@ -43,6 +43,37 @@ struct BudgetStoreCategoryStatusDotsTests {
         #expect(abs(Double(alpha) - 1.0) < 0.01)
     }
 
+    @Test func unrecognizedRGBColorSpaceDoesNotBecomeGrayscale() {
+        let key = "categoryStatusDotColors"
+        let saved = UserDefaults.standard.object(forKey: key)
+        defer {
+            if let saved {
+                UserDefaults.standard.set(saved, forKey: key)
+            } else {
+                UserDefaults.standard.removeObject(forKey: key)
+            }
+        }
+
+        let colorSpace = CGColorSpace(name: CGColorSpace.genericRGBLinear)!
+        let cgColor = CGColor(
+            colorSpace: colorSpace,
+            components: [0.9, 0.2, 0.1, 1]
+        )!
+        let store = BudgetStore.previewInstance()
+        store.setCategoryStatusDotColor(Color(UIColor(cgColor: cgColor)), for: .overspent)
+
+        let reloadedStore = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        #expect(UIColor(reloadedStore.categoryStatusDotColor(for: .overspent)).getRed(
+            &red, green: &green, blue: &blue, alpha: &alpha
+        ))
+        #expect(red > green)
+        #expect(green > blue)
+    }
+
 
 
     @Test func customColorsRoundTripForEveryProgressState() {
