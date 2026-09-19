@@ -1,4 +1,58 @@
 import SwiftUI
+import UIKit
+
+private struct CategoryStatusColorPicker: UIViewRepresentable {
+    @Binding var color: Color
+    let accessibilityLabel: String
+    let accessibilityIdentifier: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UIColorWell {
+        let well = UIColorWell()
+        well.supportsAlpha = false
+        if #available(iOS 26.0, *) {
+            well.supportsEyedropper = false
+        }
+        well.selectedColor = UIColor(color)
+        well.title = accessibilityLabel
+        well.accessibilityLabel = accessibilityLabel
+        well.accessibilityValue = well.selectedColor?.accessibilityName
+        well.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.colorChanged(_:)),
+            for: .valueChanged
+        )
+        well.accessibilityIdentifier = accessibilityIdentifier
+        return well
+    }
+
+    func updateUIView(_ uiView: UIColorWell, context: Context) {
+        let selectedColor = UIColor(color)
+        if uiView.selectedColor != selectedColor {
+            uiView.selectedColor = selectedColor
+        }
+        uiView.title = accessibilityLabel
+        uiView.accessibilityLabel = accessibilityLabel
+        uiView.accessibilityValue = uiView.selectedColor?.accessibilityName
+        uiView.accessibilityIdentifier = accessibilityIdentifier
+    }
+
+    final class Coordinator: NSObject {
+        private let parent: CategoryStatusColorPicker
+
+        init(_ parent: CategoryStatusColorPicker) {
+            self.parent = parent
+        }
+
+        @objc func colorChanged(_ sender: UIColorWell) {
+            guard let selectedColor = sender.selectedColor else { return }
+            parent.color = Color(selectedColor)
+        }
+    }
+}
 
 struct BudgetViewSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
@@ -34,17 +88,26 @@ struct BudgetViewSettingsView: View {
                         HStack {
                             Text(state.statusText(locale: locale, bundle: .main))
                             Spacer()
-                            ColorPicker(
-                                String(localized: "Colour"),
-                                selection: Binding(
+                            CategoryStatusColorPicker(
+                                color: Binding(
                                     get: { budgetStore.categoryStatusDotColor(for: state) },
                                     set: { budgetStore.setCategoryStatusDotColor($0, for: state) }
                                 ),
-                                supportsOpacity: false
+                                accessibilityLabel: state.statusText(locale: locale, bundle: .main),
+                                accessibilityIdentifier: "categoryStatusColorPicker.\(state.rawValue)"
                             )
-                            .labelsHidden()
-                            .accessibilityLabel(state.statusText(locale: locale, bundle: .main))
-                            .accessibilityIdentifier("categoryStatusColorPicker.\(state.rawValue)")
+                            .frame(width: 32, height: 32)
+
+                            Button {
+                                budgetStore.resetCategoryStatusDotColor(for: state)
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .accessibilityHidden(true)
+                            }
+.buttonStyle(.borderless)
+                            .disabled(!budgetStore.hasCustomCategoryStatusDotColor(for: state))
+                            .accessibilityLabel(String(localized: "Reset to Default"))
+                            .accessibilityIdentifier("categoryStatusColorReset.\(state.rawValue)")
                         }
                         .accessibilityIdentifier("categoryStatusColorRow.\(state.rawValue)")
                     }

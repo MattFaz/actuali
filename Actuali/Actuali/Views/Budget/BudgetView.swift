@@ -1048,7 +1048,6 @@ extension BudgetCategoryFilter {
         let key: String.LocalizationValue
         switch self {
         case .all: key = String.LocalizationValue("budget.filter.all \(count)")
-        case .needsAttention: key = String.LocalizationValue("budget.filter.needsAttention \(count)")
         case .overspent where isTrackingBudget: key = String.LocalizationValue("budget.filter.overBudget \(count)")
         case .overspent: key = String.LocalizationValue("budget.filter.overspent \(count)")
         case .unassigned where isTrackingBudget: key = String.LocalizationValue("budget.filter.noBudget \(count)")
@@ -1904,8 +1903,8 @@ extension CategoryProgressState {
     }
 }
 
-/// Spent-vs-available bar for a budget row. Its fill and funded track use
-/// the selected color for the row's status.
+/// Spent-vs-available bar for a budget row. Fill and color mirror the row's
+/// Available amount: green while money remains, red once overspent.
 struct CategoryProgressBar: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.locale) private var locale
