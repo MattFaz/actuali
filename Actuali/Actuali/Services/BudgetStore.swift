@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import Combine
 import os
 
@@ -462,6 +463,237 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
         }
+    }
+
+    /// Device-local presentation preferences, shared across budgets like the
+    /// existing show/hide presentation toggles.
+    private static let categoryStatusDotColorsDefaultsKey = "categoryStatusDotColors"
+
+    private struct CategoryStatusDotColorComponents: Codable {
+        let colorSpaceName: String
+        let components: [Double]
+    }
+
+    private struct LegacyCategoryStatusDotColorComponents: Codable {
+        let red: Double
+        let green: Double
+        let blue: Double
+        let alpha: Double
+    }
+
+    private static func categoryStatusDotColorSpace(for name: String) -> CGColorSpace? {
+        switch name {
+        case "sRGB":
+            return CGColorSpace(name: CGColorSpace.sRGB)
+        case "extendedSRGB":
+            return CGColorSpace(name: CGColorSpace.extendedSRGB)
+        case "displayP3":
+            return CGColorSpace(name: CGColorSpace.displayP3)
+        case "linearSRGB":
+            return CGColorSpace(name: CGColorSpace.linearSRGB)
+        case "extendedLinearSRGB":
+            return CGColorSpace(name: CGColorSpace.extendedLinearSRGB)
+        case "extendedGray":
+            return CGColorSpace(name: CGColorSpace.extendedGray)
+        case "linearGray":
+            return CGColorSpace(name: CGColorSpace.linearGray)
+        case "extendedLinearGray":
+            return CGColorSpace(name: CGColorSpace.extendedLinearGray)
+        default:
+            return nil
+        }
+    }
+
+    private static func categoryStatusDotColorSpaceName(for colorSpace: CGColorSpace) -> String? {
+        guard let name = colorSpace.name else { return nil }
+        if CFEqual(name, CGColorSpace.sRGB) { return "sRGB" }
+        if CFEqual(name, CGColorSpace.extendedSRGB) { return "extendedSRGB" }
+        if CFEqual(name, CGColorSpace.displayP3) { return "displayP3" }
+        if CFEqual(name, CGColorSpace.linearSRGB) { return "linearSRGB" }
+        if CFEqual(name, CGColorSpace.extendedLinearSRGB) { return "extendedLinearSRGB" }
+        if CFEqual(name, CGColorSpace.extendedGray) { return "extendedGray" }
+        if CFEqual(name, CGColorSpace.linearGray) { return "linearGray" }
+        if CFEqual(name, CGColorSpace.extendedLinearGray) { return "extendedLinearGray" }
+        return nil
+    }
+
+    private static func encodeCategoryStatusDotColor(
+        colorSpaceName: String,
+        components: [CGFloat]
+    ) -> Data? {
+        let payload = CategoryStatusDotColorComponents(
+            colorSpaceName: colorSpaceName,
+            components: components.map { Double($0) }
+        )
+        return try? JSONEncoder().encode(payload)
+    }
+
+    private static func encodedCategoryStatusDotColorData(_ color: UIColor) -> Data? {
+        let cgColor = color.cgColor
+        if let colorSpace = cgColor.colorSpace,
+           let colorSpaceName = categoryStatusDotColorSpaceName(for: colorSpace),
+           let components = cgColor.components,
+           components.count == colorSpace.numberOfComponents + 1,
+           (colorSpace.model == .rgb || colorSpace.model == .monochrome) {
+            return encodeCategoryStatusDotColor(
+                colorSpaceName: colorSpaceName,
+                components: components
+            )
+        }
+
+        var white: CGFloat = 0
+        var alpha: CGFloat = 0
+        if color.getWhite(&white, alpha: &alpha) {
+            return encodeCategoryStatusDotColor(
+                colorSpaceName: "extendedGray",
+                components: [white, alpha]
+            )
+        }
+
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else {
+            return nil
+        }
+
+        return encodeCategoryStatusDotColor(
+            colorSpaceName: "extendedSRGB",
+            components: [red, green, blue, alpha]
+        )
+    }
+
+    private static func categoryStatusDotColor(from data: Data) -> Color? {
+        guard let payload = try? JSONDecoder().decode(
+            CategoryStatusDotColorComponents.self,
+            from: data
+        ),
+        let colorSpace = categoryStatusDotColorSpace(for: payload.colorSpaceName),
+        payload.components.count == colorSpace.numberOfComponents + 1,
+        payload.components.allSatisfy(\.isFinite) else {
+            return nil
+        }
+
+        let cgColor = payload.components.map { CGFloat($0) }.withUnsafeBufferPointer { (buffer) -> CGColor? in
+            guard let baseAddress = buffer.baseAddress else { return nil }
+            return CGColor(colorSpace: colorSpace, components: baseAddress)
+        }
+        guard let cgColor else { return nil }
+        return Color(UIColor(cgColor: cgColor))
+    }
+
+    private static func migratedLegacyJSONColorData(from data: Data) -> Data? {
+        guard let legacy = try? JSONDecoder().decode(
+            LegacyCategoryStatusDotColorComponents.self,
+            from: data
+        ) else {
+            return nil
+        }
+
+        return encodeCategoryStatusDotColor(
+            colorSpaceName: "extendedSRGB",
+            components: [
+                CGFloat(legacy.red),
+                CGFloat(legacy.green),
+                CGFloat(legacy.blue),
+                CGFloat(legacy.alpha)
+            ]
+        )
+    }
+
+    private static func loadCategoryStatusDotColors(from defaults: UserDefaults) -> [String: Data] {
+        guard let stored = defaults.dictionary(
+            forKey: Self.categoryStatusDotColorsDefaultsKey
+        ) as? [String: Data] else {
+            return [:]
+        }
+
+        var resolved: [String: Data] = [:]
+        var migratedLegacyColor = false
+        var ignoredInvalidColor = false
+
+        for (state, data) in stored {
+            if categoryStatusDotColor(from: data) != nil {
+                resolved[state] = data
+                continue
+            }
+
+            if let migratedData = migratedLegacyJSONColorData(from: data) {
+                resolved[state] = migratedData
+                migratedLegacyColor = true
+                continue
+            }
+
+            if let legacyColor = try? NSKeyedUnarchiver.unarchivedObject(
+                ofClass: UIColor.self,
+                from: data
+            ),
+            let migratedData = encodedCategoryStatusDotColorData(legacyColor) {
+                resolved[state] = migratedData
+                migratedLegacyColor = true
+            } else {
+                ignoredInvalidColor = true
+            }
+        }
+
+        if migratedLegacyColor {
+            defaults.set(
+                resolved,
+                forKey: Self.categoryStatusDotColorsDefaultsKey
+            )
+        }
+        if ignoredInvalidColor {
+            logger.debug("Ignored invalid persisted category status color data")
+        }
+
+        return resolved
+    }
+
+    private func persistCategoryStatusDotColors() {
+        if categoryStatusDotColors.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.categoryStatusDotColorsDefaultsKey)
+        } else {
+            UserDefaults.standard.set(
+                categoryStatusDotColors,
+                forKey: Self.categoryStatusDotColorsDefaultsKey
+            )
+        }
+    }
+
+    /// User-selected colors for category status dots and their progress bars.
+    /// Unset states fall back to the status' existing system tint.
+    @Published private var categoryStatusDotColors: [String: Data] = [:] {
+        didSet {
+            persistCategoryStatusDotColors()
+        }
+    }
+
+    func categoryStatusDotColor(for state: CategoryProgressState) -> Color {
+        guard let data = categoryStatusDotColors[state.rawValue] else {
+            return state.tint
+        }
+        guard let color = Self.categoryStatusDotColor(from: data) else {
+            logger.debug("Invalid persisted category status color for \(state.rawValue, privacy: .public)")
+            return state.tint
+        }
+        return color
+    }
+
+    func setCategoryStatusDotColor(_ color: Color, for state: CategoryProgressState) {
+        let uiColor = UIColor(color)
+        guard let data = Self.encodedCategoryStatusDotColorData(uiColor) else {
+            logger.warning("Unable to persist category status color for \(state.rawValue, privacy: .public)")
+            return
+        }
+        categoryStatusDotColors[state.rawValue] = data
+    }
+
+    func hasCustomCategoryStatusDotColor(for state: CategoryProgressState) -> Bool {
+        categoryStatusDotColors[state.rawValue] != nil
+    }
+
+    func resetCategoryStatusDotColor(for state: CategoryProgressState) {
+        categoryStatusDotColors.removeValue(forKey: state.rawValue)
     }
 
     /// Whether Budget shows the status filter strip above the category list.
@@ -1293,6 +1525,12 @@ final class BudgetStore: ObservableObject {
     }
 
     #if DEBUG
+    static func previewInstanceLoadingPersistedPreferencesForTesting() -> BudgetStore {
+        BudgetStore(forPreview: .loadPersistedPreferences)
+    }
+    #endif
+
+    #if DEBUG
     /// Test-only: wire a database and sync client directly so write paths
     /// (e.g. `saveTransaction`) can be exercised end-to-end without the
     /// file-system and server plumbing in `loadLocalBudget`.
@@ -1417,6 +1655,8 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showBudgetProgressBars", default: true))
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true))
+        _categoryStatusDotColors = Published(
+            initialValue: Self.loadCategoryStatusDotColors(from: defaults))
         _showGroupTotals = Published(
             initialValue: persistedBool("showGroupTotals", default: true))
         _showBudgetCheckInStrip = Published(
@@ -1489,6 +1729,20 @@ final class BudgetStore: ObservableObject {
     private init(forPreview: Void) {
         // Empty preview store — no UserDefaults reads, no auto-load.
     }
+
+    #if DEBUG
+    private enum PreviewMode {
+        case loadPersistedPreferences
+    }
+
+    private init(forPreview mode: PreviewMode) {
+        switch mode {
+        case .loadPersistedPreferences:
+            _categoryStatusDotColors = Published(
+                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard))
+        }
+    }
+    #endif
 
     // MARK: - Custom Headers
 

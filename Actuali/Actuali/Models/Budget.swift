@@ -188,7 +188,7 @@ struct CategoryBudget: Identifiable, Hashable {
     }
 }
 
-enum CategoryProgressState: Equatable {
+enum CategoryProgressState: String, CaseIterable, Hashable {
     case unassigned
     case funded
     case spending
