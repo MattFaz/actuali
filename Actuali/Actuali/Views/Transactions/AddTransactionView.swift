@@ -396,7 +396,10 @@ struct AddTransactionView: View {
                         }
                         if editedTransferLegIsCategorizable {
                             NavigationLink {
-                                CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                                CategoryPickerView(
+                                    selectedCategoryId: $selectedCategoryId,
+                                    autofocusSearch: true
+                                ) {
                                     userPickedCategory = true
                                 }
                             } label: {
@@ -463,7 +466,10 @@ struct AddTransactionView: View {
                         }
                     } else if showsStandardCategoryFields && !isSplitting {
                         NavigationLink {
-                            CategoryPickerView(selectedCategoryId: $selectedCategoryId) {
+                            CategoryPickerView(
+                                selectedCategoryId: $selectedCategoryId,
+                                autofocusSearch: true
+                            ) {
                                 userPickedCategory = true
                             }
                         } label: {
@@ -1029,7 +1035,10 @@ private struct SplitLineRow: View {
         }
         .sheet(isPresented: $showCategoryPicker) {
             NavigationStack {
-                CategoryPickerView(selectedCategoryId: $line.categoryId)
+                CategoryPickerView(
+                    selectedCategoryId: $line.categoryId,
+                    autofocusSearch: true
+                )
             }
         }
     }
@@ -1087,17 +1096,15 @@ struct AmountInputField: UIViewRepresentable {
         func updateAutofocus(_ wants: Bool) {
             guard wants != wantsAutofocus else { return }
             wantsAutofocus = wants
-            guard wants, window != nil else { return }
+            guard wants else { return }
+            hasAutofocused = false
+            guard window != nil else { return }
             hasAutofocused = true
             becomeFirstResponder()
         }
 
         override func didMoveToWindow() {
             super.didMoveToWindow()
-            if window == nil {
-                hasAutofocused = false
-                return
-            }
             guard wantsAutofocus, !hasAutofocused, window != nil else { return }
             hasAutofocused = true
             becomeFirstResponder()
@@ -1616,6 +1623,7 @@ struct CategoryPickerView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
     @Environment(\.dismiss) private var dismiss
     @Binding var selectedCategoryId: String?
+    var autofocusSearch = false
     var onPick: (() -> Void)? = nil
     @State private var searchText = ""
     @State private var searchFocused = false
@@ -1676,6 +1684,7 @@ struct CategoryPickerView: View {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.secondary)
                     }
+                    .accessibilityIdentifier("categoryPicker.clearSearch")
                     .accessibilityLabel("Clear text")
                 }
             }
@@ -1685,6 +1694,7 @@ struct CategoryPickerView: View {
         // The navigation transition must settle before UIKit can claim the
         // first responder for this destination.
         .task {
+            guard autofocusSearch else { return }
             try? await Task.sleep(for: .milliseconds(250))
             guard !Task.isCancelled else { return }
             searchFocused = true
@@ -1710,6 +1720,9 @@ struct CategoryPickerView: View {
     }
 }
 
+/// The native `.searchFocused` path did not present the keyboard for this
+/// navigation destination on the deployment-floor simulator, so this field
+/// owns the first-responder request directly.
 private struct CategorySearchField: UIViewRepresentable {
     @Binding var text: String
     @Binding var isFocused: Bool
@@ -1719,6 +1732,7 @@ private struct CategorySearchField: UIViewRepresentable {
     func makeUIView(context: Context) -> AmountInputField.AutofocusTextField {
         let field = AmountInputField.AutofocusTextField()
         field.placeholder = String(localized: "Search categories")
+        field.accessibilityIdentifier = "categoryPicker.search"
         field.autocapitalizationType = .words
         field.autocorrectionType = .no
         field.returnKeyType = .done
@@ -1739,9 +1753,15 @@ private struct CategorySearchField: UIViewRepresentable {
         }
         uiView.wantsAutofocus = isFocused
         if isFocused, uiView.window != nil, !uiView.isFirstResponder {
-            uiView.becomeFirstResponder()
+            DispatchQueue.main.async {
+                guard uiView.window != nil, !uiView.isFirstResponder else { return }
+                uiView.becomeFirstResponder()
+            }
         } else if !isFocused, uiView.isFirstResponder {
-            uiView.resignFirstResponder()
+            DispatchQueue.main.async {
+                guard uiView.isFirstResponder else { return }
+                uiView.resignFirstResponder()
+            }
         }
     }
 
