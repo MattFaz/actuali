@@ -307,7 +307,7 @@ struct CompactBudgetGroupHeader: View {
         HStack(spacing: 6) {
             DisclosureChevron(isExpanded: !isCollapsed, font: .caption.weight(.semibold))
             Text(name)
-                .font(.system(size: 13, weight: .medium))
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -479,7 +479,7 @@ struct CompactCategoryBudgetRow: View {
                     CompactCategoryStatusDot(state: category.progressState)
                 }
                 Text(category.categoryName)
-                    .font(.system(size: 13))
+                    .font(.subheadline)
                     .foregroundStyle(.primary)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -685,7 +685,7 @@ struct CompactIncomeGroupHeader: View {
         HStack(spacing: 6) {
             DisclosureChevron(isExpanded: !isCollapsed, font: .caption.weight(.semibold))
             Text(name)
-                .font(.system(size: 13, weight: .medium))
+                .font(.subheadline.weight(.semibold))
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -786,7 +786,7 @@ struct CompactIncomeCategoryRow: View {
             onShowTransactions(income, nil)
         } label: {
             Text(income.categoryName)
-                .font(.system(size: 13))
+                .font(.subheadline)
                 .foregroundStyle(.primary)
                 .lineLimit(2)
                 .fixedSize(horizontal: false, vertical: true)

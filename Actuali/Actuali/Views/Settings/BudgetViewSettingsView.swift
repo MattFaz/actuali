@@ -104,7 +104,7 @@ struct BudgetViewSettingsView: View {
                                 Image(systemName: "arrow.counterclockwise")
                                     .accessibilityHidden(true)
                             }
-.buttonStyle(.borderless)
+                            .buttonStyle(.borderless)
                             .disabled(!budgetStore.hasCustomCategoryStatusDotColor(for: state))
                             .accessibilityLabel(String(localized: "Reset to Default"))
                             .accessibilityIdentifier("categoryStatusColorReset.\(state.rawValue)")
