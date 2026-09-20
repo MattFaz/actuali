@@ -61,6 +61,62 @@ final class AddTransactionKeyboardUITests: XCTestCase {
                        "keypad input did not land in the amount field")
     }
 
+    /// The add form stays alive while another tab is selected, so selecting
+    /// Add again must issue a fresh focus request even when the amount has
+    /// already been started.
+    @MainActor
+    func testReturningToAddTabRefocusesAmountField() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        let amountField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == '0.00'")
+        ).firstMatch
+        XCTAssertTrue(amountField.waitForExistence(timeout: 10), "amount field not found")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not come up on the initial Add tab")
+        app.keys["5"].tap()
+        XCTAssertEqual(amountField.value as? String, "0.05")
+
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Accounts"].tap()
+
+        app.tabBars.buttons["Add"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 10),
+                      "keyboard did not return when Add was selected again")
+        XCTAssertEqual(amountField.value as? String, "0.05",
+                       "returning to Add should preserve the partial amount")
+    }
+
+    @MainActor
+    func testCategoryPickerAutofocusesSearchField() throws {
+        let app = XCUIApplication()
+        app.launchArguments = ["-loadDemoData", "-initialTab", "2"]
+        app.launch()
+
+        let done = app.buttons["Done"]
+        XCTAssertTrue(done.waitForExistence(timeout: 10), "amount keyboard did not appear")
+        done.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5),
+                      "amount keyboard did not dismiss")
+
+        let categoryRow = app.buttons.matching(
+            NSPredicate(format: "label BEGINSWITH 'Category'")
+        ).firstMatch
+        XCTAssertTrue(categoryRow.waitForExistence(timeout: 5), "category row not found")
+        categoryRow.tap()
+
+        let searchField = app.textFields.matching(
+            NSPredicate(format: "placeholderValue == 'Search categories'")
+        ).firstMatch
+        XCTAssertTrue(searchField.waitForExistence(timeout: 5),
+                      "category search field not found")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5),
+                      "category search field did not autofocus")
+    }
+
     @MainActor
     func testSheetPresentedAddFlowShowsCancel() throws {
         let app = XCUIApplication()
