@@ -2,6 +2,9 @@ import SwiftUI
 
 struct BudgetViewSettingsView: View {
     @EnvironmentObject private var budgetStore: BudgetStore
+    @Environment(\.locale) private var locale: Locale
+    @State private var isCategoryStatusColorPickerExpanded = false
+    @State private var showingCategoryStatusColorInfo = false
 
     var body: some View {
         Form {
@@ -23,6 +26,50 @@ struct BudgetViewSettingsView: View {
                 Toggle(String(localized: "Category Status Dots"), isOn: $budgetStore.showCategoryStatusDots)
                 Toggle(String(localized: "Budget Progress Bars"), isOn: $budgetStore.showBudgetProgressBars)
                 Toggle(String(localized: "Overspent Badge"), isOn: $budgetStore.showOverspentBadge)
+
+                DisclosureGroup(
+                    isExpanded: $isCategoryStatusColorPickerExpanded
+                ) {
+                    ForEach(CategoryProgressState.allCases, id: \.self) { state in
+                        HStack {
+                            ColorPicker(
+                                state.statusText(locale: locale, bundle: .main),
+                                selection: Binding(
+                                    get: { budgetStore.categoryStatusDotColor(for: state) },
+                                    set: { budgetStore.setCategoryStatusDotColor($0, for: state) }
+                                ),
+                                supportsOpacity: false
+                            )
+                            .accessibilityIdentifier("categoryStatusColorPicker.\(state.rawValue)")
+
+                            Spacer()
+
+                            Button {
+                                budgetStore.resetCategoryStatusDotColor(for: state)
+                            } label: {
+                                Image(systemName: "arrow.counterclockwise")
+                                    .accessibilityHidden(true)
+                            }
+                            .buttonStyle(.borderless)
+                            .disabled(!budgetStore.hasCustomCategoryStatusDotColor(for: state))
+                            .accessibilityLabel(String(localized: "Reset to Default"))
+                            .accessibilityIdentifier("categoryStatusColorReset.\(state.rawValue)")
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Button {
+                            showingCategoryStatusColorInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(String(localized: "Color picker information"))
+                        .accessibilityIdentifier("categoryStatusColorPickerInfo")
+
+                        Text(String(localized: "Color picker"))
+                    }
+                }
             } header: {
                 Text(String(localized: "Presentation"))
             } footer: {
@@ -59,5 +106,13 @@ struct BudgetViewSettingsView: View {
         .navigationTitle(String(localized: "Budget View"))
         .navigationBarTitleDisplayMode(.inline)
         .contentMargins(.horizontal, 6, for: .scrollContent)
+        .alert(
+            String(localized: "Color picker"),
+            isPresented: $showingCategoryStatusColorInfo
+        ) {
+            Button(String(localized: "OK"), role: .cancel) {}
+        } message: {
+            Text(String(localized: "Picked color will be used for both category status dots and progress bars."))
+        }
     }
 }

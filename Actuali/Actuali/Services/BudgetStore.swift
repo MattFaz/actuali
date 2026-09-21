@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import UIKit
 import Combine
 import os
 
@@ -462,6 +463,103 @@ final class BudgetStore: ObservableObject {
         didSet {
             UserDefaults.standard.set(showCategoryStatusDots, forKey: "showCategoryStatusDots")
         }
+    }
+
+    /// Device-local presentation preferences, shared across budgets like the
+    /// existing show/hide presentation toggles.
+    private static let categoryStatusDotColorsDefaultsKey = "categoryStatusDotColors"
+
+    /// Colors persist as JSON RGBA components in extended sRGB — exactly what
+    /// `UIColor.getRed` returns for any color a picker can produce, including
+    /// out-of-sRGB-gamut Display P3 picks (components outside 0...1 are legal).
+    private struct CategoryStatusDotColorComponents: Codable {
+        let red: Double
+        let green: Double
+        let blue: Double
+        let alpha: Double
+
+        var isFinite: Bool {
+            [red, green, blue, alpha].allSatisfy(\.isFinite)
+        }
+    }
+
+    private static func colorComponents(from data: Data) -> CategoryStatusDotColorComponents? {
+        guard let components = try? JSONDecoder().decode(CategoryStatusDotColorComponents.self, from: data),
+              components.isFinite else {
+            return nil
+        }
+        return components
+    }
+
+    private static func loadCategoryStatusDotColors(from defaults: UserDefaults) -> [String: Data] {
+        guard let stored = defaults.dictionary(
+            forKey: Self.categoryStatusDotColorsDefaultsKey
+        ) as? [String: Data] else {
+            return [:]
+        }
+        return stored.filter { entry in
+            if colorComponents(from: entry.value) == nil {
+                logger.debug("Ignored invalid persisted category status color for \(entry.key, privacy: .public)")
+                return false
+            }
+            return true
+        }
+    }
+
+    private func persistCategoryStatusDotColors() {
+        if categoryStatusDotColors.isEmpty {
+            UserDefaults.standard.removeObject(forKey: Self.categoryStatusDotColorsDefaultsKey)
+        } else {
+            UserDefaults.standard.set(
+                categoryStatusDotColors,
+                forKey: Self.categoryStatusDotColorsDefaultsKey
+            )
+        }
+    }
+
+    /// User-selected colors for category status dots and their progress bars.
+    /// Unset states fall back to the status' existing system tint.
+    @Published private var categoryStatusDotColors: [String: Data] = [:] {
+        didSet {
+            persistCategoryStatusDotColors()
+        }
+    }
+
+    func categoryStatusDotColor(for state: CategoryProgressState) -> Color {
+        guard let data = categoryStatusDotColors[state.rawValue],
+              let components = Self.colorComponents(from: data) else {
+            logger.debug("Invalid persisted category status color for \(state.rawValue, privacy: .public)")
+            return state.tint
+        }
+        return Color(.sRGB, red: components.red, green: components.green, blue: components.blue, opacity: components.alpha)
+    }
+
+    func setCategoryStatusDotColor(_ color: Color, for state: CategoryProgressState) {
+        var red: CGFloat = 0
+        var green: CGFloat = 0
+        var blue: CGFloat = 0
+        var alpha: CGFloat = 0
+        guard UIColor(color).getRed(&red, green: &green, blue: &blue, alpha: &alpha),
+              let data = try? JSONEncoder().encode(
+                  CategoryStatusDotColorComponents(
+                      red: Double(red),
+                      green: Double(green),
+                      blue: Double(blue),
+                      alpha: Double(alpha)
+                  )
+              ) else {
+            logger.warning("Unable to persist category status color for \(state.rawValue, privacy: .public)")
+            return
+        }
+        categoryStatusDotColors[state.rawValue] = data
+    }
+
+    func hasCustomCategoryStatusDotColor(for state: CategoryProgressState) -> Bool {
+        categoryStatusDotColors[state.rawValue] != nil
+    }
+
+    func resetCategoryStatusDotColor(for state: CategoryProgressState) {
+        categoryStatusDotColors.removeValue(forKey: state.rawValue)
     }
 
     /// Whether Budget shows the status filter strip above the category list.
@@ -1293,6 +1391,12 @@ final class BudgetStore: ObservableObject {
     }
 
     #if DEBUG
+    static func previewInstanceLoadingPersistedPreferencesForTesting() -> BudgetStore {
+        BudgetStore(forPreview: .loadPersistedPreferences)
+    }
+    #endif
+
+    #if DEBUG
     /// Test-only: wire a database and sync client directly so write paths
     /// (e.g. `saveTransaction`) can be exercised end-to-end without the
     /// file-system and server plumbing in `loadLocalBudget`.
@@ -1417,6 +1521,8 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showBudgetProgressBars", default: true))
         _showCategoryStatusDots = Published(
             initialValue: persistedBool("showCategoryStatusDots", default: true))
+        _categoryStatusDotColors = Published(
+            initialValue: Self.loadCategoryStatusDotColors(from: defaults))
         _showGroupTotals = Published(
             initialValue: persistedBool("showGroupTotals", default: true))
         _showBudgetCheckInStrip = Published(
@@ -1489,6 +1595,20 @@ final class BudgetStore: ObservableObject {
     private init(forPreview: Void) {
         // Empty preview store — no UserDefaults reads, no auto-load.
     }
+
+    #if DEBUG
+    private enum PreviewMode {
+        case loadPersistedPreferences
+    }
+
+    private init(forPreview mode: PreviewMode) {
+        switch mode {
+        case .loadPersistedPreferences:
+            _categoryStatusDotColors = Published(
+                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard))
+        }
+    }
+    #endif
 
     // MARK: - Custom Headers
 
@@ -2407,6 +2527,12 @@ final class BudgetStore: ObservableObject {
         do {
             try DemoDataSeeder.seed(tracking: tracking)
             currentBudgetId = DemoDataSeeder.budgetId
+            // Reseeding rebuilds the budget directory, but history persists in
+            // UserDefaults keyed by budget id and survives it. Clear it so a
+            // reseeded demo opens pristine (this also keeps UI tests
+            // deterministic: they share the simulator's defaults across
+            // launches, and earlier tests record demo-budget history).
+            await HistoryStore.shared.clearPersistedActions(budgetID: DemoDataSeeder.budgetId)
             await loadLocalBudget(DemoDataSeeder.budgetId)
             // The seeder recreates the budget directory mid-launch, so any
             // loadLocalBudget already running from init() may have captured an

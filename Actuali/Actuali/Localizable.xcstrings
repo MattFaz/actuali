@@ -12161,6 +12161,53 @@
         }
       }
     },
+    "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Richten Sie vor der Verwendung eines Shortcuts die Karten- und Kontozuordnungen unter Mehr → Transaktionen und Automatisierung ein, damit Käufe dem richtigen Konto zugeordnet werden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Before using a shortcut, set up Card & Account Mappings in More → Transactions & Automation so purchases route to the right account."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antes de usar un atajo, configure las Correspondencias de tarjetas y cuentas en Más → Transacciones y automatización para que los gastos se asignen a la cuenta correcta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avant d'utiliser un raccourci, configurez les Correspondances cartes et comptes dans Plus → Transactions et automatisation pour que les achats soient affectés au bon compte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Prima di usare una scorciatoia, configura le Mappature di carte e conti in Altro → Transazioni e automazione, così gli acquisti vanno al conto giusto."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stel voordat u een snelkoppeling gebruikt kaart- en accounttoewijzingen in via Meer → Transacties en automatisering, zodat aankopen op het juiste account terechtkomen."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antes de usar um atalho, configure as Correspondências de cartões e contas em Mais → Transações e automação para que as compras sejam registradas na conta certa."
+          }
+        }
+      }
+    },
     "Billing Cycle" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -20505,6 +20552,100 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Recolhe esta seção"
+          }
+        }
+      }
+    },
+    "Color picker" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Farbauswahl"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color picker"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selector de color"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sélecteur de couleur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selettore del colore"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kleurkiezer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Seletor de cor"
+          }
+        }
+      }
+    },
+    "Color picker information" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informationen zur Farbauswahl"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Color picker information"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Información del selector de color"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informations sur le sélecteur de couleur"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informazioni sul selettore del colore"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informatie over kleurkiezer"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Informações do seletor de cor"
           }
         }
       }
@@ -40196,6 +40337,53 @@
         }
       }
     },
+    "iOS Shortcuts" : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS-Shortcuts"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS Shortcuts"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atajos de iOS"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raccourcis iOS"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scorciatoie iOS"
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iOS-snelkoppelingen"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Atalhos do iOS"
+          }
+        }
+      }
+    },
     "is approximately" : {
       "extractionState" : "stale",
       "localizations" : {
@@ -53652,6 +53840,53 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Escolha de qual renda a porcentagem será retirada."
+          }
+        }
+      }
+    },
+    "Picked color will be used for both category status dots and progress bars." : {
+      "extractionState" : "stale",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die ausgewählte Farbe wird sowohl für die Kategorie-Statuspunkte als auch für die Fortschrittsbalken verwendet."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Picked color will be used for both category status dots and progress bars."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El color elegido se utilizará tanto para los puntos de estado de las categorías como para las barras de progreso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La couleur choisie sera utilisée pour les points d’état des catégories et les barres de progression."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il colore scelto verrà usato sia per i punti di stato delle categorie sia per le barre di avanzamento."
+          }
+        },
+        "nl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "De gekozen kleur wordt gebruikt voor zowel de categoriedots als de voortgangsbalken."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A cor escolhida será usada tanto para os pontos de status das categorias quanto para as barras de progresso."
           }
         }
       }
