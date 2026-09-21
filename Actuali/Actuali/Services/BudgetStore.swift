@@ -201,6 +201,7 @@ final class BudgetStore: ObservableObject {
             UserDefaults.standard.set(currentBudgetId, forKey: "currentBudgetId")
             if currentBudgetId != oldValue {
                 creditCardConfigs = [:]
+                loanConfigs = [:]
             }
         }
     }
@@ -257,6 +258,9 @@ final class BudgetStore: ObservableObject {
 
     /// Synced credit card configurations loaded from the preferences table (accountId -> CreditCardConfig).
     @Published var creditCardConfigs: [String: CreditCardConfig] = [:]
+
+    /// Synced loan configurations loaded from the preferences table (accountId -> LoanConfig).
+    @Published var loanConfigs: [String: LoanConfig] = [:]
 
     /// Currency code for formatting (e.g., "USD", "EUR", "GBP")
     /// Persisted to UserDefaults, defaults to "USD"
@@ -735,6 +739,25 @@ final class BudgetStore: ObservableObject {
             try await syncClient.setCreditCardConfig(accountId: accountId, config: config)
         } catch {
             creditCardConfigs[accountId] = previous
+            self.error = error.localizedDescription
+        }
+    }
+
+    /// Writes a loan's config and persists it through SyncClient.
+    /// A nil `config` stops tracking the account and clears everything stored for it.
+    func setLoan(accountId: String, config: LoanConfig?) async {
+        guard currentBudgetId != nil else { return }
+        let previous = loanConfigs[accountId]
+        loanConfigs[accountId] = config
+        guard let syncClient else {
+            loanConfigs[accountId] = previous
+            error = "Loan settings need sync configured for this budget."
+            return
+        }
+        do {
+            try await syncClient.setLoanConfig(accountId: accountId, config: config)
+        } catch {
+            loanConfigs[accountId] = previous
             self.error = error.localizedDescription
         }
     }
@@ -1976,6 +1999,7 @@ final class BudgetStore: ObservableObject {
             let fetchedNumberFormat = try await openedDb.fetchPreference(id: "numberFormat")
             let fetchedUpcomingLength = try await openedDb.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await openedDb.fetchCreditCardConfigs()
+            let fetchedLoans = try await openedDb.fetchLoanConfigs()
             let fetchedAccounts = try await openedDb.fetchAccounts()
             let fetchedTransactions = try await openedDb.fetchTransactions()
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
@@ -2038,6 +2062,7 @@ final class BudgetStore: ObservableObject {
                 )
             }
             creditCardConfigs = fetchedCreditCards.merging(legacyConfigs) { synced, _ in synced }
+            loanConfigs = fetchedLoans
             
             accounts = fetchedAccounts
             transactions = fetchedTransactions
@@ -2223,6 +2248,7 @@ final class BudgetStore: ObservableObject {
         let currencyCodeBefore = currencyCode
         let numberFormatBefore = numberFormat
         let creditCardsBefore = creditCardConfigs
+        let loansBefore = loanConfigs
         do {
             // Fetch into locals, then publish in one batch (no suspension
             // points between assignments) so overlapping refreshes can't
@@ -2249,6 +2275,7 @@ final class BudgetStore: ObservableObject {
             // upcoming window, and the status badges below are computed from it.
             let fetchedUpcomingLength = try await database.fetchUpcomingScheduledTransactionLength()
             let fetchedCreditCards = try await database.fetchCreditCardConfigs()
+            let fetchedLoans = try await database.fetchLoanConfigs()
             // Re-read here too: a sync can bring in a currency set on another
             // client, and nothing else republishes it (GH #297).
             let fetchedCurrencyCode = try await database.fetchCurrencyCode()
@@ -2268,6 +2295,9 @@ final class BudgetStore: ObservableObject {
             // this snapshot; its write comes back on the next refresh.
             if creditCardConfigs == creditCardsBefore {
                 creditCardConfigs = fetchedCreditCards
+            }
+            if loanConfigs == loansBefore {
+                loanConfigs = fetchedLoans
             }
 
             accounts = fetchedAccounts

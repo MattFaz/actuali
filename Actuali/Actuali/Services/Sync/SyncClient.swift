@@ -892,14 +892,19 @@ actor SyncClient {
     /// is a key-value store (`id TEXT PRIMARY KEY, value TEXT`) that treats unknown preference keys as passthrough
     /// synced items without schema constraints or client-side side-effects.
     func setCreditCardConfig(accountId: String, config: CreditCardConfig?) async throws {
-        let key = BudgetDatabase.creditCardPreferenceKey(for: accountId)
-        let jsonString: String?
-        if let config {
-            let data = try JSONEncoder().encode(config)
-            jsonString = String(data: data, encoding: .utf8)
-        } else {
-            jsonString = nil
-        }
+        try await setEncodedPreference(key: BudgetDatabase.creditCardPreferenceKey(for: accountId), config: config)
+    }
+
+    /// Persists or clears a loan account configuration in the budget's `preferences`
+    /// table under `actuali:loan:<accountId>`, so it syncs across all devices.
+    /// Same passthrough guarantee as `setCreditCardConfig` above.
+    func setLoanConfig(accountId: String, config: LoanConfig?) async throws {
+        try await setEncodedPreference(key: BudgetDatabase.loanPreferenceKey(for: accountId), config: config)
+    }
+
+    /// Stores `config` as the JSON value of `key`, or clears the key when nil.
+    private func setEncodedPreference<T: Encodable>(key: String, config: T?) async throws {
+        let jsonString = try config.map { String(decoding: try JSONEncoder().encode($0), as: UTF8.self) }
         try await setPreference(key: key, value: jsonString)
     }
 
