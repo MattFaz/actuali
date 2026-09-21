@@ -21,9 +21,15 @@ struct TagsListView: View {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         return budgetStore.tags
             .filter { tag in
-                if tag.tombstone { return false }
-                if !showHidden && tag.hidden { return false }
-                if query.isEmpty { return true }
+                if tag.tombstone {
+                    return false
+                }
+                if !showHidden && tag.hidden {
+                    return false
+                }
+                if query.isEmpty {
+                    return true
+                }
                 let nameMatch = tag.tag.lowercased().contains(query)
                 let descMatch = tag.description?.lowercased().contains(query) ?? false
                 return nameMatch || descMatch
@@ -33,7 +39,7 @@ struct TagsListView: View {
 
     var body: some View {
         Group {
-            if budgetStore.tags.isEmpty && !budgetStore.isLoading {
+            if budgetStore.tags.isEmpty, !budgetStore.isLoading {
                 ContentUnavailableView {
                     Label(String(localized: "No Tags"), systemImage: "number")
                 } description: {
@@ -133,7 +139,11 @@ struct TagsListView: View {
             String(localized: "Delete this tag?"),
             isPresented: Binding(
                 get: { tagToDelete != nil },
-                set: { if !$0 { tagToDelete = nil } }
+                set: {
+                    if !$0 {
+                        tagToDelete = nil
+                    }
+                }
             ),
             titleVisibility: .visible
         ) {
@@ -149,7 +159,11 @@ struct TagsListView: View {
             String(localized: "Discovery"),
             isPresented: Binding(
                 get: { discoveryMessage != nil },
-                set: { if !$0 { discoveryMessage = nil } }
+                set: {
+                    if !$0 {
+                        discoveryMessage = nil
+                    }
+                }
             )
         ) {
             Button(String(localized: "OK")) { discoveryMessage = nil }

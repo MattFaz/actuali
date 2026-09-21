@@ -5382,8 +5382,12 @@ final class BudgetDatabase: Sendable {
                             spent += -tx.amount
                         }
                         if let d = tx.date {
-                            if minDate == nil || d < minDate! { minDate = d }
-                            if maxDate == nil || d > maxDate! { maxDate = d }
+                            if minDate == nil || d < minDate! {
+                                minDate = d
+                            }
+                            if maxDate == nil || d > maxDate! {
+                                maxDate = d
+                            }
                         }
                     }
                 }

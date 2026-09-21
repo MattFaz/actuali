@@ -50,7 +50,7 @@ enum TagSuggestionHelper {
 struct TagSuggestionBar: View {
     @Binding var text: String
     let availableTags: [Tag]
-    var onTagSelected: ((Tag) -> Void)? = nil
+    var onTagSelected: ((Tag) -> Void)?
 
     private var activeToken: (query: String, range: Range<String.Index>)? {
         TagSuggestionHelper.activeTagToken(in: text)

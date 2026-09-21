@@ -1,10 +1,8 @@
-import Foundation
-import SwiftUI
-import UIKit
 import Combine
 import Foundation
 import os
 import SwiftUI
+import UIKit
 
 private let logger = Logger(subsystem: "com.mfazz.Actuali", category: "BudgetStore")
 
@@ -522,7 +520,7 @@ final class BudgetStore: ObservableObject {
 
     private static func loadCategoryStatusDotColors(from defaults: UserDefaults) -> [String: Data] {
         guard let stored = defaults.dictionary(
-            forKey: Self.categoryStatusDotColorsDefaultsKey
+            forKey: categoryStatusDotColorsDefaultsKey
         ) as? [String: Data] else {
             return [:]
         }
@@ -1573,9 +1571,11 @@ final class BudgetStore: ObservableObject {
             initialValue: persistedBool("showBudgetProgressBars", default: true)
         )
         _showCategoryStatusDots = Published(
-            initialValue: persistedBool("showCategoryStatusDots", default: true))
+            initialValue: persistedBool("showCategoryStatusDots", default: true)
+        )
         _categoryStatusDotColors = Published(
-            initialValue: Self.loadCategoryStatusDotColors(from: defaults))
+            initialValue: Self.loadCategoryStatusDotColors(from: defaults)
+        )
         _showGroupTotals = Published(
             initialValue: persistedBool("showGroupTotals", default: true)
         )
@@ -1671,7 +1671,8 @@ final class BudgetStore: ObservableObject {
         switch mode {
         case .loadPersistedPreferences:
             _categoryStatusDotColors = Published(
-                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard))
+                initialValue: Self.loadCategoryStatusDotColors(from: UserDefaults.standard)
+            )
         }
     }
     #endif
@@ -2354,7 +2355,7 @@ final class BudgetStore: ObservableObject {
             let fetchedUncategorizedCount = try await openedDb.fetchUncategorizedCount()
             let fetchedGroups = try await openedDb.fetchCategoryGroups()
             let fetchedPayees = try await openedDb.fetchPayees()
-            let fetchedTags = (try? await openedDb.fetchTags(includeHidden: true)) ?? []
+            let fetchedTags = await (try? openedDb.fetchTags(includeHidden: true)) ?? []
             let currentMonth = currentMonthString()
             let displayedMonth = budgetMonthRequestGeneration == monthRequestGenerationBeforeLoad
                 ? lastViewedBudgetMonth ?? currentMonth
@@ -2647,8 +2648,8 @@ final class BudgetStore: ObservableObject {
             let fetchedUncategorizedCount = try await database.fetchUncategorizedCount()
             let fetchedGroups = try await database.fetchCategoryGroups()
             let fetchedPayees = try await database.fetchPayees()
-            let fetchedTags = (try? await database.fetchTags(includeHidden: true)) ?? []
-            let fetchedTagSummaries = (try? await database.fetchTagSummaries()) ?? []
+            let fetchedTags = await (try? database.fetchTags(includeHidden: true)) ?? []
+            let fetchedTagSummaries = await (try? database.fetchTagSummaries()) ?? []
             let currentMonth = currentMonthString()
             // `currentBudgetMonth` follows the month BudgetView is browsing.
             // Foreground sync must not silently replace a historical month
@@ -2947,7 +2948,7 @@ final class BudgetStore: ObservableObject {
     /// Refresh tag summaries without a full budget reload.
     func refreshTagSummaries() async {
         guard let database else { return }
-        tagSummaries = (try? await database.fetchTagSummaries()) ?? []
+        tagSummaries = await (try? database.fetchTagSummaries()) ?? []
     }
 
     // MARK: - Accounts

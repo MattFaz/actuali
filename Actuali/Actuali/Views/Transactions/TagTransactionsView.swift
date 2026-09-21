@@ -37,7 +37,7 @@ struct TagTransactionsView: View {
     }
 
     private var dateRangeText: String? {
-        let dates = transactions.compactMap { $0.date }.compactMap { DayDate(yyyymmdd: $0) }
+        let dates = transactions.compactMap(\.date).compactMap { DayDate(yyyymmdd: $0) }
         guard let minDate = dates.min(), let maxDate = dates.max() else { return nil }
         if minDate == maxDate {
             return minDate.iso
@@ -122,7 +122,7 @@ struct TagTransactionsView: View {
             }
 
             Section(String(localized: "Transactions")) {
-                if !loaded && transactions.isEmpty {
+                if !loaded, transactions.isEmpty {
                     HStack {
                         Spacer()
                         ProgressView()

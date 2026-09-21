@@ -93,7 +93,7 @@ final class SettingsNavigationUITests: XCTestCase {
     private func rowOnHub(_ title: String, in app: XCUIApplication) -> XCUIElement {
         let row = app.buttons[title]
         var swipes = 0
-        while !row.exists && swipes < 8 {
+        while !row.exists, swipes < 8 {
             app.swipeUp()
             swipes += 1
         }

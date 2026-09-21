@@ -46,7 +46,7 @@ struct SettingsView: View {
                 title: String(localized: "Log Wallet Payments Automatically"),
                 systemImage: "wallet.pass",
                 url: URL(string: "https://www.icloud.com/shortcuts/48afadc0957a44fa9eaee51ca76ab0d6")!
-            )
+            ),
         ].sorted { Self.titlePrecedes($0.title, $1.title) }
     }
 

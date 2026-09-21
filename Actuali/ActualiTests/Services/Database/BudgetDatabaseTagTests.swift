@@ -168,9 +168,9 @@ struct BudgetDatabaseTagTests {
         #expect(foodSummary != nil)
         #expect(foodSummary?.transactionCount == 3)
         #expect(foodSummary?.totalSpent == 10000) // 4000 + 6000
-        #expect(foodSummary?.netAmount == -9000)  // -4000 - 6000 + 1000
-        #expect(foodSummary?.earliestDate == DayDate(yyyymmdd: 20260101))
-        #expect(foodSummary?.latestDate == DayDate(yyyymmdd: 20260106))
+        #expect(foodSummary?.netAmount == -9000) // -4000 - 6000 + 1000
+        #expect(foodSummary?.earliestDate == DayDate(yyyymmdd: 20_260_101))
+        #expect(foodSummary?.latestDate == DayDate(yyyymmdd: 20_260_106))
 
         let travelSummary = summaries.first { $0.tag.tag == "travel" }
         #expect(travelSummary != nil)
