@@ -72,6 +72,43 @@ struct HistoryStoreTests {
         #expect(second.actions.first?.after.first?.id == "persisted")
     }
 
+    @Test func clearPersistedActionsDropsStoredHistoryAndBlocksResurrection() {
+        let suite = "HistoryStoreTests-\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suite)!
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let seeder = HistoryStore(defaults: defaults)
+        seeder.recordSnapshots(
+            budgetID: "demo",
+            kind: .created,
+            before: [],
+            after: [transaction(id: "stale")]
+        )
+
+        // A fresh store (new app launch) sees the stale entry...
+        let reseeded = HistoryStore(defaults: defaults)
+        reseeded.load(budgetID: "demo")
+        #expect(reseeded.actions.count == 1)
+
+        // ...until the budget is recreated from scratch and history is cleared.
+        reseeded.clearPersistedActions(budgetID: "demo")
+        #expect(reseeded.actions.isEmpty)
+
+        let relaunched = HistoryStore(defaults: defaults)
+        relaunched.load(budgetID: "demo")
+        #expect(relaunched.actions.isEmpty)
+
+        // Recording after the clear must not resurrect the stale entries.
+        relaunched.recordSnapshots(
+            budgetID: "demo",
+            kind: .created,
+            before: [],
+            after: [transaction(id: "fresh")]
+        )
+        #expect(relaunched.actions.count == 1)
+        #expect(relaunched.actions.first?.after.first?.id == "fresh")
+    }
+
     @Test func historyIsIsolatedPerBudget() {
         let suite = "HistoryStoreTests-\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

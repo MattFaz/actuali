@@ -312,22 +312,45 @@ struct PayeePickerView: View {
 /// `.searchable` drawer field ignores `.searchSelection` writes entirely.
 private extension PayeePickerView {
     var searchBar: some View {
-        HStack(spacing: 6) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
+        PickerSearchBar(text: $searchText, clearButtonIdentifier: "payeePicker.clearSearch") {
             TextField("Search payees", text: $searchText, selection: $searchSelection)
                 .focused($searchFocused)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
                 .submitLabel(.done)
                 .onSubmit { searchFocused = false }
-            if !searchText.isEmpty {
+        }
+    }
+}
+
+struct PickerSearchBar<Field: View>: View {
+    @Binding private var text: String
+    private let clearButtonIdentifier: String
+    private let field: () -> Field
+
+    init(
+        text: Binding<String>,
+        clearButtonIdentifier: String,
+        @ViewBuilder field: @escaping () -> Field
+    ) {
+        _text = text
+        self.clearButtonIdentifier = clearButtonIdentifier
+        self.field = field
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+            field()
+            if !text.isEmpty {
                 Button {
-                    searchText = ""
+                    text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundStyle(.secondary)
                 }
+                .accessibilityIdentifier(clearButtonIdentifier)
                 .accessibilityLabel("Clear text")
             }
         }
