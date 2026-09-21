@@ -5290,10 +5290,11 @@ final class BudgetDatabase: Sendable {
             for row in rows {
                 guard let txId: String = row["id"], let notes: String = row["notes"] else { continue }
                 let range = NSRange(notes.startIndex..., in: notes)
+                let escapedTemplate = NSRegularExpression.escapedTemplate(for: "#\(newName)") + "$1"
                 let replaced = regex.stringByReplacingMatches(
                     in: notes,
                     range: range,
-                    withTemplate: "#\(newName)$1"
+                    withTemplate: escapedTemplate
                 )
                 if replaced != notes {
                     try db.execute(
@@ -5313,7 +5314,7 @@ final class BudgetDatabase: Sendable {
         try await dbQueue.read { db in
             guard try db.tableExists("tags") else { return [] }
             let existingTags: Set<String> = try Set(
-                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags")
+                String.fetchAll(db, sql: "SELECT LOWER(tag) FROM tags WHERE tag IS NOT NULL")
             )
             let noteRows = try String.fetchAll(db, sql: """
             SELECT notes FROM transactions
@@ -5343,9 +5344,9 @@ final class BudgetDatabase: Sendable {
 
         return try await dbQueue.read { db in
             // ponytail: Scan transactions with notes once in memory to compute all tag aggregations
-            // in O(tags * txs_with_notes), which is sub-millisecond for typical personal budgets.
+            // in O(tags * txs_with_notes), extracting note hashtags upfront.
             let rows = try Row.fetchAll(db, sql: """
-            SELECT id, amount, notes, date
+            SELECT id, amount, notes
             FROM transactions
             WHERE notes IS NOT NULL AND notes != ''
               AND (tombstone = 0 OR tombstone IS NULL)
@@ -5355,40 +5356,30 @@ final class BudgetDatabase: Sendable {
             struct TxInfo {
                 let amount: Int
                 let notes: String
-                let date: DayDate?
             }
 
             let transactionsWithNotes: [TxInfo] = rows.compactMap { row in
                 guard let notes: String = row["notes"], !notes.isEmpty else { return nil }
                 let amount: Int = row["amount"] ?? 0
-                let dateInt: Int? = row["date"]
-                let date = dateInt.flatMap { DayDate(yyyymmdd: $0) }
-                return TxInfo(amount: amount, notes: notes, date: date)
+                return TxInfo(amount: amount, notes: notes)
+            }
+
+            let tagged = transactionsWithNotes.map { tx in
+                (tx, Set(TagFilter.extractHashtags(from: tx.notes).map { $0.lowercased() }))
             }
 
             return allTags.map { tag in
-                let needle = "#\(tag.tag)"
+                let needle = "#\(tag.tag)".lowercased()
+                let matches = tagged.filter { $0.1.contains(needle) }
                 var count = 0
                 var spent = 0
                 var net = 0
-                var minDate: DayDate?
-                var maxDate: DayDate?
 
-                for tx in transactionsWithNotes {
-                    if TagFilter.notesContainTag(tx.notes, tag: needle, caseSensitive: false) {
-                        count += 1
-                        net += tx.amount
-                        if tx.amount < 0 {
-                            spent += -tx.amount
-                        }
-                        if let d = tx.date {
-                            if minDate == nil || d < minDate! {
-                                minDate = d
-                            }
-                            if maxDate == nil || d > maxDate! {
-                                maxDate = d
-                            }
-                        }
+                for (tx, _) in matches {
+                    count += 1
+                    net += tx.amount
+                    if tx.amount < 0 {
+                        spent += -tx.amount
                     }
                 }
 
@@ -5396,10 +5387,24 @@ final class BudgetDatabase: Sendable {
                     tag: tag,
                     transactionCount: count,
                     totalSpent: spent,
-                    netAmount: net,
-                    earliestDate: minDate,
-                    latestDate: maxDate
+                    netAmount: net
                 )
+            }
+        }
+    }
+
+    /// Transactions carrying the given tag in their notes, newest first.
+    func fetchTransactions(taggedWith tag: String) async throws -> [Transaction] {
+        let needle = "#\(tag)"
+        return try await dbQueue.read { db in
+            let sql = Self.transactionSelect + """
+             AND t.notes LIKE ?
+            ORDER BY t.date DESC, t.sort_order DESC
+            """
+            let rows = try Row.fetchAll(db, sql: sql, arguments: ["%#\(tag)%"])
+            return rows.map(Self.mapTransaction).filter { tx in
+                guard let notes = tx.notes, !notes.isEmpty else { return false }
+                return TagFilter.notesContainTag(notes, tag: needle, caseSensitive: false)
             }
         }
     }

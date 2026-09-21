@@ -18,14 +18,48 @@ struct BudgetDatabaseTagTests {
                 hidden BOOLEAN DEFAULT 0,
                 tombstone INTEGER DEFAULT 0
             );
+            CREATE TABLE accounts (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                offbudget INTEGER DEFAULT 0,
+                tombstone INTEGER DEFAULT 0
+            );
+            CREATE TABLE payees (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                transfer_acct TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
+            CREATE TABLE payee_mapping (
+                id TEXT PRIMARY KEY,
+                targetId TEXT
+            );
+            CREATE TABLE categories (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                tombstone INTEGER DEFAULT 0
+            );
+            CREATE TABLE category_mapping (
+                id TEXT PRIMARY KEY,
+                transferId TEXT
+            );
             CREATE TABLE transactions (
                 id TEXT PRIMARY KEY,
+                isParent INTEGER DEFAULT 0,
+                isChild INTEGER DEFAULT 0,
                 acct TEXT,
+                category TEXT,
+                description TEXT,
                 amount INTEGER,
                 notes TEXT,
                 date INTEGER,
-                isParent INTEGER DEFAULT 0,
-                isChild INTEGER DEFAULT 0,
+                imported_description TEXT,
+                transferred_id TEXT,
+                cleared INTEGER DEFAULT 0,
+                reconciled INTEGER DEFAULT 0,
+                sort_order REAL,
+                parent_id TEXT,
+                schedule TEXT,
                 tombstone INTEGER DEFAULT 0
             );
             """)
@@ -105,12 +139,13 @@ struct BudgetDatabaseTagTests {
 
     @Test func renamesTagAndRewritesTransactionNotes() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-        INSERT INTO tags (id, tag) VALUES ('t1', 'trip2025');
+        INSERT INTO tags (id, tag) VALUES ('t1', 'trip2025'), ('t2', 'cash');
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -1000, 'Hotel reservation #trip2025 in Rome', 20260101),
         ('tx-2', 'acct-1', -500, 'Flight #trip2025 #flight', 20260102),
         ('tx-3', 'acct-1', -200, 'Coffee without tag', 20260103),
-        ('tx-4', 'acct-1', -300, 'Escaped ##trip2025 must not change', 20260104);
+        ('tx-4', 'acct-1', -300, 'Escaped ##trip2025 must not change', 20260104),
+        ('tx-5', 'acct-1', -150, 'Atm withdrawal #cash', 20260105);
         """)
         defer { cleanup(path) }
 
@@ -118,7 +153,11 @@ struct BudgetDatabaseTagTests {
         #expect(modified.count == 2)
 
         let tags = try await database.fetchTags()
-        #expect(tags.first?.tag == "trip2026")
+        #expect(tags.contains(where: { $0.tag == "trip2026" }))
+
+        // Renaming to name containing $ must not crash or misinterpret regex capture groups
+        let dollarModified = try database.renameTag(id: "t2", oldName: "cash", newName: "cash$back")
+        #expect(dollarModified.count == 1)
 
         let queue = try DatabaseQueue(path: path.path)
         try await queue.read { db in
@@ -130,12 +169,15 @@ struct BudgetDatabaseTagTests {
 
             let n4 = try String.fetchOne(db, sql: "SELECT notes FROM transactions WHERE id = 'tx-4'")
             #expect(n4 == "Escaped ##trip2025 must not change")
+
+            let n5 = try String.fetchOne(db, sql: "SELECT notes FROM transactions WHERE id = 'tx-5'")
+            #expect(n5 == "Atm withdrawal #cash$back")
         }
     }
 
     @Test func discoversTagsFromTransactionNotes() async throws {
         let (database, path) = try makeDatabase(seedSQL: """
-        INSERT INTO tags (id, tag) VALUES ('t1', 'existing');
+        INSERT INTO tags (id, tag) VALUES ('t1', 'existing'), ('t-null', NULL);
         INSERT INTO transactions (id, acct, amount, notes, date) VALUES
         ('tx-1', 'acct-1', -1000, 'Lunch #food #work', 20260101),
         ('tx-2', 'acct-1', -500, 'Taxi #work #travel', 20260102),
@@ -169,12 +211,32 @@ struct BudgetDatabaseTagTests {
         #expect(foodSummary?.transactionCount == 3)
         #expect(foodSummary?.totalSpent == 10000) // 4000 + 6000
         #expect(foodSummary?.netAmount == -9000) // -4000 - 6000 + 1000
-        #expect(foodSummary?.earliestDate == DayDate(yyyymmdd: 20_260_101))
-        #expect(foodSummary?.latestDate == DayDate(yyyymmdd: 20_260_106))
 
         let travelSummary = summaries.first { $0.tag.tag == "travel" }
         #expect(travelSummary != nil)
         #expect(travelSummary?.transactionCount == 1)
         #expect(travelSummary?.totalSpent == 15000)
+    }
+
+    @Test func fetchTransactionsTaggedWithFiltersCorrectly() async throws {
+        let (database, path) = try makeDatabase(seedSQL: """
+        INSERT INTO accounts (id, name) VALUES ('acct-1', 'Checking');
+        INSERT INTO transactions (id, acct, amount, notes, date) VALUES
+        ('tx-1', 'acct-1', -4000, 'Dinner #food', 20260101),
+        ('tx-2', 'acct-1', -6000, 'Groceries #food #healthy', 20260105),
+        ('tx-3', 'acct-1', -15000, 'Train ticket #travel', 20260201);
+        """)
+        defer { cleanup(path) }
+
+        let foodTxs = try await database.fetchTransactions(taggedWith: "food")
+        #expect(foodTxs.count == 2)
+        #expect(foodTxs.map(\.id) == ["tx-2", "tx-1"]) // newest first
+
+        let travelTxs = try await database.fetchTransactions(taggedWith: "travel")
+        #expect(travelTxs.count == 1)
+        #expect(travelTxs.first?.id == "tx-3")
+
+        let emptyTxs = try await database.fetchTransactions(taggedWith: "nonexistent")
+        #expect(emptyTxs.isEmpty)
     }
 }

@@ -273,7 +273,13 @@ final class BudgetStore: ObservableObject {
     @Published var uncategorizedCount: Int = 0
     @Published var categoryGroups: [CategoryGroup] = []
     @Published var payees: [Payee] = []
-    @Published var tags: [Tag] = []
+    @Published var tags: [Tag] = [] {
+        didSet {
+            tagsByName = Dictionary(tags.map { ($0.tag.lowercased(), $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
+    private(set) var tagsByName: [String: Tag] = [:]
     @Published var tagSummaries: [TagSummary] = []
     @Published var schedules: [ScheduleSummary] = []
     @Published var upcomingScheduledTransactionLength: String?
@@ -2949,6 +2955,12 @@ final class BudgetStore: ObservableObject {
     func refreshTagSummaries() async {
         guard let database else { return }
         tagSummaries = await (try? database.fetchTagSummaries()) ?? []
+    }
+
+    /// Transactions carrying the given tag in their notes.
+    func fetchTransactions(taggedWith tag: String) async -> [Transaction] {
+        guard let database else { return [] }
+        return await (try? database.fetchTransactions(taggedWith: tag)) ?? []
     }
 
     // MARK: - Accounts

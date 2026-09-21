@@ -21,6 +21,8 @@ enum TagFilter {
         return tags
     }
 
+    private static let hashtagRegex = try! NSRegularExpression(pattern: "(?<!#)#([^\\s#]+)")
+
     /// Extracts genuine `#hashtags` from a transaction note string.
     /// Unlike `extractTags(_:)` which is for filter input where words can omit `#`,
     /// this parses free-form notes where only tokens with a `#` prefix are tags.
@@ -28,11 +30,8 @@ enum TagFilter {
     /// E.g. "Team lunch #reimbursable #food" → ["#reimbursable", "#food"]
     static func extractHashtags(from notes: String) -> [String] {
         guard notes.contains("#") else { return [] }
-        guard let regex = try? NSRegularExpression(pattern: "(?<!#)#([^\\s#]+)") else {
-            return []
-        }
         let range = NSRange(notes.startIndex..., in: notes)
-        let matches = regex.matches(in: notes, range: range)
+        let matches = hashtagRegex.matches(in: notes, range: range)
         var seen = Set<String>()
         var result: [String] = []
         for match in matches {

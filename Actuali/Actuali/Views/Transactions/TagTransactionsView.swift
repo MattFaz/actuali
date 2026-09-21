@@ -12,8 +12,24 @@ struct TagTransactionsView: View {
     @State private var editingTransaction: Transaction?
     @State private var editingTag = false
 
-    private var needle: String {
-        "#\(tag.tag)"
+    private var summary: TagSummary? {
+        budgetStore.tagSummaries.first { $0.tag.id == tag.id }
+    }
+
+    private var totalSpent: Int {
+        summary?.totalSpent ?? transactions.reduce(0) { sum, tx in
+            tx.amount < 0 ? sum + (-tx.amount) : sum
+        }
+    }
+
+    private var netAmount: Int {
+        summary?.netAmount ?? transactions.reduce(0) { sum, tx in
+            sum + tx.amount
+        }
+    }
+
+    private var transactionCount: Int {
+        summary?.transactionCount ?? transactions.count
     }
 
     private var filteredTransactions: [Transaction] {
@@ -22,18 +38,6 @@ struct TagTransactionsView: View {
         }
         let matcher = TransactionSearchMatcher(searchText)
         return transactions.filter { matcher.matches($0) }
-    }
-
-    private var totalSpent: Int {
-        transactions.reduce(0) { sum, tx in
-            tx.amount < 0 ? sum + (-tx.amount) : sum
-        }
-    }
-
-    private var netAmount: Int {
-        transactions.reduce(0) { sum, tx in
-            sum + tx.amount
-        }
     }
 
     private var dateRangeText: String? {
@@ -103,7 +107,7 @@ struct TagTransactionsView: View {
                             Text(String(localized: "Transactions"))
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
-                            Text("\(transactions.count)")
+                            Text("\(transactionCount)")
                                 .font(.headline.weight(.semibold))
                         }
                     }
@@ -150,8 +154,13 @@ struct TagTransactionsView: View {
         }
         .navigationTitle(tag.displayName)
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: Text(String(localized: "Search tagged transactions")))
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(String(localized: "Search tagged transactions"))
+        )
         .refreshable {
+            await budgetStore.refreshTagSummaries()
             await loadTransactions()
         }
         .task {
@@ -171,12 +180,7 @@ struct TagTransactionsView: View {
     }
 
     private func loadTransactions() async {
-        // Fetch all transactions and filter by TagFilter.notesContainTag
-        let all = await budgetStore.fetchTransactions(limit: 5000, offset: 0, search: nil)
-        transactions = all.filter { tx in
-            guard let notes = tx.notes, !notes.isEmpty else { return false }
-            return TagFilter.notesContainTag(notes, tag: needle, caseSensitive: false)
-        }
+        transactions = await budgetStore.fetchTransactions(taggedWith: tag.tag)
         loaded = true
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 import Testing
 @testable import Actuali
 
@@ -68,5 +69,25 @@ struct TagTests {
 
         let hiddenNote = "##hidden note #visible"
         #expect(TagFilter.extractHashtags(from: hiddenNote) == ["#visible"])
+    }
+
+    @Test func colorToHexSupportsGrayscaleAndRgb() {
+        let red = Color(hex: "#FF0000")
+        #expect(red?.toHex() == "#FF0000")
+
+        let white = Color(white: 1.0, opacity: 1.0)
+        #expect(white.toHex() == "#FFFFFF")
+
+        let black = Color(white: 0.0, opacity: 1.0)
+        #expect(black.toHex() == "#000000")
+    }
+
+    @Test func tagSummaryCalculatesFields() {
+        let tag = Tag(id: "tag-1", tag: "groceries")
+        let summary = TagSummary(tag: tag, transactionCount: 5, totalSpent: 12500, netAmount: -12500)
+        #expect(summary.id == "tag-1")
+        #expect(summary.transactionCount == 5)
+        #expect(summary.totalSpent == 12500)
+        #expect(summary.netAmount == -12500)
     }
 }

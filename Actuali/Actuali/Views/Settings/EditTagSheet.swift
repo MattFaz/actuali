@@ -39,10 +39,6 @@ struct EditTagSheet: View {
         normalizedName.isEmpty ? "#tag" : "#\(normalizedName)"
     }
 
-    private var effectiveColorHex: String? {
-        selectedHex
-    }
-
     private var previewColor: Color {
         if let hex = selectedHex, let c = Color(hex: hex) {
             return c

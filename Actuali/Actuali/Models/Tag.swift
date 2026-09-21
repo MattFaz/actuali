@@ -65,8 +65,6 @@ struct TagSummary: Identifiable, Equatable, Sendable {
     let totalSpent: Int
     /// Net total amount in cents (inflows - outflows).
     let netAmount: Int
-    let earliestDate: DayDate?
-    let latestDate: DayDate?
 
     var id: String {
         tag.id
@@ -126,12 +124,8 @@ extension Color {
     }
 
     func toHex() -> String? {
-        guard let components = UIColor(self).cgColor.components, components.count >= 3 else {
-            return nil
-        }
-        let r = Float(components[0])
-        let g = Float(components[1])
-        let b = Float(components[2])
-        return String(format: "#%02lX%02lX%02lX", lroundf(r * 255), lroundf(g * 255), lroundf(b * 255))
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        guard UIColor(self).getRed(&r, green: &g, blue: &b, alpha: &a) else { return nil }
+        return String(format: "#%02lX%02lX%02lX", lroundf(Float(r) * 255), lroundf(Float(g) * 255), lroundf(Float(b) * 255))
     }
 }

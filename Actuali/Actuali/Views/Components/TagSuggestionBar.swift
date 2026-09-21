@@ -50,7 +50,6 @@ enum TagSuggestionHelper {
 struct TagSuggestionBar: View {
     @Binding var text: String
     let availableTags: [Tag]
-    var onTagSelected: ((Tag) -> Void)?
 
     private var activeToken: (query: String, range: Range<String.Index>)? {
         TagSuggestionHelper.activeTagToken(in: text)
@@ -69,7 +68,6 @@ struct TagSuggestionBar: View {
                         Button {
                             withAnimation(.snappy(duration: 0.2)) {
                                 text = TagSuggestionHelper.applyTagCompletion(tag.tag, to: text)
-                                onTagSelected?(tag)
                             }
                         } label: {
                             HStack(spacing: 5) {

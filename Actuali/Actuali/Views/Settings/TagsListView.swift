@@ -8,7 +8,6 @@ struct TagsListView: View {
     @State private var isCreating = false
     @State private var editingTag: Tag?
     @State private var showHidden = false
-    @State private var isDiscovering = false
     @State private var discoveryMessage: String?
     @State private var errorMessage: String?
     @State private var tagToDelete: Tag?
@@ -100,7 +99,11 @@ struct TagsListView: View {
         }
         .navigationTitle(String(localized: "Tags"))
         .navigationBarTitleDisplayMode(.inline)
-        .searchable(text: $searchText, prompt: Text(String(localized: "Search tags")))
+        .searchable(
+            text: $searchText,
+            placement: .navigationBarDrawer(displayMode: .always),
+            prompt: Text(String(localized: "Search tags"))
+        )
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -170,6 +173,21 @@ struct TagsListView: View {
         } message: {
             Text(discoveryMessage ?? "")
         }
+        .alert(
+            String(localized: "Error"),
+            isPresented: Binding(
+                get: { errorMessage != nil },
+                set: {
+                    if !$0 {
+                        errorMessage = nil
+                    }
+                }
+            )
+        ) {
+            Button(String(localized: "OK")) { errorMessage = nil }
+        } message: {
+            Text(errorMessage ?? "")
+        }
     }
 
     private func tagRow(_ tag: Tag) -> some View {
@@ -220,7 +238,6 @@ struct TagsListView: View {
     }
 
     private func discoverTags() async {
-        isDiscovering = true
         do {
             let found = try await budgetStore.discoverTags()
             if found.isEmpty {
@@ -231,7 +248,6 @@ struct TagsListView: View {
         } catch {
             errorMessage = error.localizedDescription
         }
-        isDiscovering = false
     }
 
     private func delete(_ tag: Tag) async {

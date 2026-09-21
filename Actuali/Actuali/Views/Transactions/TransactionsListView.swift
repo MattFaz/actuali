@@ -490,7 +490,7 @@ struct TransactionRow: View {
                         if !extractedTags.isEmpty {
                             ForEach(extractedTags.prefix(2), id: \.self) { rawTag in
                                 let clean = Tag.normalizeTagName(rawTag)
-                                let match = budgetStore.tags.first { $0.tag.lowercased() == clean.lowercased() }
+                                let match = budgetStore.tagsByName[clean.lowercased()]
                                 let tagColor = match?.swiftUIColor ?? .secondary
                                 Text(rawTag)
                                     .font(.system(size: 10, weight: .semibold))
