@@ -20509,7 +20509,7 @@
         }
       }
     },
-    "Colour picker" : {
+    "Color picker" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -20521,7 +20521,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Colour picker"
+            "value" : "Color picker"
           }
         },
         "es" : {
@@ -20556,7 +20556,7 @@
         }
       }
     },
-    "Colour picker information" : {
+    "Color picker information" : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -20568,7 +20568,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Colour picker information"
+            "value" : "Color picker information"
           }
         },
         "es" : {
@@ -53738,7 +53738,7 @@
         }
       }
     },
-    "Picked colour will be used for both category status dots and progress bars." : {
+    "Picked color will be used for both category status dots and progress bars." : {
       "extractionState" : "stale",
       "localizations" : {
         "de" : {
@@ -53750,7 +53750,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Picked colour will be used for both category status dots and progress bars."
+            "value" : "Picked color will be used for both category status dots and progress bars."
           }
         },
         "es" : {

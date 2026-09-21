@@ -4,6 +4,8 @@ import UIKit
 import Testing
 @testable import Actuali
 
+/// Tests share `UserDefaults.standard` keys, so run one at a time.
+@Suite(.serialized)
 @MainActor
 struct BudgetStoreCategoryStatusDotsTests {
 
@@ -74,8 +76,6 @@ struct BudgetStoreCategoryStatusDotsTests {
         #expect(green > blue)
     }
 
-
-
     @Test func customColorsRoundTripForEveryProgressState() {
         let key = "categoryStatusDotColors"
         let saved = UserDefaults.standard.object(forKey: key)
@@ -125,7 +125,7 @@ struct BudgetStoreCategoryStatusDotsTests {
         }
     }
 
-    @Test func legacyArchivedColorIsMigrated() {
+    @Test func displayP3ColorRoundTripsWithoutGamutLoss() {
         let key = "categoryStatusDotColors"
         let saved = UserDefaults.standard.object(forKey: key)
         defer {
@@ -136,56 +136,32 @@ struct BudgetStoreCategoryStatusDotsTests {
             }
         }
 
-        let legacyColor = UIColor(displayP3Red: 0.92, green: 0.24, blue: 0.38, alpha: 1)
-        let legacyData = try! NSKeyedArchiver.archivedData(
-            withRootObject: legacyColor,
-            requiringSecureCoding: true
-        )
-        UserDefaults.standard.set(["overspent": legacyData], forKey: key)
+        let store = BudgetStore.previewInstance()
+        let p3Color = UIColor(displayP3Red: 0.92, green: 0.24, blue: 0.38, alpha: 1)
+        store.setCategoryStatusDotColor(Color(p3Color), for: .overspent)
 
-        let store = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
-        let restoredColor = store.categoryStatusDotColor(for: .overspent)
-        let restoredUIColor = UIColor(restoredColor)
-        let originalComponents = legacyColor.cgColor.components ?? []
-        let restoredComponents = restoredUIColor.cgColor.components ?? []
+        let reloadedStore = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
+        var expectedRed: CGFloat = 0
+        var expectedGreen: CGFloat = 0
+        var expectedBlue: CGFloat = 0
+        var expectedAlpha: CGFloat = 0
+        var restoredRed: CGFloat = 0
+        var restoredGreen: CGFloat = 0
+        var restoredBlue: CGFloat = 0
+        var restoredAlpha: CGFloat = 0
 
-        #expect(restoredUIColor.cgColor.colorSpace?.isWideGamutRGB == true)
-        #expect(restoredComponents.count == originalComponents.count)
-        #expect(zip(restoredComponents, originalComponents).allSatisfy {
-            abs(Double($0.0 - $0.1)) < 0.01
-        })
-        let persistedColors = UserDefaults.standard.dictionary(forKey: key) as? [String: Data]
-        #expect(persistedColors?["overspent"] != legacyData)
-    }
-
-    @Test func legacyJSONColorIsMigrated() {
-        let key = "categoryStatusDotColors"
-        let saved = UserDefaults.standard.object(forKey: key)
-        defer {
-            if let saved {
-                UserDefaults.standard.set(saved, forKey: key)
-            } else {
-                UserDefaults.standard.removeObject(forKey: key)
-            }
-        }
-
-        let legacyPayload = #"{"red":1,"green":0.25,"blue":0.5,"alpha":1}"#
-        UserDefaults.standard.set(["overspent": Data(legacyPayload.utf8)], forKey: key)
-
-        let store = BudgetStore.previewInstanceLoadingPersistedPreferencesForTesting()
-        let restoredColor = UIColor(store.categoryStatusDotColor(for: .overspent))
-        var red: CGFloat = 0
-        var green: CGFloat = 0
-        var blue: CGFloat = 0
-        var alpha: CGFloat = 0
-
-        #expect(restoredColor.getRed(&red, green: &green, blue: &blue, alpha: &alpha))
-        #expect(abs(Double(red) - 1.0) < 0.01)
-        #expect(abs(Double(green) - 0.25) < 0.01)
-        #expect(abs(Double(blue) - 0.5) < 0.01)
-        #expect(abs(Double(alpha) - 1.0) < 0.01)
-        let persistedColors = UserDefaults.standard.dictionary(forKey: key) as? [String: Data]
-        #expect(persistedColors?["overspent"] != Data(legacyPayload.utf8))
+        // Components persist in extended sRGB (what getRed reports), so a
+        // Display P3 pick keeps its out-of-sRGB-gamut components (>1 / <0).
+        #expect(p3Color.getRed(
+            &expectedRed, green: &expectedGreen, blue: &expectedBlue, alpha: &expectedAlpha
+        ))
+        #expect(UIColor(reloadedStore.categoryStatusDotColor(for: .overspent)).getRed(
+            &restoredRed, green: &restoredGreen, blue: &restoredBlue, alpha: &restoredAlpha
+        ))
+        #expect(abs(Double(restoredRed - expectedRed)) < 0.001)
+        #expect(abs(Double(restoredGreen - expectedGreen)) < 0.001)
+        #expect(abs(Double(restoredBlue - expectedBlue)) < 0.001)
+        #expect(abs(Double(restoredAlpha - expectedAlpha)) < 0.001)
     }
 
     @Test func grayscaleColorRoundTrips() {

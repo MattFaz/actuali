@@ -198,37 +198,27 @@ final class BudgetViewSettingsUITests: XCTestCase {
         let toggle = app.switches["Category Status Dots"]
         XCTAssertTrue(toggle.waitForExistence(timeout: 5), "Category Status Dots toggle not found")
 
-        let colorPickerSection = app.descendants(matching: .any)["categoryStatusColorPickerSection"].firstMatch
+        let disclosure = app.buttons["Color picker"]
         XCTAssertTrue(
-            colorPickerSection.waitForExistence(timeout: 5),
-            "Category colour picker section not found"
+            disclosure.waitForExistence(timeout: 5),
+            "Category color picker disclosure not found"
         )
-        colorPickerSection.tap()
+        disclosure.tap()
 
-        let colorPickers = app.buttons.matching(
-            NSPredicate(format: "label == 'Color'")
-        )
-        for _ in 0..<5 {
-            if colorPickers.count == 5 {
-                break
-            }
+        let pickerIds = ["unassigned", "funded", "spending", "spent", "overspent"]
+        for _ in 0..<5 where pickerIds.contains(where: { stateId in
+            !app.descendants(matching: .any)["categoryStatusColorPicker.\(stateId)"].exists
+        }) {
             app.swipeUp()
         }
-
-        XCTAssertEqual(
-            colorPickers.count,
-            5,
-            "All five category status colour pickers should be present"
-        )
-        for index in 0..<min(colorPickers.count, 5) {
-            XCTAssertNotNil(
-                colorPickers.element(boundBy: index).value,
-                "Colour picker \(index + 1) should expose its selected colour"
-            )
+        for stateId in pickerIds {
+            let picker = app.descendants(matching: .any)["categoryStatusColorPicker.\(stateId)"]
+            XCTAssertTrue(picker.waitForExistence(timeout: 5), "Color picker for \(stateId) not found")
+            XCTAssertNotNil(picker.value, "Color picker \(stateId) should expose its selected color")
         }
 
         let resetButtons = app.buttons.matching(
-            NSPredicate(format: "label == 'Reset to Default'")
+            NSPredicate(format: "identifier BEGINSWITH 'categoryStatusColorReset.'")
         )
         XCTAssertEqual(
             resetButtons.count,
@@ -236,30 +226,29 @@ final class BudgetViewSettingsUITests: XCTestCase {
             "All five category status reset controls should be present"
         )
 
-        let infoButton = app.buttons["categoryStatusColorPickerInfo"]
-        XCTAssertTrue(infoButton.waitForExistence(timeout: 5), "Colour picker info button not found")
+        // The disclosure row inherits the info button's identifier, so match
+        // the inner button by its unique label instead.
+        let infoButton = app.buttons["Color picker information"]
+        XCTAssertTrue(infoButton.waitForExistence(timeout: 5), "Color picker info button not found")
         infoButton.tap()
 
-        let infoAlert = app.alerts["Colour picker"]
-        XCTAssertTrue(infoAlert.waitForExistence(timeout: 5), "Colour picker info alert not found")
+        let infoAlert = app.alerts["Color picker"]
+        XCTAssertTrue(infoAlert.waitForExistence(timeout: 5), "Color picker info alert not found")
         XCTAssertTrue(
-            infoAlert.staticTexts["Picked colour will be used for both category status dots and progress bars."].exists,
-            "Colour picker info message not found"
+            infoAlert.staticTexts["Picked color will be used for both category status dots and progress bars."].exists,
+            "Color picker info message not found"
         )
         infoAlert.buttons["OK"].tap()
 
-        let disclosure = app.buttons["Colour picker"]
-        XCTAssertTrue(disclosure.waitForExistence(timeout: 5), "Colour picker disclosure not found")
         for _ in 0..<8 where !disclosure.isHittable {
             app.swipeDown()
         }
-        XCTAssertTrue(disclosure.isHittable, "Colour picker disclosure should be reachable")
+        XCTAssertTrue(disclosure.isHittable, "Color picker disclosure should be reachable")
         disclosure.tap()
         XCTAssertTrue(
-            app.buttons.matching(NSPredicate(format: "label == 'Color'"))
-                .firstMatch
+            app.descendants(matching: .any)["categoryStatusColorPicker.overspent"]
                 .waitForNonExistence(timeout: 5),
-            "Category colour pickers should collapse"
+            "Category color pickers should collapse"
         )        
         app.tabBars.buttons["Budget"].tap()
         let statusDot = app.descendants(matching: .any)["categoryStatusDot"].firstMatch
