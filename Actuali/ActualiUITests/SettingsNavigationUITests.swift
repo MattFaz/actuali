@@ -20,11 +20,18 @@ final class SettingsNavigationUITests: XCTestCase {
         case "Privacy":
             content = app.switches["Hide Balances"]
         case "Scheduled Transactions":
-            content = app.searchFields["Search schedules"]
+            // The demo budget ships Rent and Netflix schedules. Assert on the
+            // row rather than the "Search schedules" field: with a non-empty
+            // list iOS 26 collapses the search bar into a nav-bar glyph, so
+            // no SearchField element exists to match.
+            content = app.buttons.matching(
+                NSPredicate(format: "label BEGINSWITH 'Rent'")
+            ).firstMatch
         case "Rules":
-            // The demo budget does not include a rules table, so RulesListView
-            // shows its unavailable placeholder instead of the Add Rule button.
-            content = app.staticTexts["Rules Unavailable"]
+            // The demo budget ships a rules table with rules in it, so
+            // RulesListView shows the list with its Add Rule toolbar button
+            // instead of the no-rules-table placeholder.
+            content = app.buttons["Add Rule"]
         case "Bank Sync (SimpleFIN & Wallet)":
             content = app.textFields["Setup token"]
         case "History":

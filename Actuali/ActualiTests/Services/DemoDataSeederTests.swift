@@ -113,6 +113,39 @@ struct DemoDataSeederTests {
 
     /// Every account needs a transfer payee (Actual creates one per account)
     /// or the add/edit transfer flows fail with "Transfer payee not found".
+    /// The demo ships a rules table (Settings > Rules must show the list, not
+    /// the "Rules Unavailable" placeholder) and two upcoming schedules backed
+    /// by their own rules, per ScheduleWriteBuilder.createPlan's shape.
+    @Test func seedsRulesAndSchedules() async throws {
+        let database = try seedAndOpen()
+
+        let rules = try await database.fetchRulesRanked()
+        #expect(rules.count == 3)
+
+        let schedules = try await database.fetchSchedules()
+        #expect(schedules.compactMap(\.name).sorted() == ["Netflix", "Rent"])
+        // Every schedule resolves its payee/account from the rule conditions.
+        for schedule in schedules {
+            #expect(schedule.payeeId != nil && schedule.accountId != nil,
+                    "Schedule \(schedule.name ?? "?") is missing payee/account conditions")
+        }
+    }
+
+    /// Seeded schedules must be strictly future-dated: the auto-poster
+    /// (SchedulePoster.runIfNeeded) posts every schedule whose next date is
+    /// today or past, and a fresh demo load must never mutate its own seeded
+    /// data (or record history) on its own.
+    @Test func seededSchedulesAreNeverDueOnLoad() async throws {
+        let database = try seedAndOpen()
+        let schedules = try await database.fetchSchedules()
+        #expect(!schedules.isEmpty)
+        let today = DayDate.today()
+        for schedule in schedules {
+            let next = try #require(schedule.nextDate)
+            #expect(next > today, "\(schedule.name ?? "?") is due at load")
+        }
+    }
+
     @Test func everyAccountHasATransferPayee() async throws {
         let database = try seedAndOpen()
         let accounts = try await database.fetchAccounts()
